@@ -1,0 +1,1189 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// server.js - MitchelLake Signal Intelligence API Server
+// ═══════════════════════════════════════════════════════════════════════════════
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const crypto = require('crypto');
+const bcrypt = require('bcrypt');
+const path = require('path');
+const multer = require('multer');
+const intelligenceDrop = require('./lib/intelligence-drop');
+const upload = multer({ dest: 'uploads/', limits: { fileSize: 100 * 1024 * 1024 } });
+
+const db = require('./lib/db');
+const qdrant = require('./lib/qdrant');
+const { generateEmbedding } = require('./lib/embeddings');
+const { detectSignals, extractCompanyNames } = require('./lib/signal_keywords');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MIDDLEWARE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.use(cors());
+app.use(express.json());
+app.use(express.static('public'));
+
+// Initialize intelligence drops table
+intelligenceDrop.initDropsTable(db.pool).catch(console.error);
+
+// Request logging
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  next();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTHENTICATION MIDDLEWARE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  try {
+    const session = await db.queryOne(`
+      SELECT s.*, u.id as user_id, u.email, u.name, u.role
+      FROM sessions s
+      JOIN users u ON s.user_id = u.id
+      WHERE s.token = $1 AND s.expires_at > NOW()
+    `, [token]);
+    
+    if (!session) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    
+    req.user = {
+      id: session.user_id,
+      email: session.email,
+      name: session.name,
+      role: session.role
+    };
+    
+    next();
+  } catch (error) {
+    console.error('Auth error:', error);
+    res.status(500).json({ error: 'Authentication failed' });
+  }
+}
+
+// Optional auth (sets user if token present)
+async function optionalAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (token) {
+    try {
+      const session = await db.queryOne(`
+        SELECT s.*, u.id as user_id, u.email, u.name, u.role
+        FROM sessions s
+        JOIN users u ON s.user_id = u.id
+        WHERE s.token = $1 AND s.expires_at > NOW()
+      `, [token]);
+      
+      if (session) {
+        req.user = {
+          id: session.user_id,
+          email: session.email,
+          name: session.name,
+          role: session.role
+        };
+      }
+    } catch (error) {
+      // Ignore auth errors for optional auth
+    }
+  }
+  
+  next();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HEALTH & STATS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INTELLIGENCE DROP ROUTES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.post("/api/drops", authenticateToken, upload.single("file"), (req, res) => {
+  req.app.locals.pool = db.pool;
+  req.app.locals.openai = require("./lib/embeddings").openai;
+  intelligenceDrop.handleDrop(req, res);
+});
+
+app.get("/api/drops", authenticateToken, (req, res) => {
+  req.app.locals.pool = db.pool;
+  intelligenceDrop.listDrops(req, res);
+});
+
+app.get("/api/drops/:id", authenticateToken, (req, res) => {
+  req.app.locals.pool = db.pool;
+  intelligenceDrop.getDrop(req, res);
+});
+
+app.patch("/api/drops/:id/feedback", authenticateToken, (req, res) => {
+  req.app.locals.pool = db.pool;
+  intelligenceDrop.feedbackDrop(req, res);
+});
+
+app.get('/api/health', async (req, res) => {
+  try {
+    // Test database
+    await db.query('SELECT 1');
+    
+    // Test Qdrant
+    const qdrantStatus = await qdrant.getCollectionsStatus();
+    
+    res.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      services: {
+        database: 'connected',
+        qdrant: Object.keys(qdrantStatus).length > 0 ? 'connected' : 'error'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'unhealthy',
+      error: error.message
+    });
+  }
+});
+
+app.get('/api/stats', optionalAuth, async (req, res) => {
+  try {
+    const stats = await db.getDashboardStats();
+    
+    // Get signal breakdown by type
+    const signalsByType = await db.queryAll(`
+      SELECT signal_type, COUNT(*) as count
+      FROM signal_events
+      WHERE detected_at > NOW() - INTERVAL '7 days'
+      GROUP BY signal_type
+      ORDER BY count DESC
+    `);
+    
+    res.json({
+      ...stats,
+      signals_by_type: signalsByType
+    });
+  } catch (error) {
+    console.error('Stats error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTHENTICATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.post('/api/auth/signup', async (req, res) => {
+  try {
+    const { email, password, name } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password required' });
+    }
+    
+    // Check if user exists
+    const existing = await db.queryOne('SELECT id FROM users WHERE email = $1', [email]);
+    if (existing) {
+      return res.status(400).json({ error: 'Email already registered' });
+    }
+    
+    // Hash password
+    const passwordHash = await bcrypt.hash(password, 10);
+    
+    // Create user
+    const user = await db.insert('users', {
+      email,
+      password_hash: passwordHash,
+      name: name || email.split('@')[0]
+    });
+    
+    // Create session
+    const token = crypto.randomBytes(32).toString('hex');
+    await db.insert('sessions', {
+      user_id: user.id,
+      token,
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+    });
+    
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role
+      },
+      token
+    });
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password required' });
+    }
+    
+    // Find user
+    const user = await db.queryOne('SELECT * FROM users WHERE email = $1', [email]);
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    // Verify password
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    // Create session
+    const token = crypto.randomBytes(32).toString('hex');
+    await db.insert('sessions', {
+      user_id: user.id,
+      token,
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000)
+    });
+    
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role
+      },
+      token
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/logout', authenticateToken, async (req, res) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    await db.query('DELETE FROM sessions WHERE token = $1', [token]);
+    
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  res.json({ user: req.user });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SEMANTIC SEARCH
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/search', optionalAuth, async (req, res) => {
+  try {
+    const { q, type = 'all', limit = 20 } = req.query;
+    
+    if (!q) {
+      return res.status(400).json({ error: 'Query required' });
+    }
+    
+    // Generate query embedding
+    const queryVector = await generateEmbedding(q);
+    
+    const results = {
+      documents: [],
+      people: [],
+      companies: []
+    };
+    
+    // Search documents
+    if (type === 'all' || type === 'documents') {
+      const docResults = await qdrant.search('documents', queryVector, {
+        limit: parseInt(limit),
+        scoreThreshold: 0.3
+      });
+      
+      // Get full document data
+      if (docResults.length > 0) {
+        const docIds = docResults.map(r => r.id);
+        const docs = await db.queryAll(`
+          SELECT id, title, source_name, source_url, published_at, 
+                 extracted_signals, summary
+          FROM external_documents
+          WHERE id = ANY($1)
+        `, [docIds]);
+        
+        results.documents = docResults.map(r => {
+          const doc = docs.find(d => d.id === r.id) || {};
+          return {
+            ...doc,
+            score: r.score
+          };
+        });
+      }
+    }
+    
+    // Search people
+    if (type === 'all' || type === 'people') {
+      const peopleResults = await qdrant.search('people', queryVector, {
+        limit: parseInt(limit),
+        scoreThreshold: 0.4
+      });
+      
+      if (peopleResults.length > 0) {
+        const personIds = peopleResults.map(r => r.id);
+        const people = await db.queryAll(`
+          SELECT p.*, ps.timing_score, ps.engagement_score, ps.activity_score
+          FROM people p
+          LEFT JOIN person_scores ps ON p.id = ps.person_id
+          WHERE p.id = ANY($1)
+        `, [personIds]);
+        
+        results.people = peopleResults.map(r => {
+          const person = people.find(p => p.id === r.id) || {};
+          return {
+            ...person,
+            match_score: r.score
+          };
+        });
+      }
+    }
+    
+    // Search companies
+    if (type === 'all' || type === 'companies') {
+      const companyResults = await qdrant.search('companies', queryVector, {
+        limit: parseInt(limit),
+        scoreThreshold: 0.3
+      });
+      
+      if (companyResults.length > 0) {
+        const companyIds = companyResults.map(r => r.id);
+        const companies = await db.queryAll(`
+          SELECT * FROM companies WHERE id = ANY($1)
+        `, [companyIds]);
+        
+        results.companies = companyResults.map(r => {
+          const company = companies.find(c => c.id === r.id) || {};
+          return {
+            ...company,
+            score: r.score
+          };
+        });
+      }
+    }
+    
+    // Log search
+    if (req.user) {
+      await db.insert('search_logs', {
+        user_id: req.user.id,
+        query: q,
+        filters: JSON.stringify({ type, limit }),
+        results_count: results.documents.length + results.people.length + results.companies.length,
+        search_mode: 'semantic'
+      });
+    }
+    
+    res.json(results);
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SIGNALS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LEAD SCORING SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function calculateLeadScore(signal) {
+  const breakdown = {
+    base_confidence: parseFloat(signal.confidence_score || 0) * 20,
+    client_proximity: 0,
+    search_relevance: 0,
+    timing_urgency: 0,
+    total: 0
+  };
+  
+  // 1. CLIENT PROXIMITY (40 points max)
+  if (signal.company_id) {
+    try {
+      const clientCheck = await pool.query(`
+        SELECT 
+          c.id,
+          c.relationship_tier,
+          cf.total_placements,
+          cf.total_invoiced
+        FROM clients c
+        LEFT JOIN client_financials cf ON c.id = cf.client_id
+        WHERE c.id = $1
+      `, [signal.company_id]);
+      
+      if (clientCheck.rows.length > 0) {
+        const client = clientCheck.rows[0];
+        breakdown.client_proximity = 40;
+        breakdown.client_type = 'active_client';
+        breakdown.client_tier = client.relationship_tier;
+        breakdown.client_revenue = parseFloat(client.total_invoiced || 0);
+      } else {
+        const peopleCheck = await pool.query(`
+          SELECT COUNT(*) as count
+          FROM people p
+          JOIN companies c ON c.id = $1
+          WHERE p.current_company_name ILIKE c.name
+        `, [signal.company_id]);
+        
+        const peopleCount = parseInt(peopleCheck.rows[0]?.count || 0);
+        
+        if (peopleCount >= 5) {
+          breakdown.client_proximity = 30;
+          breakdown.client_type = 'strong_network';
+          breakdown.people_count = peopleCount;
+        } else if (peopleCount > 0) {
+          breakdown.client_proximity = 20;
+          breakdown.client_type = 'network_contact';
+          breakdown.people_count = peopleCount;
+        }
+      }
+    } catch (error) {
+      console.error('Error calculating client proximity:', error);
+    }
+  }
+  
+  // 2. SEARCH RELEVANCE (30 points max)
+  try {
+    const searchMatches = await pool.query(`
+      SELECT s.id, s.title
+      FROM searches s
+      WHERE s.status = 'active'
+      AND (
+        (s.hiring_stage = 'active' AND $1 IN ('strategic_hiring', 'leadership_change', 'geographic_expansion'))
+        OR (s.industry IS NOT NULL AND $2 ILIKE '%' || s.industry || '%')
+      )
+      LIMIT 5
+    `, [signal.signal_type, signal.sector]);
+    
+    if (searchMatches.rows.length > 0) {
+      breakdown.search_relevance = 30;
+      breakdown.matching_searches = searchMatches.rows;
+    } else {
+      breakdown.search_relevance = 0;
+    }
+  } catch (error) {
+    console.error('Error calculating search relevance:', error);
+  }
+  
+  // 3. TIMING/URGENCY (10 points max)
+  const detectedAt = new Date(signal.detected_at);
+  const hoursSince = (Date.now() - detectedAt) / (1000 * 60 * 60);
+  
+  if (hoursSince < 24) {
+    breakdown.timing_urgency = 10;
+    breakdown.urgency_level = 'immediate';
+  } else if (hoursSince < 168) {
+    breakdown.timing_urgency = 7;
+    breakdown.urgency_level = 'this_week';
+  } else if (hoursSince < 720) {
+    breakdown.timing_urgency = 5;
+    breakdown.urgency_level = 'this_month';
+  } else {
+    breakdown.timing_urgency = 2;
+    breakdown.urgency_level = 'older';
+  }
+  
+  breakdown.total = Math.round(
+    breakdown.base_confidence +
+    breakdown.client_proximity +
+    breakdown.search_relevance +
+    breakdown.timing_urgency
+  );
+  
+  return breakdown;
+}
+
+app.get('/api/signals/brief', optionalAuth, async (req, res) => {
+  try {
+    const { 
+      status = 'new', 
+      type, 
+      days = 365,  // 1 year retention for recruitment cycles 
+      limit = 50,
+      page = 1 
+    } = req.query;
+    
+    let whereClause = 'WHERE detected_at > NOW() - $1::interval';
+    const params = [`${days} days`];
+    let paramIndex = 2;
+    
+    if (status && status !== 'all') {
+      whereClause += ` AND triage_status = $${paramIndex}`;
+      params.push(status);
+      paramIndex++;
+    }
+    
+    if (type) {
+      whereClause += ` AND signal_type = $${paramIndex}`;
+      params.push(type);
+      paramIndex++;
+    }
+    
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    const signals = await db.queryAll(`
+      SELECT 
+        s.*,
+        COALESCE(c.name, s.company_name) as company_name,
+        c.sector,
+        c.geography
+      FROM signal_events s
+      LEFT JOIN companies c ON s.company_id = c.id
+      ${whereClause}
+      ORDER BY s.confidence_score DESC, s.detected_at DESC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `, [...params, parseInt(limit), offset]);
+    
+    // Calculate lead scores for all signals
+const scoredSignals = await Promise.all(
+  signals.map(async (signal) => {
+    const leadScore = await calculateLeadScore(signal);
+    return {
+      ...signal,
+      lead_score: leadScore.total,
+      lead_score_breakdown: leadScore
+    };
+  })
+);
+
+// Re-sort by lead_score (highest first)
+scoredSignals.sort((a, b) => b.lead_score - a.lead_score);
+    
+    // Get total count
+    const countResult = await db.queryOne(`
+      SELECT COUNT(*) FROM signal_events ${whereClause}
+    `, params);
+    
+    res.json({
+      signals: scoredSignals,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: parseInt(countResult.count),
+        totalPages: Math.ceil(countResult.count / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Signals error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/signals/:id', optionalAuth, async (req, res) => {
+  try {
+    const signal = await db.queryOne(`
+      SELECT 
+        s.*,
+        COALESCE(c.name, s.company_name) as company_name,
+        c.sector,
+        c.geography,
+        c.description as company_description
+      FROM signal_events s
+      LEFT JOIN companies c ON s.company_id = c.id
+      WHERE s.id = $1
+    `, [req.params.id]);
+    
+    if (!signal) {
+      return res.status(404).json({ error: 'Signal not found' });
+    }
+    
+    // Get source documents
+    if (signal.evidence_doc_ids && signal.evidence_doc_ids.length > 0) {
+      signal.documents = await db.queryAll(`
+        SELECT id, title, source_name, source_url, published_at
+        FROM external_documents
+        WHERE id = ANY($1)
+      `, [signal.evidence_doc_ids]);
+    }
+    
+    // Calculate lead score
+    const leadScore = await calculateLeadScore(signal);
+    signal.lead_score = leadScore.total;
+    signal.lead_score_breakdown = leadScore;
+    
+    res.json(signal);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/signals/:id/triage', authenticateToken, async (req, res) => {
+  try {
+    const { status, notes } = req.body;
+    
+    const validStatuses = ['new', 'investigating', 'qualified', 'ignore', 'contacted'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    
+    const signal = await db.queryOne(`
+      UPDATE signal_events
+      SET 
+        triage_status = $1,
+        triage_notes = COALESCE($2, triage_notes),
+        triaged_by = $3,
+        triaged_at = NOW()
+      WHERE id = $4
+      RETURNING *
+    `, [status, notes, req.user.id, req.params.id]);
+    
+    if (!signal) {
+      return res.status(404).json({ error: 'Signal not found' });
+    }
+    
+    // Log audit
+    await db.insert('audit_logs', {
+      user_id: req.user.id,
+      action: 'triage_signal',
+      target_type: 'signal_event',
+      target_id: signal.id,
+      details: JSON.stringify({ status, notes })
+    });
+    
+    res.json(signal);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPANIES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/companies', optionalAuth, async (req, res) => {
+  try {
+    const { q, sector, limit = 50, page = 1 } = req.query;
+    
+    let whereClause = '';
+    const params = [];
+    let paramIndex = 1;
+    
+    if (q) {
+      whereClause += ` AND (c.name ILIKE $${paramIndex} OR cl.name ILIKE $${paramIndex})`;
+      params.push(`%${q}%`);
+      paramIndex++;
+    }
+    
+    if (sector) {
+      whereClause += ` AND c.sector = $${paramIndex}`;
+      params.push(sector);
+      paramIndex++;
+    }
+    
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Unified query: UNION clients with signal companies
+    const query = `
+      WITH unified_companies AS (
+        -- Clients (with placement data)
+        SELECT 
+          cl.id,
+          cl.name,
+          'client' as type,
+          NULL as sector,
+          NULL as geography,
+          cf.total_placements as placements,
+          cf.total_invoiced as revenue,
+          cf.last_placement_date,
+          cl.relationship_tier as tier,
+          (SELECT COUNT(*) FROM people p WHERE p.current_company_name ILIKE cl.name) as people_count,
+          0 as signal_count,
+          NULL as latest_signal
+        FROM clients cl
+        LEFT JOIN client_financials cf ON cl.id = cf.client_id
+        WHERE cf.total_placements > 0
+        
+        UNION ALL
+        
+        -- Market companies (from signals/people)
+        SELECT 
+          c.id,
+          c.name,
+          CASE WHEN c.is_client THEN 'both' ELSE 'prospect' END as type,
+          c.sector,
+          c.geography,
+          0 as placements,
+          0 as revenue,
+          NULL as last_placement_date,
+          NULL as tier,
+          (SELECT COUNT(*) FROM people p WHERE p.current_company_name ILIKE c.name) as people_count,
+          (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id) as signal_count,
+          (SELECT MAX(detected_at) FROM signal_events se WHERE se.company_id = c.id) as latest_signal
+        FROM companies c
+      )
+      SELECT * FROM unified_companies
+      WHERE 1=1 ${whereClause}
+      ORDER BY 
+        CASE WHEN type = 'client' THEN 0 WHEN type = 'both' THEN 1 ELSE 2 END,
+        revenue DESC NULLS LAST,
+        signal_count DESC,
+        people_count DESC,
+        name
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `;
+    
+    params.push(parseInt(limit), offset);
+    
+    const companies = await db.queryAll(query, params);
+    
+    // Get total count
+    const countQuery = `
+      WITH unified_companies AS (
+        SELECT cl.id, cl.name FROM clients cl
+        LEFT JOIN client_financials cf ON cl.id = cf.client_id
+        WHERE cf.total_placements > 0
+        UNION ALL
+        SELECT c.id, c.name FROM companies c
+      )
+      SELECT COUNT(*) as total FROM unified_companies
+      WHERE 1=1 ${whereClause}
+    `;
+    
+    const countResult = await db.queryOne(countQuery, params.slice(0, -2));
+    
+    res.json({
+      companies,
+      pagination: {
+        total: parseInt(countResult.total),
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(countResult.total / parseInt(limit))
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error fetching companies:', error);
+    res.status(500).json({ error: 'Failed to fetch companies' });
+  }
+});
+
+app.get('/api/companies/:id', optionalAuth, async (req, res) => {
+  try {
+    const companyId = req.params.id;
+    
+    // Try to find as client first
+    let company = await db.queryOne(`
+      SELECT 
+        cl.id,
+        cl.name,
+        cl.relationship_tier as tier,
+        'client' as type,
+        NULL as sector,
+        NULL as geography,
+        cf.total_placements,
+        cf.total_invoiced as total_revenue,
+        cf.average_placement_fee,
+        cf.first_placement_date,
+        cf.last_placement_date,
+        cf.payment_reliability
+      FROM clients cl
+      LEFT JOIN client_financials cf ON cl.id = cf.client_id
+      WHERE cl.id = $1
+    `, [companyId]);
+    
+    // If not found as client, try companies table
+    if (!company) {
+      company = await db.queryOne(`
+        SELECT 
+          c.*,
+          'prospect' as type,
+          0 as total_placements,
+          0 as total_revenue
+        FROM companies c
+        WHERE c.id = $1
+      `, [companyId]);
+    }
+    
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+    
+    // Get placements if it's a client
+    if (company.type === 'client') {
+      company.placements = await db.queryAll(`
+        SELECT 
+          p.id,
+          p.role_title,
+          p.role_level,
+          p.placement_fee,
+          p.start_date,
+          p.fee_category,
+          u.name as placed_by_name,
+          u.email as placed_by_email,
+          person.full_name as candidate_name
+        FROM placements p
+        LEFT JOIN users u ON p.placed_by_user_id = u.id
+        LEFT JOIN people person ON p.person_id = person.id
+        WHERE p.client_id = $1
+        ORDER BY p.start_date DESC
+      `, [companyId]);
+    }
+    
+    // Get signals (for any company)
+    company.signals = await db.queryAll(`
+      SELECT * FROM signal_events
+      WHERE company_id = $1
+      ORDER BY detected_at DESC
+      LIMIT 20
+    `, [companyId]);
+    
+    // Get people from network (by company name match)
+    company.people = await db.queryAll(`
+      SELECT 
+        id,
+        full_name,
+        current_title,
+        current_company_name,
+        location,
+        linkedin_url
+      FROM people
+      WHERE current_company_name ILIKE $1
+      ORDER BY current_title
+      LIMIT 50
+    `, [`%${company.name}%`]);
+    
+    company.people_count = company.people.length;
+    
+    res.json(company);
+  } catch (error) {
+    console.error('Error fetching company:', error);
+    res.status(500).json({ error: 'Failed to fetch company' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PEOPLE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/people', optionalAuth, async (req, res) => {
+  try {
+    const { q, seniority, company_id, limit = 50, page = 1 } = req.query;
+    
+    let whereClause = 'WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+    
+    if (q) {
+      whereClause += ` AND (full_name ILIKE $${paramIndex} OR headline ILIKE $${paramIndex})`;
+      params.push(`%${q}%`);
+      paramIndex++;
+    }
+    
+    if (seniority) {
+      whereClause += ` AND seniority_level = $${paramIndex}`;
+      params.push(seniority);
+      paramIndex++;
+    }
+    
+    if (company_id) {
+      whereClause += ` AND current_company_id = $${paramIndex}`;
+      params.push(company_id);
+      paramIndex++;
+    }
+    
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    const people = await db.queryAll(`
+      SELECT p.*,
+        ps.timing_score,
+        ps.engagement_score,
+        ps.activity_score,
+        ps.flight_risk_score,
+        ps.composite_score
+      FROM people p
+      LEFT JOIN person_scores ps ON p.id = ps.person_id
+      ${whereClause}
+      ORDER BY ps.composite_score DESC NULLS LAST, p.full_name
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `, [...params, parseInt(limit), offset]);
+    
+    res.json({ people });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/people/:id', optionalAuth, async (req, res) => {
+  try {
+    const person = await db.queryOne(`
+      SELECT p.*,
+        ps.*,
+        c.name as company_name,
+        c.sector as company_sector
+      FROM people p
+      LEFT JOIN person_scores ps ON p.id = ps.person_id
+      LEFT JOIN companies c ON p.current_company_id = c.id
+      WHERE p.id = $1
+    `, [req.params.id]);
+    
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+    
+    // Get signals
+    person.signals = await db.queryAll(`
+      SELECT * FROM person_signals
+      WHERE person_id = $1
+      ORDER BY signal_date DESC NULLS LAST
+      LIMIT 20
+    `, [req.params.id]);
+    
+    // Get interactions
+    person.interactions = await db.queryAll(`
+      SELECT i.*, u.name as user_name
+      FROM interactions i
+      JOIN users u ON i.user_id = u.id
+      WHERE i.person_id = $1
+      ORDER BY i.interaction_at DESC
+      LIMIT 20
+    `, [req.params.id]);
+    
+    // Get content
+    person.content = await db.queryAll(`
+      SELECT * FROM person_content
+      WHERE person_id = $1
+      ORDER BY published_at DESC
+      LIMIT 10
+    `, [req.params.id]);
+    
+    // Get search matches
+    person.search_matches = await db.queryAll(`
+      SELECT sm.*, s.title as search_title
+      FROM search_matches sm
+      JOIN searches s ON sm.search_id = s.id
+      WHERE sm.person_id = $1
+      ORDER BY sm.overall_match_score DESC
+      LIMIT 10
+    `, [req.params.id]);
+    
+    res.json(person);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/people', authenticateToken, async (req, res) => {
+  try {
+    const person = await db.insert('people', req.body);
+    res.status(201).json(person);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/people/:id', authenticateToken, async (req, res) => {
+  try {
+    const person = await db.update('people', req.params.id, req.body);
+    res.json(person);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/people/:id/interactions', authenticateToken, async (req, res) => {
+  try {
+    const interaction = await db.insert('interactions', {
+      ...req.body,
+      person_id: req.params.id,
+      user_id: req.user.id,
+      interaction_at: req.body.interaction_at || new Date().toISOString()
+    });
+    
+    res.status(201).json(interaction);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLIENTS, PROJECTS, SEARCHES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/clients', authenticateToken, async (req, res) => {
+  try {
+    const clients = await db.queryAll(`
+      SELECT c.*,
+        (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id) as project_count,
+        (SELECT COUNT(*) FROM projects p 
+          JOIN searches s ON s.project_id = p.id 
+          WHERE p.client_id = c.id AND s.status NOT IN ('placed', 'cancelled')) as active_searches
+      FROM clients c
+      ORDER BY c.name
+    `);
+    res.json({ clients });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/projects', authenticateToken, async (req, res) => {
+  try {
+    const { client_id, status } = req.query;
+    
+    let whereClause = 'WHERE 1=1';
+    const params = [];
+    
+    if (client_id) {
+      whereClause += ` AND p.client_id = $${params.length + 1}`;
+      params.push(client_id);
+    }
+    
+    if (status) {
+      whereClause += ` AND p.status = $${params.length + 1}`;
+      params.push(status);
+    }
+    
+    const projects = await db.queryAll(`
+      SELECT p.*, c.name as client_name,
+        (SELECT COUNT(*) FROM searches s WHERE s.project_id = p.id) as search_count
+      FROM projects p
+      JOIN clients c ON p.client_id = c.id
+      ${whereClause}
+      ORDER BY p.created_at DESC
+    `, params);
+    
+    res.json({ projects });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/searches', authenticateToken, async (req, res) => {
+  try {
+    const searches = await db.queryAll(`
+      SELECT * FROM v_active_searches
+      ORDER BY created_at DESC
+    `);
+    res.json({ searches });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/searches/:id', authenticateToken, async (req, res) => {
+  try {
+    const search = await db.queryOne(`
+      SELECT s.*, 
+        p.name as project_name,
+        c.name as client_name
+      FROM searches s
+      JOIN projects p ON s.project_id = p.id
+      JOIN clients c ON p.client_id = c.id
+      WHERE s.id = $1
+    `, [req.params.id]);
+    
+    if (!search) {
+      return res.status(404).json({ error: 'Search not found' });
+    }
+    
+    // Get pipeline stats
+    search.pipeline_stats = await db.queryAll(`
+      SELECT status, COUNT(*) as count
+      FROM search_candidates
+      WHERE search_id = $1
+      GROUP BY status
+    `, [req.params.id]);
+    
+    // Get candidates
+    search.candidates = await db.queryAll(`
+      SELECT sc.*, p.full_name, p.current_title, p.current_company_name
+      FROM search_candidates sc
+      JOIN people p ON sc.person_id = p.id
+      WHERE sc.search_id = $1
+      ORDER BY sc.overall_fit_score DESC NULLS LAST
+    `, [req.params.id]);
+    
+    res.json(search);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/searches/:id/matches', authenticateToken, async (req, res) => {
+  try {
+    const matches = await db.queryAll(`
+      SELECT sm.*, 
+        p.full_name, p.current_title, p.current_company_name, p.linkedin_url,
+        ps.timing_score, ps.engagement_score
+      FROM search_matches sm
+      JOIN people p ON sm.person_id = p.id
+      LEFT JOIN person_scores ps ON p.id = ps.person_id
+      WHERE sm.search_id = $1
+      ORDER BY sm.overall_match_score DESC
+      LIMIT 50
+    `, [req.params.id]);
+    
+    res.json({ matches });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CATCH-ALL FOR SPA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('*', (req, res) => {
+  // If API route, return 404
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  
+  // Otherwise serve index.html
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// START SERVER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.listen(PORT, () => {
+  console.log('═══════════════════════════════════════════════════════════════════');
+  console.log('  MITCHELLAKE SIGNAL INTELLIGENCE PLATFORM');
+  console.log('═══════════════════════════════════════════════════════════════════');
+  console.log();
+  console.log(`  🚀 Server running on http://localhost:${PORT}`);
+  console.log(`  📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log();
+  console.log('  Endpoints:');
+  console.log('  ─────────────────────────────────────────');
+  console.log('  GET  /api/health          - Health check');
+  console.log('  GET  /api/stats           - Dashboard stats');
+  console.log('  POST /api/auth/signup     - Create account');
+  console.log('  POST /api/auth/login      - Login');
+  console.log('  GET  /api/signals/brief   - Signal feed');
+  console.log('  GET  /api/search          - Semantic search');
+  console.log('  GET  /api/people          - List people');
+  console.log('  GET  /api/companies       - List companies');
+  console.log('  GET  /api/searches        - Active searches');
+  console.log();
+  console.log('═══════════════════════════════════════════════════════════════════');
+});
+
+module.exports = app;

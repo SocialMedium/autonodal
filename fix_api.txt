@@ -1,0 +1,62 @@
+
+COPY THIS CODE AND ADD IT TO YOUR server.js FILE
+(Add it BEFORE the app.listen line at the very end)
+
+// ============================================================================
+// DASHBOARD STATS API
+// ============================================================================
+app.get('/api/stats', async (req, res) => {
+  try {
+    const stats = await Promise.all([
+      pool.query('SELECT COUNT(*) as count FROM people'),
+      pool.query(`SELECT COUNT(*) as count FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours'`),
+      pool.query(`SELECT COUNT(*) as count FROM searches WHERE status = 'active'`),
+      pool.query('SELECT COUNT(*) as count FROM companies')
+    ]);
+
+    res.json({
+      people_count: parseInt(stats[0].rows[0].count),
+      signals_24h: parseInt(stats[1].rows[0].count),
+      active_searches: parseInt(stats[2].rows[0].count),
+      companies_count: parseInt(stats[3].rows[0].count)
+    });
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    res.status(500).json({ error: 'Failed to fetch statistics' });
+  }
+});
+
+// ============================================================================
+// SIGNALS BRIEF API
+// ============================================================================
+app.get('/api/signals/brief', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    
+    const result = await pool.query(`
+      SELECT 
+        se.id,
+        se.signal_type,
+        se.signal_category,
+        se.confidence_score,
+        se.evidence_summary,
+        se.detected_at,
+        c.name as company_name,
+        c.sector,
+        c.geography
+      FROM signal_events se
+      LEFT JOIN companies c ON se.company_id = c.id
+      ORDER BY se.detected_at DESC
+      LIMIT $1
+    `, [limit]);
+
+    res.json({
+      signals: result.rows,
+      count: result.rows.length
+    });
+  } catch (error) {
+    console.error('Error fetching signals brief:', error);
+    res.status(500).json({ error: 'Failed to fetch signals' });
+  }
+});
+

@@ -1,0 +1,2208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MitchelLake Signal</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --serif: 'Source Serif 4', 'Georgia', serif;
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+
+  --bg: #FAF9F7;
+  --surface: #FFFFFF;
+  --surface-warm: #F7F5F2;
+  --surface-cool: #F2F4F8;
+  --ink: #1A1A1A;
+  --ink-2: #4A4A4A;
+  --ink-3: #7A7A7A;
+  --ink-4: #AAAAAA;
+  --rule: #E0DDD8;
+  --rule-bold: #C8C4BE;
+
+  --blue: #2563EB;
+  --blue-soft: #EBF1FE;
+  --emerald: #0D7A50;
+  --emerald-soft: #E8F5EE;
+  --amber: #B45309;
+  --amber-soft: #FEF7E8;
+  --rose: #C41D3E;
+  --rose-soft: #FDF0F2;
+  --violet: #6D28D9;
+  --violet-soft: #F3EEFE;
+
+  --radius: 8px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+  --shadow-hover: 0 4px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+  --shadow-panel: 0 2px 12px rgba(0,0,0,0.05);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ═══════════════════════════════════════
+   MASTHEAD
+   ═══════════════════════════════════════ */
+.masthead {
+  background: var(--surface);
+  border-bottom: 2px solid var(--ink);
+  padding: 0 40px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.masthead-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+}
+
+.masthead-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.masthead-logo {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: var(--ink);
+}
+
+.masthead-logo em {
+  font-style: italic;
+  color: var(--ink-3);
+}
+
+.masthead-edition {
+  font-size: 11px;
+  color: var(--ink-4);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding-left: 8px;
+  border-left: 1px solid var(--rule);
+}
+
+.masthead-nav {
+  display: flex;
+  gap: 2px;
+}
+
+.masthead-nav a {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-3);
+  text-decoration: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  transition: all 0.15s;
+  letter-spacing: 0.2px;
+}
+
+.masthead-nav a:hover { color: var(--ink); background: var(--surface-warm); }
+.masthead-nav a.active { color: var(--ink); background: var(--surface-warm); font-weight: 600; }
+
+.masthead-user {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.masthead-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Agent ticker */
+.agent-ticker {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 7px 0;
+  border-top: 1px solid var(--rule);
+  overflow-x: auto;
+}
+
+.ticker-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: 0.2px;
+}
+
+.ticker-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--emerald);
+  flex-shrink: 0;
+}
+
+.ticker-dot.pending { background: var(--ink-4); }
+
+/* ═══════════════════════════════════════
+   COMMAND BAR
+   ═══════════════════════════════════════ */
+.command-section {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 32px 40px 0;
+}
+
+.command-bar {
+  background: var(--surface);
+  border: 1.5px solid var(--rule);
+  border-radius: 12px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s;
+}
+
+.command-bar:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.06), var(--shadow-hover);
+}
+
+.command-bar.searching {
+  border-color: var(--blue);
+}
+
+.command-icon {
+  font-size: 18px;
+  color: var(--blue);
+  flex-shrink: 0;
+}
+
+.command-input {
+  flex: 1;
+  border: none;
+  background: none;
+  font-family: var(--sans);
+  font-size: 15px;
+  color: var(--ink);
+  outline: none;
+}
+
+.command-input::placeholder { color: var(--ink-4); }
+
+.command-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.cmd-btn {
+  width: 34px; height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+  background: var(--surface-warm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 15px;
+  transition: all 0.15s;
+  color: var(--ink-3);
+}
+
+.cmd-btn:hover { border-color: var(--rule-bold); color: var(--ink); }
+
+.command-prompts {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.prompt-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 13px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.prompt-chip:hover { border-color: var(--rule-bold); box-shadow: var(--shadow-card); }
+.prompt-chip .emoji { font-size: 13px; }
+
+/* ═══════════════════════════════════════
+   SEARCH RESULTS OVERLAY
+   ═══════════════════════════════════════ */
+.search-overlay {
+  display: none;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 40px;
+}
+
+.search-overlay.active { display: block; }
+
+.search-results-panel {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-panel);
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+.search-results-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.search-results-title {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.search-close {
+  font-size: 13px;
+  color: var(--ink-3);
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: none;
+  background: none;
+  font-family: var(--sans);
+}
+
+.search-close:hover { background: var(--surface-warm); color: var(--ink); }
+
+.search-results-body {
+  padding: 20px 24px;
+}
+
+.search-section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-weight: 700;
+  color: var(--ink-4);
+  margin-bottom: 12px;
+}
+
+.search-person-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.search-person-card:hover { border-color: var(--rule-bold); box-shadow: var(--shadow-card); }
+
+.search-person-name {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.search-person-role {
+  font-size: 13px;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+
+.search-person-meta {
+  font-size: 11px;
+  color: var(--ink-4);
+  margin-top: 4px;
+}
+
+.search-person-tags {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.search-tag {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: var(--surface-warm);
+  color: var(--ink-3);
+}
+
+.search-tag.notes { background: var(--blue-soft); color: var(--blue); }
+
+.search-match-score {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 500;
+  flex-shrink: 0;
+  margin-left: 16px;
+}
+
+.search-match-score.high { color: var(--emerald); }
+.search-match-score.mid { color: var(--amber); }
+.search-match-score.low { color: var(--ink-4); }
+
+.search-doc-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--rule);
+  transition: background 0.15s;
+}
+
+.search-doc-item:hover { background: var(--surface-warm); }
+.search-doc-item:last-child { border-bottom: none; }
+
+.search-doc-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.search-doc-meta {
+  font-size: 11px;
+  color: var(--ink-4);
+  margin-top: 2px;
+}
+
+.search-loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--ink-3);
+  font-size: 14px;
+}
+
+.search-loading .spinner {
+  display: inline-block;
+  width: 20px; height: 20px;
+  border: 2px solid var(--rule);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 10px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ═══════════════════════════════════════
+   METRICS STRIP
+   ═══════════════════════════════════════ */
+.metrics-section {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 28px 40px 0;
+}
+
+.section-rule {
+  height: 1px;
+  background: var(--rule);
+  margin-bottom: 20px;
+}
+
+.section-rule.bold {
+  height: 3px;
+  background: var(--ink);
+  margin-bottom: 16px;
+}
+
+.section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-weight: 700;
+  color: var(--ink-4);
+  margin-bottom: 16px;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.metric {
+  padding: 18px 0;
+  border-right: 1px solid var(--rule);
+  padding-right: 20px;
+  padding-left: 20px;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.metric:hover { background: var(--surface-warm); }
+.metric:first-child { padding-left: 0; }
+.metric:last-child { border-right: none; padding-right: 0; }
+.metric:first-child:hover { margin-left: -8px; padding-left: 8px; border-radius: 4px 0 0 4px; }
+.metric:last-child:hover { margin-right: -8px; padding-right: 8px; border-radius: 0 4px 4px 0; }
+
+.metric-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+  color: var(--ink-4);
+  margin-bottom: 4px;
+}
+
+.metric-value {
+  font-family: var(--serif);
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.metric-value.alert { color: var(--rose); }
+.metric-value.positive { color: var(--emerald); }
+
+.metric-delta {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+  margin-top: 3px;
+}
+
+.metric-delta .up { color: var(--emerald); }
+.metric-delta .down { color: var(--rose); }
+
+/* ═══════════════════════════════════════
+   MAIN CONTENT GRID  
+   ═══════════════════════════════════════ */
+.content-section {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 36px 40px 60px;
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 0;
+}
+
+.main-column {
+  padding-right: 40px;
+  border-right: 1px solid var(--rule);
+}
+
+.side-column {
+  padding-left: 36px;
+}
+
+/* ═══════════════════════════════════════
+   SECTION HEADERS (editorial style)
+   ═══════════════════════════════════════ */
+.zone {
+  margin-bottom: 48px;
+}
+
+.zone-header {
+  margin-bottom: 24px;
+}
+
+.zone-rule {
+  height: 3px;
+  background: var(--ink);
+  margin-bottom: 10px;
+}
+
+.zone-rule.thin {
+  height: 1px;
+  background: var(--rule);
+}
+
+.zone-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.zone-title {
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  line-height: 1.25;
+}
+
+.zone-count {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-4);
+}
+
+.zone-subtitle {
+  font-size: 14px;
+  color: var(--ink-3);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.zone-filters {
+  display: flex;
+  gap: 4px;
+  margin-top: 14px;
+}
+
+.filter-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-family: var(--sans);
+  font-weight: 500;
+  color: var(--ink-3);
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.filter-btn:hover { border-color: var(--rule-bold); color: var(--ink-2); }
+.filter-btn.active { background: var(--ink); color: white; border-color: var(--ink); }
+
+/* ═══════════════════════════════════════
+   DEAL INTELLIGENCE CARDS
+   ═══════════════════════════════════════ */
+.deal-card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 24px 28px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s;
+  position: relative;
+}
+
+.deal-card:hover {
+  box-shadow: var(--shadow-hover);
+  border-color: var(--rule-bold);
+}
+
+.deal-card.triaged { opacity: 0.5; }
+
+.deal-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.deal-company {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.deal-logo {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  background: var(--surface-warm);
+  border: 1px solid var(--rule);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.deal-name {
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.deal-headline {
+  font-size: 14px;
+  color: var(--ink-2);
+  line-height: 1.55;
+  margin-top: 4px;
+}
+
+.deal-score {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.deal-score-value {
+  font-family: var(--mono);
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--emerald);
+  line-height: 1;
+}
+
+.deal-score-value.mid { color: var(--amber); }
+.deal-score-value.low { color: var(--ink-4); }
+
+.deal-score-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--ink-4);
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.deal-badges {
+  display: flex;
+  gap: 6px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  letter-spacing: 0.3px;
+}
+
+.badge.deal { background: var(--blue-soft); color: var(--blue); }
+.badge.funding { background: var(--emerald-soft); color: var(--emerald); }
+.badge.backfill { background: var(--rose-soft); color: var(--rose); }
+.badge.restructuring { background: var(--rose-soft); color: var(--rose); }
+.badge.ma { background: var(--violet-soft); color: var(--violet); }
+.badge.product { background: var(--emerald-soft); color: var(--emerald); }
+.badge.partnership { background: var(--blue-soft); color: var(--blue); }
+.badge.expansion { background: var(--amber-soft); color: var(--amber); }
+.badge.network { background: var(--emerald-soft); color: var(--emerald); }
+.badge.client { background: var(--amber-soft); color: var(--amber); }
+.badge.time { color: var(--ink-4); font-weight: 400; }
+
+.deal-insight {
+  margin-top: 18px;
+  padding: 16px 20px;
+  background: var(--surface-cool);
+  border-radius: 6px;
+  border-left: 3px solid var(--blue);
+}
+
+.deal-insight-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  font-weight: 700;
+  color: var(--blue);
+  margin-bottom: 6px;
+}
+
+.deal-insight-text {
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+.deal-insight-text strong { color: var(--ink); }
+
+.deal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.deal-action-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-family: var(--sans);
+  font-weight: 600;
+  border-radius: 5px;
+  border: 1px solid var(--rule);
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+.deal-action-btn:hover { border-color: var(--rule-bold); }
+.deal-action-btn.qualify { background: var(--emerald-soft); color: var(--emerald); border-color: transparent; }
+.deal-action-btn.qualify:hover { background: var(--emerald); color: white; }
+.deal-action-btn.ignore { }
+.deal-action-btn.ignore:hover { background: var(--surface-warm); }
+.deal-action-btn.source { color: var(--blue); }
+.deal-action-btn.source:hover { background: var(--blue-soft); }
+
+/* Card separator */
+.card-separator {
+  height: 1px;
+  background: var(--rule);
+  margin: 0 0 16px;
+}
+
+/* ═══════════════════════════════════════
+   TALENT INTELLIGENCE
+   ═══════════════════════════════════════ */
+.talent-card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s;
+}
+
+.talent-card:hover {
+  box-shadow: var(--shadow-hover);
+  border-color: var(--rule-bold);
+}
+
+.talent-card.urgent { border-left: 3px solid var(--rose); }
+.talent-card.opportunity { border-left: 3px solid var(--emerald); }
+.talent-card.watch { border-left: 3px solid var(--amber); }
+
+.talent-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.talent-name {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.talent-role {
+  font-size: 13px;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+
+.talent-signal-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.3px;
+}
+
+.talent-signal-tag.flight { background: var(--rose-soft); color: var(--rose); }
+.talent-signal-tag.reengag { background: var(--emerald-soft); color: var(--emerald); }
+.talent-signal-tag.spike { background: var(--amber-soft); color: var(--amber); }
+
+.talent-evidence {
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.5;
+  margin-top: 10px;
+}
+
+.talent-meta {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--ink-4);
+}
+
+/* ═══════════════════════════════════════
+   THEMES (Converging patterns)
+   ═══════════════════════════════════════ */
+.theme-card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 22px 26px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s;
+}
+
+.theme-card:hover { box-shadow: var(--shadow-hover); }
+
+.theme-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.theme-name {
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.theme-revenue {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--emerald);
+  background: var(--emerald-soft);
+  padding: 3px 10px;
+  border-radius: 4px;
+}
+
+.theme-description {
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.55;
+  margin-bottom: 12px;
+}
+
+.theme-stats {
+  display: flex;
+  gap: 0;
+  border-top: 1px solid var(--rule);
+  padding-top: 12px;
+}
+
+.theme-stat {
+  flex: 1;
+  text-align: center;
+  border-right: 1px solid var(--rule);
+  padding: 0 12px;
+}
+
+.theme-stat:last-child { border-right: none; }
+
+.theme-stat-value {
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.theme-stat-label {
+  font-size: 10px;
+  color: var(--ink-4);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+/* ═══════════════════════════════════════
+   SIDEBAR
+   ═══════════════════════════════════════ */
+.side-zone {
+  margin-bottom: 40px;
+}
+
+.side-zone-header {
+  margin-bottom: 18px;
+}
+
+.side-zone-rule {
+  height: 3px;
+  background: var(--ink);
+  margin-bottom: 8px;
+}
+
+.side-zone-title {
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.side-zone-subtitle {
+  font-size: 12px;
+  color: var(--ink-4);
+  margin-top: 2px;
+}
+
+/* Assistant */
+.assistant-panel {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-panel);
+  overflow: hidden;
+}
+
+.assistant-header {
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--rule);
+}
+
+.assistant-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.assistant-icon {
+  width: 28px; height: 28px;
+  background: var(--blue);
+  color: white;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.assistant-status {
+  font-size: 11px;
+  color: var(--emerald);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.assistant-status::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--emerald);
+}
+
+.assistant-body {
+  padding: 18px;
+}
+
+.assistant-greeting {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin-bottom: 18px;
+}
+
+.priority-item {
+  padding: 14px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.priority-number {
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 300;
+  color: var(--ink-4);
+  float: left;
+  margin-right: 12px;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.priority-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+.priority-text strong { color: var(--ink); }
+.priority-text a { color: var(--blue); text-decoration: none; font-weight: 500; }
+.priority-text a:hover { text-decoration: underline; }
+
+.assistant-actions {
+  padding: 14px 18px;
+  border-top: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--surface-warm);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.action-row:hover {
+  border-color: var(--rule-bold);
+  background: var(--surface-cool);
+}
+
+.action-icon { font-size: 16px; }
+
+/* Content Queue */
+.content-queue {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.queue-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.queue-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--ink-3);
+}
+
+.queue-now-playing {
+  font-size: 11px;
+  color: var(--blue);
+  font-weight: 500;
+}
+
+.queue-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.queue-item:hover { background: var(--surface-warm); }
+.queue-item:last-child { border-bottom: none; }
+.queue-item.active { background: var(--blue-soft); }
+
+.queue-type {
+  font-size: 15px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.queue-info { flex: 1; min-width: 0; }
+
+.queue-item-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+}
+
+.queue-item-why {
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+
+.queue-relevance {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-weight: 600;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+/* Re-engage */
+.reengage-item {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.reengage-item:last-child { border-bottom: none; }
+
+.reengage-name {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.reengage-reason {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-top: 3px;
+  line-height: 1.45;
+}
+
+.reengage-signals {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.reengage-signal {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
+.reengage-signal.timing { background: var(--emerald-soft); color: var(--emerald); }
+.reengage-signal.channel { background: var(--blue-soft); color: var(--blue); }
+.reengage-signal.trigger { background: var(--amber-soft); color: var(--amber); }
+
+/* ═══════════════════════════════════════
+   LOGIN MODAL
+   ═══════════════════════════════════════ */
+.login-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(26,26,26,0.4);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+.login-overlay.active { display: flex; }
+
+.login-panel {
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: var(--shadow-panel);
+  width: 400px;
+  max-width: 90vw;
+  padding: 40px;
+}
+
+.login-logo {
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.login-logo em { font-style: italic; color: var(--ink-3); }
+
+.login-sub {
+  font-size: 13px;
+  color: var(--ink-3);
+  margin-bottom: 28px;
+}
+
+.login-field {
+  margin-bottom: 16px;
+}
+
+.login-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--ink-3);
+  margin-bottom: 6px;
+  display: block;
+}
+
+.login-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid var(--rule);
+  border-radius: 6px;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--ink);
+  transition: border-color 0.15s;
+  background: var(--surface);
+}
+
+.login-input:focus { outline: none; border-color: var(--blue); }
+
+.login-btn {
+  width: 100%;
+  padding: 12px;
+  background: var(--ink);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-top: 4px;
+}
+
+.login-btn:hover { background: #333; }
+
+.login-alt {
+  text-align: center;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.login-alt a {
+  color: var(--blue);
+  text-decoration: none;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.login-error {
+  display: none;
+  background: var(--rose-soft);
+  color: var(--rose);
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.login-error.active { display: block; }
+
+/* ═══════════════════════════════════════
+   LOAD MORE
+   ═══════════════════════════════════════ */
+.load-more-btn {
+  display: none;
+  width: 100%;
+  padding: 12px;
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.load-more-btn:hover { border-color: var(--rule-bold); color: var(--ink); }
+
+/* Skeleton */
+.skeleton-line {
+  height: 14px;
+  background: linear-gradient(90deg, var(--rule) 25%, var(--surface-warm) 50%, var(--rule) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* ═══════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════ */
+@media (max-width: 1024px) {
+  .content-section { grid-template-columns: 1fr; }
+  .main-column { padding-right: 0; border-right: none; }
+  .side-column { padding-left: 0; margin-top: 40px; padding-top: 40px; border-top: 2px solid var(--ink); }
+  .metrics-grid { grid-template-columns: repeat(3, 1fr); }
+  .masthead { padding: 0 20px; }
+  .command-section, .metrics-section, .content-section { padding-left: 20px; padding-right: 20px; }
+  .search-overlay { padding: 0 20px; }
+}
+
+@media (max-width: 640px) {
+  .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+  .zone-title { font-size: 22px; }
+  .deal-card { padding: 18px 20px; }
+  .deal-name { font-size: 18px; }
+  .deal-headline { font-size: 14px; }
+  .talent-evidence, .deal-insight-text, .priority-text, .theme-description, .reengage-reason { font-size: 14px; line-height: 1.6; }
+  .metric-value { font-size: 28px; }
+  .masthead-nav { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ LOGIN ═══ -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-panel">
+    <div class="login-logo">Mitchel<em>Lake</em> Signal</div>
+    <div class="login-sub">Intelligence platform — sign in to continue</div>
+    <div class="login-error" id="loginError"></div>
+    <div class="login-field">
+      <label class="login-label">Email</label>
+      <input class="login-input" type="email" id="loginEmail" placeholder="you@mitchellake.com">
+    </div>
+    <div class="login-field">
+      <label class="login-label">Password</label>
+      <input class="login-input" type="password" id="loginPassword" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="login-alt"><a onclick="doSignup()">Create account</a></div>
+  </div>
+</div>
+
+<!-- ═══ MASTHEAD ═══ -->
+<header class="masthead">
+  <div class="masthead-top">
+    <div class="masthead-brand">
+      <div class="masthead-logo">Mitchel<em>Lake</em> Signal</div>
+      <div class="masthead-edition" id="editionDate"></div>
+    </div>
+    <nav class="masthead-nav">
+      <a href="/" class="active">Signals</a>
+      <a href="/people.html">People</a>
+      <a href="/companies.html">Companies</a>
+      <a href="/placements.html">Revenue</a>
+    </nav>
+    <div class="masthead-right">
+      <div class="masthead-user" id="userAvatar" onclick="doLogout()" title="Sign out">JT</div>
+    </div>
+  </div>
+  <div class="agent-ticker" id="agentTicker">
+    <div class="ticker-item"><div class="ticker-dot"></div>Signal Scanner · <span id="tickerSources">—</span> feeds</div>
+    <div class="ticker-item"><div class="ticker-dot"></div>Enrichment · <span id="tickerNotes">—</span> notes</div>
+    <div class="ticker-item"><div class="ticker-dot"></div>Documents · <span id="tickerDocs">—</span> embedded</div>
+    <div class="ticker-item"><div class="ticker-dot"></div>MLX Network · <span id="tickerPeople">—</span> people</div>
+    <div class="ticker-item"><div class="ticker-dot"></div>Revenue · <span id="tickerRevenue">—</span> tracked</div>
+  </div>
+</header>
+
+<!-- ═══ COMMAND ═══ -->
+<section class="command-section">
+  <div class="command-bar" id="commandBar">
+    <span class="command-icon">✦</span>
+    <input class="command-input" id="searchInput" type="text"
+      placeholder="Semantic search — try 'VP engineering fintech APAC' or 'candidates at restructuring companies'..."
+      onkeydown="if(event.key==='Enter')doSearch()">
+    <div class="command-actions">
+      <button class="cmd-btn" title="Search" onclick="doSearch()">🔍</button>
+      <button class="cmd-btn" title="Keyboard shortcut">⌘K</button>
+    </div>
+  </div>
+  <div class="command-prompts">
+    <div class="prompt-chip" onclick="searchPrompt('VP engineering scaling fintech APAC')"><span class="emoji">🎯</span> VP Eng fintech APAC</div>
+    <div class="prompt-chip" onclick="searchPrompt('candidates at companies with restructuring layoffs')"><span class="emoji">⚡</span> Candidates at restructuring cos</div>
+    <div class="prompt-chip" onclick="searchPrompt('timing not right re-engagement window')"><span class="emoji">🔄</span> Re-engagement candidates</div>
+    <div class="prompt-chip" onclick="searchPrompt('Series B AI startup hiring CTO')"><span class="emoji">🏗️</span> AI startup hiring CTO</div>
+  </div>
+</section>
+
+<!-- ═══ SEARCH RESULTS ═══ -->
+<div class="search-overlay" id="searchOverlay">
+  <div class="search-results-panel">
+    <div class="search-results-header">
+      <div class="search-results-title" id="searchResultsTitle">Search Results</div>
+      <button class="search-close" onclick="closeSearch()">✕ Close</button>
+    </div>
+    <div class="search-results-body" id="searchResultsBody"></div>
+  </div>
+</div>
+
+<!-- ═══ METRICS ═══ -->
+<section class="metrics-section">
+  <div class="metrics-grid">
+    <a class="metric" href="#signals" onclick="document.getElementById('dealSection').scrollIntoView({behavior:'smooth'});return false;">
+      <div class="metric-label">Signals</div>
+      <div class="metric-value" id="metricSignals">—</div>
+      <div class="metric-delta" id="metricSignals24h"></div>
+    </a>
+    <a class="metric" href="/companies.html">
+      <div class="metric-label">Companies</div>
+      <div class="metric-value" id="metricCompanies">—</div>
+      <div class="metric-delta">with signals</div>
+    </a>
+    <a class="metric" href="/placements.html">
+      <div class="metric-label">Revenue</div>
+      <div class="metric-value positive" id="metricRevenue">—</div>
+      <div class="metric-delta" id="metricPlacements"></div>
+    </a>
+    <a class="metric" href="/people.html">
+      <div class="metric-label">People</div>
+      <div class="metric-value" id="metricPeople">—</div>
+      <div class="metric-delta" id="metricPeopleNotes"></div>
+    </a>
+    <a class="metric" href="#content" onclick="document.getElementById('contentSection').scrollIntoView({behavior:'smooth'});return false;">
+      <div class="metric-label">Documents</div>
+      <div class="metric-value" id="metricDocs">—</div>
+      <div class="metric-delta" id="metricDocsDetail"></div>
+    </a>
+    <a class="metric" href="#content" onclick="document.getElementById('contentSection').scrollIntoView({behavior:'smooth'});return false;">
+      <div class="metric-label">Sources</div>
+      <div class="metric-value" id="metricSources">—</div>
+      <div class="metric-delta">active feeds</div>
+    </a>
+  </div>
+</section>
+
+<!-- ═══ MAIN CONTENT ═══ -->
+<div class="content-section">
+
+  <!-- ─── LEFT COLUMN ─── -->
+  <div class="main-column">
+
+    <!-- DEAL INTELLIGENCE (wired to signal_events) -->
+    <div class="zone" id="dealSection">
+      <div class="zone-header">
+        <div class="zone-rule"></div>
+        <div class="zone-title-row">
+          <div class="zone-title">Deal Intelligence</div>
+          <div class="zone-count" id="dealCount">— SIGNALS</div>
+        </div>
+        <div class="zone-subtitle">Companies showing hiring signals matched to MitchelLake capabilities</div>
+        <div class="zone-filters" id="signalFilters">
+          <button class="filter-btn active" onclick="filterSignals('all', this)">All</button>
+          <button class="filter-btn" onclick="filterSignals('capital_raising', this)">Funding</button>
+          <button class="filter-btn" onclick="filterSignals('geographic_expansion', this)">Expansion</button>
+          <button class="filter-btn" onclick="filterSignals('ma_activity', this)">M&A</button>
+          <button class="filter-btn" onclick="filterSignals('restructuring', this)">Restructuring</button>
+          <button class="filter-btn" onclick="filterSignals('leadership_change', this)">Leadership</button>
+          <button class="filter-btn" onclick="filterSignals('product_launch', this)">Product</button>
+        </div>
+        <div class="zone-filters" id="categoryFilters" style="margin-top:8px">
+          <span style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-4);font-weight:600;padding:5px 4px">Category:</span>
+          <button class="filter-btn" onclick="filterCategory('thematic', this)">Thematic</button>
+          <button class="filter-btn" onclick="filterCategory('geographic', this)">Geographic</button>
+          <button class="filter-btn" onclick="filterCategory('motion', this)">Motion</button>
+          <button class="filter-btn" onclick="filterCategory('growth', this)">Growth</button>
+          <button class="filter-btn" onclick="filterCategory('hiring', this)">Hiring</button>
+          <button class="filter-btn" onclick="filterCategory('change', this)">Change</button>
+          <button class="filter-btn" onclick="filterCategory('innovation', this)">Innovation</button>
+          <button class="filter-btn" onclick="filterCategory('trend', this)">Trend</button>
+          <button class="filter-btn" onclick="filterCategory('gap', this)">Gap</button>
+        </div>
+      </div>
+
+      <div id="dealFeed">
+        <!-- Skeleton -->
+        <div class="deal-card"><div class="skeleton-line" style="width:60%"></div><div class="skeleton-line" style="width:100%"></div><div class="skeleton-line" style="width:80%"></div></div>
+        <div class="deal-card"><div class="skeleton-line" style="width:50%"></div><div class="skeleton-line" style="width:90%"></div><div class="skeleton-line" style="width:70%"></div></div>
+      </div>
+
+      <button class="load-more-btn" id="loadMoreBtn" onclick="loadMoreSignals()">Load more signals</button>
+    </div>
+
+    <!-- TALENT IN MOTION (aspirational — static for now) -->
+    <div class="zone">
+      <div class="zone-header">
+        <div class="zone-rule"></div>
+        <div class="zone-title-row">
+          <div class="zone-title">Talent in Motion</div>
+          <div class="zone-count">COMING SOON</div>
+        </div>
+        <div class="zone-subtitle">Candidates showing movement signals — flight risk, activity spikes, re-engagement windows</div>
+      </div>
+
+      <div class="talent-card urgent">
+        <div class="talent-top">
+          <div>
+            <div class="talent-name">Atlassian Restructuring</div>
+            <div class="talent-role">47 MLX candidates affected across engineering & product</div>
+          </div>
+          <div class="talent-signal-tag flight">FLIGHT RISK</div>
+        </div>
+        <div class="talent-evidence">Restructuring announced this morning. 47 people in MLX network currently at Atlassian, including 12 at VP+ level. 8 match active search briefs.</div>
+        <div class="talent-meta">
+          <span>🕐 2h ago</span>
+          <span>⚡ 8 match active searches</span>
+          <span>📧 Outreach drafted for top 3</span>
+        </div>
+      </div>
+
+      <div class="talent-card opportunity">
+        <div class="talent-top">
+          <div>
+            <div class="talent-name">Marcus Chen</div>
+            <div class="talent-role">VP Engineering · Stripe</div>
+          </div>
+          <div class="talent-signal-tag reengag">RE-ENGAGE</div>
+        </div>
+        <div class="talent-evidence">8 months since "timing not right." WhatsApp reply time 14 min avg. Project Atlas shipped last week — natural transition window.</div>
+        <div class="talent-meta">
+          <span>⏱️ Window: ~4 weeks</span>
+          <span>💬 Best channel: WhatsApp</span>
+        </div>
+      </div>
+
+      <div class="talent-card watch">
+        <div class="talent-top">
+          <div>
+            <div class="talent-name">Sarah Park</div>
+            <div class="talent-role">CPO · Airtasker</div>
+          </div>
+          <div class="talent-signal-tag spike">ACTIVITY +400%</div>
+        </div>
+        <div class="talent-evidence">LinkedIn activity up 400% this month. Published 3 articles, 2 podcast appearances. Pattern consistent with pre-move visibility building.</div>
+        <div class="talent-meta">
+          <span>📈 30-day trend</span>
+          <span>🎙️ Podcast queue: 2 episodes</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONVERGING THEMES (aspirational — static for now) -->
+    <div class="zone">
+      <div class="zone-header">
+        <div class="zone-rule"></div>
+        <div class="zone-title-row">
+          <div class="zone-title">Converging Themes</div>
+          <div class="zone-count">COMING SOON</div>
+        </div>
+        <div class="zone-subtitle">Triangulated patterns across signals pointing to structural demand shifts</div>
+      </div>
+
+      <div class="theme-card">
+        <div class="theme-top">
+          <div class="theme-name">AI/ML Leadership Demand Surge</div>
+          <div class="theme-revenue">$1.2M potential</div>
+        </div>
+        <div class="theme-description">14 companies raising to build AI teams. 6 clients have active or upcoming AI leadership needs. 31 candidates in network with relevant background.</div>
+        <div class="theme-stats">
+          <div class="theme-stat"><div class="theme-stat-value">14</div><div class="theme-stat-label">Companies</div></div>
+          <div class="theme-stat"><div class="theme-stat-value">6</div><div class="theme-stat-label">Clients</div></div>
+          <div class="theme-stat"><div class="theme-stat-value">31</div><div class="theme-stat-label">Candidates</div></div>
+          <div class="theme-stat"><div class="theme-stat-value">8</div><div class="theme-stat-label">Signals</div></div>
+        </div>
+      </div>
+
+      <div class="theme-card">
+        <div class="theme-top">
+          <div class="theme-name">PE Operating Partner Cycle</div>
+          <div class="theme-revenue">$1.8M potential</div>
+        </div>
+        <div class="theme-description">3 PE firms making platform acquisitions. Pattern: 12-18 months post-acquisition, they need operating leadership. Cycle starting now.</div>
+        <div class="theme-stats">
+          <div class="theme-stat"><div class="theme-stat-value">3</div><div class="theme-stat-label">PE Firms</div></div>
+          <div class="theme-stat"><div class="theme-stat-value">7</div><div class="theme-stat-label">Portfolios</div></div>
+          <div class="theme-stat"><div class="theme-stat-value">19</div><div class="theme-stat-label">Candidates</div></div>
+          <div class="theme-stat"><div class="theme-stat-value">5</div><div class="theme-stat-label">Signals</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─── RIGHT COLUMN ─── -->
+  <div class="side-column">
+
+    <!-- SIGNAL ASSISTANT -->
+    <div class="side-zone">
+      <div class="side-zone-header">
+        <div class="side-zone-rule"></div>
+        <div class="side-zone-title">Morning Brief</div>
+        <div class="side-zone-subtitle">Your priorities for today</div>
+      </div>
+
+      <div class="assistant-panel">
+        <div class="assistant-header">
+          <div class="assistant-title">
+            <div class="assistant-icon">✦</div>
+            Signal Assistant
+          </div>
+          <div class="assistant-status">Active</div>
+        </div>
+        <div class="assistant-body" id="assistantBody">
+          <div class="assistant-greeting" id="assistantGreeting">Loading intelligence...</div>
+        </div>
+        <div class="assistant-actions" id="assistantActions"></div>
+      </div>
+    </div>
+
+    <!-- CONTENT QUEUE (wired to recent documents) -->
+    <div class="side-zone" id="contentSection">
+      <div class="side-zone-header">
+        <div class="side-zone-rule"></div>
+        <div class="side-zone-title">Content Queue</div>
+        <div class="side-zone-subtitle">Latest from your intelligence feeds</div>
+      </div>
+
+      <div class="content-queue">
+        <div class="queue-header">
+          <div class="queue-title">Recent</div>
+          <div class="queue-now-playing" id="queueCount">—</div>
+        </div>
+        <div id="contentQueueBody">
+          <div class="queue-item"><div class="queue-type">📄</div><div class="queue-info"><div class="skeleton-line" style="width:80%"></div><div class="skeleton-line" style="width:50%"></div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RE-ENGAGE WINDOWS (static for now) -->
+    <div class="side-zone">
+      <div class="side-zone-header">
+        <div class="side-zone-rule"></div>
+        <div class="side-zone-title">Re-engage Windows</div>
+        <div class="side-zone-subtitle">Timing-based opportunities from temporal intelligence</div>
+      </div>
+
+      <div class="reengage-item">
+        <div class="reengage-name">Marcus Chen</div>
+        <div class="reengage-reason">8 months elapsed since "timing not right." Project Atlas shipped. LinkedIn updated. WhatsApp reply avg: 14 min.</div>
+        <div class="reengage-signals">
+          <span class="reengage-signal timing">TIMING OPEN</span>
+          <span class="reengage-signal channel">WHATSAPP</span>
+          <span class="reengage-signal trigger">PROJECT SHIPPED</span>
+        </div>
+      </div>
+
+      <div class="reengage-item">
+        <div class="reengage-name">Lisa Wang</div>
+        <div class="reengage-reason">12-month career break ending. LinkedIn profile updated last week. Previously VP Product at Atlassian.</div>
+        <div class="reengage-signals">
+          <span class="reengage-signal timing">BREAK ENDING</span>
+          <span class="reengage-signal trigger">LINKEDIN UPDATED</span>
+        </div>
+      </div>
+
+      <div class="reengage-item">
+        <div class="reengage-name">David Park</div>
+        <div class="reengage-reason">Retention bonus cliff in 6 weeks. Company restructuring. Last interaction: positive, "open to hearing about the right thing."</div>
+        <div class="reengage-signals">
+          <span class="reengage-signal timing">CLIFF IN 6W</span>
+          <span class="reengage-signal trigger">RESTRUCTURING</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     JAVASCRIPT — Wire to live API
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+// ── API Helper ──
+function getToken() { return localStorage.getItem('ml_token'); }
+
+async function api(path, options = {}) {
+  const token = getToken();
+  const res = await fetch(path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  if (res.status === 401) {
+    localStorage.removeItem('ml_token');
+    showLogin();
+    throw new Error('Unauthorized');
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || 'Request failed');
+  }
+  return res.json();
+}
+
+// ── Auth ──
+function showLogin() { document.getElementById('loginOverlay').classList.add('active'); }
+function hideLogin() { document.getElementById('loginOverlay').classList.remove('active'); }
+
+async function doLogin() {
+  const email = document.getElementById('loginEmail').value;
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.classList.remove('active');
+
+  try {
+    const data = await api('/api/auth/login', { method: 'POST', body: { email, password } });
+    localStorage.setItem('ml_token', data.token);
+    localStorage.setItem('ml_user', JSON.stringify(data.user));
+    hideLogin();
+    init();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.add('active');
+  }
+}
+
+async function doSignup() {
+  const email = document.getElementById('loginEmail').value;
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.classList.remove('active');
+
+  if (!email || !password) { errEl.textContent = 'Enter email and password'; errEl.classList.add('active'); return; }
+
+  try {
+    const data = await api('/api/auth/signup', { method: 'POST', body: { email, password } });
+    localStorage.setItem('ml_token', data.token);
+    localStorage.setItem('ml_user', JSON.stringify(data.user));
+    hideLogin();
+    init();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.add('active');
+  }
+}
+
+function doLogout() {
+  if (!confirm('Sign out?')) return;
+  api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+  localStorage.removeItem('ml_token');
+  localStorage.removeItem('ml_user');
+  showLogin();
+}
+
+// ── Date ──
+function setEditionDate() {
+  const d = new Date();
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('editionDate').textContent = `${days[d.getDay()]}, ${months[d.getMonth()]} ${d.getDate()}`;
+}
+
+// ── Stats ──
+async function loadStats() {
+  try {
+    const s = await api('/api/stats');
+
+    document.getElementById('metricSignals').textContent = s.signals_total.toLocaleString();
+    document.getElementById('metricSignals24h').innerHTML = `<span class="up">↑ ${s.signals_24h}</span> last 24h`;
+    document.getElementById('metricCompanies').textContent = s.companies_count.toLocaleString();
+    document.getElementById('metricPeople').textContent = (s.people_count / 1000).toFixed(1) + 'K';
+    document.getElementById('metricPeopleNotes').textContent = s.people_with_notes.toLocaleString() + ' with notes';
+    document.getElementById('metricDocs').textContent = (s.documents_count / 1000).toFixed(1) + 'K';
+    document.getElementById('metricSources').textContent = s.sources_active;
+
+    const rev = s.placements_total_fees;
+    document.getElementById('metricRevenue').textContent = rev >= 1000000 ? '$' + (rev/1000000).toFixed(1) + 'M' : '$' + (rev/1000).toFixed(0) + 'K';
+    document.getElementById('metricPlacements').textContent = s.placements_count + ' placements';
+
+    // Ticker
+    document.getElementById('tickerSources').textContent = s.sources_active;
+    document.getElementById('tickerNotes').textContent = s.people_with_notes.toLocaleString();
+    document.getElementById('tickerDocs').textContent = s.documents_count.toLocaleString();
+    document.getElementById('tickerPeople').textContent = s.people_count.toLocaleString();
+    document.getElementById('tickerRevenue').textContent = rev >= 1000000 ? '$' + (rev/1000000).toFixed(1) + 'M' : '$' + (rev/1000).toFixed(0) + 'K';
+
+    // Build assistant brief from signal breakdown
+    buildAssistantBrief(s);
+  } catch (e) {
+    console.error('Stats error:', e);
+  }
+}
+
+function buildAssistantBrief(stats) {
+  const greeting = document.getElementById('assistantGreeting');
+  const body = document.getElementById('assistantBody');
+  const actions = document.getElementById('assistantActions');
+
+  const topSignals = stats.signals_by_type.slice(0, 3);
+  const topDocs = stats.documents_by_type.slice(0, 3);
+
+  greeting.textContent = `Good morning. ${stats.signals_total.toLocaleString()} signals across ${stats.companies_count.toLocaleString()} companies. ${stats.signals_24h} new in the last 24 hours.`;
+
+  let prioritiesHtml = '';
+  topSignals.forEach((s, i) => {
+    const label = s.type.replace(/_/g, ' ');
+    prioritiesHtml += `
+      <div class="priority-item">
+        <div class="priority-number">${i + 1}</div>
+        <div class="priority-text"><strong>${s.count} ${label}</strong> signals detected. Click the filter above to review and triage.</div>
+      </div>`;
+  });
+  body.innerHTML = `<div class="assistant-greeting">${greeting.textContent}</div>` + prioritiesHtml;
+
+  actions.innerHTML = `
+    <div class="action-row" onclick="filterSignals('${topSignals[0]?.type || 'all'}', document.querySelector('.filter-btn'))">
+      <span class="action-icon">📡</span> Triage ${topSignals[0]?.type?.replace(/_/g, ' ') || 'signals'}
+    </div>
+    <div class="action-row" onclick="document.getElementById('searchInput').focus()">
+      <span class="action-icon">🔍</span> Search your network
+    </div>
+    <div class="action-row" onclick="window.location='/people.html'">
+      <span class="action-icon">👥</span> Browse ${(stats.people_count / 1000).toFixed(0)}K people
+    </div>`;
+}
+
+// ── Signals ──
+const SIGNAL_ICONS = {
+  capital_raising: '💰', ma_activity: '🔗', product_launch: '🚀',
+  partnership: '🤝', geographic_expansion: '🌐', restructuring: '⚙️',
+  leadership_change: '👤', layoffs: '📉', strategic_hiring: '👥',
+};
+
+const SIGNAL_BADGE_CLASS = {
+  capital_raising: 'funding', ma_activity: 'ma', product_launch: 'product',
+  partnership: 'partnership', geographic_expansion: 'expansion',
+  restructuring: 'restructuring', leadership_change: 'backfill',
+  layoffs: 'restructuring', strategic_hiring: 'deal',
+};
+
+let currentFilter = 'all';
+let currentCategory = null;
+let signalOffset = 0;
+
+function filterSignals(type, btn) {
+  document.querySelectorAll('#signalFilters .filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  currentFilter = type;
+  signalOffset = 0;
+  loadSignals();
+}
+
+function filterCategory(cat, btn) {
+  const wasActive = btn.classList.contains('active');
+  document.querySelectorAll('#categoryFilters .filter-btn').forEach(b => b.classList.remove('active'));
+  if (!wasActive) {
+    btn.classList.add('active');
+    currentCategory = cat;
+  } else {
+    currentCategory = null; // toggle off
+  }
+  signalOffset = 0;
+  loadSignals();
+}
+
+async function loadSignals() {
+  try {
+    const params = new URLSearchParams({ limit: 10, offset: signalOffset });
+    if (currentFilter !== 'all') params.set('type', currentFilter);
+    if (currentCategory) params.set('category', currentCategory);
+
+    const data = await api(`/api/signals/brief?${params}`);
+    const feed = document.getElementById('dealFeed');
+
+    if (signalOffset === 0) feed.innerHTML = '';
+
+    if (data.signals.length === 0 && signalOffset === 0) {
+      feed.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink-4)">No signals found for this filter</div>';
+      document.getElementById('dealCount').textContent = '0 SIGNALS';
+      document.getElementById('loadMoreBtn').style.display = 'none';
+      return;
+    }
+
+    document.getElementById('dealCount').textContent = data.total.toLocaleString() + ' SIGNALS';
+
+    data.signals.forEach(s => {
+      feed.insertAdjacentHTML('beforeend', renderDealCard(s));
+    });
+
+    document.getElementById('loadMoreBtn').style.display =
+      (signalOffset + data.signals.length < data.total) ? 'block' : 'none';
+  } catch (e) {
+    console.error('Signals error:', e);
+  }
+}
+
+function loadMoreSignals() {
+  signalOffset += 10;
+  loadSignals();
+}
+
+function renderDealCard(s) {
+  const icon = SIGNAL_ICONS[s.signal_type] || '📡';
+  const badgeClass = SIGNAL_BADGE_CLASS[s.signal_type] || 'deal';
+  const label = (s.signal_type || '').replace(/_/g, ' ');
+  const conf = Math.round((s.confidence_score || 0) * 100);
+  const confClass = conf >= 80 ? '' : conf >= 50 ? ' mid' : ' low';
+  const timeAgo = ago(s.detected_at);
+  const triaged = s.triage_status !== 'new';
+
+  // Headline hierarchy: company name > doc title > source
+  const hasCompany = s.company_name && s.company_name !== 'Unknown' && s.company_name !== 'Unknown Company';
+  const cardTitle = hasCompany ? s.company_name : (s.doc_title || s.source_name || 'Signal');
+  
+  // Sub-headline: if we have a company, show the doc title. Otherwise show evidence.
+  const subline = hasCompany 
+    ? (s.doc_title || s.evidence_summary || s.evidence_snippet || '')
+    : (s.evidence_summary || s.evidence_snippet || s.doc_summary || '');
+  
+  // Source attribution line
+  const sourceParts = [];
+  if (s.source_name) sourceParts.push(s.source_name);
+  if (s.doc_source_type) sourceParts.push(s.doc_source_type.replace(/_/g, ' '));
+  sourceParts.push(timeAgo);
+  const sourceAttribution = sourceParts.join(' · ');
+
+  // Category badge
+  const catBadge = s.signal_category ? `<span class="badge time" style="font-style:italic">${esc(s.signal_category)}</span>` : '';
+
+  return `
+    <div class="deal-card${triaged ? ' triaged' : ''}" id="signal-${s.id}">
+      <div class="deal-top">
+        <div class="deal-company">
+          <div class="deal-logo">${icon}</div>
+          <div>
+            <div class="deal-name">${esc(cardTitle)}</div>
+            <div class="deal-headline">${esc(subline).slice(0, 220)}${subline.length > 220 ? '…' : ''}</div>
+          </div>
+        </div>
+        <div class="deal-score">
+          <div class="deal-score-value${confClass}">${conf}</div>
+          <div class="deal-score-label">CONF</div>
+        </div>
+      </div>
+      <div class="deal-badges">
+        <span class="badge ${badgeClass}">${label.toUpperCase()}</span>
+        ${s.is_client ? '<span class="badge client">CLIENT</span>' : ''}
+        ${s.sector ? `<span class="badge time">${esc(s.sector)}</span>` : ''}
+        ${s.geography ? `<span class="badge time">${esc(s.geography)}</span>` : ''}
+        ${catBadge}
+      </div>
+      <div style="font-size:11px;color:var(--ink-4);margin-top:10px">${esc(sourceAttribution)}</div>
+      ${renderHiringImplications(s.hiring_implications) ? `
+        <div class="deal-insight">
+          <div class="deal-insight-label">Hiring Implications</div>
+          <div class="deal-insight-text">${renderHiringImplications(s.hiring_implications)}</div>
+        </div>` : ''}
+      <div class="deal-actions">
+        ${!triaged ? `
+          <button class="deal-action-btn qualify" onclick="triageSignal('${s.id}','qualified')">✓ Qualify</button>
+          <button class="deal-action-btn ignore" onclick="triageSignal('${s.id}','irrelevant')">✕ Ignore</button>
+        ` : `
+          <span class="deal-action-btn" style="cursor:default;opacity:0.6">${s.triage_status}</span>
+        `}
+        ${s.source_url ? `<a href="${s.source_url}" target="_blank" class="deal-action-btn source">↗ Source</a>` : ''}
+      </div>
+    </div>`;
+}
+
+async function triageSignal(id, status) {
+  const card = document.getElementById(`signal-${id}`);
+  if (card) card.style.opacity = '0.4';
+
+  try {
+    await api(`/api/signals/${id}/triage`, { method: 'PATCH', body: { status } });
+    if (card) {
+      card.classList.add('triaged');
+      card.style.opacity = '';
+      const actionsDiv = card.querySelector('.deal-actions');
+      if (actionsDiv) {
+        const color = status === 'qualified' ? 'var(--emerald)' : 'var(--ink-4)';
+        actionsDiv.innerHTML = `<span class="deal-action-btn" style="cursor:default;color:${color}">${status}</span>`;
+      }
+    }
+  } catch (e) {
+    if (card) card.style.opacity = '';
+    console.error('Triage error:', e);
+  }
+}
+
+// ── Search ──
+async function doSearch() {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q || q.length < 2) return;
+
+  const overlay = document.getElementById('searchOverlay');
+  const body = document.getElementById('searchResultsBody');
+  const title = document.getElementById('searchResultsTitle');
+
+  overlay.classList.add('active');
+  document.getElementById('commandBar').classList.add('searching');
+  body.innerHTML = '<div class="search-loading"><div class="spinner"></div><div>Searching vectors...</div></div>';
+
+  try {
+    const data = await api(`/api/search?q=${encodeURIComponent(q)}&collection=all&limit=15`);
+    title.textContent = `"${q}" — ${data.total} results`;
+
+    let html = '';
+
+    if (data.results.people.length > 0) {
+      html += '<div class="search-section-label">People</div>';
+      data.results.people.forEach(p => {
+        const scoreClass = p.match_score >= 70 ? 'high' : p.match_score >= 50 ? 'mid' : 'low';
+        html += `
+          <div class="search-person-card" onclick="window.location='/person.html?id=${p.id}'">
+            <div>
+              <div class="search-person-name">${esc(p.full_name || '')}</div>
+              <div class="search-person-role">${esc(p.current_title || '')}${p.current_company_name ? ' · ' + esc(p.current_company_name) : ''}</div>
+              ${p.location ? `<div class="search-person-meta">📍 ${esc(p.location)}</div>` : ''}
+              <div class="search-person-tags">
+                ${p.has_research_notes ? '<span class="search-tag notes">📝 Notes</span>' : ''}
+                ${(p.expertise_tags || []).slice(0, 3).map(t => `<span class="search-tag">${esc(t)}</span>`).join('')}
+              </div>
+            </div>
+            <div class="search-match-score ${scoreClass}">${p.match_score}</div>
+          </div>`;
+      });
+    }
+
+    if (data.results.companies && data.results.companies.length > 0) {
+      html += '<div class="search-section-label" style="margin-top:20px">Companies</div>';
+      data.results.companies.forEach(c => {
+        const scoreClass = c.match_score >= 70 ? 'high' : c.match_score >= 50 ? 'mid' : 'low';
+        html += `
+          <div class="search-person-card" onclick="window.location='/company.html?id=${c.id}'">
+            <div>
+              <div class="search-person-name">🏢 ${esc(c.name || '')}${c.is_client ? ' · <span style="color:var(--amber);font-size:11px;font-weight:600">CLIENT</span>' : ''}</div>
+              <div class="search-person-role">${[c.sector, c.geography, c.employee_count_band].filter(Boolean).join(' · ')}</div>
+              <div class="search-person-tags">
+                ${parseInt(c.signal_count) > 0 ? `<span class="search-tag notes">📡 ${c.signal_count} signals</span>` : ''}
+                ${parseInt(c.people_count) > 0 ? `<span class="search-tag">👥 ${c.people_count} people</span>` : ''}
+              </div>
+            </div>
+            <div class="search-match-score ${scoreClass}">${c.match_score}</div>
+          </div>`;
+      });
+    }
+
+    if (data.results.documents.length > 0) {
+      html += '<div class="search-section-label" style="margin-top:20px">Documents</div>';
+      data.results.documents.forEach(d => {
+        html += `
+          <a href="${d.source_url || '#'}" target="_blank" class="search-doc-item" style="text-decoration:none;display:flex">
+            <div>
+              <div class="search-doc-title">${esc(d.title || 'Untitled')}</div>
+              <div class="search-doc-meta">${d.source_type?.replace(/_/g, ' ') || ''} · ${esc(d.source_name || '')} · ${d.published_at ? new Date(d.published_at).toLocaleDateString() : ''}</div>
+            </div>
+            <div class="search-match-score ${d.match_score >= 70 ? 'high' : d.match_score >= 50 ? 'mid' : 'low'}" style="margin-left:auto">${d.match_score}</div>
+          </a>`;
+      });
+    }
+
+    if (data.total === 0) {
+      html = '<div class="search-loading" style="color:var(--ink-3)">No matches found. Try different keywords.</div>';
+    }
+
+    body.innerHTML = html;
+  } catch (e) {
+    body.innerHTML = `<div class="search-loading" style="color:var(--rose)">Search failed: ${esc(e.message)}</div>`;
+  }
+}
+
+function closeSearch() {
+  document.getElementById('searchOverlay').classList.remove('active');
+  document.getElementById('commandBar').classList.remove('searching');
+}
+
+function searchPrompt(text) {
+  document.getElementById('searchInput').value = text;
+  doSearch();
+}
+
+// ── Content Queue ──
+async function loadContentQueue() {
+  try {
+    const data = await api('/api/documents?limit=8');
+    const container = document.getElementById('contentQueueBody');
+    const countEl = document.getElementById('queueCount');
+
+    if (data.documents.length === 0) {
+      container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--ink-4);font-size:13px">No content yet</div>';
+      return;
+    }
+
+    countEl.textContent = data.total.toLocaleString() + ' total';
+
+    const typeIcons = { newsletter: '📰', podcast: '🎙️', vc_blog: '📝', rss: '📡', news_pr: '📰', sec_filing: '📑', google_news: '🔍' };
+
+    container.innerHTML = data.documents.map((d, i) => `
+      <a href="${d.source_url || '#'}" target="_blank" class="queue-item${i === 0 ? ' active' : ''}" style="text-decoration:none;color:inherit">
+        <div class="queue-type">${typeIcons[d.source_type] || '📄'}</div>
+        <div class="queue-info">
+          <div class="queue-item-title">${esc((d.title || 'Untitled').slice(0, 70))}</div>
+          <div class="queue-item-why">${esc(d.source_name || d.source_type || '')} · ${ago(d.published_at)}</div>
+        </div>
+        <div class="queue-relevance">${(d.source_type || '').replace(/_/g, ' ').toUpperCase().slice(0, 10)}</div>
+      </a>
+    `).join('');
+  } catch (e) {
+    console.error('Content queue error:', e);
+  }
+}
+
+// ── Utilities ──
+function renderHiringImplications(hi) {
+  if (!hi) return '';
+  if (typeof hi === 'string') return esc(hi);
+  // If it's an object, try to extract useful fields
+  if (typeof hi === 'object') {
+    // Skip if it's just metadata (source, signal_type, company)
+    const metaKeys = ['source', 'signal_type', 'company'];
+    const usefulKeys = Object.keys(hi).filter(k => !metaKeys.includes(k) && hi[k]);
+    if (usefulKeys.length === 0) return '';
+    // Format useful fields
+    return usefulKeys.map(k => {
+      const val = Array.isArray(hi[k]) ? hi[k].join(', ') : hi[k];
+      return `<strong>${esc(k.replace(/_/g, ' '))}:</strong> ${esc(String(val))}`;
+    }).join(' · ');
+  }
+  return '';
+}
+function ago(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - new Date(ts).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return days + 'd ago';
+  if (days < 30) return Math.floor(days / 7) + 'w ago';
+  return new Date(ts).toLocaleDateString();
+}
+
+function esc(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Init ──
+async function init() {
+  setEditionDate();
+
+  const token = getToken();
+  if (!token) { showLogin(); return; }
+
+  try {
+    const { user } = await api('/api/auth/me');
+    const initials = (user.name || user.email || '').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
+    document.getElementById('userAvatar').textContent = initials;
+  } catch (e) {
+    showLogin();
+    return;
+  }
+
+  loadStats();
+  loadSignals();
+  loadContentQueue();
+}
+
+// ── Boot ──
+init();
+
+// Auto-refresh every 5 min
+setInterval(() => { if (getToken()) loadStats(); }, 5 * 60 * 1000);
+</script>
+<script src="/chat.js"></script>
+</body>
+</html>

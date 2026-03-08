@@ -1,0 +1,1787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MitchelLake Signal Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@300;400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fafbfd;
+    --bg-warm: #f6f5f2;
+    --surface: #ffffff;
+    --surface-2: #f8f8f6;
+    --surface-3: #f0efec;
+    --border: rgba(0,0,0,0.06);
+    --border-active: rgba(0,0,0,0.12);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+    --shadow-lg: 0 12px 40px rgba(0,0,0,0.08);
+    --text: #1a1a1a;
+    --text-2: #5a5a5a;
+    --text-3: #9a9a9a;
+    --blue: #2563eb;
+    --blue-light: #eff4ff;
+    --blue-mid: #dbeafe;
+    --emerald: #059669;
+    --emerald-light: #ecfdf5;
+    --emerald-mid: #d1fae5;
+    --amber: #d97706;
+    --amber-light: #fffbeb;
+    --amber-mid: #fef3c7;
+    --rose: #e11d48;
+    --rose-light: #fff1f2;
+    --rose-mid: #ffe4e6;
+    --violet: #7c3aed;
+    --violet-light: #f5f3ff;
+    --violet-mid: #ede9fe;
+    --slate: #475569;
+    --radius: 14px;
+    --radius-sm: 10px;
+    --radius-xs: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ═══ SUBTLE TEXTURE ═══ */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background: 
+      radial-gradient(ellipse at 15% 10%, rgba(37,99,235,0.03) 0%, transparent 50%),
+      radial-gradient(ellipse at 85% 80%, rgba(5,150,105,0.02) 0%, transparent 50%);
+  }
+
+  /* ═══ TOP CHROME ═══ */
+  .chrome {
+    position: sticky;
+    top: 0;
+    z-index: 200;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(24px) saturate(120%);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .chrome-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    height: 56px;
+    max-width: 1800px;
+    margin: 0 auto;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .brand-icon {
+    width: 32px; height: 32px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, var(--blue), #059669);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(37,99,235,0.25);
+  }
+
+  .brand-icon svg { width: 17px; height: 17px; }
+
+  .brand-name {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    color: var(--text);
+  }
+
+  .brand-name em {
+    font-family: 'Newsreader', serif;
+    font-style: italic;
+    color: var(--blue);
+    font-weight: 500;
+  }
+
+  .nav-pills {
+    display: flex;
+    gap: 1px;
+    background: var(--surface-3);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+  }
+
+  .nav-pill {
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-3);
+    border: none;
+    background: none;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+
+  .nav-pill:hover { color: var(--text-2); }
+  .nav-pill.active {
+    color: var(--text);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .chrome-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .user-avatar {
+    width: 32px; height: 32px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, #2563eb, #059669);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: white;
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+
+  .user-avatar:hover { transform: scale(1.05); }
+
+  /* ═══ AGENT STATUS BAR ═══ */
+  .agent-bar {
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .agent-bar-inner {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 7px 32px;
+    max-width: 1800px;
+    margin: 0 auto;
+    font-size: 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .agent-bar-inner::-webkit-scrollbar { display: none; }
+
+  .agent-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .agent-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+  }
+
+  .agent-dot.active { background: var(--emerald); box-shadow: 0 0 6px rgba(5,150,105,0.3); animation: softPulse 2.5s ease-in-out infinite; }
+  .agent-dot.processing { background: var(--amber); box-shadow: 0 0 6px rgba(217,119,6,0.3); animation: softPulse 1.5s ease-in-out infinite; }
+  .agent-dot.idle { background: var(--text-3); opacity: 0.5; }
+
+  @keyframes softPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .agent-label { color: var(--text-3); font-weight: 500; }
+  .agent-task { color: var(--text-2); font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+
+  .agent-sep {
+    width: 1px; height: 14px;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+
+  /* ═══ COMMAND BAR ═══ */
+  .command-area {
+    max-width: 1800px;
+    margin: 0 auto;
+    padding: 20px 32px 0;
+  }
+
+  .command-bar {
+    border-radius: var(--radius);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    transition: all 0.25s;
+  }
+
+  .command-bar:focus-within {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.08), var(--shadow-md);
+  }
+
+  .command-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 18px;
+  }
+
+  .command-ai {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: var(--blue-light);
+    border: 1px solid var(--blue-mid);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+    color: var(--blue);
+  }
+
+  .command-input {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 15px;
+    font-family: 'DM Sans', sans-serif;
+    outline: none;
+  }
+
+  .command-input::placeholder { color: var(--text-3); }
+
+  .command-kbd {
+    padding: 3px 8px;
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 500;
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-3);
+  }
+
+  .ai-chips {
+    display: flex;
+    gap: 6px;
+    padding: 0 18px 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .ai-chips::-webkit-scrollbar { display: none; }
+
+  .ai-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 11px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    border: 1px solid transparent;
+  }
+
+  .ai-chip.deal { background: var(--blue-light); color: var(--blue); border-color: var(--blue-mid); }
+  .ai-chip.deal:hover { box-shadow: var(--shadow-sm); }
+  .ai-chip.talent { background: var(--emerald-light); color: var(--emerald); border-color: var(--emerald-mid); }
+  .ai-chip.talent:hover { box-shadow: var(--shadow-sm); }
+  .ai-chip.risk { background: var(--rose-light); color: var(--rose); border-color: var(--rose-mid); }
+  .ai-chip.risk:hover { box-shadow: var(--shadow-sm); }
+  .ai-chip.content { background: var(--violet-light); color: var(--violet); border-color: var(--violet-mid); }
+  .ai-chip.content:hover { box-shadow: var(--shadow-sm); }
+  .ai-chip.coach { background: var(--amber-light); color: var(--amber); border-color: var(--amber-mid); }
+  .ai-chip.coach:hover { box-shadow: var(--shadow-sm); }
+
+  /* ═══ CANVAS ═══ */
+  .canvas {
+    max-width: 1800px;
+    margin: 0 auto;
+    padding: 20px 32px 60px;
+  }
+
+  /* ═══ METRICS ═══ */
+  .metric-strip {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .metric {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 16px 18px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.2s;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .metric:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+  }
+
+  .metric-accent {
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px;
+    height: 100%;
+    border-radius: 0 2px 2px 0;
+  }
+
+  .metric-accent.blue { background: var(--blue); }
+  .metric-accent.emerald { background: var(--emerald); }
+  .metric-accent.amber { background: var(--amber); }
+  .metric-accent.rose { background: var(--rose); }
+  .metric-accent.violet { background: var(--violet); }
+  .metric-accent.slate { background: var(--slate); }
+
+  .metric-label {
+    font-size: 11px;
+    color: var(--text-3);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 6px;
+  }
+
+  .metric-value {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .metric.blue .metric-value { color: var(--blue); }
+  .metric.emerald .metric-value { color: var(--emerald); }
+  .metric.amber .metric-value { color: var(--amber); }
+  .metric.rose .metric-value { color: var(--rose); }
+  .metric.violet .metric-value { color: var(--violet); }
+  .metric.slate .metric-value { color: var(--slate); }
+
+  .metric-delta {
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 500;
+  }
+
+  .metric-delta.up { color: var(--emerald); }
+  .metric-delta.down { color: var(--rose); }
+  .metric-delta.neutral { color: var(--text-3); }
+
+  /* ═══ LAYOUT ═══ */
+  .grid-main {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 16px;
+  }
+
+  .col-left { display: flex; flex-direction: column; gap: 16px; }
+  .col-right { display: flex; flex-direction: column; gap: 16px; }
+
+  /* ═══ SECTION HEAD ═══ */
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    margin-top: 4px;
+  }
+
+  .section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-3);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .section-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+  }
+
+  .section-dot.blue { background: var(--blue); }
+  .section-dot.emerald { background: var(--emerald); }
+  .section-dot.amber { background: var(--amber); }
+  .section-dot.violet { background: var(--violet); }
+
+  .section-filters {
+    display: flex;
+    gap: 4px;
+  }
+
+  .filter-btn {
+    font-size: 12px;
+    color: var(--text-3);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 10px;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+
+  .filter-btn:hover { color: var(--text-2); border-color: var(--border-active); }
+  .filter-btn.active { color: var(--blue); border-color: rgba(37,99,235,0.3); background: var(--blue-light); }
+
+  /* ═══ CARDS ═══ */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    transition: box-shadow 0.25s;
+  }
+
+  .card:hover { box-shadow: var(--shadow-md); }
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 13px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .card-label {
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 5px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .badge.blue { background: var(--blue-light); color: var(--blue); }
+  .badge.emerald { background: var(--emerald-light); color: var(--emerald); }
+  .badge.amber { background: var(--amber-light); color: var(--amber); }
+  .badge.rose { background: var(--rose-light); color: var(--rose); }
+  .badge.violet { background: var(--violet-light); color: var(--violet); }
+
+  .card-more {
+    font-size: 12px;
+    color: var(--text-3);
+    text-decoration: none;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+
+  .card-more:hover { color: var(--blue); }
+
+  /* ═══ SIGNAL ROWS ═══ */
+  .sig {
+    display: grid;
+    grid-template-columns: 42px 1fr auto;
+    gap: 14px;
+    align-items: start;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.12s;
+    cursor: pointer;
+  }
+
+  .sig:last-child { border-bottom: none; }
+  .sig:hover { background: var(--surface-2); }
+
+  .sig-icon {
+    width: 42px; height: 42px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    position: relative;
+  }
+
+  .sig-icon.deal { background: var(--blue-light); border: 1px solid var(--blue-mid); }
+  .sig-icon.talent { background: var(--emerald-light); border: 1px solid var(--emerald-mid); }
+  .sig-icon.risk { background: var(--rose-light); border: 1px solid var(--rose-mid); }
+  .sig-icon.money { background: var(--amber-light); border: 1px solid var(--amber-mid); }
+  .sig-icon.content { background: var(--violet-light); border: 1px solid var(--violet-mid); }
+
+  .sig-icon .live {
+    position: absolute;
+    top: -2px; right: -2px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--emerald);
+    border: 2px solid var(--surface);
+    animation: softPulse 2s infinite;
+  }
+
+  .sig-body { min-width: 0; }
+
+  .sig-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 3px;
+    letter-spacing: -0.15px;
+    color: var(--text);
+  }
+
+  .sig-desc {
+    font-size: 13px;
+    color: var(--text-2);
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+
+  .sig-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+  }
+
+  .tag {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .tag.deal { background: var(--blue-light); color: var(--blue); }
+  .tag.talent { background: var(--emerald-light); color: var(--emerald); }
+  .tag.risk { background: var(--rose-light); color: var(--rose); }
+  .tag.re-engage { background: var(--amber-light); color: var(--amber); }
+  .tag.content { background: var(--violet-light); color: var(--violet); }
+
+  .sig-network {
+    font-size: 11px;
+    color: var(--blue);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 2px;
+  }
+
+  .sig-network::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--blue);
+    opacity: 0.5;
+  }
+
+  .sig-time {
+    font-size: 10px;
+    color: var(--text-3);
+    font-family: 'IBM Plex Mono', monospace;
+    margin-left: 2px;
+  }
+
+  .sig-score {
+    text-align: right;
+    padding-top: 2px;
+  }
+
+  .sig-score-val {
+    font-size: 22px;
+    font-weight: 700;
+    font-family: 'IBM Plex Mono', monospace;
+    line-height: 1;
+    letter-spacing: -1px;
+  }
+
+  .sig-score-label {
+    font-size: 9px;
+    color: var(--text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .sig-score.high .sig-score-val { color: var(--emerald); }
+  .sig-score.med .sig-score-val { color: var(--amber); }
+
+  /* AI Insight inline */
+  .ai-insight {
+    margin-top: 8px;
+    padding: 9px 12px;
+    border-radius: var(--radius-xs);
+    background: var(--blue-light);
+    border-left: 2.5px solid var(--blue);
+    font-size: 12px;
+    color: var(--text-2);
+    line-height: 1.55;
+    display: flex;
+    gap: 8px;
+  }
+
+  .ai-tag {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--blue);
+    background: var(--blue-mid);
+    padding: 1px 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    margin-top: 2px;
+    height: fit-content;
+  }
+
+  .ai-insight strong { color: var(--text); }
+
+  /* ═══ THEME CARDS ═══ */
+  .theme {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.12s;
+    cursor: pointer;
+  }
+
+  .theme:last-child { border-bottom: none; }
+  .theme:hover { background: var(--surface-2); }
+
+  .theme-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .theme-name {
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .strength-dots { display: flex; gap: 3px; }
+  .s-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .s-dot.on { background: var(--amber); }
+  .s-dot.off { background: var(--surface-3); }
+
+  .theme-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-bottom: 10px;
+  }
+
+  .e-chip {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    background: var(--surface-3);
+    color: var(--text-2);
+    font-weight: 500;
+    border: 1px solid var(--border);
+  }
+
+  .theme-metrics {
+    display: flex;
+    gap: 16px;
+    font-size: 11px;
+    color: var(--text-3);
+    margin-top: 8px;
+  }
+
+  .theme-metrics strong {
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .theme-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .t-btn {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 7px;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+
+  .t-btn.primary { background: var(--blue); color: white; }
+  .t-btn.primary:hover { background: #1d4ed8; }
+  .t-btn.ghost { background: var(--surface-3); color: var(--text-2); border: 1px solid var(--border); }
+  .t-btn.ghost:hover { border-color: var(--border-active); }
+
+  /* ═══ AI COACH ═══ */
+  .coach {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    position: relative;
+  }
+
+  .coach::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--blue), var(--emerald), var(--violet));
+    opacity: 0.6;
+  }
+
+  .coach-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .coach-avatar {
+    width: 30px; height: 30px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, var(--blue), var(--violet));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: white;
+  }
+
+  .coach-title { font-size: 13px; font-weight: 600; }
+
+  .coach-live {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--emerald);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .coach-live::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--emerald);
+    animation: softPulse 2s infinite;
+  }
+
+  .coach-bubble {
+    margin: 14px 18px;
+    padding: 14px 16px;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(135deg, var(--blue-light), var(--violet-light));
+    border: 1px solid var(--blue-mid);
+    font-size: 13px;
+    color: var(--text-2);
+    line-height: 1.6;
+  }
+
+  .coach-bubble strong { color: var(--text); }
+  .coach-bubble .hl { color: var(--blue); font-weight: 500; }
+  .coach-bubble .warn { color: var(--amber); font-weight: 500; }
+
+  .coach-actions {
+    padding: 4px 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .coach-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+    color: var(--text);
+    width: 100%;
+    text-align: left;
+  }
+
+  .coach-btn:hover {
+    border-color: var(--border-active);
+    background: var(--surface-3);
+    transform: translateX(2px);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .coach-btn-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+
+  .coach-btn-icon.blue { background: var(--blue-light); }
+  .coach-btn-icon.emerald { background: var(--emerald-light); }
+  .coach-btn-icon.violet { background: var(--violet-light); }
+  .coach-btn-icon.amber { background: var(--amber-light); }
+
+  .coach-btn-text { font-size: 13px; font-weight: 500; }
+  .coach-btn-sub { font-size: 11px; color: var(--text-3); }
+
+  /* ═══ PERSON ROWS ═══ */
+  .person {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.12s;
+    cursor: pointer;
+  }
+
+  .person:last-child { border-bottom: none; }
+  .person:hover { background: var(--surface-2); }
+
+  .p-avatar {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: white;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .p-avatar.g1 { background: linear-gradient(135deg, #3b82f6, #6366f1); }
+  .p-avatar.g2 { background: linear-gradient(135deg, #059669, #0891b2); }
+  .p-avatar.g3 { background: linear-gradient(135deg, #d97706, #dc2626); }
+  .p-avatar.g4 { background: linear-gradient(135deg, #7c3aed, #db2777); }
+  .p-avatar.g5 { background: linear-gradient(135deg, #0d9488, #2563eb); }
+
+  .p-avatar .ring {
+    position: absolute;
+    inset: -3px;
+    border-radius: 13px;
+    border: 2px solid var(--amber);
+    animation: softPulse 2.5s infinite;
+  }
+
+  .p-info { flex: 1; min-width: 0; }
+  .p-name { font-size: 13px; font-weight: 600; }
+  .p-role { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .p-signal { font-size: 11px; font-weight: 500; margin-top: 2px; }
+  .p-signal.hot { color: var(--amber); }
+  .p-signal.warm { color: var(--emerald); }
+
+  .p-timing { text-align: right; flex-shrink: 0; }
+
+  .p-window {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 2px 7px;
+    border-radius: 4px;
+  }
+
+  .p-window.now { background: var(--amber-light); color: var(--amber); }
+  .p-window.soon { background: var(--emerald-light); color: var(--emerald); }
+
+  .p-elapsed {
+    font-size: 10px;
+    color: var(--text-3);
+    font-family: 'IBM Plex Mono', monospace;
+    margin-top: 2px;
+  }
+
+  /* ═══ MEDIA PLAYER ═══ */
+  .media-player {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+
+  .media-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 13px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .media-label {
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .media-now-playing {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .media-artwork {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+
+  .media-cover {
+    width: 72px; height: 72px;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(135deg, #1e293b, #334155);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    flex-shrink: 0;
+    box-shadow: var(--shadow-md);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .media-cover::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(37,99,235,0.2), rgba(124,58,237,0.2));
+  }
+
+  .media-info { flex: 1; min-width: 0; }
+
+  .media-type {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--violet);
+    margin-bottom: 3px;
+  }
+
+  .media-title {
+    font-size: 15px;
+    font-weight: 600;
+    font-family: 'Newsreader', serif;
+    line-height: 1.3;
+    margin-bottom: 2px;
+  }
+
+  .media-author {
+    font-size: 12px;
+    color: var(--text-3);
+  }
+
+  .media-relevance {
+    margin-top: 6px;
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .rel-tag {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+
+  .rel-tag.search { background: var(--blue-light); color: var(--blue); }
+  .rel-tag.person { background: var(--emerald-light); color: var(--emerald); }
+  .rel-tag.theme { background: var(--amber-light); color: var(--amber); }
+
+  /* Player controls */
+  .media-controls {
+    padding: 0 18px;
+  }
+
+  .media-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .media-time {
+    font-size: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--text-3);
+    width: 36px;
+  }
+
+  .media-track {
+    flex: 1;
+    height: 4px;
+    background: var(--surface-3);
+    border-radius: 2px;
+    overflow: hidden;
+    cursor: pointer;
+  }
+
+  .media-fill {
+    height: 100%;
+    width: 35%;
+    background: linear-gradient(90deg, var(--blue), var(--violet));
+    border-radius: 2px;
+    transition: width 0.3s;
+  }
+
+  .media-buttons {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding-bottom: 14px;
+  }
+
+  .media-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-2);
+    font-size: 18px;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+  }
+
+  .media-btn:hover { color: var(--text); }
+
+  .media-btn.play {
+    width: 44px; height: 44px;
+    background: var(--blue);
+    color: white;
+    font-size: 20px;
+    box-shadow: 0 2px 8px rgba(37,99,235,0.3);
+  }
+
+  .media-btn.play:hover { background: #1d4ed8; transform: scale(1.05); }
+
+  .media-btn.speed {
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'IBM Plex Mono', monospace;
+    width: auto;
+    padding: 0 8px;
+    border-radius: 6px;
+    background: var(--surface-3);
+  }
+
+  /* Queue list */
+  .media-queue {
+    border-top: 1px solid var(--border);
+  }
+
+  .media-queue-header {
+    padding: 10px 18px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+
+  .q-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 18px;
+    border-top: 1px solid var(--border);
+    transition: background 0.12s;
+    cursor: pointer;
+  }
+
+  .q-item:hover { background: var(--surface-2); }
+
+  .q-art {
+    width: 40px; height: 40px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  .q-art.podcast { background: linear-gradient(135deg, #1e293b, #475569); }
+  .q-art.article { background: var(--violet-light); }
+  .q-art.video { background: var(--rose-light); }
+
+  .q-info { flex: 1; min-width: 0; }
+  .q-title { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .q-sub { font-size: 11px; color: var(--text-3); }
+  .q-dur { font-size: 10px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; flex-shrink: 0; }
+
+  /* ═══ CONTENT OPPS ═══ */
+  .content-opp {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.12s;
+    cursor: pointer;
+  }
+
+  .content-opp:last-child { border-bottom: none; }
+  .content-opp:hover { background: var(--surface-2); }
+
+  .co-type {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+
+  .co-type.article { color: var(--violet); }
+  .co-type.post { color: var(--blue); }
+  .co-type.intro { color: var(--emerald); }
+
+  .co-title {
+    font-size: 15px;
+    font-weight: 500;
+    font-family: 'Newsreader', serif;
+    font-style: italic;
+    margin-bottom: 5px;
+    line-height: 1.3;
+  }
+
+  .co-why {
+    font-size: 12px;
+    color: var(--text-2);
+    line-height: 1.4;
+    margin-bottom: 8px;
+  }
+
+  .co-impact { display: flex; flex-wrap: wrap; gap: 4px; }
+
+  .i-chip {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+
+  .i-chip.clients { background: var(--blue-light); color: var(--blue); }
+  .i-chip.candidates { background: var(--emerald-light); color: var(--emerald); }
+  .i-chip.prospects { background: var(--amber-light); color: var(--amber); }
+
+  /* ═══ RESPONSIVE ═══ */
+  @media (max-width: 1200px) {
+    .grid-main { grid-template-columns: 1fr; }
+    .metric-strip { grid-template-columns: repeat(3, 1fr); }
+  }
+
+  @media (max-width: 768px) {
+    .metric-strip { grid-template-columns: repeat(2, 1fr); }
+    .chrome-inner { padding: 0 16px; }
+    .canvas { padding: 16px; }
+    .command-area { padding: 16px 16px 0; }
+    .nav-pills { display: none; }
+    .agent-bar-inner { padding: 7px 16px; }
+  }
+
+  /* ═══ ANIMATIONS ═══ */
+  .fade-up { animation: fadeUp 0.4s ease-out both; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .d1 { animation-delay: 0.05s; }
+  .d2 { animation-delay: 0.1s; }
+  .d3 { animation-delay: 0.15s; }
+  .d4 { animation-delay: 0.2s; }
+</style>
+</head>
+<body>
+
+<!-- ═══ TOP CHROME ═══ -->
+<div class="chrome">
+  <div class="chrome-inner">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      </div>
+      <div class="brand-name">Mitchel<em>Lake</em> Signal</div>
+    </div>
+    <div class="nav-pills">
+      <button class="nav-pill active">Command</button>
+      <button class="nav-pill">Signals</button>
+      <button class="nav-pill">People</button>
+      <button class="nav-pill">Companies</button>
+      <button class="nav-pill">Pipeline</button>
+      <button class="nav-pill">Searches</button>
+    </div>
+    <div class="chrome-right">
+      <div class="user-avatar">JT</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ AGENT BAR ═══ -->
+<div class="agent-bar">
+  <div class="agent-bar-inner">
+    <div class="agent-status">
+      <div class="agent-dot active"></div>
+      <span class="agent-label">Signal Scanner</span>
+      <span class="agent-task">48 feeds</span>
+    </div>
+    <div class="agent-sep"></div>
+    <div class="agent-status">
+      <div class="agent-dot processing"></div>
+      <span class="agent-label">Enrichment</span>
+      <span class="agent-task">2,886 notes embedding</span>
+    </div>
+    <div class="agent-sep"></div>
+    <div class="agent-status">
+      <div class="agent-dot active"></div>
+      <span class="agent-label">Network</span>
+      <span class="agent-task">13,201 connections</span>
+    </div>
+    <div class="agent-sep"></div>
+    <div class="agent-status">
+      <div class="agent-dot idle"></div>
+      <span class="agent-label">Gmail</span>
+      <span class="agent-task">pending</span>
+    </div>
+    <div class="agent-sep"></div>
+    <div class="agent-status">
+      <div class="agent-dot active"></div>
+      <span class="agent-label">MLX Network</span>
+      <span class="agent-task" style="color:var(--emerald);font-weight:500">30,588 people</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ COMMAND BAR ═══ -->
+<div class="command-area">
+  <div class="command-bar">
+    <div class="command-top">
+      <div class="command-ai">✦</div>
+      <input class="command-input" placeholder="Ask about your network, research a candidate, draft outreach, or get coaching..." type="text">
+      <span class="command-kbd">⌘K</span>
+    </div>
+    <div class="ai-chips">
+      <div class="ai-chip deal">💼 "Who should we pitch for the Canva scaling work?"</div>
+      <div class="ai-chip talent">🎯 "VP+ candidates at companies with flight risk"</div>
+      <div class="ai-chip risk">⚡ "Which candidates are at restructuring companies?"</div>
+      <div class="ai-chip content">📝 "Draft a piece on the AI talent gap"</div>
+      <div class="ai-chip coach">🏋️ "Coach me on re-engaging Marcus Chen"</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CANVAS ═══ -->
+<div class="canvas">
+
+  <!-- METRICS -->
+  <div class="metric-strip fade-up">
+    <div class="metric blue">
+      <div class="metric-accent blue"></div>
+      <div class="metric-label">Deal Leads</div>
+      <div class="metric-value">23</div>
+      <div class="metric-delta up">↑ 8 this week</div>
+    </div>
+    <div class="metric emerald">
+      <div class="metric-accent emerald"></div>
+      <div class="metric-label">Talent Leads</div>
+      <div class="metric-value">47</div>
+      <div class="metric-delta up">↑ 12 this week</div>
+    </div>
+    <div class="metric amber">
+      <div class="metric-accent amber"></div>
+      <div class="metric-label">Re-engage</div>
+      <div class="metric-value">9</div>
+      <div class="metric-delta neutral">windows open</div>
+    </div>
+    <div class="metric rose">
+      <div class="metric-accent rose"></div>
+      <div class="metric-label">Flight Risk</div>
+      <div class="metric-value">31</div>
+      <div class="metric-delta down">at troubled cos</div>
+    </div>
+    <div class="metric violet">
+      <div class="metric-accent violet"></div>
+      <div class="metric-label">Themes</div>
+      <div class="metric-value">3</div>
+      <div class="metric-delta neutral">converging</div>
+    </div>
+    <div class="metric slate">
+      <div class="metric-accent slate"></div>
+      <div class="metric-label">Network</div>
+      <div class="metric-value">30.5K</div>
+      <div class="metric-delta up">+159 this week</div>
+    </div>
+  </div>
+
+  <div class="grid-main">
+
+    <!-- ═══ LEFT COLUMN ═══ -->
+    <div class="col-left">
+
+      <!-- DEAL INTELLIGENCE -->
+      <div class="fade-up d1">
+        <div class="section-head">
+          <div class="section-title"><span class="section-dot blue"></span> Deal Intelligence</div>
+          <div class="section-filters">
+            <button class="filter-btn active">All</button>
+            <button class="filter-btn">Funding</button>
+            <button class="filter-btn">Expansion</button>
+            <button class="filter-btn">M&A</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="sig">
+            <div class="sig-icon money"><div class="live"></div>💰</div>
+            <div class="sig-body">
+              <div class="sig-title">Canva — Series F ($1.5B)</div>
+              <div class="sig-desc">Scaling leadership across product, engineering, GTM. Previously placed their VP Design in 2023.</div>
+              <div class="sig-meta">
+                <span class="tag deal">DEAL LEAD</span>
+                <span class="sig-network">3 candidates · 1 placement · board access</span>
+                <span class="sig-time">2h ago</span>
+              </div>
+              <div class="ai-insight">
+                <span class="ai-tag">AI</span>
+                <span>Post-funding pattern: expect <strong>4-6 VP+ hires</strong> in 90 days. Recommend reaching out to <strong>Cliff Obrecht</strong> referencing the VP Design placement. Draft outreach ready.</span>
+              </div>
+            </div>
+            <div class="sig-score high">
+              <div class="sig-score-val">94</div>
+              <div class="sig-score-label">match</div>
+            </div>
+          </div>
+          <div class="sig">
+            <div class="sig-icon deal">🌐</div>
+            <div class="sig-body">
+              <div class="sig-title">SafetyCulture — US Market Entry</div>
+              <div class="sig-desc">Opening NYC & SF offices. Need US country head, VP Sales, enterprise GTM leadership.</div>
+              <div class="sig-meta">
+                <span class="tag deal">DEAL LEAD</span>
+                <span class="sig-network">JT → CEO connection · 2 prior placements</span>
+                <span class="sig-time">5h ago</span>
+              </div>
+            </div>
+            <div class="sig-score high">
+              <div class="sig-score-val">91</div>
+              <div class="sig-score-label">match</div>
+            </div>
+          </div>
+          <div class="sig">
+            <div class="sig-icon risk">👤</div>
+            <div class="sig-body">
+              <div class="sig-title">Culture Amp — CFO Departure</div>
+              <div class="sig-desc">Board-level replacement urgency. Direct relationships with 3 board members.</div>
+              <div class="sig-meta">
+                <span class="tag deal">DEAL LEAD</span>
+                <span class="tag risk">BACKFILL</span>
+                <span class="sig-network">Direct board relationship</span>
+                <span class="sig-time">8h ago</span>
+              </div>
+            </div>
+            <div class="sig-score high">
+              <div class="sig-score-val">89</div>
+              <div class="sig-score-label">match</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TALENT INTELLIGENCE -->
+      <div class="fade-up d2">
+        <div class="section-head">
+          <div class="section-title"><span class="section-dot emerald"></span> Talent Intelligence</div>
+          <div class="section-filters">
+            <button class="filter-btn active">All</button>
+            <button class="filter-btn">Flight Risk</button>
+            <button class="filter-btn">Activity</button>
+            <button class="filter-btn">Re-engage</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="sig">
+            <div class="sig-icon risk"><div class="live"></div>⚡</div>
+            <div class="sig-body">
+              <div class="sig-title">Atlassian Restructuring — 47 MLX Candidates Affected</div>
+              <div class="sig-desc">500-role restructuring. 12 VP+ in our network, 8 match active searches.</div>
+              <div class="sig-meta">
+                <span class="tag risk">FLIGHT RISK</span>
+                <span class="tag talent">TALENT LEAD</span>
+                <span class="sig-time">4h ago · trending</span>
+              </div>
+              <div class="ai-insight">
+                <span class="ai-tag">AI</span>
+                <span><strong>8 candidates</strong> match open briefs. The 3 VP Engineering profiles show +300% LinkedIn activity this week. Personalized messages drafted.</span>
+              </div>
+            </div>
+            <div class="sig-score high">
+              <div class="sig-score-val">96</div>
+              <div class="sig-score-label">urgency</div>
+            </div>
+          </div>
+          <div class="sig">
+            <div class="sig-icon talent">🔄</div>
+            <div class="sig-body">
+              <div class="sig-title">Marcus Chen — Re-engagement Window Open</div>
+              <div class="sig-desc">VP Eng @ Stripe. Research notes from 8mo ago: "Timing not right, Project Atlas." Atlas shipped last month.</div>
+              <div class="sig-meta">
+                <span class="tag re-engage">RE-ENGAGE NOW</span>
+                <span class="sig-network">LinkedIn 3yr · WhatsApp avg 14min reply</span>
+                <span class="sig-time">constraint expired</span>
+              </div>
+              <div class="ai-insight">
+                <span class="ai-tag">AI</span>
+                <span>His blocker was Project Atlas — Stripe blog confirms Feb 3 launch. WhatsApp response: <strong>avg 14 min</strong>. Optimal: casual coffee referencing Atlas.</span>
+              </div>
+            </div>
+            <div class="sig-score high">
+              <div class="sig-score-val">88</div>
+              <div class="sig-score-label">timing</div>
+            </div>
+          </div>
+          <div class="sig">
+            <div class="sig-icon talent">📈</div>
+            <div class="sig-body">
+              <div class="sig-title">Sarah Park — Activity Spike</div>
+              <div class="sig-desc">CPO @ Airtasker. 3 articles this month (normally 0). LinkedIn headline updated. Profile views +400%.</div>
+              <div class="sig-meta">
+                <span class="tag talent">TALENT LEAD</span>
+                <span class="sig-network">Aditi has warm intro</span>
+                <span class="sig-time">activity: +400%</span>
+              </div>
+            </div>
+            <div class="sig-score med">
+              <div class="sig-score-val">82</div>
+              <div class="sig-score-label">receptivity</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONVERGING THEMES -->
+      <div class="fade-up d3">
+        <div class="section-head">
+          <div class="section-title"><span class="section-dot amber"></span> Converging Themes</div>
+        </div>
+        <div class="card">
+          <div class="theme">
+            <div class="theme-head">
+              <div class="theme-name">🤖 AI/ML Leadership Demand Surge</div>
+              <div class="strength-dots"><div class="s-dot on"></div><div class="s-dot on"></div><div class="s-dot on"></div><div class="s-dot on"></div><div class="s-dot off"></div></div>
+            </div>
+            <div class="theme-chips">
+              <span class="e-chip">14 funding rounds</span>
+              <span class="e-chip">23 C-suite AI hires</span>
+              <span class="e-chip">8 MLX candidates moving</span>
+              <span class="e-chip">3 client RFPs</span>
+            </div>
+            <div class="ai-insight" style="margin:0">
+              <span class="ai-tag">AI</span>
+              <span>Highest revenue potential theme. You have <strong>31 candidates</strong> and <strong>6 active clients</strong>. Thought leadership piece would capture inbound — outline ready.</span>
+            </div>
+            <div class="theme-metrics">
+              <span>Revenue: <strong>$1.2M</strong></span>
+              <span>Candidates: <strong>31</strong></span>
+              <span>Clients: <strong>6</strong></span>
+            </div>
+            <div class="theme-actions">
+              <button class="t-btn primary">📝 Generate Content Brief</button>
+              <button class="t-btn ghost">👥 View Candidates</button>
+              <button class="t-btn ghost">💼 Client Opportunities</button>
+            </div>
+          </div>
+          <div class="theme">
+            <div class="theme-head">
+              <div class="theme-name">💼 PE Operating Partner Cycle</div>
+              <div class="strength-dots"><div class="s-dot on"></div><div class="s-dot on"></div><div class="s-dot on"></div><div class="s-dot on"></div><div class="s-dot on"></div></div>
+            </div>
+            <div class="theme-chips">
+              <span class="e-chip">5 PE buyouts</span>
+              <span class="e-chip">12 portfolio CEO searches</span>
+              <span class="e-chip">90-day post-acquisition pattern</span>
+            </div>
+            <div class="theme-metrics">
+              <span>Revenue: <strong>$1.8M</strong></span>
+              <span>Confidence: <strong>87%</strong></span>
+              <span>Window: <strong>60 days</strong></span>
+            </div>
+            <div class="theme-actions">
+              <button class="t-btn primary">🎯 Map PE Portfolios</button>
+              <button class="t-btn ghost">📊 Pattern Analysis</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ RIGHT COLUMN ═══ -->
+    <div class="col-right">
+
+      <!-- AI COACH -->
+      <div class="coach fade-up d1">
+        <div class="coach-head">
+          <div class="coach-avatar">✦</div>
+          <div class="coach-title">Signal Assistant</div>
+          <div class="coach-live">Active</div>
+        </div>
+        <div class="coach-bubble" style="margin:14px 18px">
+          Good morning JT. Three priorities today:<br><br>
+          1. <strong>Atlassian restructuring</strong> — <span class="hl">8 match active searches</span>. Outreach drafted for top 3.<br><br>
+          2. <strong>Marcus Chen</strong> timing window open. WhatsApp replies in <span class="hl">14 min avg</span>. Project Atlas shipped.<br><br>
+          3. AI leadership theme <span class="warn">converging strongly</span> — publish this week to capture inbound from 14 raising companies.
+        </div>
+        <div class="coach-actions">
+          <button class="coach-btn">
+            <div class="coach-btn-icon blue">✉️</div>
+            <div>
+              <div class="coach-btn-text">Draft Atlassian outreach</div>
+              <div class="coach-btn-sub">3 personalized messages ready</div>
+            </div>
+          </button>
+          <button class="coach-btn">
+            <div class="coach-btn-icon emerald">☕</div>
+            <div>
+              <div class="coach-btn-text">Re-engage Marcus Chen</div>
+              <div class="coach-btn-sub">Coffee approach · reference Atlas</div>
+            </div>
+          </button>
+          <button class="coach-btn">
+            <div class="coach-btn-icon violet">📝</div>
+            <div>
+              <div class="coach-btn-text">AI Leadership article</div>
+              <div class="coach-btn-sub">Draft + distribution for 51 contacts</div>
+            </div>
+          </button>
+          <button class="coach-btn">
+            <div class="coach-btn-icon amber">📊</div>
+            <div>
+              <div class="coach-btn-text">Weekly signal briefing</div>
+              <div class="coach-btn-sub">Full analysis · deck-ready format</div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- MEDIA PLAYER -->
+      <div class="media-player fade-up d2">
+        <div class="media-head">
+          <div class="media-label">🎧 Content Deck <span class="badge violet">AI-curated</span></div>
+          <span class="card-more">Queue →</span>
+        </div>
+        <div class="media-now-playing">
+          <div class="media-artwork">
+            <div class="media-cover">🎙️</div>
+            <div class="media-info">
+              <div class="media-type">PODCAST · CANDIDATE CONTENT</div>
+              <div class="media-title">The Future of AI-Native Product Teams</div>
+              <div class="media-author">Sarah Park · Airtasker CPO · The Product Pod</div>
+              <div class="media-relevance">
+                <span class="rel-tag person">👤 Talent lead</span>
+                <span class="rel-tag theme">🤖 AI theme</span>
+                <span class="rel-tag search">🔍 3 searches</span>
+              </div>
+            </div>
+          </div>
+          <div class="media-controls">
+            <div class="media-progress">
+              <span class="media-time">12:34</span>
+              <div class="media-track"><div class="media-fill"></div></div>
+              <span class="media-time">36:20</span>
+            </div>
+            <div class="media-buttons">
+              <button class="media-btn">⏮</button>
+              <button class="media-btn" style="font-size:14px">−15</button>
+              <button class="media-btn play">▶</button>
+              <button class="media-btn" style="font-size:14px">+15</button>
+              <button class="media-btn">⏭</button>
+              <button class="media-btn speed">1.5×</button>
+            </div>
+          </div>
+        </div>
+        <div class="media-queue">
+          <div class="media-queue-header">Up next · Signal-relevant content</div>
+          <div class="q-item">
+            <div class="q-art podcast">🎙️</div>
+            <div class="q-info">
+              <div class="q-title">Scaling to $1B ARR — The Canva Playbook</div>
+              <div class="q-sub">Lenny's Podcast · Cliff Obrecht</div>
+            </div>
+            <div class="q-dur">42:15</div>
+          </div>
+          <div class="q-item">
+            <div class="q-art article">📄</div>
+            <div class="q-info">
+              <div class="q-title">Why Every PE Portfolio Needs an AI Strategy</div>
+              <div class="q-sub">HBR · matches PE theme</div>
+            </div>
+            <div class="q-dur">8 min</div>
+          </div>
+          <div class="q-item">
+            <div class="q-art podcast">🎙️</div>
+            <div class="q-info">
+              <div class="q-title">Building Tech Teams in Singapore</div>
+              <div class="q-sub">Asia Tech Podcast · SEA expansion theme</div>
+            </div>
+            <div class="q-dur">38:44</div>
+          </div>
+          <div class="q-item">
+            <div class="q-art video">🎬</div>
+            <div class="q-info">
+              <div class="q-title">Marcus Chen — QCon Talk on Platform Engineering</div>
+              <div class="q-sub">QCon SF 2025 · re-engage prep</div>
+            </div>
+            <div class="q-dur">28:10</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RE-ENGAGE -->
+      <div class="card fade-up d3">
+        <div class="card-head">
+          <div class="card-label">⏰ Re-engage <span class="badge amber">9</span></div>
+          <span class="card-more">All →</span>
+        </div>
+        <div>
+          <div class="person">
+            <div class="p-avatar g1"><div class="ring"></div>MC</div>
+            <div class="p-info">
+              <div class="p-name">Marcus Chen</div>
+              <div class="p-role">VP Engineering @ Stripe</div>
+              <div class="p-signal hot">"Timing not right" expired · fast WhatsApp</div>
+            </div>
+            <div class="p-timing">
+              <div class="p-window now">NOW</div>
+              <div class="p-elapsed">8mo elapsed</div>
+            </div>
+          </div>
+          <div class="person">
+            <div class="p-avatar g2">LW</div>
+            <div class="p-info">
+              <div class="p-name">Lisa Wang</div>
+              <div class="p-role">CPO @ MYOB</div>
+              <div class="p-signal hot">Career break ending · LinkedIn updated</div>
+            </div>
+            <div class="p-timing">
+              <div class="p-window now">NOW</div>
+              <div class="p-elapsed">12mo break</div>
+            </div>
+          </div>
+          <div class="person">
+            <div class="p-avatar g3">RJ</div>
+            <div class="p-info">
+              <div class="p-name">Raj Jayawardena</div>
+              <div class="p-role">CTO @ Envato</div>
+              <div class="p-signal warm">"12 months before considering" — opening</div>
+            </div>
+            <div class="p-timing">
+              <div class="p-window soon">SOON</div>
+              <div class="p-elapsed">11mo elapsed</div>
+            </div>
+          </div>
+          <div class="person">
+            <div class="p-avatar g4">KN</div>
+            <div class="p-info">
+              <div class="p-name">Kate Nguyen</div>
+              <div class="p-role">GM Digital @ Woolworths</div>
+              <div class="p-signal hot">Employer acquired · restructuring</div>
+            </div>
+            <div class="p-timing">
+              <div class="p-window now">NOW</div>
+              <div class="p-elapsed">flight risk</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONTENT PLAYS -->
+      <div class="card fade-up d4">
+        <div class="card-head">
+          <div class="card-label">📝 Content Plays <span class="badge violet">3</span></div>
+          <span class="card-more">Generate →</span>
+        </div>
+        <div>
+          <div class="content-opp">
+            <div class="co-type article">THOUGHT LEADERSHIP</div>
+            <div class="co-title">"The AI Leadership Gap: Why ANZ Boards Are Scrambling"</div>
+            <div class="co-why">14 funding rounds + 23 hires + regulation converging. Authority position available.</div>
+            <div class="co-impact">
+              <span class="i-chip clients">→ 6 clients</span>
+              <span class="i-chip prospects">→ 14 targets</span>
+              <span class="i-chip candidates">→ 31 AI leaders</span>
+            </div>
+          </div>
+          <div class="content-opp">
+            <div class="co-type post">LINKEDIN · URGENT</div>
+            <div class="co-title">"What Atlassian's restructuring means for ANZ tech talent"</div>
+            <div class="co-why">47 in your network affected. Publish within 24h for maximum inbound.</div>
+            <div class="co-impact">
+              <span class="i-chip candidates">→ 47 affected</span>
+              <span class="i-chip clients">→ 8 hiring</span>
+            </div>
+          </div>
+          <div class="content-opp">
+            <div class="co-type intro">STRATEGIC INTRO</div>
+            <div class="co-title">Connect SafetyCulture CEO with US GTM network</div>
+            <div class="co-why">Expanding to US. Intro creates reciprocal value for 2-3 placements.</div>
+            <div class="co-impact">
+              <span class="i-chip clients">→ SafetyCulture</span>
+              <span class="i-chip candidates">→ 23 US leaders</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

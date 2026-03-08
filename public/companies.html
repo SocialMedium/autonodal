@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Companies — MitchelLake Signal</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --serif: 'Source Serif 4', 'Georgia', serif;
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+  --bg: #FAF9F7; --surface: #FFFFFF; --surface-warm: #F7F5F2; --surface-cool: #F2F4F8;
+  --ink: #1A1A1A; --ink-2: #4A4A4A; --ink-3: #7A7A7A; --ink-4: #AAAAAA;
+  --rule: #E0DDD8; --rule-bold: #C8C4BE;
+  --blue: #2563EB; --blue-soft: #EBF1FE;
+  --emerald: #0D7A50; --emerald-soft: #E8F5EE;
+  --amber: #B45309; --amber-soft: #FEF7E8;
+  --rose: #C41D3E; --rose-soft: #FDF0F2;
+  --violet: #6D28D9; --violet-soft: #F3EEFE;
+  --radius: 8px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+  --shadow-hover: 0 4px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { overflow-x: hidden; }
+body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+
+.masthead { background: var(--surface); border-bottom: 2px solid var(--ink); padding: 0 clamp(14px, 3vw, 40px); position: sticky; top: 0; z-index: 100; }
+.masthead-top { display: flex; align-items: center; justify-content: space-between; height: 56px; max-width: 1320px; margin: 0 auto; }
+.masthead-brand { display: flex; align-items: baseline; gap: 8px; }
+.masthead-logo { font-family: var(--serif); font-size: 22px; font-weight: 600; letter-spacing: -0.2px; }
+.masthead-logo em { font-style: italic; color: var(--ink-3); }
+.masthead-nav { display: flex; gap: 2px; }
+.masthead-nav a { font-size: 13px; font-weight: 500; color: var(--ink-3); text-decoration: none; padding: 6px 14px; border-radius: 6px; transition: all 0.15s; }
+.masthead-nav a:hover { color: var(--ink); background: var(--surface-warm); }
+.masthead-nav a.active { color: var(--ink); background: var(--surface-warm); font-weight: 600; }
+.masthead-user { width: 34px; height: 34px; border-radius: 50%; background: var(--ink); color: white; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+.page { max-width: 1320px; margin: 0 auto; padding: 36px clamp(14px, 3vw, 40px) 60px; overflow: hidden; }
+.page-rule { height: 3px; background: var(--ink); margin-bottom: 10px; }
+.page-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.page-title { font-family: var(--serif); font-size: 32px; font-weight: 600; letter-spacing: -0.3px; }
+.page-count { font-family: var(--mono); font-size: 13px; color: var(--ink-4); }
+.page-subtitle { font-size: 14px; color: var(--ink-3); margin-bottom: 28px; }
+
+.search-row { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+.search-box { flex: 1; min-width: 280px; display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1.5px solid var(--rule); border-radius: 10px; padding: 10px 16px; transition: all 0.2s; }
+.search-box:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,0.06); }
+.search-box input { border: none; background: none; font-family: var(--sans); font-size: 14px; color: var(--ink); outline: none; width: 100%; }
+.search-box input::placeholder { color: var(--ink-4); }
+.filter-select { padding: 10px 14px; border: 1.5px solid var(--rule); border-radius: 10px; background: var(--surface); font-family: var(--sans); font-size: 13px; color: var(--ink-2); cursor: pointer; appearance: auto; min-width: 140px; }
+
+.filter-chips { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+.chip { padding: 5px 13px; font-size: 12px; font-weight: 500; border: 1px solid var(--rule); border-radius: 20px; cursor: pointer; background: var(--surface); color: var(--ink-3); transition: all 0.15s; }
+.chip:hover { border-color: var(--rule-bold); }
+.chip.active { background: var(--ink); color: white; border-color: var(--ink); }
+
+/* Company cards */
+.company-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.company-card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 22px 26px;
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s;
+  cursor: pointer;
+  overflow: hidden;
+}
+.company-card:hover { box-shadow: var(--shadow-hover); border-color: var(--rule-bold); }
+.company-card.is-client { border-left: 3px solid var(--amber); }
+
+.company-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.company-name { font-family: var(--serif); font-size: 19px; font-weight: 600; line-height: 1.25; overflow-wrap: break-word; }
+.company-meta { font-size: 13px; color: var(--ink-3); margin-top: 2px; }
+
+.company-badges { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; font-size: 11px; font-weight: 600; border-radius: 4px; letter-spacing: 0.3px; }
+.badge.client { background: var(--amber-soft); color: var(--amber); }
+.badge.signals { background: var(--blue-soft); color: var(--blue); }
+.badge.people { background: var(--emerald-soft); color: var(--emerald); }
+.badge.sector { background: var(--surface-warm); color: var(--ink-3); }
+
+.company-stats { display: flex; gap: 0; border-top: 1px solid var(--rule); padding-top: 12px; margin-top: 14px; }
+.company-stat { flex: 1; text-align: center; border-right: 1px solid var(--rule); }
+.company-stat:last-child { border-right: none; }
+.company-stat-value { font-family: var(--serif); font-size: 20px; font-weight: 600; }
+.company-stat-label { font-size: 10px; color: var(--ink-4); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+
+.company-desc { font-size: 13px; color: var(--ink-2); line-height: 1.5; margin-top: 10px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.load-more { display: none; width: 100%; padding: 14px; margin-top: 20px; background: none; border: 1px solid var(--rule); border-radius: 8px; font-family: var(--sans); font-size: 13px; font-weight: 500; color: var(--ink-3); cursor: pointer; }
+.load-more:hover { border-color: var(--rule-bold); color: var(--ink); }
+
+.empty-state { text-align: center; padding: 60px 20px; color: var(--ink-3); grid-column: 1 / -1; }
+.empty-state h3 { font-family: var(--serif); font-size: 20px; color: var(--ink-2); margin-bottom: 8px; }
+
+@media (max-width: 768px) {
+  .company-grid { grid-template-columns: 1fr; }
+  .masthead-nav { display: none; }
+  .search-row { flex-direction: column; }
+  .search-box { min-width: 100%; }
+}
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-top">
+    <div class="masthead-brand">
+      <a href="/" style="text-decoration:none;color:inherit"><div class="masthead-logo">Mitchel<em>Lake</em> Signal</div></a>
+    </div>
+    <nav class="masthead-nav">
+      <a href="/">Signals</a>
+      <a href="/people.html">People</a>
+      <a href="/companies.html" class="active">Companies</a>
+    </nav>
+    <div class="masthead-user" onclick="location.href='/'">JT</div>
+  </div>
+</header>
+
+<div class="page">
+  <div class="page-rule"></div>
+  <div class="page-header">
+    <div class="page-title">Companies</div>
+    <div class="page-count" id="pageCount">—</div>
+  </div>
+  <div class="page-subtitle">Clients, targets, and ecosystem companies — sorted by network depth</div>
+
+  <div class="search-row">
+    <div class="search-box">
+      <span style="color:var(--ink-4)">✦</span>
+      <input type="text" id="searchInput" placeholder="Search by name, sector, geography..." oninput="debounceSearch()">
+    </div>
+  </div>
+
+  <div class="filter-chips">
+    <div class="chip active" onclick="setChip(this, '')">All</div>
+    <div class="chip" onclick="setChip(this, 'clients')">Clients</div>
+    <div class="chip" onclick="setChip(this, 'with_people')">With People</div>
+    <div class="chip" onclick="setChip(this, 'with_signals')">With Signals</div>
+  </div>
+
+  <div class="company-grid" id="companyGrid"></div>
+  <button class="load-more" id="loadMore" onclick="loadMore()">Load more</button>
+</div>
+
+<script>
+function getToken() { return localStorage.getItem('ml_token'); }
+async function api(path) {
+  const res = await fetch(path, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (res.status === 401) { location.href = '/'; return null; }
+  if (!res.ok) throw new Error('Failed');
+  return res.json();
+}
+
+let offset = 0, currentFilter = '', searchTimeout;
+function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+
+function debounceSearch() {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => resetAndLoad(), 300);
+}
+
+function resetAndLoad() {
+  offset = 0;
+  document.getElementById('companyGrid').innerHTML = '';
+  loadCompanies();
+}
+
+function setChip(el, filter) {
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  currentFilter = filter;
+  resetAndLoad();
+}
+
+async function loadCompanies() {
+  const q = document.getElementById('searchInput').value.trim();
+  const params = new URLSearchParams({ limit: 30, offset });
+  if (q) params.set('q', q);
+  if (currentFilter === 'clients') params.set('is_client', 'true');
+
+  const data = await api(`/api/companies?${params}`);
+  if (!data) return;
+
+  // Client-side filter for with_people / with_signals
+  let companies = data.companies;
+  if (currentFilter === 'with_people') companies = companies.filter(c => parseInt(c.people_count) > 0);
+  if (currentFilter === 'with_signals') companies = companies.filter(c => parseInt(c.signal_count) > 0);
+
+  document.getElementById('pageCount').textContent = data.total.toLocaleString() + ' COMPANIES';
+
+  const grid = document.getElementById('companyGrid');
+  if (companies.length === 0 && offset === 0) {
+    grid.innerHTML = '<div class="empty-state"><h3>No companies found</h3><p>Try adjusting your search or filters</p></div>';
+    document.getElementById('loadMore').style.display = 'none';
+    return;
+  }
+
+  companies.forEach(c => {
+    const signals = parseInt(c.signal_count) || 0;
+    const people = parseInt(c.people_count) || 0;
+    const placements = parseInt(c.placement_count) || 0;
+    const revenue = parseFloat(c.total_revenue) || 0;
+    const initial = (c.name || '?')[0].toUpperCase();
+    const metaParts = [c.sector, c.geography, c.employee_count_band].filter(Boolean);
+    // Link to company page if we have a company_id, else just show the client card
+    const linkId = c.company_id || c.id;
+    const isClient = c.is_client || currentFilter === 'clients';
+
+    const fmtRev = (v) => v >= 1000000 ? `$${(v/1000000).toFixed(1)}M` : v >= 1000 ? `$${(v/1000).toFixed(0)}K` : `$${v.toFixed(0)}`;
+
+    grid.insertAdjacentHTML('beforeend', `
+      <div class="company-card${isClient ? ' is-client' : ''}" onclick="location.href='/company.html?id=${linkId}'">
+        <div class="company-top">
+          <div>
+            <div class="company-name">${esc(c.name)}</div>
+            <div class="company-meta">${metaParts.length ? esc(metaParts.join(' · ')) : '<span style="color:var(--ink-4)">No sector info</span>'}</div>
+          </div>
+        </div>
+        <div class="company-badges">
+          ${isClient ? '<span class="badge client">CLIENT</span>' : ''}
+          ${c.relationship_tier ? `<span class="badge sector">${esc(c.relationship_tier)}</span>` : ''}
+          ${signals > 0 ? `<span class="badge signals">${signals} signal${signals !== 1 ? 's' : ''}</span>` : ''}
+          ${people > 0 ? `<span class="badge people">${people} people</span>` : ''}
+          ${placements > 0 ? `<span class="badge signals">${placements} placement${placements !== 1 ? 's' : ''}</span>` : ''}
+          ${c.domain ? `<span class="badge sector">${esc(c.domain)}</span>` : ''}
+        </div>
+        ${c.description ? `<div class="company-desc">${esc(c.description)}</div>` : ''}
+        <div class="company-stats">
+          ${revenue > 0 ? `
+          <div class="company-stat">
+            <div class="company-stat-value">${fmtRev(revenue)}</div>
+            <div class="company-stat-label">Revenue</div>
+          </div>
+          <div class="company-stat">
+            <div class="company-stat-value">${placements}</div>
+            <div class="company-stat-label">Placements</div>
+          </div>
+          ` : `
+          <div class="company-stat">
+            <div class="company-stat-value">${people}</div>
+            <div class="company-stat-label">People</div>
+          </div>
+          <div class="company-stat">
+            <div class="company-stat-value">${signals}</div>
+            <div class="company-stat-label">Signals</div>
+          </div>
+          `}
+        </div>
+      </div>
+    `);
+  });
+
+  document.getElementById('loadMore').style.display =
+    (offset + data.companies.length < data.total) ? 'block' : 'none';
+}
+
+function loadMore() {
+  offset += 30;
+  loadCompanies();
+}
+
+if (!getToken()) location.href = '/';
+else {
+  // Read URL params for drill-through from dashboard
+  const urlParams = new URLSearchParams(location.search);
+  if (urlParams.get('is_client') === 'true') {
+    currentFilter = 'clients';
+    document.querySelectorAll('.chip').forEach(c => {
+      c.classList.toggle('active', c.textContent.trim() === 'Clients');
+      if (c.textContent.trim() === 'All') c.classList.remove('active');
+    });
+  }
+  loadCompanies();
+}
+</script>
+<script src="/chat.js"></script>
+</body>
+</html>

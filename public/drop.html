@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MitchelLake — Drop Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fafbfd;
+  --surface: #ffffff;
+  --surface-2: #f8f8f6;
+  --surface-3: #f0efec;
+  --border: rgba(0,0,0,0.06);
+  --border-active: rgba(0,0,0,0.12);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.06);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.1);
+  --text: #1a1a1a;
+  --text-2: #5a5a5a;
+  --text-3: #9a9a9a;
+  --blue: #2563eb;
+  --blue-light: #eff4ff;
+  --blue-mid: #dbeafe;
+  --emerald: #059669;
+  --emerald-light: #ecfdf5;
+  --amber: #d97706;
+  --amber-light: #fffbeb;
+  --rose: #e11d48;
+  --rose-light: #fff1f2;
+  --violet: #7c3aed;
+  --violet-light: #f5f3ff;
+  --radius: 14px;
+  --radius-sm: 10px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ═══ DROP ZONE ═══ */
+.drop-zone {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 20px;
+}
+
+.drop-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.drop-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  margin-bottom: 4px;
+}
+
+.drop-header p {
+  font-size: 14px;
+  color: var(--text-3);
+}
+
+/* ═══ MAIN INPUT ═══ */
+.drop-input-area {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: all 0.25s;
+  margin-bottom: 16px;
+}
+
+.drop-input-area:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.08), var(--shadow-md);
+}
+
+.drop-input-area.recording {
+  border-color: var(--rose);
+  box-shadow: 0 0 0 3px rgba(225,29,72,0.08), var(--shadow-md);
+}
+
+.drop-input-area.dragover {
+  border-color: var(--violet);
+  background: var(--violet-light);
+  box-shadow: 0 0 0 3px rgba(124,58,237,0.08);
+}
+
+.input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.ai-icon {
+  width: 32px; height: 32px;
+  border-radius: 9px;
+  background: var(--blue-light);
+  border: 1px solid var(--blue-mid);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+  color: var(--blue);
+}
+
+.text-input {
+  flex: 1;
+  border: none;
+  background: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 15px;
+  color: var(--text);
+  outline: none;
+  resize: none;
+  min-height: 24px;
+  max-height: 200px;
+  line-height: 1.5;
+}
+
+.text-input::placeholder { color: var(--text-3); }
+
+.input-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.action-btn {
+  width: 36px; height: 36px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 16px;
+  color: var(--text-2);
+}
+
+.action-btn:hover {
+  border-color: var(--border-active);
+  background: var(--surface-3);
+  transform: scale(1.05);
+}
+
+.action-btn.mic { position: relative; }
+.action-btn.mic.recording {
+  background: var(--rose-light);
+  border-color: var(--rose);
+  color: var(--rose);
+  animation: micPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes micPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(225,29,72,0.2); }
+  50% { box-shadow: 0 0 0 8px rgba(225,29,72,0); }
+}
+
+.action-btn.send {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: white;
+}
+
+.action-btn.send:hover { background: #1d4ed8; }
+.action-btn.send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* File upload hidden */
+.file-input { display: none; }
+
+/* Recording indicator */
+.recording-bar {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--rose-light);
+  border-top: 1px solid rgba(225,29,72,0.1);
+}
+
+.recording-bar.active { display: flex; }
+
+.rec-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--rose);
+  animation: recBlink 1s ease-in-out infinite;
+}
+
+@keyframes recBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.rec-timer {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--rose);
+  flex: 1;
+}
+
+.rec-waveform {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  flex: 1;
+}
+
+.rec-waveform .bar {
+  width: 3px;
+  background: var(--rose);
+  border-radius: 2px;
+  opacity: 0.5;
+  animation: waveBar 0.5s ease-in-out infinite alternate;
+}
+
+.rec-waveform .bar:nth-child(1) { animation-delay: 0.0s; }
+.rec-waveform .bar:nth-child(2) { animation-delay: 0.1s; }
+.rec-waveform .bar:nth-child(3) { animation-delay: 0.2s; }
+.rec-waveform .bar:nth-child(4) { animation-delay: 0.3s; }
+.rec-waveform .bar:nth-child(5) { animation-delay: 0.4s; }
+.rec-waveform .bar:nth-child(6) { animation-delay: 0.1s; }
+.rec-waveform .bar:nth-child(7) { animation-delay: 0.3s; }
+.rec-waveform .bar:nth-child(8) { animation-delay: 0.2s; }
+.rec-waveform .bar:nth-child(9) { animation-delay: 0.0s; }
+.rec-waveform .bar:nth-child(10) { animation-delay: 0.4s; }
+
+@keyframes waveBar {
+  0% { height: 4px; }
+  100% { height: 20px; }
+}
+
+.rec-cancel {
+  font-size: 13px;
+  color: var(--rose);
+  background: none;
+  border: 1px solid rgba(225,29,72,0.3);
+  border-radius: 7px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+}
+
+.rec-stop {
+  font-size: 13px;
+  color: white;
+  background: var(--rose);
+  border: none;
+  border-radius: 7px;
+  padding: 5px 14px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+}
+
+/* File preview */
+.file-preview {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--violet-light);
+  border-top: 1px solid rgba(124,58,237,0.1);
+}
+
+.file-preview.active { display: flex; }
+
+.file-icon {
+  font-size: 20px;
+}
+
+.file-info { flex: 1; }
+.file-name { font-size: 13px; font-weight: 600; }
+.file-size { font-size: 11px; color: var(--text-3); }
+
+.file-remove {
+  font-size: 18px;
+  color: var(--text-3);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 4px;
+}
+
+/* Quick actions */
+.quick-actions {
+  display: flex;
+  gap: 6px;
+  padding: 0 16px 12px;
+  overflow-x: auto;
+}
+
+.quick-chip {
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+
+.quick-chip.gossip { background: var(--amber-light); color: var(--amber); border-color: rgba(217,119,6,0.15); }
+.quick-chip.meeting { background: var(--blue-light); color: var(--blue); border-color: rgba(37,99,235,0.15); }
+.quick-chip.interview { background: var(--emerald-light); color: var(--emerald); border-color: rgba(5,150,105,0.15); }
+.quick-chip.article { background: var(--violet-light); color: var(--violet); border-color: rgba(124,58,237,0.15); }
+.quick-chip.idea { background: var(--rose-light); color: var(--rose); border-color: rgba(225,29,72,0.15); }
+
+.quick-chip:hover { box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+
+/* ═══ PROCESSING STATUS ═══ */
+.processing {
+  display: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.processing.active { display: block; }
+
+.proc-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.proc-spinner {
+  width: 20px; height: 20px;
+  border: 2.5px solid var(--blue-mid);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.proc-title { font-size: 14px; font-weight: 600; }
+
+.proc-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proc-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.proc-step.active { color: var(--text); }
+.proc-step.done { color: var(--emerald); }
+
+.proc-step-icon {
+  width: 20px;
+  text-align: center;
+  font-size: 14px;
+}
+
+/* ═══ RESULT CARD ═══ */
+.result {
+  display: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  margin-bottom: 16px;
+  animation: slideUp 0.3s ease-out;
+}
+
+.result.active { display: block; }
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.result-ack {
+  padding: 16px 18px;
+  background: linear-gradient(135deg, var(--blue-light), var(--violet-light));
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
+}
+
+.result-ack-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.result-ack-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.result-ack-text strong { color: var(--text); }
+
+.result-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+}
+
+.result-cell {
+  padding: 14px 16px;
+  background: var(--surface);
+}
+
+.result-cell-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-3);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.result-cell-content {
+  font-size: 13px;
+}
+
+.entity-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  margin: 2px;
+}
+
+.entity-tag.person { background: var(--emerald-light); color: var(--emerald); }
+.entity-tag.person.new { background: var(--amber-light); color: var(--amber); border: 1px dashed rgba(217,119,6,0.3); }
+.entity-tag.company { background: var(--blue-light); color: var(--blue); }
+.entity-tag.signal { background: var(--rose-light); color: var(--rose); }
+.entity-tag.constraint { background: var(--violet-light); color: var(--violet); }
+
+.result-actions {
+  display: flex;
+  gap: 8px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.result-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 7px;
+  cursor: pointer;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  transition: all 0.15s;
+}
+
+.result-btn:hover { border-color: var(--border-active); color: var(--text); }
+.result-btn.gold { background: var(--amber-light); color: var(--amber); border-color: rgba(217,119,6,0.2); }
+.result-btn.good { background: var(--emerald-light); color: var(--emerald); border-color: rgba(5,150,105,0.2); }
+
+/* ═══ DROP HISTORY ═══ */
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.history-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+.history-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.history-item:hover { box-shadow: var(--shadow-sm); border-color: var(--border-active); }
+
+.history-icon {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.history-icon.voice { background: var(--rose-light); }
+.history-icon.text { background: var(--blue-light); }
+.history-icon.link { background: var(--violet-light); }
+.history-icon.file { background: var(--emerald-light); }
+
+.history-body { flex: 1; min-width: 0; }
+.history-summary { font-size: 13px; font-weight: 500; }
+.history-meta { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.history-meta span { margin-right: 12px; }
+
+.history-stats {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.history-stat {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.history-stat.people { background: var(--emerald-light); color: var(--emerald); }
+.history-stat.signals { background: var(--rose-light); color: var(--rose); }
+</style>
+</head>
+<body>
+
+<div class="drop-zone">
+  <div class="drop-header">
+    <h2>✦ Drop Intelligence</h2>
+    <p>Speak, type, paste a link, or upload a meeting recording</p>
+  </div>
+
+  <!-- MAIN INPUT -->
+  <div class="drop-input-area" id="dropArea">
+    <div class="input-row">
+      <div class="ai-icon">✦</div>
+      <textarea class="text-input" id="textInput" rows="1" 
+        placeholder="Drop intel here — gossip, names, links, ideas, meeting notes..."
+        oninput="autoResize(this)"></textarea>
+      <div class="input-actions">
+        <button class="action-btn" id="uploadBtn" title="Upload file">📎</button>
+        <button class="action-btn mic" id="micBtn" title="Voice note">🎤</button>
+        <button class="action-btn send" id="sendBtn" title="Send" disabled>→</button>
+      </div>
+    </div>
+
+    <!-- Recording indicator -->
+    <div class="recording-bar" id="recordingBar">
+      <div class="rec-dot"></div>
+      <span class="rec-timer" id="recTimer">0:00</span>
+      <div class="rec-waveform">
+        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+        <div class="bar"></div>
+      </div>
+      <button class="rec-cancel" id="recCancel">Cancel</button>
+      <button class="rec-stop" id="recStop">⬛ Stop & Process</button>
+    </div>
+
+    <!-- File preview -->
+    <div class="file-preview" id="filePreview">
+      <span class="file-icon" id="fileIcon">📄</span>
+      <div class="file-info">
+        <div class="file-name" id="fileName"></div>
+        <div class="file-size" id="fileSize"></div>
+      </div>
+      <button class="file-remove" id="fileRemove">✕</button>
+    </div>
+
+    <!-- Quick action chips -->
+    <div class="quick-actions">
+      <div class="quick-chip gossip" onclick="setContext('gossip')">🗣️ Gossip</div>
+      <div class="quick-chip meeting" onclick="setContext('meeting')">📞 Meeting debrief</div>
+      <div class="quick-chip interview" onclick="setContext('interview')">👤 Interview notes</div>
+      <div class="quick-chip article" onclick="setContext('article')">🔗 Article / Link</div>
+      <div class="quick-chip idea" onclick="setContext('idea')">💡 Idea / Opportunity</div>
+    </div>
+
+    <input type="file" class="file-input" id="fileInput" 
+      accept="audio/*,video/*,.txt,.vtt,.srt,.m4a,.webm,.mp3,.wav,.ogg,.mp4">
+  </div>
+
+  <!-- PROCESSING STATUS -->
+  <div class="processing" id="processingCard">
+    <div class="proc-header">
+      <div class="proc-spinner"></div>
+      <div class="proc-title">Processing intelligence...</div>
+    </div>
+    <div class="proc-steps">
+      <div class="proc-step" id="stepTranscribe">
+        <span class="proc-step-icon">○</span> Transcribing audio
+      </div>
+      <div class="proc-step" id="stepExtract">
+        <span class="proc-step-icon">○</span> Extracting entities & signals
+      </div>
+      <div class="proc-step" id="stepMatch">
+        <span class="proc-step-icon">○</span> Matching to MLX network
+      </div>
+      <div class="proc-step" id="stepEmbed">
+        <span class="proc-step-icon">○</span> Embedding for search
+      </div>
+    </div>
+  </div>
+
+  <!-- RESULT -->
+  <div class="result" id="resultCard">
+    <div class="result-ack" id="resultAck">
+      <div class="result-ack-icon">✦</div>
+      <div class="result-ack-text" id="resultAckText"></div>
+    </div>
+    <div class="result-grid" id="resultGrid"></div>
+    <div class="result-actions">
+      <button class="result-btn gold" onclick="feedback('gold')">⭐ Gold intel</button>
+      <button class="result-btn good" onclick="feedback('useful')">👍 Useful</button>
+      <button class="result-btn" onclick="feedback('not_useful')">👎 Not useful</button>
+      <button class="result-btn" onclick="feedback('wrong')">❌ Wrong extraction</button>
+    </div>
+  </div>
+
+  <!-- DROP HISTORY -->
+  <div class="history-header">
+    <div class="history-title">Recent drops</div>
+  </div>
+  <div id="historyList">
+    <!-- Example items — will be populated from API -->
+    <div class="history-item">
+      <div class="history-icon voice">🎤</div>
+      <div class="history-body">
+        <div class="history-summary">Post-coffee debrief — Priya Sharma from Atlassian</div>
+        <div class="history-meta">
+          <span>🕐 2 hours ago</span>
+          <span>⏱️ 45 seconds</span>
+          <span>💰 $0.02</span>
+        </div>
+      </div>
+      <div class="history-stats">
+        <span class="history-stat people">2 people</span>
+        <span class="history-stat signals">3 signals</span>
+      </div>
+    </div>
+    <div class="history-item">
+      <div class="history-icon link">🔗</div>
+      <div class="history-body">
+        <div class="history-summary">AFR article — Canva Series F announcement</div>
+        <div class="history-meta">
+          <span>🕐 5 hours ago</span>
+          <span>💰 $0.01</span>
+        </div>
+      </div>
+      <div class="history-stats">
+        <span class="history-stat people">1 people</span>
+        <span class="history-stat signals">2 signals</span>
+      </div>
+    </div>
+    <div class="history-item">
+      <div class="history-icon file">📁</div>
+      <div class="history-body">
+        <div class="history-summary">Client call transcript — Culture Amp CFO search brief</div>
+        <div class="history-meta">
+          <span>🕐 Yesterday</span>
+          <span>⏱️ 34 minutes</span>
+          <span>💰 $0.22</span>
+        </div>
+      </div>
+      <div class="history-stats">
+        <span class="history-stat people">6 people</span>
+        <span class="history-stat signals">4 signals</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════
+let mediaRecorder = null;
+let audioChunks = [];
+let recordingInterval = null;
+let recordingStartTime = null;
+let selectedFile = null;
+let currentDropId = null;
+let pollInterval = null;
+
+const API_BASE = '/api';
+
+// ═══════════════════════════════════════════
+//  TEXT INPUT
+// ═══════════════════════════════════════════
+const textInput = document.getElementById('textInput');
+const sendBtn = document.getElementById('sendBtn');
+
+textInput.addEventListener('input', () => {
+  sendBtn.disabled = !textInput.value.trim() && !selectedFile;
+});
+
+textInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    if (!sendBtn.disabled) submitDrop();
+  }
+});
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+}
+
+function setContext(type) {
+  const prompts = {
+    gossip: "I heard that ",
+    meeting: "Just finished a meeting with ",
+    interview: "Interview debrief — ",
+    article: "https://",
+    idea: "Opportunity: "
+  };
+  textInput.value = prompts[type] || '';
+  textInput.focus();
+  autoResize(textInput);
+  sendBtn.disabled = false;
+}
+
+// ═══════════════════════════════════════════
+//  VOICE RECORDING
+// ═══════════════════════════════════════════
+const micBtn = document.getElementById('micBtn');
+const recordingBar = document.getElementById('recordingBar');
+const recTimer = document.getElementById('recTimer');
+const recCancel = document.getElementById('recCancel');
+const recStop = document.getElementById('recStop');
+const dropArea = document.getElementById('dropArea');
+
+micBtn.addEventListener('click', async () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    stopRecording();
+    return;
+  }
+  
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      audio: { 
+        echoCancellation: true,
+        noiseSuppression: true,
+        sampleRate: 44100
+      } 
+    });
+    
+    // Prefer webm/opus, fall back to whatever is available
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+      ? 'audio/webm;codecs=opus' 
+      : MediaRecorder.isTypeSupported('audio/mp4')
+        ? 'audio/mp4'
+        : '';
+    
+    mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+    audioChunks = [];
+    
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunks.push(e.data);
+    };
+    
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      clearInterval(recordingInterval);
+    };
+    
+    mediaRecorder.start(1000); // Collect in 1s chunks
+    recordingStartTime = Date.now();
+    
+    // Update UI
+    micBtn.classList.add('recording');
+    dropArea.classList.add('recording');
+    recordingBar.classList.add('active');
+    
+    recordingInterval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+      const min = Math.floor(elapsed / 60);
+      const sec = elapsed % 60;
+      recTimer.textContent = `${min}:${sec.toString().padStart(2, '0')}`;
+    }, 1000);
+    
+  } catch (err) {
+    alert('Microphone access denied. Please enable microphone permissions.');
+    console.error('Mic error:', err);
+  }
+});
+
+recCancel.addEventListener('click', () => {
+  if (mediaRecorder) {
+    mediaRecorder.stop();
+    audioChunks = [];
+  }
+  resetRecordingUI();
+});
+
+recStop.addEventListener('click', () => {
+  stopRecording();
+});
+
+function stopRecording() {
+  if (!mediaRecorder) return;
+  
+  mediaRecorder.stop();
+  
+  // Wait for final data
+  setTimeout(() => {
+    if (audioChunks.length === 0) {
+      resetRecordingUI();
+      return;
+    }
+    
+    const mimeType = mediaRecorder.mimeType || 'audio/webm';
+    const audioBlob = new Blob(audioChunks, { type: mimeType });
+    const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
+    
+    selectedFile = new File([audioBlob], `voice-drop-${Date.now()}.${ext}`, { type: mimeType });
+    
+    resetRecordingUI();
+    submitDrop();
+  }, 300);
+}
+
+function resetRecordingUI() {
+  micBtn.classList.remove('recording');
+  dropArea.classList.remove('recording');
+  recordingBar.classList.remove('active');
+  recTimer.textContent = '0:00';
+  clearInterval(recordingInterval);
+}
+
+// ═══════════════════════════════════════════
+//  FILE UPLOAD
+// ═══════════════════════════════════════════
+const uploadBtn = document.getElementById('uploadBtn');
+const fileInput = document.getElementById('fileInput');
+const filePreview = document.getElementById('filePreview');
+const fileName = document.getElementById('fileName');
+const fileSize = document.getElementById('fileSize');
+const fileIcon = document.getElementById('fileIcon');
+const fileRemove = document.getElementById('fileRemove');
+
+uploadBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  selectedFile = file;
+  
+  const isAudio = file.type.startsWith('audio/') || file.type.startsWith('video/') || 
+                   /\.(m4a|webm|mp3|wav|ogg|mp4)$/i.test(file.name);
+  
+  fileIcon.textContent = isAudio ? '🎧' : '📄';
+  fileName.textContent = file.name;
+  fileSize.textContent = formatSize(file.size);
+  filePreview.classList.add('active');
+  sendBtn.disabled = false;
+});
+
+fileRemove.addEventListener('click', () => {
+  selectedFile = null;
+  filePreview.classList.remove('active');
+  fileInput.value = '';
+  sendBtn.disabled = !textInput.value.trim();
+});
+
+// Drag & drop
+dropArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropArea.classList.add('dragover');
+});
+
+dropArea.addEventListener('dragleave', () => {
+  dropArea.classList.remove('dragover');
+});
+
+dropArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropArea.classList.remove('dragover');
+  
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    selectedFile = file;
+    const isAudio = file.type.startsWith('audio/') || /\.(m4a|webm|mp3|wav)$/i.test(file.name);
+    fileIcon.textContent = isAudio ? '🎧' : '📄';
+    fileName.textContent = file.name;
+    fileSize.textContent = formatSize(file.size);
+    filePreview.classList.add('active');
+    sendBtn.disabled = false;
+  }
+});
+
+// ═══════════════════════════════════════════
+//  SUBMIT DROP
+// ═══════════════════════════════════════════
+async function submitDrop() {
+  const text = textInput.value.trim();
+  const file = selectedFile;
+  
+  if (!text && !file) return;
+  
+  // Reset UI
+  textInput.value = '';
+  textInput.style.height = 'auto';
+  sendBtn.disabled = true;
+  filePreview.classList.remove('active');
+  selectedFile = null;
+  fileInput.value = '';
+  
+  // Show processing
+  const processing = document.getElementById('processingCard');
+  const result = document.getElementById('resultCard');
+  result.classList.remove('active');
+  processing.classList.add('active');
+  
+  // Reset steps
+  document.querySelectorAll('.proc-step').forEach(s => {
+    s.classList.remove('active', 'done');
+    s.querySelector('.proc-step-icon').textContent = '○';
+  });
+  
+  // Determine if audio
+  const isAudio = file && (file.type.startsWith('audio/') || file.type.startsWith('video/') || 
+                           /\.(m4a|webm|mp3|wav|ogg|mp4)$/i.test(file.name));
+  
+  if (!isAudio) {
+    document.getElementById('stepTranscribe').style.display = 'none';
+  } else {
+    document.getElementById('stepTranscribe').style.display = 'flex';
+  }
+  
+  try {
+    const formData = new FormData();
+    
+    if (file) {
+      formData.append('file', file);
+      formData.append('source', file.name.startsWith('voice-drop') ? 'mic' : 'upload');
+    }
+    
+    if (text) {
+      formData.append('text', text);
+    }
+    
+    // Animate steps
+    animateStep('stepTranscribe', isAudio);
+    
+    const response = await fetch(`${API_BASE}/drops`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        // Auth token would go here
+        // 'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    const data = await response.json();
+    
+    if (data.id) {
+      currentDropId = data.id;
+      animateStep('stepExtract', true);
+      
+      // Poll for completion
+      pollForResult(data.id);
+    } else {
+      throw new Error(data.error || 'Unknown error');
+    }
+    
+  } catch (err) {
+    console.error('Submit error:', err);
+    processing.classList.remove('active');
+    
+    // Show demo result for prototype
+    showDemoResult(text || file?.name || 'voice note');
+  }
+}
+
+function animateStep(stepId, shouldShow) {
+  if (!shouldShow) return;
+  const step = document.getElementById(stepId);
+  step.classList.add('active');
+  step.querySelector('.proc-step-icon').textContent = '◉';
+}
+
+function completeStep(stepId) {
+  const step = document.getElementById(stepId);
+  step.classList.remove('active');
+  step.classList.add('done');
+  step.querySelector('.proc-step-icon').textContent = '✓';
+}
+
+async function pollForResult(dropId) {
+  let attempts = 0;
+  
+  pollInterval = setInterval(async () => {
+    attempts++;
+    
+    try {
+      const response = await fetch(`${API_BASE}/drops/${dropId}`);
+      const drop = await response.json();
+      
+      if (drop.status === 'complete') {
+        clearInterval(pollInterval);
+        completeAllSteps();
+        
+        setTimeout(() => {
+          document.getElementById('processingCard').classList.remove('active');
+          showResult(drop);
+        }, 500);
+      } else if (drop.status === 'error') {
+        clearInterval(pollInterval);
+        document.getElementById('processingCard').classList.remove('active');
+        alert('Processing error: ' + (drop.error_message || 'Unknown'));
+      } else {
+        // Update step indicators based on status
+        if (drop.status === 'extracting') {
+          completeStep('stepTranscribe');
+          animateStep('stepExtract', true);
+        }
+      }
+    } catch (e) {
+      // If API not available, show demo after a few attempts
+      if (attempts > 3) {
+        clearInterval(pollInterval);
+        completeAllSteps();
+        setTimeout(() => {
+          document.getElementById('processingCard').classList.remove('active');
+          showDemoResult('intelligence drop');
+        }, 500);
+      }
+    }
+  }, 2000);
+}
+
+function completeAllSteps() {
+  ['stepTranscribe', 'stepExtract', 'stepMatch', 'stepEmbed'].forEach(id => {
+    completeStep(id);
+  });
+}
+
+// ═══════════════════════════════════════════
+//  SHOW RESULT
+// ═══════════════════════════════════════════
+function showResult(drop) {
+  const resultCard = document.getElementById('resultCard');
+  const resultAckText = document.getElementById('resultAckText');
+  const resultGrid = document.getElementById('resultGrid');
+  
+  resultAckText.innerHTML = drop.acknowledgment || 'Intelligence captured and processed.';
+  
+  const extraction = drop.extraction || {};
+  let gridHTML = '';
+  
+  // People
+  if (extraction.people && extraction.people.length > 0) {
+    gridHTML += `<div class="result-cell">
+      <div class="result-cell-label">People (${extraction.people.length})</div>
+      <div class="result-cell-content">${extraction.people.map(p => 
+        `<span class="entity-tag person ${p.is_new ? 'new' : ''}">${p.is_new ? '+ ' : '✓ '}${p.name}</span>`
+      ).join('')}</div>
+    </div>`;
+  }
+  
+  // Signals
+  if (extraction.signals && extraction.signals.length > 0) {
+    gridHTML += `<div class="result-cell">
+      <div class="result-cell-label">Signals (${extraction.signals.length})</div>
+      <div class="result-cell-content">${extraction.signals.map(s => 
+        `<span class="entity-tag signal">${s.type}</span>`
+      ).join('')}</div>
+    </div>`;
+  }
+  
+  // Constraints
+  if (extraction.constraints && extraction.constraints.length > 0) {
+    gridHTML += `<div class="result-cell">
+      <div class="result-cell-label">Constraints (${extraction.constraints.length})</div>
+      <div class="result-cell-content">${extraction.constraints.map(c => 
+        `<span class="entity-tag constraint">${c.person}: ${c.type}</span>`
+      ).join('')}</div>
+    </div>`;
+  }
+  
+  // Relationships
+  if (extraction.relationships && extraction.relationships.length > 0) {
+    gridHTML += `<div class="result-cell">
+      <div class="result-cell-label">Relationships (${extraction.relationships.length})</div>
+      <div class="result-cell-content">${extraction.relationships.map(r => 
+        `<span class="entity-tag person">${r.person_a} ↔ ${r.person_b}</span>`
+      ).join('')}</div>
+    </div>`;
+  }
+  
+  resultGrid.innerHTML = gridHTML;
+  resultCard.classList.add('active');
+}
+
+function showDemoResult(input) {
+  // Demo for prototype when API isn't connected
+  const resultCard = document.getElementById('resultCard');
+  const resultAckText = document.getElementById('resultAckText');
+  const resultGrid = document.getElementById('resultGrid');
+  
+  resultAckText.innerHTML = `Got it — captured intelligence from your drop. Identified <strong>2 people</strong>, <strong>3 signals</strong>, and <strong>1 constraint</strong>. Matched <strong>Priya Sharma</strong> to existing record. Linked to <strong>2 active PE searches</strong>.`;
+  
+  resultGrid.innerHTML = `
+    <div class="result-cell">
+      <div class="result-cell-label">People (2)</div>
+      <div class="result-cell-content">
+        <span class="entity-tag person">✓ Priya Sharma</span>
+        <span class="entity-tag person new">+ Tom Wu</span>
+      </div>
+    </div>
+    <div class="result-cell">
+      <div class="result-cell-label">Signals (3)</div>
+      <div class="result-cell-content">
+        <span class="entity-tag signal">flight_risk</span>
+        <span class="entity-tag signal">company_exit</span>
+        <span class="entity-tag signal">talent_available</span>
+      </div>
+    </div>
+    <div class="result-cell">
+      <div class="result-cell-label">Constraints (2)</div>
+      <div class="result-cell-content">
+        <span class="entity-tag constraint">Priya: PE-backed only</span>
+        <span class="entity-tag constraint">Priya: $450-500K comp</span>
+      </div>
+    </div>
+    <div class="result-cell">
+      <div class="result-cell-label">Relationships (1)</div>
+      <div class="result-cell-content">
+        <span class="entity-tag person">Priya ↔ Tom Wu (colleagues)</span>
+      </div>
+    </div>
+  `;
+  
+  resultCard.classList.add('active');
+}
+
+function feedback(type) {
+  if (currentDropId) {
+    fetch(`${API_BASE}/drops/${currentDropId}/feedback`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ feedback: type })
+    }).catch(() => {});
+  }
+  
+  const resultCard = document.getElementById('resultCard');
+  const label = { gold: '⭐ Marked as gold intel', useful: '👍 Marked useful', not_useful: '👎 Noted', wrong: '❌ Will improve' };
+  resultCard.querySelector('.result-actions').innerHTML = `<span style="font-size:13px;color:var(--text-3)">${label[type] || 'Thanks'}</span>`;
+}
+
+// ═══════════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════════
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Searches | MitchelLake</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>* { font-family: 'Inter', system-ui, sans-serif; }</style>
+</head>
+<body class="bg-slate-50 min-h-screen pb-20 md:pb-0">
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center gap-8">
+          <a href="index.html" class="text-xl font-bold text-slate-900">MitchelLake</a>
+          <nav class="hidden md:flex items-center gap-6">
+            <a href="index.html" class="text-slate-600 hover:text-slate-900">Dashboard</a>
+            <a href="signals.html" class="text-slate-600 hover:text-slate-900">Signals</a>
+            <a href="people.html" class="text-slate-600 hover:text-slate-900">People</a>
+            <a href="companies.html" class="text-slate-600 hover:text-slate-900">Companies</a>
+            <a href="searches.html" class="text-blue-600 font-medium">Searches</a>
+          </nav>
+        </div>
+        <div class="flex items-center gap-4">
+          <button onclick="showCreateSearchModal()" class="hidden sm:flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            New Search
+          </button>
+          <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium">U</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Page Header -->
+    <div class="mb-8">
+      <h1 class="text-2xl font-bold text-slate-900">Active Searches</h1>
+      <p class="text-slate-500 mt-1">Manage search briefs and candidate pipelines</p>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+      <div class="flex flex-wrap items-center gap-4">
+        <div class="flex-1 min-w-[200px]">
+          <div class="relative">
+            <input type="text" id="searchInput" placeholder="Search by title, client..."
+              class="w-full px-4 py-2 pl-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+          </div>
+        </div>
+        <select id="statusFilter" class="px-4 py-2 border border-slate-300 rounded-lg">
+          <option value="">All Status</option>
+          <option value="active">Active</option>
+          <option value="on_hold">On Hold</option>
+          <option value="filled">Filled</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Searches List -->
+    <div id="searchesList" class="space-y-4">
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center text-slate-500">
+        Loading searches...
+      </div>
+    </div>
+  </main>
+
+  <!-- Search Detail Panel (Slideover) -->
+  <div id="searchPanel" class="fixed inset-y-0 right-0 w-full max-w-2xl bg-white shadow-xl transform translate-x-full transition-transform z-50 hidden">
+    <div class="h-full flex flex-col">
+      <div class="p-6 border-b border-slate-200">
+        <div class="flex items-center justify-between">
+          <div>
+            <p id="panelClient" class="text-sm text-slate-500"></p>
+            <h2 id="panelTitle" class="text-xl font-bold text-slate-900"></h2>
+          </div>
+          <button onclick="closePanel()" class="p-2 hover:bg-slate-100 rounded-lg">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+      
+      <div class="flex-1 overflow-y-auto">
+        <!-- Pipeline Kanban -->
+        <div class="p-6 border-b border-slate-200">
+          <h3 class="font-semibold text-slate-900 mb-4">Pipeline</h3>
+          <div class="flex gap-4 overflow-x-auto pb-4">
+            <div class="min-w-[200px]">
+              <div class="bg-slate-100 rounded-lg p-3 mb-2">
+                <span class="font-medium text-slate-700">Identified</span>
+                <span id="pipelineIdentified" class="ml-2 text-slate-500">0</span>
+              </div>
+              <div id="colIdentified" class="space-y-2 min-h-[100px]"></div>
+            </div>
+            <div class="min-w-[200px]">
+              <div class="bg-blue-100 rounded-lg p-3 mb-2">
+                <span class="font-medium text-blue-700">Contacted</span>
+                <span id="pipelineContacted" class="ml-2 text-blue-500">0</span>
+              </div>
+              <div id="colContacted" class="space-y-2 min-h-[100px]"></div>
+            </div>
+            <div class="min-w-[200px]">
+              <div class="bg-emerald-100 rounded-lg p-3 mb-2">
+                <span class="font-medium text-emerald-700">Interested</span>
+                <span id="pipelineInterested" class="ml-2 text-emerald-500">0</span>
+              </div>
+              <div id="colInterested" class="space-y-2 min-h-[100px]"></div>
+            </div>
+            <div class="min-w-[200px]">
+              <div class="bg-purple-100 rounded-lg p-3 mb-2">
+                <span class="font-medium text-purple-700">Shortlist</span>
+                <span id="pipelineShortlist" class="ml-2 text-purple-500">0</span>
+              </div>
+              <div id="colShortlist" class="space-y-2 min-h-[100px]"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI Suggestions -->
+        <div class="p-6 border-b border-slate-200">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-slate-900">AI Suggested Matches</h3>
+            <button onclick="refreshMatches()" class="text-sm text-blue-600 hover:underline">Refresh</button>
+          </div>
+          <div id="aiMatches" class="space-y-3">
+            <div class="text-sm text-slate-500">No AI matches yet</div>
+          </div>
+        </div>
+
+        <!-- Brief -->
+        <div class="p-6">
+          <h3 class="font-semibold text-slate-900 mb-4">Brief Details</h3>
+          <div id="briefContent" class="prose prose-sm max-w-none text-slate-600">
+            <div class="text-slate-500">No brief content</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Search Modal -->
+  <div id="createSearchModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden">
+      <div class="p-6 border-b border-slate-200">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xl font-bold text-slate-900">Create New Search</h2>
+          <button onclick="hideCreateSearchModal()" class="p-2 hover:bg-slate-100 rounded-lg">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+      <form id="createSearchForm" class="p-6 space-y-4 overflow-y-auto max-h-[60vh]">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Search Title *</label>
+          <input type="text" name="title" required placeholder="e.g., CFO - Technology"
+            class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Client</label>
+          <input type="text" name="client_name" placeholder="Company name"
+            class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Location</label>
+            <input type="text" name="location" placeholder="City, Country"
+              class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Compensation</label>
+            <input type="text" name="compensation" placeholder="$XXX-XXXk"
+              class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Brief / Requirements</label>
+          <textarea name="brief_text" rows="6" placeholder="Role overview, requirements, ideal background..."
+            class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Target Companies</label>
+          <input type="text" name="target_companies" placeholder="Company1, Company2, Company3"
+            class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+        </div>
+      </form>
+      <div class="p-6 border-t border-slate-200 bg-slate-50">
+        <div class="flex justify-end gap-3">
+          <button onclick="hideCreateSearchModal()" class="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg">Cancel</button>
+          <button onclick="submitSearch()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Create Search</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Navigation -->
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-2 z-40">
+    <div class="flex items-center justify-around">
+      <a href="index.html" class="flex flex-col items-center text-slate-500">
+        <i data-lucide="layout-dashboard" class="w-6 h-6"></i>
+        <span class="text-xs mt-1">Dashboard</span>
+      </a>
+      <a href="signals.html" class="flex flex-col items-center text-slate-500">
+        <i data-lucide="zap" class="w-6 h-6"></i>
+        <span class="text-xs mt-1">Signals</span>
+      </a>
+      <a href="people.html" class="flex flex-col items-center text-slate-500">
+        <i data-lucide="users" class="w-6 h-6"></i>
+        <span class="text-xs mt-1">People</span>
+      </a>
+      <a href="searches.html" class="flex flex-col items-center text-blue-600">
+        <i data-lucide="briefcase" class="w-6 h-6"></i>
+        <span class="text-xs mt-1">Searches</span>
+      </a>
+    </div>
+  </nav>
+
+  <script>
+    let token = localStorage.getItem('token');
+    let currentSearch = null;
+
+    async function init() {
+      lucide.createIcons();
+      if (!token) {
+        window.location.href = 'index.html';
+        return;
+      }
+      await loadSearches();
+    }
+
+    async function loadSearches() {
+      try {
+        const res = await fetch('/api/searches', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to load searches');
+        
+        const searches = await res.json();
+        renderSearches(searches);
+      } catch (err) {
+        console.error('Failed to load searches:', err);
+        document.getElementById('searchesList').innerHTML = `
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center">
+            <p class="text-slate-500 mb-4">No searches found. Create your first search to get started.</p>
+            <button onclick="showCreateSearchModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              Create Search
+            </button>
+          </div>
+        `;
+      }
+    }
+
+    function renderSearches(searches) {
+      const container = document.getElementById('searchesList');
+      
+      if (!searches || searches.length === 0) {
+        container.innerHTML = `
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center">
+            <p class="text-slate-500 mb-4">No searches found. Create your first search to get started.</p>
+            <button onclick="showCreateSearchModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              Create Search
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = searches.map(search => `
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition cursor-pointer"
+             onclick="openSearch(${search.id})">
+          <div class="flex items-start justify-between">
+            <div class="flex-1">
+              <div class="flex items-center gap-3 mb-2">
+                <h3 class="text-lg font-semibold text-slate-900">${search.title}</h3>
+                <span class="text-xs px-2 py-1 rounded-full ${getStatusColor(search.status)}">
+                  ${formatStatus(search.status)}
+                </span>
+              </div>
+              <p class="text-slate-600">${search.client_name || 'No client'}</p>
+              <div class="flex flex-wrap items-center gap-4 mt-3 text-sm text-slate-500">
+                ${search.location ? `<span class="flex items-center gap-1"><i data-lucide="map-pin" class="w-4 h-4"></i>${search.location}</span>` : ''}
+                ${search.compensation ? `<span class="flex items-center gap-1"><i data-lucide="dollar-sign" class="w-4 h-4"></i>${search.compensation}</span>` : ''}
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="flex gap-2 text-sm">
+                <span class="px-2 py-1 bg-slate-100 rounded">${search.pipeline_count || 0} candidates</span>
+                <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded">${search.match_count || 0} matches</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-2">Updated ${formatDate(search.updated_at)}</p>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      lucide.createIcons();
+    }
+
+    function getStatusColor(status) {
+      const colors = {
+        active: 'bg-emerald-100 text-emerald-700',
+        on_hold: 'bg-amber-100 text-amber-700',
+        filled: 'bg-blue-100 text-blue-700',
+        cancelled: 'bg-red-100 text-red-700'
+      };
+      return colors[status] || 'bg-slate-100 text-slate-700';
+    }
+
+    function formatStatus(status) {
+      return (status || 'active').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    }
+
+    function formatDate(date) {
+      if (!date) return '-';
+      return new Date(date).toLocaleDateString();
+    }
+
+    async function openSearch(id) {
+      try {
+        const res = await fetch(`/api/searches/${id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to load search');
+        
+        currentSearch = await res.json();
+        renderPanel();
+        showPanel();
+        loadCandidates();
+        loadMatches();
+      } catch (err) {
+        console.error('Failed to open search:', err);
+      }
+    }
+
+    function renderPanel() {
+      document.getElementById('panelClient').textContent = currentSearch.client_name || 'No client';
+      document.getElementById('panelTitle').textContent = currentSearch.title;
+      
+      if (currentSearch.brief_text) {
+        document.getElementById('briefContent').innerHTML = `<p>${currentSearch.brief_text.replace(/\n/g, '<br>')}</p>`;
+      }
+    }
+
+    async function loadCandidates() {
+      try {
+        const res = await fetch(`/api/searches/${currentSearch.id}/candidates`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        
+        const candidates = await res.json();
+        renderPipeline(candidates);
+      } catch (err) {
+        console.error('Failed to load candidates:', err);
+      }
+    }
+
+    function renderPipeline(candidates) {
+      const byStatus = {
+        identified: candidates.filter(c => c.status === 'identified'),
+        contacted: candidates.filter(c => c.status === 'contacted'),
+        interested: candidates.filter(c => c.status === 'interested'),
+        shortlist: candidates.filter(c => c.status === 'shortlist')
+      };
+
+      document.getElementById('pipelineIdentified').textContent = byStatus.identified.length;
+      document.getElementById('pipelineContacted').textContent = byStatus.contacted.length;
+      document.getElementById('pipelineInterested').textContent = byStatus.interested.length;
+      document.getElementById('pipelineShortlist').textContent = byStatus.shortlist.length;
+
+      Object.keys(byStatus).forEach(status => {
+        const col = document.getElementById(`col${status.charAt(0).toUpperCase() + status.slice(1)}`);
+        col.innerHTML = byStatus[status].map(c => `
+          <div class="bg-white border border-slate-200 rounded-lg p-3 shadow-sm">
+            <p class="font-medium text-slate-900 text-sm">${c.person_name || 'Unknown'}</p>
+            <p class="text-xs text-slate-500">${c.person_title || ''}</p>
+          </div>
+        `).join('') || '<div class="text-xs text-slate-400 text-center py-4">Empty</div>';
+      });
+    }
+
+    async function loadMatches() {
+      try {
+        const res = await fetch(`/api/searches/${currentSearch.id}/matches`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        
+        const matches = await res.json();
+        const container = document.getElementById('aiMatches');
+        
+        if (!matches || matches.length === 0) {
+          container.innerHTML = '<div class="text-sm text-slate-500">No AI matches yet. Run the matching pipeline to generate suggestions.</div>';
+          return;
+        }
+
+        container.innerHTML = matches.slice(0, 5).map(m => `
+          <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+            <div>
+              <p class="font-medium text-slate-900">${m.person_name}</p>
+              <p class="text-sm text-slate-500">${m.person_title || ''}</p>
+            </div>
+            <div class="text-right">
+              <span class="text-sm font-medium text-blue-600">${Math.round(m.match_score * 100)}% match</span>
+              <button class="ml-2 text-xs text-emerald-600 hover:underline">Add</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        console.error('Failed to load matches:', err);
+      }
+    }
+
+    function showPanel() {
+      const panel = document.getElementById('searchPanel');
+      panel.classList.remove('hidden');
+      setTimeout(() => panel.classList.remove('translate-x-full'), 10);
+    }
+
+    function closePanel() {
+      const panel = document.getElementById('searchPanel');
+      panel.classList.add('translate-x-full');
+      setTimeout(() => panel.classList.add('hidden'), 300);
+    }
+
+    function showCreateSearchModal() {
+      document.getElementById('createSearchModal').classList.remove('hidden');
+    }
+
+    function hideCreateSearchModal() {
+      document.getElementById('createSearchModal').classList.add('hidden');
+      document.getElementById('createSearchForm').reset();
+    }
+
+    async function submitSearch() {
+      const form = document.getElementById('createSearchForm');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData);
+
+      try {
+        const res = await fetch('/api/searches', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(data)
+        });
+
+        if (res.ok) {
+          hideCreateSearchModal();
+          await loadSearches();
+        } else {
+          const err = await res.json();
+          alert(err.error || 'Failed to create search');
+        }
+      } catch (err) {
+        console.error('Failed to create search:', err);
+        alert('Failed to create search');
+      }
+    }
+
+    async function refreshMatches() {
+      alert('Match refresh triggered (API integration needed)');
+    }
+
+    init();
+  </script>
+</body>
+</html>

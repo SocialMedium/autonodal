@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Revenue & Placements — MitchelLake Signal</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;600;700&family=DM+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #1A1A1A; --ink-2: #4A4A4A; --ink-3: #7A7A7A; --ink-4: #AAAAAA;
+  --rule: #E0DDD8; --surface-warm: #FAF9F7; --surface: #FFFFFF;
+  --blue: #2563EB; --emerald: #0D7A50; --amber: #B45309; --rose: #DC2626;
+  --serif: 'Source Serif 4', serif; --sans: 'DM Sans', system-ui, sans-serif; --mono: 'IBM Plex Mono', monospace;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { overflow-x: hidden; }
+body { font-family: var(--sans); background: var(--surface-warm); color: var(--ink); }
+
+/* Masthead */
+.masthead { background: var(--surface); border-bottom: 1px solid var(--rule); padding: 0 clamp(14px, 3vw, 40px); }
+.masthead-inner { max-width: 1320px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; height: 56px; }
+.mast-title { font-family: var(--serif); font-size: 16px; font-weight: 700; color: var(--ink); text-decoration: none; }
+.mast-title:hover { color: var(--blue); }
+.mast-nav { display: flex; gap: 20px; }
+.mast-nav a { font-size: 13px; font-weight: 500; color: var(--ink-3); text-decoration: none; }
+.mast-nav a:hover, .mast-nav a.active { color: var(--ink); }
+
+/* Page */
+.page { max-width: 1320px; margin: 0 auto; padding: 36px clamp(14px, 3vw, 40px) 60px; }
+
+/* Header */
+.page-header { margin-bottom: 32px; }
+.page-header h1 { font-family: var(--serif); font-size: clamp(24px, 4vw, 34px); font-weight: 700; margin-bottom: 4px; }
+.page-header .subtitle { font-size: 14px; color: var(--ink-3); }
+
+/* Stats strip */
+.stats-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--rule); margin-bottom: 32px; }
+.stat { padding: 16px 20px 16px 0; border-right: 1px solid var(--rule); }
+.stat:last-child { border-right: none; }
+.stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; color: var(--ink-4); margin-bottom: 3px; }
+.stat-value { font-family: var(--serif); font-size: 28px; font-weight: 600; color: var(--ink); }
+.stat-value.green { color: var(--emerald); }
+
+/* Grid layout */
+.content-grid { display: grid; grid-template-columns: 1fr 340px; gap: 32px; min-width: 0; }
+@media (max-width: 1024px) { .content-grid { grid-template-columns: 1fr; } }
+
+/* Sidebar */
+.sidebar { min-width: 0; }
+.side-section { margin-bottom: 28px; }
+.side-title { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; color: var(--ink-4); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--rule); }
+
+/* Year breakdown */
+.year-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px solid #F0EDE8; }
+.year-label { font-family: var(--mono); font-size: 14px; font-weight: 500; }
+.year-count { font-size: 12px; color: var(--ink-3); }
+.year-revenue { font-family: var(--mono); font-size: 14px; font-weight: 500; color: var(--emerald); }
+.year-bar { height: 4px; background: var(--emerald); border-radius: 2px; margin-top: 4px; opacity: 0.3; }
+
+/* Top clients */
+.client-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #F0EDE8; cursor: pointer; }
+.client-row:hover { background: var(--surface-warm); margin: 0 -8px; padding: 8px; border-radius: 4px; }
+.client-name { font-size: 13px; font-weight: 500; color: var(--ink); }
+.client-stats { display: flex; gap: 12px; align-items: baseline; }
+.client-count { font-size: 11px; color: var(--ink-3); }
+.client-rev { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--emerald); }
+
+/* Search */
+.search-bar { margin-bottom: 20px; }
+.search-bar input { width: 100%; padding: 10px 14px; border: 1px solid var(--rule); border-radius: 8px; font-size: 13px; font-family: var(--sans); background: var(--surface); outline: none; }
+.search-bar input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
+
+/* Table */
+.placements-table { width: 100%; min-width: 0; }
+.p-row { display: grid; grid-template-columns: 2fr 2fr 1fr 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #F0EDE8; align-items: center; }
+.p-row.header { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; color: var(--ink-4); padding: 8px 0; border-bottom: 2px solid var(--rule); }
+.p-row:not(.header):hover { background: var(--surface-warm); margin: 0 -8px; padding: 12px 8px; border-radius: 4px; cursor: pointer; }
+
+.p-candidate { font-size: 13px; font-weight: 500; color: var(--ink); overflow-wrap: break-word; }
+.p-candidate .role { font-size: 12px; font-weight: 400; color: var(--ink-3); margin-top: 1px; }
+.p-company { font-size: 13px; color: var(--ink-2); overflow-wrap: break-word; }
+.p-company .sector { font-size: 11px; color: var(--ink-4); }
+.p-date { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+.p-fee { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--emerald); text-align: right; }
+
+/* Load more */
+.load-more { text-align: center; padding: 20px; }
+.load-more button { background: none; border: 1px solid var(--rule); padding: 8px 24px; border-radius: 6px; font-size: 13px; cursor: pointer; color: var(--ink-2); }
+.load-more button:hover { background: var(--surface-warm); border-color: var(--ink-3); }
+
+/* Empty */
+.empty { text-align: center; padding: 40px; color: var(--ink-3); font-size: 14px; }
+
+/* Mobile */
+@media (max-width: 768px) {
+  .stats-strip { grid-template-columns: repeat(2, 1fr); }
+  .p-row { grid-template-columns: 1fr 1fr; gap: 4px; }
+  .p-row.header { display: none; }
+  .p-date, .p-company .sector { font-size: 11px; }
+  .mast-nav { display: none; }
+}
+@media (max-width: 480px) {
+  .stat-value { font-size: 22px; }
+}
+</style>
+</head>
+<body>
+
+<div class="masthead">
+  <div class="masthead-inner">
+    <a class="mast-title" href="/">MitchelLake Signal</a>
+    <nav class="mast-nav">
+      <a href="/">Dashboard</a>
+      <a href="/people.html">People</a>
+      <a href="/companies.html">Companies</a>
+      <a href="/placements.html" class="active">Revenue</a>
+    </nav>
+  </div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <h1>Revenue & Placements</h1>
+    <div class="subtitle">Historical placement data from Xero · <span id="dateRange">—</span></div>
+  </div>
+
+  <div class="stats-strip">
+    <div class="stat"><div class="stat-label">Total Revenue</div><div class="stat-value green" id="totalRevenue">—</div></div>
+    <div class="stat"><div class="stat-label">Placements</div><div class="stat-value" id="totalPlacements">—</div></div>
+    <div class="stat"><div class="stat-label">Clients</div><div class="stat-value" id="clientCount">—</div></div>
+    <div class="stat"><div class="stat-label">Avg Fee</div><div class="stat-value" id="avgFee">—</div></div>
+  </div>
+
+  <div class="content-grid">
+    <div class="main-col" style="min-width:0">
+      <div class="search-bar">
+        <input type="text" placeholder="Search by candidate, role, or company…" id="searchInput" oninput="debounceSearch()">
+      </div>
+      <div class="placements-table">
+        <div class="p-row header">
+          <div>Candidate / Role</div>
+          <div>Client</div>
+          <div>Date</div>
+          <div style="text-align:right">Fee</div>
+        </div>
+        <div id="placementsList"></div>
+      </div>
+      <div class="load-more" id="loadMore" style="display:none">
+        <button onclick="loadMore()">Load more</button>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="side-section">
+        <div class="side-title">Revenue by Year</div>
+        <div id="yearBreakdown"></div>
+      </div>
+      <div class="side-section">
+        <div class="side-title">Top Clients</div>
+        <div id="topClients"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function getToken() { return localStorage.getItem('ml_token'); }
+function api(path) { return fetch(path, { headers: { Authorization: 'Bearer ' + getToken() } }).then(r => r.json()); }
+
+let offset = 0, searchTimeout;
+function debounceSearch() { clearTimeout(searchTimeout); searchTimeout = setTimeout(() => { offset = 0; loadPlacements(true); }, 300); }
+function loadMore() { offset += 50; loadPlacements(false); }
+
+function fmtMoney(v) {
+  if (!v || v === 0) return '—';
+  if (v >= 1000000) return '$' + (v / 1000000).toFixed(1) + 'M';
+  if (v >= 1000) return '$' + (v / 1000).toFixed(0) + 'K';
+  return '$' + v.toLocaleString();
+}
+function fmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-AU', { year: 'numeric', month: 'short' });
+}
+
+async function loadPlacements(reset) {
+  const q = document.getElementById('searchInput').value.trim();
+  const params = new URLSearchParams({ limit: 50, offset });
+  if (q) params.set('q', q);
+
+  const data = await api('/api/placements?' + params);
+
+  // Stats
+  document.getElementById('totalRevenue').textContent = fmtMoney(data.total_revenue);
+  document.getElementById('totalPlacements').textContent = data.total.toLocaleString();
+  document.getElementById('clientCount').textContent = data.client_count.toLocaleString();
+  const avg = data.total > 0 ? data.total_revenue / data.total : 0;
+  document.getElementById('avgFee').textContent = fmtMoney(avg);
+
+  if (data.date_range.earliest && data.date_range.latest) {
+    document.getElementById('dateRange').textContent = fmtDate(data.date_range.earliest) + ' — ' + fmtDate(data.date_range.latest);
+  }
+
+  // Placements list
+  const container = document.getElementById('placementsList');
+  if (reset) container.innerHTML = '';
+
+  data.placements.forEach(pl => {
+    const div = document.createElement('div');
+    div.className = 'p-row';
+    div.onclick = () => { if (pl.company_id) location.href = '/company.html?id=' + pl.company_id; };
+    div.innerHTML = `
+      <div class="p-candidate">
+        ${esc(pl.candidate_name || 'Unknown')}
+        <div class="role">${esc(pl.role_title || '')}</div>
+      </div>
+      <div class="p-company">
+        ${esc(pl.company_name || pl.company_name || '—')}
+        <div class="sector">${esc(pl.company_sector || '')}</div>
+      </div>
+      <div class="p-date">${fmtDate(pl.start_date)}</div>
+      <div class="p-fee">${fmtMoney(pl.placement_fee)}</div>
+    `;
+    container.appendChild(div);
+  });
+
+  document.getElementById('loadMore').style.display = data.placements.length >= 50 ? 'block' : 'none';
+
+  // Year breakdown
+  if (reset && data.by_year.length) {
+    const maxRev = Math.max(...data.by_year.map(y => parseFloat(y.revenue)));
+    document.getElementById('yearBreakdown').innerHTML = data.by_year.map(y => `
+      <div class="year-row">
+        <div class="year-label">${y.year}</div>
+        <div class="year-count">${y.count} deals</div>
+        <div class="year-revenue">${fmtMoney(parseFloat(y.revenue))}</div>
+      </div>
+      <div class="year-bar" style="width:${(parseFloat(y.revenue)/maxRev*100).toFixed(0)}%"></div>
+    `).join('');
+  }
+
+  // Top clients
+  if (reset && data.top_clients.length) {
+    document.getElementById('topClients').innerHTML = data.top_clients.map(c => `
+      <div class="client-row" onclick="location.href='/company.html?id=${c.id}'">
+        <div class="client-name">${esc(c.name || 'Unknown')}</div>
+        <div class="client-stats">
+          <span class="client-count">${c.placement_count} deals</span>
+          <span class="client-rev">${fmtMoney(parseFloat(c.total_revenue))}</span>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+
+if (!getToken()) location.href = '/';
+else loadPlacements(true);
+</script>
+<script src="/chat.js"></script>
+</body>
+</html>

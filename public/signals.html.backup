@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signals | MitchelLake</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Inter', system-ui, sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center gap-8">
+          <a href="index.html" class="text-xl font-bold text-slate-900">MitchelLake</a>
+          <nav class="hidden md:flex items-center gap-6">
+            <a href="index.html" class="text-slate-600 hover:text-slate-900">Dashboard</a>
+            <a href="signals.html" class="text-blue-600 font-medium">Signals</a>
+            <a href="people.html" class="text-slate-600 hover:text-slate-900">People</a>
+            <a href="companies.html" class="text-slate-600 hover:text-slate-900">Companies</a>
+            <a href="searches.html" class="text-slate-600 hover:text-slate-900">Searches</a>
+          </nav>
+        </div>
+        <div class="flex items-center gap-4">
+          <button class="relative p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
+            <i data-lucide="bell" class="w-5 h-5"></i>
+          </button>
+          <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium" id="userAvatar">U</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Page Header -->
+    <div class="mb-8">
+      <h1 class="text-2xl font-bold text-slate-900">Signal Intelligence</h1>
+      <p class="text-slate-500 mt-1">Triage and act on market signals detected from news and data sources</p>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+      <div class="flex flex-wrap items-center gap-4">
+        <div class="flex-1 min-w-[200px]">
+          <div class="relative">
+            <input type="text" id="searchInput" placeholder="Search signals..."
+              class="w-full px-4 py-2 pl-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+          </div>
+        </div>
+        <select id="typeFilter" class="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+          <option value="">All Types</option>
+          <option value="capital_raising">Capital Raising</option>
+          <option value="strategic_hiring">Strategic Hiring</option>
+          <option value="geographic_expansion">Geographic Expansion</option>
+          <option value="ma_activity">M&A Activity</option>
+          <option value="product_launch">Product Launch</option>
+          <option value="partnership">Partnership</option>
+          <option value="layoffs">Layoffs/Restructuring</option>
+        </select>
+        <select id="statusFilter" class="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+          <option value="">All Status</option>
+          <option value="new">New</option>
+          <option value="reviewing">Reviewing</option>
+          <option value="qualified">Qualified</option>
+          <option value="actioned">Actioned</option>
+          <option value="dismissed">Dismissed</option>
+        </select>
+        <select id="confidenceFilter" class="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+          <option value="">All Confidence</option>
+          <option value="high">High (>80%)</option>
+          <option value="medium">Medium (50-80%)</option>
+          <option value="low">Low (<50%)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Signals Grid -->
+    <div class="grid lg:grid-cols-3 gap-6">
+      <!-- New Signals -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200">
+        <div class="p-4 border-b border-slate-200 bg-amber-50">
+          <div class="flex items-center justify-between">
+            <h2 class="font-semibold text-slate-900 flex items-center gap-2">
+              <span class="w-3 h-3 bg-amber-500 rounded-full"></span>
+              New
+            </h2>
+            <span id="newCount" class="text-sm text-slate-500">0</span>
+          </div>
+        </div>
+        <div id="newSignals" class="divide-y divide-slate-100 max-h-[calc(100vh-300px)] overflow-y-auto">
+          <div class="p-4 text-center text-slate-500">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Reviewing -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200">
+        <div class="p-4 border-b border-slate-200 bg-blue-50">
+          <div class="flex items-center justify-between">
+            <h2 class="font-semibold text-slate-900 flex items-center gap-2">
+              <span class="w-3 h-3 bg-blue-500 rounded-full"></span>
+              Reviewing
+            </h2>
+            <span id="reviewingCount" class="text-sm text-slate-500">0</span>
+          </div>
+        </div>
+        <div id="reviewingSignals" class="divide-y divide-slate-100 max-h-[calc(100vh-300px)] overflow-y-auto">
+          <div class="p-4 text-center text-slate-500">None</div>
+        </div>
+      </div>
+
+      <!-- Qualified -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200">
+        <div class="p-4 border-b border-slate-200 bg-emerald-50">
+          <div class="flex items-center justify-between">
+            <h2 class="font-semibold text-slate-900 flex items-center gap-2">
+              <span class="w-3 h-3 bg-emerald-500 rounded-full"></span>
+              Qualified
+            </h2>
+            <span id="qualifiedCount" class="text-sm text-slate-500">0</span>
+          </div>
+        </div>
+        <div id="qualifiedSignals" class="divide-y divide-slate-100 max-h-[calc(100vh-300px)] overflow-y-auto">
+          <div class="p-4 text-center text-slate-500">None</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Signal Detail Modal -->
+  <div id="signalModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-hidden">
+      <div class="p-6 border-b border-slate-200">
+        <div class="flex items-start justify-between">
+          <div>
+            <span id="modalSignalType" class="text-xs font-medium px-2 py-1 rounded-full bg-blue-100 text-blue-700"></span>
+            <h2 id="modalCompanyName" class="text-xl font-bold text-slate-900 mt-2"></h2>
+          </div>
+          <button onclick="closeModal()" class="p-2 hover:bg-slate-100 rounded-lg">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+      <div class="p-6 overflow-y-auto max-h-[60vh]">
+        <div class="space-y-4">
+          <div>
+            <h3 class="text-sm font-medium text-slate-500 mb-1">Evidence</h3>
+            <p id="modalEvidence" class="text-slate-900"></p>
+          </div>
+          <div>
+            <h3 class="text-sm font-medium text-slate-500 mb-1">Source</h3>
+            <a id="modalSource" href="#" target="_blank" class="text-blue-600 hover:underline"></a>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <h3 class="text-sm font-medium text-slate-500 mb-1">Confidence</h3>
+              <p id="modalConfidence" class="text-slate-900"></p>
+            </div>
+            <div>
+              <h3 class="text-sm font-medium text-slate-500 mb-1">Detected</h3>
+              <p id="modalDetected" class="text-slate-900"></p>
+            </div>
+          </div>
+          <div id="modalKeywords" class="hidden">
+            <h3 class="text-sm font-medium text-slate-500 mb-1">Keywords Matched</h3>
+            <div id="keywordsList" class="flex flex-wrap gap-2"></div>
+          </div>
+        </div>
+      </div>
+      <div class="p-6 border-t border-slate-200 bg-slate-50">
+        <div class="flex items-center justify-between gap-4">
+          <div class="flex gap-2">
+            <button onclick="updateStatus('dismissed')" class="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg transition">
+              Dismiss
+            </button>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="updateStatus('reviewing')" class="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition">
+              Review
+            </button>
+            <button onclick="updateStatus('qualified')" class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition">
+              Qualify
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Navigation -->
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-2 z-40">
+    <div class="flex items-center justify-around">
+      <a href="index.html" class="flex flex-col items-center text-slate-500">
+        <i data-lucide="layout-dashboard" class="w-6 h-6"></i>
+        <span class="text-xs mt-1">Dashboard</span>
+      </a>
+      <a href="signals.html" class="flex flex-col items-center text-blue-600">
+        <i data-lucide="zap" class="w-6 h-6"></i>
+        <span class="text-xs mt-1">Signals</span>
+      </a>
+      <a href="people.html" class="flex flex-col items-center text-slate-500">
+        <i data-lucide="users" class="w-6 h-6"></i>
+        <span class="text-xs mt-1">People</span>
+      </a>
+      <a href="searches.html" class="flex flex-col items-center text-slate-500">
+        <i data-lucide="briefcase" class="w-6 h-6"></i>
+        <span class="text-xs mt-1">Searches</span>
+      </a>
+    </div>
+  </nav>
+
+  <script>
+    let token = localStorage.getItem('token');
+    let currentSignal = null;
+
+    async function init() {
+      lucide.createIcons();
+      if (!token) {
+        window.location.href = 'index.html';
+        return;
+      }
+      await loadSignals();
+    }
+
+    async function loadSignals() {
+      try {
+        const res = await fetch('/api/signals/brief?limit=100', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to load signals');
+        
+        const signals = await res.json();
+        renderSignalsByStatus(signals);
+      } catch (err) {
+        console.error('Failed to load signals:', err);
+      }
+    }
+
+    function renderSignalsByStatus(signals) {
+      const byStatus = {
+        new: signals.filter(s => s.triage_status === 'new' || !s.triage_status),
+        reviewing: signals.filter(s => s.triage_status === 'reviewing'),
+        qualified: signals.filter(s => s.triage_status === 'qualified')
+      };
+
+      document.getElementById('newCount').textContent = byStatus.new.length;
+      document.getElementById('reviewingCount').textContent = byStatus.reviewing.length;
+      document.getElementById('qualifiedCount').textContent = byStatus.qualified.length;
+
+      renderColumn('newSignals', byStatus.new);
+      renderColumn('reviewingSignals', byStatus.reviewing);
+      renderColumn('qualifiedSignals', byStatus.qualified);
+    }
+
+    function renderColumn(containerId, signals) {
+      const container = document.getElementById(containerId);
+      if (!signals || signals.length === 0) {
+        container.innerHTML = '<div class="p-4 text-center text-slate-500 text-sm">No signals</div>';
+        return;
+      }
+
+      container.innerHTML = signals.map(signal => `
+        <div class="p-4 hover:bg-slate-50 cursor-pointer transition" onclick="openSignal(${signal.id})">
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+              ${getSignalIcon(signal.signal_type)}
+            </div>
+            <div class="flex-1 min-w-0">
+              <h4 class="font-medium text-slate-900 truncate">${signal.company_name || 'Unknown'}</h4>
+              <p class="text-sm text-slate-600 line-clamp-2 mt-0.5">${signal.evidence || ''}</p>
+              <div class="flex items-center gap-2 mt-2">
+                <span class="text-xs px-2 py-0.5 rounded-full ${getSignalColor(signal.signal_type)}">
+                  ${formatType(signal.signal_type)}
+                </span>
+                ${signal.confidence ? `
+                  <span class="text-xs text-slate-500">${Math.round(signal.confidence * 100)}%</span>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function getSignalIcon(type) {
+      const icons = {
+        capital_raising: '<i data-lucide="trending-up" class="w-5 h-5 text-emerald-600"></i>',
+        strategic_hiring: '<i data-lucide="user-plus" class="w-5 h-5 text-blue-600"></i>',
+        geographic_expansion: '<i data-lucide="globe" class="w-5 h-5 text-purple-600"></i>',
+        ma_activity: '<i data-lucide="git-merge" class="w-5 h-5 text-amber-600"></i>',
+        product_launch: '<i data-lucide="rocket" class="w-5 h-5 text-cyan-600"></i>',
+        partnership: '<i data-lucide="handshake" class="w-5 h-5 text-indigo-600"></i>',
+        layoffs: '<i data-lucide="user-minus" class="w-5 h-5 text-red-600"></i>'
+      };
+      return icons[type] || '<i data-lucide="zap" class="w-5 h-5 text-slate-600"></i>';
+    }
+
+    function getSignalColor(type) {
+      const colors = {
+        capital_raising: 'bg-emerald-100 text-emerald-700',
+        strategic_hiring: 'bg-blue-100 text-blue-700',
+        geographic_expansion: 'bg-purple-100 text-purple-700',
+        ma_activity: 'bg-amber-100 text-amber-700',
+        product_launch: 'bg-cyan-100 text-cyan-700',
+        partnership: 'bg-indigo-100 text-indigo-700',
+        layoffs: 'bg-red-100 text-red-700'
+      };
+      return colors[type] || 'bg-slate-100 text-slate-700';
+    }
+
+    function formatType(type) {
+      return (type || '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    }
+
+    async function openSignal(id) {
+      try {
+        const res = await fetch(`/api/signals/${id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to load signal');
+        
+        currentSignal = await res.json();
+        
+        document.getElementById('modalSignalType').textContent = formatType(currentSignal.signal_type);
+        document.getElementById('modalSignalType').className = `text-xs font-medium px-2 py-1 rounded-full ${getSignalColor(currentSignal.signal_type)}`;
+        document.getElementById('modalCompanyName').textContent = currentSignal.company_name || 'Unknown Company';
+        document.getElementById('modalEvidence').textContent = currentSignal.evidence || currentSignal.headline || 'No evidence available';
+        document.getElementById('modalSource').textContent = currentSignal.source_name || currentSignal.source_url || 'Unknown source';
+        document.getElementById('modalSource').href = currentSignal.source_url || '#';
+        document.getElementById('modalConfidence').textContent = currentSignal.confidence ? `${Math.round(currentSignal.confidence * 100)}%` : 'N/A';
+        document.getElementById('modalDetected').textContent = new Date(currentSignal.detected_at || currentSignal.created_at).toLocaleString();
+        
+        if (currentSignal.keywords_matched && currentSignal.keywords_matched.length > 0) {
+          document.getElementById('modalKeywords').classList.remove('hidden');
+          document.getElementById('keywordsList').innerHTML = currentSignal.keywords_matched.map(k => 
+            `<span class="px-2 py-1 bg-slate-100 text-slate-700 rounded text-sm">${k}</span>`
+          ).join('');
+        } else {
+          document.getElementById('modalKeywords').classList.add('hidden');
+        }
+        
+        document.getElementById('signalModal').classList.remove('hidden');
+        lucide.createIcons();
+      } catch (err) {
+        console.error('Failed to open signal:', err);
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('signalModal').classList.add('hidden');
+      currentSignal = null;
+    }
+
+    async function updateStatus(status) {
+      if (!currentSignal) return;
+      
+      try {
+        const res = await fetch(`/api/signals/${currentSignal.id}/triage`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ triage_status: status })
+        });
+        
+        if (res.ok) {
+          closeModal();
+          await loadSignals();
+        }
+      } catch (err) {
+        console.error('Failed to update status:', err);
+      }
+    }
+
+    // Close modal on escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
+
+    init();
+  </script>
+</body>
+</html>

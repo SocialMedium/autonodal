@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Company — MitchelLake Signal</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --serif: 'Source Serif 4', 'Georgia', serif;
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+  --bg: #FAF9F7; --surface: #FFFFFF; --surface-warm: #F7F5F2; --surface-cool: #F2F4F8;
+  --ink: #1A1A1A; --ink-2: #4A4A4A; --ink-3: #7A7A7A; --ink-4: #AAAAAA;
+  --rule: #E0DDD8; --rule-bold: #C8C4BE;
+  --blue: #2563EB; --blue-soft: #EBF1FE;
+  --emerald: #0D7A50; --emerald-soft: #E8F5EE;
+  --amber: #B45309; --amber-soft: #FEF7E8;
+  --rose: #C41D3E; --rose-soft: #FDF0F2;
+  --violet: #6D28D9; --violet-soft: #F3EEFE;
+  --radius: 8px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+  --shadow-hover: 0 4px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+}
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { overflow-x: hidden; }
+body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+
+/* Masthead */
+.masthead { background: var(--surface); border-bottom: 2px solid var(--ink); padding: 0 clamp(14px, 3vw, 40px); position: sticky; top: 0; z-index: 100; }
+.masthead-inner { display: flex; align-items: center; justify-content: space-between; height: 56px; max-width: 1320px; margin: 0 auto; }
+.mast-logo { font-family: var(--serif); font-size: 22px; font-weight: 600; text-decoration: none; color: var(--ink); }
+.mast-logo em { font-style: italic; color: var(--ink-3); }
+.mast-nav { display: flex; gap: 2px; }
+.mast-nav a { font-size: 13px; font-weight: 500; color: var(--ink-3); text-decoration: none; padding: 6px 14px; border-radius: 6px; }
+.mast-nav a:hover { color: var(--ink); background: var(--surface-warm); }
+.mast-nav a.active { color: var(--ink); background: var(--surface-warm); font-weight: 600; }
+
+.page { max-width: 1320px; margin: 0 auto; padding: 32px clamp(14px, 3vw, 40px) 60px; overflow: hidden; }
+.back { font-size: 13px; color: var(--ink-3); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; margin-bottom: 20px; }
+.back:hover { color: var(--ink); }
+
+/* Company header */
+.co-hdr { padding-bottom: 24px; margin-bottom: 32px; border-bottom: 2px solid var(--ink); }
+.co-top { display: flex; gap: 20px; align-items: flex-start; }
+.co-av { width: 64px; height: 64px; border-radius: 12px; background: var(--surface-cool); border: 2px solid var(--rule); display: flex; align-items: center; justify-content: center; font-family: var(--serif); font-size: 26px; font-weight: 700; color: var(--ink-3); flex-shrink: 0; }
+.co-av.client { border-color: var(--amber); background: var(--amber-soft); color: var(--amber); }
+.co-info { flex: 1; min-width: 0; }
+.co-name { font-family: var(--serif); font-size: clamp(22px, 4vw, 30px); font-weight: 600; line-height: 1.2; overflow-wrap: break-word; }
+.co-meta { display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap; font-size: 14px; color: var(--ink-2); }
+.co-meta a { color: var(--blue); text-decoration: none; font-weight: 500; }
+.co-meta a:hover { text-decoration: underline; }
+.co-tags { display: flex; gap: 5px; margin-top: 10px; flex-wrap: wrap; }
+.tag { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 3px; background: var(--surface-warm); color: var(--ink-3); white-space: nowrap; }
+.tag.client { background: var(--amber-soft); color: var(--amber); }
+.tag.sector { background: var(--blue-soft); color: var(--blue); }
+.tag.geo { background: var(--emerald-soft); color: var(--emerald); }
+.tag.size { background: var(--violet-soft); color: var(--violet); }
+.co-desc { font-size: 14px; color: var(--ink-2); line-height: 1.6; margin-top: 12px; overflow-wrap: break-word; max-width: 720px; }
+.co-stats { display: flex; gap: 0; margin-top: 18px; border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; max-width: 480px; }
+.co-st { flex: 1; padding: 14px; text-align: center; border-right: 1px solid var(--rule); }
+.co-st:last-child { border-right: none; }
+.co-st-v { font-family: var(--serif); font-size: 22px; font-weight: 600; }
+.co-st-l { font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--ink-4); font-weight: 600; }
+.enrich-btn { background: var(--surface-warm); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 14px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--ink-2); font-family: var(--sans); white-space: nowrap; transition: all 0.15s; margin-top: 12px; }
+.enrich-btn:hover { background: #EBF1FE; border-color: #2563EB; color: #2563EB; }
+.enrich-btn.loading { opacity: 0.6; pointer-events: none; }
+.enrich-btn.done { background: #E6F5EC; border-color: #0D7A50; color: #0D7A50; }
+
+/* Grid */
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 0; }
+.main { padding-right: 32px; border-right: 1px solid var(--rule); min-width: 0; }
+.side { padding-left: 28px; min-width: 0; }
+
+.sec { margin-bottom: 32px; }
+.sec-rule { height: 3px; background: var(--ink); margin-bottom: 8px; }
+.sec-rule.thin { height: 1px; background: var(--rule); margin-bottom: 8px; }
+.sec-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
+.sec-title { font-family: var(--serif); font-size: 19px; font-weight: 600; }
+.sec-count { font-family: var(--mono); font-size: 11px; color: var(--ink-4); }
+.sec-sub { font-size: 13px; color: var(--ink-3); margin-bottom: 12px; }
+
+/* Signal cards */
+.sigcard { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 10px; box-shadow: var(--shadow-card); overflow: hidden; }
+.sigcard:hover { box-shadow: var(--shadow-hover); }
+.sigcard-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.sigcard-hl { font-size: 14px; font-weight: 500; line-height: 1.35; flex: 1; min-width: 0; overflow-wrap: break-word; }
+.sigcard-conf { font-family: var(--mono); font-size: 12px; flex-shrink: 0; padding: 2px 7px; border-radius: 3px; }
+.sigcard-conf.hi { background: var(--emerald-soft); color: var(--emerald); }
+.sigcard-conf.md { background: var(--amber-soft); color: var(--amber); }
+.sigcard-conf.lo { background: var(--rose-soft); color: var(--rose); }
+.sigcard-badges { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+.sbadge { font-size: 10px; padding: 2px 7px; border-radius: 3px; font-weight: 600; background: var(--surface-warm); color: var(--ink-3); }
+.sigcard-ev { font-size: 12px; color: var(--ink-2); margin-top: 6px; line-height: 1.45; border-left: 2px solid var(--rule); padding-left: 10px; overflow-wrap: break-word; }
+.sigcard-src { font-size: 11px; color: var(--ink-4); margin-top: 6px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sigcard-src a { color: var(--blue); text-decoration: none; font-weight: 500; }
+.sigcard-src a:hover { text-decoration: underline; }
+.sigcard-hire { margin-top: 8px; padding: 8px 12px; background: var(--blue-soft); border-radius: 6px; border-left: 3px solid var(--blue); font-size: 12px; color: var(--ink-2); line-height: 1.45; overflow-wrap: break-word; }
+.sigcard-hire b { font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--blue); display: block; margin-bottom: 2px; }
+
+/* Person rows */
+.prow { display: grid; grid-template-columns: 1fr 140px 80px; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--rule); cursor: pointer; }
+.prow:hover { background: var(--surface-warm); margin: 0 -8px; padding: 10px 8px; border-radius: 4px; }
+.pid { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.pav { width: 32px; height: 32px; border-radius: 50%; background: var(--surface-cool); border: 1px solid var(--rule); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: var(--ink-3); flex-shrink: 0; }
+.pav.noted { background: var(--blue-soft); color: var(--blue); border-color: var(--blue); }
+.pn { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pt { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pmeta2 { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.pnb { font-size: 11px; font-weight: 600; color: var(--blue); }
+
+/* Placement rows */
+.plrow { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--rule); gap: 10px; }
+.plinfo { flex: 1; min-width: 0; }
+.plrole { font-size: 14px; font-weight: 500; overflow-wrap: break-word; }
+.pldet { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
+.plfee { font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--emerald); flex-shrink: 0; }
+
+/* Doc rows */
+.drow { padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.drow a { font-size: 13px; color: var(--blue); text-decoration: none; font-weight: 500; line-height: 1.35; overflow-wrap: break-word; }
+.drow a:hover { text-decoration: underline; }
+.drow .dm { font-size: 11px; color: var(--ink-4); margin-top: 2px; }
+
+/* Side */
+.ss { margin-bottom: 24px; }
+.ss-rule { height: 3px; background: var(--ink); margin-bottom: 8px; }
+.ss-title { font-family: var(--serif); font-size: 16px; font-weight: 600; margin-bottom: 10px; }
+
+.empty { text-align: center; padding: 20px; color: var(--ink-4); font-size: 13px; }
+.loading { text-align: center; padding: 60px; color: var(--ink-3); }
+
+@media (max-width: 1024px) {
+  .grid { grid-template-columns: 1fr; }
+  .main { padding-right: 0; border-right: none; }
+  .side { padding-left: 0; margin-top: 32px; padding-top: 24px; border-top: 2px solid var(--ink); }
+  .co-stats { max-width: 100%; }
+}
+@media (max-width: 768px) {
+  .co-top { flex-direction: column; gap: 14px; }
+  .mast-nav { display: none; }
+  .prow { grid-template-columns: 1fr 60px; }
+  .pmeta2 { display: none; }
+}
+@media (max-width: 480px) {
+  .co-av { width: 48px; height: 48px; font-size: 20px; }
+  .co-stats { flex-wrap: wrap; }
+  .co-st { min-width: 50%; }
+}
+</style>
+</head>
+<body>
+<header class="masthead"><div class="masthead-inner">
+  <a href="/" class="mast-logo">Mitchel<em>Lake</em> Signal</a>
+  <nav class="mast-nav"><a href="/">Signals</a><a href="/people.html">People</a><a href="/companies.html" class="active">Companies</a><a href="/placements.html">Revenue</a></nav>
+  <div style="width:34px;height:34px;border-radius:50%;background:var(--ink);color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600">JT</div>
+</div></header>
+
+<div class="page">
+  <a href="/companies.html" class="back">← Companies</a>
+  <div id="app"><div class="loading">Loading company dossier…</div></div>
+</div>
+
+<script>
+const TK=localStorage.getItem('ml_token');if(!TK)location.href='/';
+async function api(u){const r=await fetch(u,{headers:{Authorization:'Bearer '+TK}});if(r.status===401){location.href='/';return null}if(!r.ok)throw new Error(r.statusText);return r.json()}
+function esc(s){return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''}
+function fmtD(t){return t?new Date(t).toLocaleDateString('en-AU',{year:'numeric',month:'short',day:'numeric'}):'—'}
+function ago(t){if(!t)return'';const m=Math.floor((Date.now()-new Date(t))/6e4);if(m<60)return m+'m';const h=Math.floor(m/60);if(h<24)return h+'h';const d=Math.floor(h/24);return d<30?d+'d':fmtD(t)}
+function money(v){if(!v)return'—';const n=parseFloat(v);return isNaN(n)?'—':'$'+n.toLocaleString('en-AU',{minimumFractionDigits:0,maximumFractionDigits:0})}
+
+const SI={capital_raising:'💰',ma_activity:'🔗',product_launch:'🚀',partnership:'🤝',geographic_expansion:'🌐',restructuring:'⚙️',leadership_change:'👤',layoffs:'📉',strategic_hiring:'👥'};
+const id=new URLSearchParams(location.search).get('id');if(!id)location.href='/companies.html';
+
+(async()=>{
+const c=await api('/api/companies/'+id);if(!c)return;
+document.title=(c.name||'Company')+' — MitchelLake';
+
+const initial=(c.name||'?')[0].toUpperCase();
+const sigs=c.signals||[];const ppl=c.people||[];const pls=c.placements||[];const docs=c.documents||[];
+const totalFees=pls.reduce((s,p)=>s+(parseFloat(p.placement_fee)||0),0);
+
+const tags=[];
+if(c.is_client)tags.push('<span class="tag client">CLIENT</span>');
+if(c.sector)tags.push('<span class="tag sector">'+esc(c.sector)+'</span>');
+if(c.sub_sector)tags.push('<span class="tag sector">'+esc(c.sub_sector)+'</span>');
+if(c.geography)tags.push('<span class="tag geo">'+esc(c.geography)+'</span>');
+if(c.employee_count_band)tags.push('<span class="tag size">'+esc(c.employee_count_band)+'</span>');
+
+let h='<div class="co-hdr"><div class="co-top">';
+h+='<div class="co-av'+(c.is_client?' client':'')+'">'+initial+'</div>';
+h+='<div class="co-info">';
+h+='<div class="co-name">'+esc(c.name)+'</div>';
+h+='<div class="co-meta">';
+if(c.sector)h+='<span>'+esc(c.sector)+'</span>';
+if(c.geography)h+='<span>📍 '+esc(c.geography)+'</span>';
+if(c.domain)h+='<span>🌐 <a href="https://'+esc(c.domain)+'" target="_blank">'+esc(c.domain)+'</a></span>';
+h+='</div>';
+if(tags.length)h+='<div class="co-tags">'+tags.join('')+'</div>';
+if(c.description)h+='<div class="co-desc">'+esc(c.description)+'</div>';
+h+='</div></div>';
+h+='<div class="co-stats"><div class="co-st"><div class="co-st-v">'+ppl.length+'</div><div class="co-st-l">People</div></div><div class="co-st"><div class="co-st-v">'+sigs.length+'</div><div class="co-st-l">Signals</div></div><div class="co-st"><div class="co-st-v">'+pls.length+'</div><div class="co-st-l">Placements</div></div><div class="co-st"><div class="co-st-v">'+docs.length+'</div><div class="co-st-l">Coverage</div></div></div>';
+h+='<button class="enrich-btn" id="enrichBtn" onclick="enrichCompany()">🔄 Refresh &amp; Enrich</button>';
+h+='</div>';
+
+h+='<div class="grid"><div class="main">';
+
+// ── SIGNALS ──
+h+='<div class="sec"><div class="sec-rule"></div><div class="sec-head"><div class="sec-title">Signals</div><div class="sec-count">'+sigs.length+'</div></div><div class="sec-sub">Market intelligence and events</div>';
+if(!sigs.length)h+='<div class="empty">No signals detected</div>';
+else sigs.forEach(s=>{
+  const icon=SI[s.signal_type]||'📡';
+  const conf=Math.round((s.confidence_score||0)*100);
+  const cc=conf>=80?'hi':conf>=50?'md':'lo';
+  const type=s.signal_type.replace(/_/g,' ');
+
+  let hire='';
+  if(s.hiring_implications){
+    try{
+      const hi=typeof s.hiring_implications==='string'?JSON.parse(s.hiring_implications):s.hiring_implications;
+      const pts=[];
+      if(hi.implications)pts.push(hi.implications);
+      if(hi.geography)pts.push('Geo: '+hi.geography);
+      if(hi.people_mentioned&&hi.people_mentioned.length)pts.push('People: '+hi.people_mentioned.join(', '));
+      if(pts.length)hire='<div class="sigcard-hire"><b>Hiring Implications</b>'+esc(pts.join(' · '))+'</div>';
+    }catch(e){}
+  }
+
+  h+='<div class="sigcard"><div class="sigcard-top"><div class="sigcard-hl">'+icon+' '+esc(s.evidence_summary||s.doc_title||type)+'</div><div class="sigcard-conf '+cc+'">'+conf+'%</div></div>';
+  h+='<div class="sigcard-badges"><span class="sbadge">'+type.toUpperCase()+'</span>'+(s.signal_category?'<span class="sbadge">'+esc(s.signal_category)+'</span>':'')+'<span class="sbadge">'+(s.triage_status||'new')+'</span></div>';
+  if(s.evidence_snippet)h+='<div class="sigcard-ev">'+esc(s.evidence_snippet)+'</div>';
+  h+=hire;
+  h+='<div class="sigcard-src">'+(s.doc_source?'<span>'+esc(s.doc_source)+'</span>':'')+'<span>'+ago(s.detected_at)+'</span>'+(s.source_url?'<a href="'+esc(s.source_url)+'" target="_blank">↗ Source</a>':'')+'</div>';
+  h+='</div>';
+});
+h+='</div>';
+
+// ── PEOPLE ──
+h+='<div class="sec"><div class="sec-rule"></div><div class="sec-head"><div class="sec-title">People</div><div class="sec-count">'+ppl.length+' IN NETWORK</div></div><div class="sec-sub">Candidates and contacts at '+esc(c.name)+'</div>';
+if(!ppl.length)h+='<div class="empty">No people linked</div>';
+else ppl.forEach(p=>{
+  const pi=(p.full_name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  const nc=parseInt(p.note_count)||0;
+  h+='<div class="prow" onclick="location.href=\'/person.html?id='+p.id+'\'"><div class="pid"><div class="pav'+(nc?' noted':'')+'">'+pi+'</div><div style="min-width:0"><div class="pn">'+esc(p.full_name)+'</div><div class="pt">'+esc(p.current_title||'')+'</div></div></div>';
+  h+='<div class="pmeta2">'+(p.seniority_level?'<span class="tag" style="background:var(--amber-soft);color:var(--amber)">'+esc(p.seniority_level)+'</span>':'')+'</div>';
+  h+='<div>'+(nc?'<span class="pnb">'+nc+' notes</span>':'')+'</div></div>';
+});
+h+='</div>';
+
+h+='</div>'; // end main
+
+// ── SIDEBAR ──
+h+='<div class="side">';
+
+// Placements
+if(pls.length||c.is_client){
+  h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">MitchelLake Placements</div>';
+  if(totalFees)h+='<div style="font-family:var(--mono);font-size:18px;font-weight:600;color:var(--emerald);margin-bottom:10px">'+money(totalFees)+' total</div>';
+  if(!pls.length)h+='<div class="empty">No placements recorded</div>';
+  else pls.forEach(pl=>{
+    h+='<div class="plrow"><div class="plinfo"><div class="plrole">'+esc(pl.role_title||pl.candidate_name||'Placement')+'</div><div class="pldet">'+(pl.candidate_name?esc(pl.candidate_name)+' · ':'')+fmtD(pl.placement_date)+(pl.fee_type?' · '+esc(pl.fee_type):'')+'</div></div><div class="plfee">'+money(pl.placement_fee)+'</div></div>';
+  });
+  h+='</div>';
+}
+
+// Documents
+if(docs.length){
+  h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">Coverage & Documents</div>';
+  docs.forEach(d=>{
+    h+='<div class="drow">'+(d.source_url?'<a href="'+esc(d.source_url)+'" target="_blank">'+esc(d.title||'Untitled')+'</a>':'<span style="font-size:13px;font-weight:500">'+esc(d.title||'Untitled')+'</span>')+'<div class="dm">'+esc(d.source_name||d.source_type||'')+' · '+fmtD(d.published_at)+'</div></div>';
+  });
+  h+='</div>';
+}
+
+// Details
+h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">Details</div><div style="font-size:13px;color:var(--ink-2);line-height:2.2">';
+if(c.sector)h+='<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Sector</span><br>'+esc(c.sector)+(c.sub_sector?' / '+esc(c.sub_sector):'')+'</div>';
+if(c.geography)h+='<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Geography</span><br>'+esc(c.geography)+'</div>';
+if(c.employee_count_band)h+='<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Size</span><br>'+esc(c.employee_count_band)+'</div>';
+if(c.domain)h+='<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Website</span><br><a href="https://'+esc(c.domain)+'" target="_blank" style="color:var(--blue);text-decoration:none">'+esc(c.domain)+'</a></div>';
+if(c.aliases&&c.aliases.length)h+='<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Also known as</span><br>'+c.aliases.map(a=>esc(a)).join(', ')+'</div>';
+h+='</div></div>';
+
+h+='</div></div>'; // end side + grid
+document.getElementById('app').innerHTML=h;
+})();
+
+async function enrichCompany() {
+  const btn = document.getElementById('enrichBtn');
+  if (!btn) return;
+  btn.className = 'enrich-btn loading';
+  btn.textContent = '⏳ Enriching…';
+  try {
+    const id = new URLSearchParams(location.search).get('id');
+    const r = await fetch('/api/companies/' + id + '/enrich', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('ml_token') },
+    });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    btn.className = 'enrich-btn done';
+    btn.textContent = '✅ ' + (data.results.embedding?.message || 'Updated');
+    setTimeout(() => location.reload(), 2000);
+  } catch (e) {
+    btn.className = 'enrich-btn';
+    btn.textContent = '❌ ' + e.message;
+    setTimeout(() => { btn.textContent = '🔄 Refresh & Enrich'; }, 3000);
+  }
+}
+</script>
+<script src="/chat.js"></script>
+</body>
+</html>
