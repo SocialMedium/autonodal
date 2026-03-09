@@ -203,7 +203,7 @@ async function pipelineIngestSignals() {
 
         const urlHash = md5(url);
         const exists = await pool.query(
-          'SELECT id FROM external_documents WHERE url_hash = $1', [urlHash]
+          'SELECT id FROM external_documents WHERE source_url_hash = $1', [urlHash]
         );
         if (exists.rows.length > 0) continue;
 
@@ -212,10 +212,10 @@ async function pipelineIngestSignals() {
 
         await pool.query(`
           INSERT INTO external_documents (
-            source_id, url, url_hash, title, content, 
+            source_id, url, source_url_hash, title, content, 
             published_at, author, source_name
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          ON CONFLICT (url_hash) DO NOTHING
+          ON CONFLICT (source_url_hash) DO NOTHING
         `, [
           source.id, url, urlHash,
           (item.title || '').slice(0, 500),
