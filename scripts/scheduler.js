@@ -212,7 +212,7 @@ async function pipelineIngestSignals() {
 
         await pool.query(`
           INSERT INTO external_documents (
-            source_id, url, source_url_hash, title, content, 
+            source_id, source_url, source_url_hash, title, content, 
             published_at, author, source_name
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
           ON CONFLICT (source_url_hash) DO NOTHING
