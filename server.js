@@ -93,6 +93,7 @@ async function optionalAuth(req, res, next) {
 app.get('/api/auth/google', (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' });
   const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+  const returnTo = req.query.return_to || '/';
   const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
     redirect_uri: redirectUri,
@@ -100,16 +101,18 @@ app.get('/api/auth/google', (req, res) => {
     scope: 'openid email profile',
     hd: 'mitchellake.com',
     prompt: 'select_account',
-    access_type: 'offline'
+    access_type: 'offline',
+    state: returnTo
   });
   res.redirect(authUrl);
 });
 
 // Google OAuth — callback
 app.get('/api/auth/google/callback', async (req, res) => {
-  const { code, error } = req.query;
-  if (error) return res.redirect('/?auth_error=' + encodeURIComponent(error));
-  if (!code) return res.redirect('/?auth_error=no_code');
+  const { code, error, state } = req.query;
+  const returnTo = (state && state.startsWith('/')) ? state : '/';
+  if (error) return res.redirect(returnTo + '?auth_error=' + encodeURIComponent(error));
+  if (!code) return res.redirect(returnTo + '?auth_error=no_code');
 
   try {
     const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
@@ -181,10 +184,11 @@ app.get('/api/auth/google/callback', async (req, res) => {
     await pool.query('DELETE FROM sessions WHERE expires_at < NOW()');
 
     // Redirect to app with token (frontend picks it up from URL)
-    res.redirect(`/?token=${sessionToken}&user=${encodeURIComponent(JSON.stringify({ id: user.id, email: user.email, name: user.name, role: user.role }))}`);
+    const sep = returnTo.includes('?') ? '&' : '?';
+    res.redirect(`${returnTo}${sep}token=${sessionToken}&user=${encodeURIComponent(JSON.stringify({ id: user.id, email: user.email, name: user.name, role: user.role }))}`);
   } catch (err) {
     console.error('Google auth error:', err);
-    res.redirect('/?auth_error=server_error');
+    res.redirect(returnTo + '?auth_error=server_error');
   }
 });
 
