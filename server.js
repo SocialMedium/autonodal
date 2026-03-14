@@ -27,6 +27,7 @@ const pool = new Pool({
 // MIDDLEWARE
 // ─────────────────────────────────────────────────────────────────────────────
 
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
