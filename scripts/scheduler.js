@@ -212,17 +212,18 @@ async function pipelineIngestSignals() {
 
         await pool.query(`
           INSERT INTO external_documents (
-            source_id, source_url, source_url_hash, title, content, 
-            published_at, author, source_name
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            source_id, source_url, source_url_hash, source_type, source_name, title, content, 
+            published_at, author
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           ON CONFLICT (source_url_hash) DO NOTHING
         `, [
           source.id, url, urlHash,
+          'rss',
+          source.name,
           (item.title || '').slice(0, 500),
           content,
           item.isoDate || item.pubDate || new Date().toISOString(),
-          (item.creator || item.author || '').slice(0, 200),
-          source.name
+          (item.creator || item.author || '').slice(0, 200)
         ]);
         stats.new_docs++;
       }
@@ -246,7 +247,7 @@ async function pipelineIngestSignals() {
   console.log(`     ${stats.fetched} feeds fetched, ${stats.new_docs} new documents`);
 
   // ─── Step 2: Embed new documents via OpenAI → Qdrant ───
-  if (stats.new_docs > 0 && openai && qdrantClient) {
+  if (openai && qdrantClient) {
     console.log('   📐 Step 2: Embedding new documents...');
 
     const pending = await pool.query(`
@@ -300,15 +301,22 @@ async function pipelineIngestSignals() {
     SELECT id, title, content, source_name, published_at
     FROM external_documents 
     WHERE signals_computed_at IS NULL AND embedded_at IS NOT NULL
-    ORDER BY published_at DESC LIMIT 50
+    ORDER BY published_at DESC LIMIT 200
   `);
+
+  const VALID_SIGNAL_TYPES = new Set([
+    'capital_raising', 'geographic_expansion', 'strategic_hiring',
+    'ma_activity', 'partnership', 'product_launch',
+    'leadership_change', 'layoffs', 'restructuring'
+  ]);
 
   if (unprocessed.rows.length > 0 && ANTHROPIC_API_KEY) {
     // Batch documents for Claude (5 at a time to manage context)
     for (let i = 0; i < unprocessed.rows.length; i += 5) {
       const batch = unprocessed.rows.slice(i, i + 5);
-      
-      const docsText = batch.map((d, idx) => 
+      const batchIds = batch.map(d => d.id);
+
+      const docsText = batch.map((d, idx) =>
         `--- DOCUMENT ${idx + 1} ---\nTitle: ${d.title}\nSource: ${d.source_name}\nDate: ${d.published_at}\n\n${(d.content || '').slice(0, 3000)}`
       ).join('\n\n');
 
@@ -317,14 +325,12 @@ async function pipelineIngestSignals() {
           `You are MitchelLake's signal intelligence analyst. MitchelLake is an executive search firm focused on technology leadership roles across ANZ, SEA, UK, and globally.
 
 Analyze these documents and extract actionable signals. For each signal, identify:
-1. Signal type: capital_raising, geographic_expansion, strategic_hiring, ma_activity, partnership, product_launch, layoffs, restructuring, leadership_departure, ipo, board_change
+1. Signal type (MUST be one of these exact values): capital_raising, geographic_expansion, strategic_hiring, ma_activity, partnership, product_launch, leadership_change, layoffs, restructuring
 2. Company name (exact)
 3. Confidence: 0.0-1.0
 4. Why this matters for executive search
 5. Likely hiring implications (what roles they'll need)
 6. Urgency: immediate, this_week, this_month, watch
-
-Also look for TRIANGULATION — signals from different documents that point to the same underlying trend or opportunity.
 
 Return ONLY valid JSON array:
 [{
@@ -336,9 +342,7 @@ Return ONLY valid JSON array:
   "hiring_implications": "what roles they'll likely need",
   "urgency": "this_week",
   "evidence": "key quote or fact"
-}]
-
-If a triangulation pattern exists across documents, add an entry with signal_type: "triangulation" explaining the convergence.`,
+}]`,
           docsText,
           4096
         );
@@ -355,6 +359,10 @@ If a triangulation pattern exists across documents, add an entry with signal_typ
         // Store signals
         for (const signal of signals) {
           if (!signal.company || !signal.signal_type) continue;
+          if (!VALID_SIGNAL_TYPES.has(signal.signal_type)) {
+            console.warn(`     ⚠️  Skipping invalid signal_type: ${signal.signal_type}`);
+            continue;
+          }
 
           // Find or create company
           let companyId;
@@ -362,7 +370,7 @@ If a triangulation pattern exists across documents, add an entry with signal_typ
             `SELECT id FROM companies WHERE LOWER(name) = LOWER($1) LIMIT 1`,
             [signal.company]
           );
-          
+
           if (companyResult.rows.length > 0) {
             companyId = companyResult.rows[0].id;
           } else {
@@ -384,30 +392,31 @@ If a triangulation pattern exists across documents, add an entry with signal_typ
             `, [
               companyId,
               signal.signal_type,
-              signal.signal_type === 'triangulation' ? 'computed' : 'market',
+              'market',
               signal.confidence || 0.5,
               signal.summary,
-              signal.hiring_implications || '',
+              JSON.stringify(signal.hiring_implications || ''),
               batch[signal.document_index - 1]?.id || batch[0]?.id
-            ]).catch(() => {}); // Skip constraint violations
+            ]);
 
             stats.signals++;
           }
         }
+
+        // Mark this batch as processed only after successful analysis + storage
+        await pool.query(`
+          UPDATE external_documents SET signals_computed_at = NOW()
+          WHERE id = ANY($1)
+        `, [batchIds]);
+
       } catch (e) {
         console.warn(`     ⚠️  Claude analysis error: ${e.message}`);
+        console.warn(`     ↳ ${batch.length} documents will be retried next run`);
         stats.errors++;
       }
 
       await sleep(500); // Rate limit between Claude calls
     }
-
-    // Mark as processed
-    const processedIds = unprocessed.rows.map(d => d.id);
-    await pool.query(`
-      UPDATE external_documents SET signals_computed_at = NOW() 
-      WHERE id = ANY($1)
-    `, [processedIds]);
 
     console.log(`     ${stats.signals} signals detected via Claude`);
   }
@@ -989,6 +998,16 @@ const PIPELINES = {
     fn: pipelineDailyBrief,
     schedule: '0 6 * * *',
     description: 'Generate daily intelligence briefing via Claude'
+  },
+  sync_xero: {
+    name: 'Sync Xero Invoices',
+    icon: '💰',
+    fn: async () => {
+      const { pipelineSyncXero } = require('./sync_xero');
+      return pipelineSyncXero();
+    },
+    schedule: '0 7,19 * * *',
+    description: 'Fetch new/updated invoices from Xero, update placements & financials'
   }
 };
 

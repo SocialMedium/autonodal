@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Autonodal — Multi-Party Intelligence</title>
+<meta name="description" content="Lead Origination & Relationship Acceleration Concierge. Where market signals, network intelligence and relationship depth converge.">
+<link rel="canonical" href="https://autonodal.com">
+<meta property="og:title" content="Autonodal — Multi-Party Intelligence">
+<meta property="og:description" content="Lead Origination & Relationship Acceleration Concierge. Where market signals, network intelligence and relationship depth converge.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://autonodal.com">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Autonodal — Multi-Party Intelligence">
+<meta name="twitter:description" content="Lead Origination & Relationship Acceleration Concierge. Where market signals, network intelligence and relationship depth converge.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f5f3ef;
+  --bg-2: #edeae3;
+  --surface: #ffffff;
+  --ink: #0f0e0c;
+  --ink-2: #4a4640;
+  --ink-3: #9b948a;
+  --accent: #1a56db;
+  --accent-2: #0ea472;
+  --accent-warm: #e85d26;
+  --border: rgba(15,14,12,0.08);
+  --border-strong: rgba(15,14,12,0.16);
+  --shadow: 0 2px 8px rgba(15,14,12,0.06), 0 12px 40px rgba(15,14,12,0.08);
+  --shadow-lg: 0 4px 16px rgba(15,14,12,0.08), 0 32px 80px rgba(15,14,12,0.12);
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.display { font-family: 'Playfair Display', Georgia, serif; }
+.mono { font-family: 'IBM Plex Mono', monospace; }
+
+/* ── NAV ── */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(255,255,255,0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.3s, box-shadow 0.3s;
+  padding: 0 48px;
+  height: 64px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav.scrolled {
+  border-bottom-color: var(--border);
+  box-shadow: 0 1px 12px rgba(15,14,12,0.06);
+}
+.nav-brand { display: flex; align-items: baseline; gap: 12px; }
+.nav-brand-name { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 20px; color: var(--ink); }
+.nav-brand-sub { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 1.5px; }
+.btn-pill {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 14px; font-weight: 600;
+  padding: 10px 24px; border-radius: 100px;
+  border: none; cursor: pointer;
+  transition: all 0.25s ease;
+  text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: #1448b8; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(26,86,219,0.3); }
+.btn-ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--border-strong); }
+.btn-ghost:hover { border-color: var(--ink); background: var(--surface); }
+
+/* ── HERO ── */
+.hero {
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 120px 24px 80px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Phase 1: Words */
+.hero-words { position: relative; min-height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.hero-word {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(36px, 6vw, 64px);
+  line-height: 1.15;
+  opacity: 0;
+  transform: translateY(30px);
+}
+.hero-word.amp {
+  font-size: clamp(24px, 3.5vw, 40px);
+  color: var(--ink-3);
+  margin: 4px 0;
+}
+.hero-word.concierge {
+  font-size: clamp(40px, 6.5vw, 72px);
+  color: var(--accent);
+}
+.hero-word.show {
+  animation: wordIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes wordIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Phase 2-3: LORAC AI assembly */
+.hero-lorac-container {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex; align-items: center; gap: 0;
+  opacity: 0; pointer-events: none;
+}
+.hero-lorac-container.active { pointer-events: auto; }
+.lorac-letter {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(56px, 8vw, 96px);
+  font-weight: 700;
+  color: var(--ink);
+  opacity: 0;
+  display: inline-block;
+}
+.lorac-letter.land {
+  animation: letterLand 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+@keyframes letterLand {
+  0% { opacity: 0; transform: scale(1.4) translateY(-20px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.lorac-sep {
+  width: 2px; height: 56px;
+  background: var(--border-strong);
+  margin: 0 20px;
+  opacity: 0;
+  transform: scaleY(0);
+}
+.lorac-sep.show {
+  animation: sepIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes sepIn {
+  to { opacity: 1; transform: scaleY(1); }
+}
+.lorac-ai {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(56px, 8vw, 96px);
+  font-weight: 700;
+  color: var(--accent-2);
+  opacity: 0;
+}
+.lorac-ai.show {
+  animation: aiIn 0.5s ease forwards;
+}
+@keyframes aiIn {
+  to { opacity: 1; }
+}
+.lorac-glow {
+  animation: glowPulse 1s ease;
+}
+@keyframes glowPulse {
+  0%, 100% { text-shadow: none; }
+  50% { text-shadow: 0 0 40px rgba(26,86,219,0.3), 0 0 80px rgba(26,86,219,0.15); }
+}
+
+/* Phase 4: Expansion + tagline */
+.hero-sub {
+  margin-top: 24px;
+  opacity: 0;
+  transform: translateY(16px);
+}
+.hero-sub.show {
+  animation: fadeUp 0.6s ease forwards;
+}
+.hero-expansion {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: clamp(11px, 1.4vw, 14px);
+  color: var(--ink-3);
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+.hero-tagline {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: clamp(16px, 2vw, 20px);
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+/* Phase 5: CTAs */
+.hero-ctas {
+  display: flex; gap: 16px; margin-top: 40px;
+  opacity: 0; transform: translateY(16px);
+}
+.hero-ctas.show { animation: fadeUp 0.6s ease forwards; }
+
+@keyframes fadeUp {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Replay */
+.replay-btn {
+  position: fixed; bottom: 24px; right: 24px; z-index: 50;
+  background: none; border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--ink-3);
+  cursor: pointer; opacity: 0; transition: all 0.3s;
+}
+.replay-btn.show { opacity: 1; }
+.replay-btn:hover { color: var(--ink); border-color: var(--border-strong); }
+
+/* ── TICKER ── */
+.ticker {
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  padding: 14px 0;
+  white-space: nowrap;
+}
+.ticker-track {
+  display: inline-flex;
+  animation: tickerScroll 40s linear infinite;
+}
+.ticker-item {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: var(--ink-3);
+  padding: 0 24px;
+  display: inline-flex; align-items: center; gap: 8px;
+  flex-shrink: 0;
+}
+.ticker-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-2); flex-shrink: 0; }
+@keyframes tickerScroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* ── SECTIONS ── */
+section {
+  padding: 120px 48px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.section-tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+.section-title {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(32px, 4vw, 48px);
+  line-height: 1.2;
+  margin-bottom: 24px;
+}
+.section-body {
+  font-size: 18px;
+  color: var(--ink-2);
+  max-width: 720px;
+  line-height: 1.7;
+}
+
+/* Scroll reveal */
+.reveal {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── CARDS ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 32px;
+  transition: all 0.25s ease;
+}
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--border-strong);
+}
+
+/* Party cards */
+.party-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px;
+  margin-top: 48px;
+}
+.party-card { border-left: 4px solid var(--accent); }
+.party-card.second { border-left-color: var(--accent-2); }
+.party-card.third { border-left-color: var(--accent-warm); }
+.party-card-title {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 12px;
+}
+.party-card.first .party-card-title { color: var(--accent); }
+.party-card.second .party-card-title { color: var(--accent-2); }
+.party-card.third .party-card-title { color: var(--accent-warm); }
+.party-card p { font-size: 15px; color: var(--ink-2); line-height: 1.6; }
+
+/* Pillar cards */
+.pillar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px;
+  margin-top: 48px;
+}
+.pillar-bar { height: 4px; border-radius: 2px; margin-bottom: 24px; }
+.pillar-bar.cobalt { background: var(--accent); }
+.pillar-bar.emerald { background: var(--accent-2); }
+.pillar-bar.orange { background: var(--accent-warm); }
+.pillar-icon { margin-bottom: 20px; }
+.pillar-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 24px;
+  margin-bottom: 16px;
+}
+.pillar-body { font-size: 15px; color: var(--ink-2); line-height: 1.7; }
+
+/* Steps */
+.steps { counter-reset: step; }
+.step-item {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 32px;
+  padding: 48px 0;
+  border-bottom: 1px solid var(--border);
+  align-items: start;
+}
+.step-item:last-child { border-bottom: none; }
+.step-num {
+  font-family: 'Playfair Display', serif;
+  font-size: 56px;
+  color: var(--border-strong);
+  line-height: 1;
+}
+.step-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 24px;
+  margin-bottom: 12px;
+}
+.step-body { font-size: 16px; color: var(--ink-2); line-height: 1.7; max-width: 560px; }
+
+/* LORAC AI section */
+.lorac-section {
+  background: var(--bg-2);
+  border-radius: 24px;
+  padding: 80px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: center;
+  margin: 0 48px;
+  max-width: 1200px;
+  margin-left: auto; margin-right: auto;
+}
+.lorac-left-title {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(48px, 6vw, 72px);
+  font-weight: 700;
+  margin-bottom: 40px;
+}
+.lorac-left-title .ai { color: var(--accent-2); }
+.etymology { list-style: none; }
+.etymology li {
+  display: flex; align-items: baseline; gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.etymology li:last-child { border-bottom: none; }
+.ety-letter {
+  font-family: 'Playfair Display', serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent);
+  width: 32px;
+  flex-shrink: 0;
+}
+.ety-word { font-size: 16px; color: var(--ink-2); }
+.lorac-right-tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--accent-2);
+  margin-bottom: 16px;
+}
+.lorac-right-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 32px;
+  margin-bottom: 20px;
+}
+.lorac-right-body { font-size: 16px; color: var(--ink-2); line-height: 1.8; }
+.lorac-right-body p + p { margin-top: 16px; }
+
+/* CTA section */
+.cta-section {
+  text-align: center;
+  padding: 160px 48px;
+}
+.cta-title {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(36px, 5vw, 64px);
+  line-height: 1.2;
+  margin-bottom: 20px;
+}
+.cta-sub {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: var(--ink-3);
+  letter-spacing: 0.5px;
+  margin-bottom: 32px;
+}
+.cta-btn {
+  font-size: 16px;
+  padding: 16px 40px;
+}
+
+/* Footer */
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 40px 48px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.footer-left p {
+  font-size: 14px;
+  color: var(--ink-3);
+}
+.footer-left p:first-child {
+  font-weight: 500;
+  color: var(--ink-2);
+  margin-bottom: 4px;
+}
+.footer-right {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  .nav { padding: 0 20px; }
+  .nav-brand-sub { display: none; }
+  section { padding: 80px 20px; }
+  .lorac-section {
+    grid-template-columns: 1fr;
+    padding: 48px 24px;
+    margin: 0 20px;
+    gap: 40px;
+  }
+  .step-item {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .step-num { font-size: 36px; }
+  .footer { flex-direction: column; gap: 16px; text-align: center; }
+  .hero { padding: 100px 20px 60px; }
+  .hero-ctas { flex-direction: column; align-items: center; }
+  .cta-section { padding: 100px 20px; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav" id="nav">
+  <div class="nav-brand">
+    <span class="nav-brand-name">Autonodal</span>
+    <span class="nav-brand-sub">Multi-Party Intelligence</span>
+  </div>
+  <a href="/index.html" class="btn-pill btn-primary">Enter Platform <span style="margin-left:2px">→</span></a>
+</nav>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <div class="hero-words" id="heroWords">
+    <div class="hero-word display" id="hw1"><span class="hw-first">L</span>ead <span class="hw-first">O</span>rigination</div>
+    <div class="hero-word display amp" id="hw2">&amp;</div>
+    <div class="hero-word display" id="hw3"><span class="hw-first">R</span>elationship <span class="hw-first">A</span>cceleration</div>
+    <div class="hero-word display concierge" id="hw4"><span class="hw-first">C</span>oncierge</div>
+  </div>
+
+  <div class="hero-lorac-container" id="loracContainer">
+    <span class="lorac-letter" id="ll-L">L</span>
+    <span class="lorac-letter" id="ll-O">O</span>
+    <span class="lorac-letter" id="ll-R">R</span>
+    <span class="lorac-letter" id="ll-A">A</span>
+    <span class="lorac-letter" id="ll-C">C</span>
+    <span class="lorac-sep" id="loracSep"></span>
+    <span class="lorac-ai display" id="loracAI">AI</span>
+  </div>
+
+  <div class="hero-sub" id="heroSub">
+    <div class="hero-expansion mono">Lead Origination &amp; Relationship Acceleration Concierge</div>
+    <div class="hero-tagline">Your market concierge. Always on.</div>
+  </div>
+
+  <div class="hero-ctas" id="heroCtas">
+    <a href="/index.html" class="btn-pill btn-primary" style="font-size:16px; padding:14px 36px;">Enter Platform</a>
+    <a href="#what" class="btn-pill btn-ghost">What is LORAC AI ↓</a>
+  </div>
+</section>
+
+<!-- REPLAY -->
+<button class="replay-btn" id="replayBtn" title="Replay animation">↻ Replay</button>
+
+<!-- TICKER -->
+<div class="ticker">
+  <div class="ticker-track" id="tickerTrack">
+    <span class="ticker-item"><span class="ticker-dot"></span>77,648 people tracked</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>6,874 companies monitored</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>302 active searches</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>Signals every 30 min</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>48 live intelligence sources</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>AU · SG · UK · US</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>77,648 people tracked</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>6,874 companies monitored</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>302 active searches</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>Signals every 30 min</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>48 live intelligence sources</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>AU · SG · UK · US</span>
+  </div>
+</div>
+
+<!-- WHAT IS MULTI-PARTY INTELLIGENCE -->
+<section id="what">
+  <div class="reveal">
+    <div class="section-tag">The Category</div>
+    <h2 class="section-title">Three data streams.<br>One coordinated signal.</h2>
+    <p class="section-body">Most intelligence platforms work from one angle — news, or your CRM, or your network. Autonodal fuses all three simultaneously: first-party relationship depth, second-party network expertise, and third-party market signals. The result is a coordination scale that human networks always needed but could never reach.</p>
+  </div>
+
+  <div class="party-grid">
+    <div class="card party-card first reveal">
+      <div class="party-card-title">First-party</div>
+      <p>Your placements, interactions, and relationship history. The intelligence that only you hold.</p>
+    </div>
+    <div class="card party-card second reveal">
+      <div class="party-card-title">Second-party</div>
+      <p>Your network's expertise and warm connections — structured and searchable for the first time.</p>
+    </div>
+    <div class="card party-card third reveal">
+      <div class="party-card-title">Third-party</div>
+      <p>Live market signals — funding, hiring, movement, expansion — from 48 sources across 4 markets.</p>
+    </div>
+  </div>
+</section>
+
+<!-- THREE PILLARS -->
+<section>
+  <div class="reveal">
+    <div class="section-tag">The Engine</div>
+    <h2 class="section-title">Three pillars. One concierge.</h2>
+  </div>
+
+  <div class="pillar-grid">
+    <div class="card reveal">
+      <div class="pillar-bar cobalt"></div>
+      <div class="pillar-icon">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="16" stroke="#1a56db" stroke-width="1.5" opacity="0.2"/><path d="M12 20c0-2 2-4 4-3s2 4 4 3 4-3 4-1 2 4 4 3" stroke="#1a56db" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <h3 class="pillar-title">Lead Origination</h3>
+      <p class="pillar-body">Opportunities generated from market signals — not waiting in a database. Funding rounds, leadership changes, expansion signals detected and surfaced before your competitors know to look.</p>
+    </div>
+    <div class="card reveal">
+      <div class="pillar-bar emerald"></div>
+      <div class="pillar-icon">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="14" cy="16" r="4" stroke="#0ea472" stroke-width="1.5"/><circle cx="26" cy="16" r="4" stroke="#0ea472" stroke-width="1.5"/><circle cx="20" cy="28" r="4" stroke="#0ea472" stroke-width="1.5"/><line x1="17" y1="18" x2="18" y2="25" stroke="#0ea472" stroke-width="1.5"/><line x1="23" y1="18" x2="22" y2="25" stroke="#0ea472" stroke-width="1.5"/><line x1="18" y1="16" x2="22" y2="16" stroke="#0ea472" stroke-width="1.5"/></svg>
+      </div>
+      <h3 class="pillar-title">Relationship Acceleration</h3>
+      <p class="pillar-body">The warmth of an entire professional network's relationships — accessible in a single brief. Proximity scoring, engagement history, and timing intelligence across tens of thousands of people.</p>
+    </div>
+    <div class="card reveal">
+      <div class="pillar-bar orange"></div>
+      <div class="pillar-icon">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><path d="M14 28h12M16 28v-6a4 4 0 018 0v6" stroke="#e85d26" stroke-width="1.5" stroke-linecap="round"/><circle cx="20" cy="16" r="3" stroke="#e85d26" stroke-width="1.5"/><path d="M20 13v-2" stroke="#e85d26" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </div>
+      <h3 class="pillar-title">Concierge Intelligence</h3>
+      <p class="pillar-body">Not a system you operate. A concierge that operates on your behalf. Anticipates timing. Surfaces the right person at the right moment. Acts while you sleep.</p>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section>
+  <div class="reveal">
+    <div class="section-tag">How It Works</div>
+    <h2 class="section-title">Three steps. Continuous.</h2>
+  </div>
+
+  <div class="steps">
+    <div class="step-item reveal">
+      <div class="step-num display">01</div>
+      <div>
+        <h3 class="step-title">Signals detected</h3>
+        <p class="step-body">48 live sources across AU, SG, UK and US scan continuously. Every funding round, appointment, and market move — classified the moment it publishes.</p>
+      </div>
+    </div>
+    <div class="step-item reveal">
+      <div class="step-num display">02</div>
+      <div>
+        <h3 class="step-title">Intelligence built</h3>
+        <p class="step-body">Signals cross-referenced against relationship history, network proximity, and engagement patterns. Context that transforms a data point into a decision.</p>
+      </div>
+    </div>
+    <div class="step-item reveal">
+      <div class="step-num display">03</div>
+      <div>
+        <h3 class="step-title">Concierge surfaces</h3>
+        <p class="step-body">The right opportunity, the right person, the right moment — without you having to ask. CRM remembers. LORAC anticipates.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- LORAC AI -->
+<div class="lorac-section reveal">
+  <div class="lorac-left">
+    <div class="lorac-left-title">LORAC <span class="ai">AI</span></div>
+    <ul class="etymology">
+      <li><span class="ety-letter">L</span><span class="ety-word">Lead Origination</span></li>
+      <li><span class="ety-letter">O</span><span class="ety-word">&amp;</span></li>
+      <li><span class="ety-letter">R</span><span class="ety-word">Relationship</span></li>
+      <li><span class="ety-letter">A</span><span class="ety-word">Acceleration</span></li>
+      <li><span class="ety-letter">C</span><span class="ety-word">Concierge</span></li>
+    </ul>
+  </div>
+  <div class="lorac-right">
+    <div class="lorac-right-tag">Multi-Party Intelligence Engine</div>
+    <h3 class="lorac-right-title">Built to coordinate at market scale.</h3>
+    <div class="lorac-right-body">
+      <p>LORAC AI is the intelligence layer beneath Autonodal. It fuses first-party relationship depth with live market signals and network expertise — the three data streams that have never been coordinated at this scale before.</p>
+      <p>Not a tool you use. A concierge that works continuously on your behalf, compounding intelligence with every signal, placement, and interaction.</p>
+    </div>
+  </div>
+</div>
+
+<!-- CTA -->
+<section class="cta-section">
+  <div class="reveal">
+    <h2 class="cta-title display">The market is<br>already moving.</h2>
+    <p class="cta-sub">Multi-Party Intelligence · Restricted access</p>
+    <a href="/index.html" class="btn-pill btn-primary cta-btn">Enter Autonodal Platform <span style="margin-left:4px">→</span></a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="footer-left">
+    <p>Autonodal — powered by LORAC AI</p>
+    <p>Multi-Party Intelligence</p>
+  </div>
+  <div class="footer-right">autonodal.com</div>
+</footer>
+
+<script>
+// ── NAV SCROLL ──
+const nav = document.getElementById('nav');
+window.addEventListener('scroll', () => {
+  nav.classList.toggle('scrolled', window.scrollY > 20);
+});
+
+// ── SCROLL REVEAL ──
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
+}, { threshold: 0.15 });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// ── HERO ANIMATION ──
+const heroWords = document.getElementById('heroWords');
+const loracContainer = document.getElementById('loracContainer');
+const heroSub = document.getElementById('heroSub');
+const heroCtas = document.getElementById('heroCtas');
+const replayBtn = document.getElementById('replayBtn');
+
+function runHeroAnimation() {
+  // Reset
+  const words = ['hw1','hw2','hw3','hw4'];
+  words.forEach(id => { const el = document.getElementById(id); el.classList.remove('show'); el.style.opacity = '0'; el.style.transform = 'translateY(30px)'; });
+  heroWords.style.opacity = '1'; heroWords.style.transition = '';
+  loracContainer.style.opacity = '0'; loracContainer.classList.remove('active');
+  ['L','O','R','A','C'].forEach(l => { const el = document.getElementById('ll-'+l); el.classList.remove('land'); el.style.opacity = '0'; });
+  document.getElementById('loracSep').classList.remove('show'); document.getElementById('loracSep').style.opacity = '0'; document.getElementById('loracSep').style.transform = 'scaleY(0)';
+  document.getElementById('loracAI').classList.remove('show'); document.getElementById('loracAI').style.opacity = '0';
+  heroSub.classList.remove('show'); heroSub.style.opacity = '0'; heroSub.style.transform = 'translateY(16px)';
+  heroCtas.classList.remove('show'); heroCtas.style.opacity = '0'; heroCtas.style.transform = 'translateY(16px)';
+  replayBtn.classList.remove('show');
+
+  // Remove glow
+  ['ll-L','ll-O','ll-R','ll-A','ll-C'].forEach(id => document.getElementById(id).classList.remove('lorac-glow'));
+
+  // PHASE 1: Words appear
+  const delays = [200, 500, 800, 1400];
+  words.forEach((id, i) => {
+    setTimeout(() => document.getElementById(id).classList.add('show'), delays[i]);
+  });
+
+  // PHASE 2: Words fade, letters assemble (after concierge + 800ms)
+  const phase2Start = 2200;
+  setTimeout(() => {
+    heroWords.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+    heroWords.style.opacity = '0';
+    heroWords.style.transform = 'translateY(-20px) scale(0.95)';
+    loracContainer.style.opacity = '1';
+    loracContainer.classList.add('active');
+
+    const letters = ['L','O','R','A','C'];
+    letters.forEach((l, i) => {
+      setTimeout(() => document.getElementById('ll-'+l).classList.add('land'), 200 + i * 80);
+    });
+  }, phase2Start);
+
+  // PHASE 3: LORAC glow + AI appears
+  const phase3Start = phase2Start + 900;
+  setTimeout(() => {
+    ['ll-L','ll-O','ll-R','ll-A','ll-C'].forEach(id => document.getElementById(id).classList.add('lorac-glow'));
+    setTimeout(() => document.getElementById('loracSep').classList.add('show'), 400);
+    setTimeout(() => document.getElementById('loracAI').classList.add('show'), 600);
+  }, phase3Start);
+
+  // PHASE 4: Expansion + tagline
+  const phase4Start = phase3Start + 1200;
+  setTimeout(() => heroSub.classList.add('show'), phase4Start);
+
+  // PHASE 5: CTAs
+  setTimeout(() => heroCtas.classList.add('show'), phase4Start + 400);
+
+  // Show replay
+  setTimeout(() => replayBtn.classList.add('show'), phase4Start + 800);
+}
+
+replayBtn.addEventListener('click', () => {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  setTimeout(runHeroAnimation, 400);
+});
+
+// Start on load
+runHeroAnimation();
+</script>
+</body>
+</html>

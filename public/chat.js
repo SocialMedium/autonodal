@@ -133,7 +133,8 @@
       .then(d => {
         if (d.error) throw new Error(d.error);
         fileId = d.file_id; fileName = d.filename;
-        $('chatFileName').textContent = '📎 ' + d.filename + (d.row_count ? ` (${d.row_count} rows)` : '') + (d.pages ? ` (${d.pages} pages)` : '');
+        const liLabel = d.linkedin_type ? ` [LinkedIn ${d.linkedin_type.charAt(0).toUpperCase() + d.linkedin_type.slice(1)}]` : '';
+        $('chatFileName').textContent = '📎 ' + d.filename + liLabel + (d.row_count ? ` (${d.row_count} rows)` : '') + (d.pages ? ` (${d.pages} pages)` : '');
         $('chatSendBtn').disabled = false;
       })
       .catch(() => { $('chatFileName').textContent = '❌ Failed'; setTimeout(clearFile, 2000); });

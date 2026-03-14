@@ -32,7 +32,10 @@ const OpenAI = require('openai');
 // CLIENTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+
+// Pre-warm the pool at startup
+pool.query('SELECT 1').then(() => process.stderr.write('MCP DB pool ready\n')).catch(e => process.stderr.write('MCP DB pool error: ' + e.message + '\n'));
 
 const qdrant = new QdrantClient({
   url: process.env.QDRANT_URL,
@@ -94,6 +97,7 @@ function okText(text) {
 // SERVER
 // ─────────────────────────────────────────────────────────────────────────────
 
+function createMcpServer() {
 const server = new McpServer({
   name: 'mitchellake-mcp-server',
   version: '1.0.0'
@@ -192,7 +196,7 @@ Examples:
       }
       return okText(lines.join('\n'));
     } catch (err) {
-      return okText(`Error searching people: ${err.message}`);
+      return okText(`Error searching people: ${(err.message || err.code || String(err))}`);
     }
   }
 );
@@ -282,7 +286,7 @@ Args:
       // Signals
       if (include_signals) {
         const sigsR = await dbQuery(`
-          SELECT signal_type, detected_at, summary, source_type
+          SELECT signal_type, detected_at, title, description, source
           FROM person_signals
           WHERE person_id = $1
           ORDER BY detected_at DESC LIMIT 10
@@ -291,7 +295,7 @@ Args:
           sections.push(`\n## Recent Signals`);
           for (const sig of sigsR.rows) {
             const date = sig.detected_at ? new Date(sig.detected_at).toLocaleDateString() : '?';
-            sections.push(`- **${sig.signal_type}** (${date}): ${sig.summary || ''}`);
+            sections.push(`- **${sig.signal_type}** (${date}): ${sig.title || sig.description || ''}`);
           }
         }
       }
@@ -505,7 +509,7 @@ Args:
 
       // Recent signals
       const sigR = await dbQuery(`
-        SELECT signal_type, confidence_score, headline, detected_at
+        SELECT signal_type, confidence_score, evidence_summary, hiring_implications, detected_at
         FROM signal_events
         WHERE company_id = $1
         ORDER BY detected_at DESC LIMIT 8
@@ -514,7 +518,8 @@ Args:
         sections.push(`\n## Recent Signals`);
         for (const s of sigR.rows) {
           const date = s.detected_at ? new Date(s.detected_at).toLocaleDateString() : '?';
-          sections.push(`- **${s.signal_type}** (${date}, ${formatScore(s.confidence_score)}): ${s.headline || ''}`);
+          sections.push(`- **${s.signal_type}** (${date}, ${formatScore(s.confidence_score)}): ${s.evidence_summary || ''}`);
+          if (s.hiring_implications) sections.push(`  _Hiring: ${s.hiring_implications}_`);
         }
       }
 
@@ -581,8 +586,8 @@ Args:
         const co = sig.company_name_resolved || sig.company_name || 'Unknown';
         lines.push(`### ${co} — ${sig.signal_type} (${formatScore(sig.confidence_score)})`);
         lines.push(`📅 ${date}`);
-        if (sig.headline) lines.push(sig.headline);
-        if (sig.summary) lines.push(`> ${sig.summary}`);
+        if (sig.evidence_summary) lines.push(`> ${sig.evidence_summary}`);
+        if (sig.hiring_implications) lines.push(`_Hiring: ${sig.hiring_implications}_`);
         lines.push('');
       }
 
@@ -996,7 +1001,7 @@ server.registerTool(
 
       return okText(lines.join('\n'));
     } catch (err) {
-      return okText(`Error fetching stats: ${err.message}`);
+      return okText(`Error fetching stats: ${(err.message || err.code || String(err))}`);
     }
   }
 );
@@ -1009,7 +1014,12 @@ server.registerTool(
 // TRANSPORT — only runs when executed directly (not when require()'d)
 // ─────────────────────────────────────────────────────────────────────────────
 
+  return server;
+}
+
 if (require.main === module) {
+  const mcpInstance = createMcpServer();
+  const server = mcpInstance;
   const transport = process.env.MCP_TRANSPORT || 'stdio';
   if (transport === 'http') {
     const express = require('express');
@@ -1020,7 +1030,7 @@ if (require.main === module) {
     app.post('/mcp', async (req, res) => {
       const t = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
       res.on('close', () => t.close());
-      await server.connect(t);
+      await mcpInstance.connect(t);
       await t.handleRequest(req, res, req.body);
     });
     const port = parseInt(process.env.MCP_PORT || process.env.PORT || 3001);
@@ -1029,10 +1039,12 @@ if (require.main === module) {
     const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
     (async () => {
       const t = new StdioServerTransport();
-      await server.connect(t);
+      await mcpInstance.connect(t);
       process.stderr.write('MitchelLake MCP Server running (stdio)\n');
     })().catch(err => { process.stderr.write(`Fatal: ${err.message}\n`); process.exit(1); });
   }
 } else {
-  module.exports = { server };
 }
+
+module.exports = { createMcpServer };
+// Sun Mar  8 17:57:35 CET 2026

@@ -386,4 +386,12 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { ingestXeroInvoices };
+module.exports = {
+  ingestXeroInvoices,
+  extractCandidateName,
+  extractRoleTitle,
+  determineRoleLevel,
+  findPersonByName,
+  findOrCreateClient,
+  updateClientFinancials
+};

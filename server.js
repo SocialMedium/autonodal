@@ -89,73 +89,102 @@ async function optionalAuth(req, res, next) {
 // AUTH ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-app.post('/api/auth/signup', async (req, res) => {
-  try {
-    const { email, password, name } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
-
-    // Check existing
-    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-    if (existing.rows.length > 0) return res.status(409).json({ error: 'Email already exists' });
-
-    // Hash password
-    const bcrypt = require('bcrypt');
-    const password_hash = await bcrypt.hash(password, 10);
-
-    // Create user
-    const { rows: [user] } = await pool.query(
-      `INSERT INTO users (id, email, password_hash, name, role, created_at, updated_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, 'user', NOW(), NOW())
-       RETURNING id, email, name, role`,
-      [email, password_hash, name || email.split('@')[0]]
-    );
-
-    // Create session
-    const token = crypto.randomBytes(48).toString('hex');
-    await pool.query(
-      `INSERT INTO sessions (id, user_id, token, expires_at, created_at)
-       VALUES (gen_random_uuid(), $1, $2, NOW() + INTERVAL '7 days', NOW())`,
-      [user.id, token]
-    );
-
-    res.json({ user, token });
-  } catch (err) {
-    console.error('Signup error:', err.message);
-    res.status(500).json({ error: 'Signup failed' });
-  }
+// Google OAuth — initiate
+app.get('/api/auth/google', (req, res) => {
+  if (!process.env.GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' });
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+  const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+    client_id: process.env.GOOGLE_CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid email profile',
+    hd: 'mitchellake.com',
+    prompt: 'select_account',
+    access_type: 'offline'
+  });
+  res.redirect(authUrl);
 });
 
-app.post('/api/auth/login', async (req, res) => {
+// Google OAuth — callback
+app.get('/api/auth/google/callback', async (req, res) => {
+  const { code, error } = req.query;
+  if (error) return res.redirect('/?auth_error=' + encodeURIComponent(error));
+  if (!code) return res.redirect('/?auth_error=no_code');
+
   try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
 
-    const { rows } = await pool.query('SELECT id, email, name, role, password_hash FROM users WHERE email = $1', [email]);
-    if (rows.length === 0) return res.status(401).json({ error: 'Invalid credentials' });
+    // Exchange code for tokens
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code'
+      })
+    });
 
-    const user = rows[0];
-    const bcrypt = require('bcrypt');
-    const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!tokenRes.ok) {
+      const err = await tokenRes.text();
+      console.error('Google token exchange failed:', err);
+      return res.redirect('/?auth_error=token_exchange_failed');
+    }
+
+    const tokenData = await tokenRes.json();
+
+    // Get user info
+    const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    });
+    const userInfo = await userInfoRes.json();
+
+    // Enforce mitchellake.com domain
+    if (!userInfo.email || !userInfo.email.endsWith('@mitchellake.com')) {
+      return res.redirect('/?auth_error=domain_restricted');
+    }
+
+    // Find or create user
+    let { rows } = await pool.query('SELECT id, email, name, role FROM users WHERE email = $1', [userInfo.email]);
+    let user;
+
+    if (rows.length > 0) {
+      user = rows[0];
+      // Update name/avatar if changed
+      await pool.query(
+        'UPDATE users SET name = COALESCE(NULLIF($1, \'\'), name), updated_at = NOW() WHERE id = $2',
+        [userInfo.name, user.id]
+      );
+    } else {
+      // Auto-create MitchelLake team member
+      const { rows: [newUser] } = await pool.query(
+        `INSERT INTO users (id, email, name, role, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, 'consultant', NOW(), NOW())
+         RETURNING id, email, name, role`,
+        [userInfo.email, userInfo.name || userInfo.email.split('@')[0]]
+      );
+      user = newUser;
+      console.log(`✅ New team member created: ${user.name} (${user.email})`);
+    }
 
     // Create session
-    const token = crypto.randomBytes(48).toString('hex');
+    const sessionToken = crypto.randomBytes(48).toString('hex');
     await pool.query(
       `INSERT INTO sessions (id, user_id, token, expires_at, created_at)
-       VALUES (gen_random_uuid(), $1, $2, NOW() + INTERVAL '7 days', NOW())`,
-      [user.id, token]
+       VALUES (gen_random_uuid(), $1, $2, NOW() + INTERVAL '30 days', NOW())`,
+      [user.id, sessionToken]
     );
 
     // Clean up expired sessions
-    await pool.query(`DELETE FROM sessions WHERE expires_at < NOW()`);
+    await pool.query('DELETE FROM sessions WHERE expires_at < NOW()');
 
-    res.json({
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
-      token,
-    });
+    // Redirect to app with token (frontend picks it up from URL)
+    res.redirect(`/?token=${sessionToken}&user=${encodeURIComponent(JSON.stringify({ id: user.id, email: user.email, name: user.name, role: user.role }))}`);
   } catch (err) {
-    console.error('Login error:', err.message);
-    res.status(500).json({ error: 'Login failed' });
+    console.error('Google auth error:', err);
+    res.redirect('/?auth_error=server_error');
   }
 });
 
@@ -1193,17 +1222,18 @@ app.get('/api/documents/sources', authenticateToken, async (req, res) => {
 // HEALTH
 // ═══════════════════════════════════════════════════════════════════════════════
 
-app.get('/api/health', async (req, res) => {
+
+app.get('/api/db-test', async (req, res) => {
+  const url = (process.env.DATABASE_URL || '').replace(/:([^@]+)@/, ':***@');
   try {
-    await pool.query('SELECT 1');
-    res.json({
-      status: 'ok',
-      database: 'connected',
-      timestamp: new Date().toISOString(),
-    });
-  } catch (err) {
-    res.status(500).json({ status: 'error', database: 'disconnected' });
+    const result = await pool.query('SELECT NOW() as time, current_database() as db');
+    res.json({ ok: true, url, ...result.rows[0] });
+  } catch(e) {
+    res.json({ ok: false, url, error: e.message, code: e.code });
   }
+});
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1347,7 +1377,8 @@ CAPABILITIES:
 1. **Interrogate data**: Search people, companies, signals, placements, research notes. Query the live database.
 2. **Ingest intelligence**: When consultants share gossip, meeting notes, or insights, extract structured data and save as research notes.
 3. **Process files**: Parse uploaded CSVs and PDFs — import candidates, companies, contacts.
-4. **Advanced analysis**: Run SQL queries for complex cross-referencing and aggregations.
+4. **LinkedIn imports**: Auto-detect LinkedIn Connections, Contacts, and Messages CSVs. Match against existing people, create team proximity links, store message history as interactions.
+5. **Advanced analysis**: Run SQL queries for complex cross-referencing and aggregations.
 
 CONTEXT:
 - MitchelLake is a retained executive search firm (APAC, UK, global)
@@ -1362,6 +1393,9 @@ STYLE:
 - Australian English
 - When saving intel, confirm what was extracted
 - For file imports, preview before committing
+- When a LinkedIn CSV is uploaded, auto-detect the type (connections/contacts/messages) from the [LinkedIn Export Type] tag and use the appropriate import action (import_linkedin_connections or import_linkedin_messages). Always tell the user what was detected and confirm before importing.
+- For LinkedIn Connections: use import_linkedin_connections — this matches against existing people by LinkedIn URL, email, and name, creates team_proximity records, and adds new people for unmatched connections.
+- For LinkedIn Messages: use import_linkedin_messages — this groups messages by conversation and stores them as interaction records linked to matched people.
 
 RULES:
 - Always search before saying "I don't know"
@@ -1383,12 +1417,12 @@ const CHAT_TOOLS = [
   { name: 'search_research_notes', description: 'Search internal research notes — comp expectations, timing, preferences.', input_schema: { type: 'object', properties: { query: { type: 'string' }, person_name: { type: 'string' }, limit: { type: 'integer', default: 10 } }, required: ['query'] } },
   { name: 'log_intelligence', description: 'Save intelligence as a research note. Extracts structured data.', input_schema: { type: 'object', properties: { person_name: { type: 'string' }, company_name: { type: 'string' }, intelligence: { type: 'string' }, subject: { type: 'string' }, extracted: { type: 'object', properties: { timing: { type: 'string' }, compensation: { type: 'string' }, location_preference: { type: 'string' }, role_interests: { type: 'string' }, constraints: { type: 'string' }, warm_intros: { type: 'string' }, sentiment: { type: 'string' } } } }, required: ['person_name', 'intelligence', 'subject'] } },
   { name: 'create_person', description: 'Create a new person record.', input_schema: { type: 'object', properties: { full_name: { type: 'string' }, current_title: { type: 'string' }, current_company_name: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' }, location: { type: 'string' }, linkedin_url: { type: 'string' }, seniority_level: { type: 'string' } }, required: ['full_name'] } },
-  { name: 'process_uploaded_file', description: 'Process uploaded CSV/PDF. Actions: preview, import_people, import_companies, extract_text.', input_schema: { type: 'object', properties: { file_id: { type: 'string' }, action: { type: 'string', enum: ['preview', 'import_people', 'import_companies', 'extract_text'] }, column_mapping: { type: 'object' } }, required: ['file_id', 'action'] } },
+  { name: 'process_uploaded_file', description: 'Process uploaded CSV/PDF. Actions: preview, import_people, import_companies, extract_text, import_linkedin_connections (match LinkedIn connections against DB, create team_proximity records), import_linkedin_messages (store LinkedIn message history as interactions/intel).', input_schema: { type: 'object', properties: { file_id: { type: 'string' }, action: { type: 'string', enum: ['preview', 'import_people', 'import_companies', 'extract_text', 'import_linkedin_connections', 'import_linkedin_messages'] }, column_mapping: { type: 'object' } }, required: ['file_id', 'action'] } },
   { name: 'run_sql_query', description: 'Run read-only SQL SELECT for advanced analysis.', input_schema: { type: 'object', properties: { query: { type: 'string' }, explanation: { type: 'string' } }, required: ['query', 'explanation'] } },
   { name: 'get_platform_stats', description: 'Current platform statistics.', input_schema: { type: 'object', properties: {} } },
 ];
 
-async function executeTool(name, input) {
+async function executeTool(name, input, userId) {
   try {
     switch (name) {
       case 'search_people': {
@@ -1505,6 +1539,136 @@ async function executeTool(name, input) {
           }
           return JSON.stringify({ imported, skipped, total: fm.preview.length });
         }
+        if (action === 'import_linkedin_connections' && fm.preview) {
+          // Load people for matching
+          const { rows: dbPeople } = await pool.query(`SELECT id, full_name, first_name, last_name, linkedin_url, current_company_name, email FROM people WHERE full_name IS NOT NULL AND full_name != ''`);
+          const linkedinIndex = new Map(), nameIndex = new Map(), emailIndex = new Map();
+          for (const p of dbPeople) {
+            if (p.linkedin_url) { const slug = p.linkedin_url.toLowerCase().replace(/\/+$/, '').split('?')[0].match(/linkedin\.com\/in\/([^\/]+)/); if (slug) linkedinIndex.set(slug[1], p); }
+            const norm = `${(p.first_name || p.full_name?.split(' ')[0] || '').toLowerCase()} ${(p.last_name || p.full_name?.split(' ').slice(1).join(' ') || '').toLowerCase()}`.trim();
+            if (norm.length > 1) { if (!nameIndex.has(norm)) nameIndex.set(norm, []); nameIndex.get(norm).push(p); }
+            if (p.email) emailIndex.set(p.email.toLowerCase(), p);
+          }
+
+          // Ensure tables exist
+          await pool.query(`CREATE TABLE IF NOT EXISTS team_proximity (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), person_id UUID REFERENCES people(id) ON DELETE CASCADE, team_member_id UUID REFERENCES users(id), proximity_type VARCHAR(50) NOT NULL, source VARCHAR(50) NOT NULL, strength NUMERIC(3,2) DEFAULT 0.5, context TEXT, connected_at TIMESTAMPTZ, metadata JSONB DEFAULT '{}', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(person_id, team_member_id, proximity_type, source))`);
+          await pool.query(`CREATE TABLE IF NOT EXISTS linkedin_connections (id SERIAL PRIMARY KEY, team_member_id UUID REFERENCES users(id), first_name VARCHAR(255), last_name VARCHAR(255), full_name VARCHAR(255), linkedin_url TEXT, linkedin_slug VARCHAR(255), email VARCHAR(255), company VARCHAR(255), position VARCHAR(255), connected_at TIMESTAMPTZ, matched_person_id UUID REFERENCES people(id), match_method VARCHAR(50), match_confidence NUMERIC(3,2), imported_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(linkedin_slug))`);
+
+          const stats = { total: 0, matched: 0, unmatched: 0, proximity_created: 0, new_people: 0, errors: 0 };
+          for (const row of fm.preview) {
+            stats.total++;
+            const firstName = row['First Name'] || '';
+            const lastName = row['Last Name'] || '';
+            const fullName = `${firstName} ${lastName}`.trim();
+            const linkedinUrl = row['URL'] || '';
+            const email = row['Email Address'] || '';
+            const company = row['Company'] || '';
+            const position = row['Position'] || '';
+            const connectedOn = row['Connected On'] ? (new Date(row['Connected On']).toISOString().slice(0, 10) || null) : null;
+            if (!fullName || fullName.length < 2) continue;
+
+            const slug = linkedinUrl ? (linkedinUrl.toLowerCase().replace(/\/+$/, '').split('?')[0].match(/linkedin\.com\/in\/([^\/]+)/) || [])[1] : null;
+            let matchedPerson = null, matchMethod = null, matchConfidence = 0;
+
+            // Match: LinkedIn URL > Email > Name+Company > Name
+            if (slug && linkedinIndex.has(slug)) { matchedPerson = linkedinIndex.get(slug); matchMethod = 'linkedin_url'; matchConfidence = 0.99; }
+            if (!matchedPerson && email) { const m = emailIndex.get(email.toLowerCase()); if (m) { matchedPerson = m; matchMethod = 'email'; matchConfidence = 0.95; } }
+            if (!matchedPerson) {
+              const norm = `${firstName.toLowerCase()} ${lastName.toLowerCase()}`.trim();
+              const cands = nameIndex.get(norm) || [];
+              if (cands.length === 1) { matchedPerson = cands[0]; matchMethod = 'name_unique'; matchConfidence = 0.80; }
+              else if (cands.length > 1 && company) { const cm = cands.find(p => p.current_company_name && p.current_company_name.toLowerCase().includes(company.toLowerCase())); if (cm) { matchedPerson = cm; matchMethod = 'name_company'; matchConfidence = 0.90; } }
+            }
+
+            if (matchedPerson) {
+              stats.matched++;
+              // Create team_proximity
+              if (userId) {
+                try {
+                  let strength = 0.5;
+                  if (connectedOn) { const yrs = (Date.now() - new Date(connectedOn).getTime()) / (365.25*24*60*60*1000); if (yrs > 5) strength = 0.8; else if (yrs > 2) strength = 0.7; else if (yrs > 1) strength = 0.6; }
+                  strength = Math.min(1.0, strength + (matchConfidence - 0.5) * 0.2);
+                  await pool.query(`INSERT INTO team_proximity (person_id, team_member_id, proximity_type, source, strength, context, connected_at, metadata) VALUES ($1,$2,'linkedin_connection','linkedin_import',$3,$4,$5,$6) ON CONFLICT (person_id, team_member_id, proximity_type, source) DO UPDATE SET strength = GREATEST(team_proximity.strength, EXCLUDED.strength), context = EXCLUDED.context, updated_at = NOW()`, [matchedPerson.id, userId, strength.toFixed(2), `${position} @ ${company}`, connectedOn, JSON.stringify({ linkedin_url: linkedinUrl, match_method: matchMethod, match_confidence: matchConfidence })]);
+                  stats.proximity_created++;
+                } catch (e) { if (!e.message.includes('duplicate')) stats.errors++; }
+              }
+              // Update LinkedIn URL if missing
+              if (linkedinUrl && !matchedPerson.linkedin_url) { try { await pool.query('UPDATE people SET linkedin_url = $1, updated_at = NOW() WHERE id = $2 AND linkedin_url IS NULL', [linkedinUrl, matchedPerson.id]); } catch (e) {} }
+            } else {
+              stats.unmatched++;
+              // Create new person record for unmatched connections
+              try {
+                const { rows: dupes } = await pool.query('SELECT id FROM people WHERE full_name ILIKE $1 LIMIT 1', [fullName]);
+                if (!dupes.length) {
+                  const { rows: [np] } = await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, linkedin_url, email, source) VALUES ($1,$2,$3,$4,$5,'linkedin_import') RETURNING id`, [fullName, position || null, company || null, linkedinUrl || null, email || null]);
+                  stats.new_people++;
+                  // Also create proximity for new person
+                  if (userId && np) {
+                    try { await pool.query(`INSERT INTO team_proximity (person_id, team_member_id, proximity_type, source, strength, context, connected_at) VALUES ($1,$2,'linkedin_connection','linkedin_import',0.5,$3,$4) ON CONFLICT DO NOTHING`, [np.id, userId, `${position} @ ${company}`, connectedOn]); stats.proximity_created++; } catch (e) {}
+                  }
+                }
+              } catch (e) { stats.errors++; }
+            }
+
+            // Store in linkedin_connections table
+            if (slug) {
+              try { await pool.query(`INSERT INTO linkedin_connections (team_member_id, first_name, last_name, full_name, linkedin_url, linkedin_slug, email, company, position, connected_at, matched_person_id, match_method, match_confidence) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (linkedin_slug) DO UPDATE SET company = EXCLUDED.company, position = EXCLUDED.position, matched_person_id = COALESCE(EXCLUDED.matched_person_id, linkedin_connections.matched_person_id), imported_at = NOW()`, [userId, firstName, lastName, fullName, linkedinUrl, slug, email||null, company||null, position||null, connectedOn, matchedPerson?.id||null, matchMethod, matchConfidence||null]); } catch (e) {}
+            }
+          }
+          return JSON.stringify({ ...stats, match_rate: stats.total > 0 ? `${(stats.matched / stats.total * 100).toFixed(1)}%` : '0%', message: `Imported ${stats.total} LinkedIn connections: ${stats.matched} matched to existing people, ${stats.new_people} new people created, ${stats.proximity_created} team proximity links` });
+        }
+
+        if (action === 'import_linkedin_messages' && fm.preview) {
+          const stats = { total: 0, matched: 0, interactions_created: 0, unmatched_senders: new Set(), errors: 0 };
+
+          // Load people for matching by name
+          const { rows: dbPeople } = await pool.query(`SELECT id, full_name FROM people WHERE full_name IS NOT NULL`);
+          const nameMap = new Map();
+          for (const p of dbPeople) { nameMap.set(p.full_name.toLowerCase().trim(), p); }
+
+          // Group messages by conversation/sender
+          const conversations = new Map();
+          for (const row of fm.preview) {
+            const from = row['FROM'] || row['From'] || row['from'] || '';
+            const to = row['TO'] || row['To'] || row['to'] || '';
+            const content = row['CONTENT'] || row['Content'] || row['content'] || row['BODY'] || row['Body'] || row['body'] || '';
+            const date = row['DATE'] || row['Date'] || row['date'] || '';
+            const convId = row['CONVERSATION ID'] || row['Conversation ID'] || row['conversation id'] || `${from}-${to}`;
+            if (!content.trim()) continue;
+            stats.total++;
+
+            if (!conversations.has(convId)) conversations.set(convId, []);
+            conversations.get(convId).push({ from, to, content, date });
+          }
+
+          // Process each conversation as an interaction
+          for (const [convId, messages] of conversations) {
+            // Find the other person (not the current user) in the conversation
+            const participants = new Set();
+            messages.forEach(m => { if (m.from) participants.add(m.from.trim()); if (m.to) participants.add(m.to.trim()); });
+
+            for (const name of participants) {
+              const match = nameMap.get(name.toLowerCase().trim());
+              if (match) {
+                stats.matched++;
+                // Create a condensed interaction from all messages in this conversation
+                const sorted = messages.sort((a, b) => new Date(a.date) - new Date(b.date));
+                const summary = sorted.map(m => `[${m.date}] ${m.from}: ${m.content}`).join('\n').slice(0, 5000);
+                const latestDate = sorted[sorted.length - 1]?.date;
+
+                try {
+                  await pool.query(`INSERT INTO interactions (person_id, interaction_type, subject, summary, source, interaction_at) VALUES ($1, 'linkedin_message', $2, $3, 'linkedin_import', $4) ON CONFLICT DO NOTHING`, [match.id, `LinkedIn conversation (${messages.length} messages)`, summary, latestDate ? new Date(latestDate).toISOString() : new Date().toISOString()]);
+                  stats.interactions_created++;
+                } catch (e) { stats.errors++; }
+              } else {
+                stats.unmatched_senders.add(name);
+              }
+            }
+          }
+
+          return JSON.stringify({ total_messages: stats.total, conversations: conversations.size, matched_people: stats.matched, interactions_created: stats.interactions_created, unmatched_senders: [...stats.unmatched_senders].slice(0, 20), errors: stats.errors, message: `Processed ${stats.total} LinkedIn messages across ${conversations.size} conversations. Created ${stats.interactions_created} interaction records.` });
+        }
+
         return JSON.stringify({ error: 'Unsupported action' });
       }
       case 'run_sql_query': {
@@ -1538,7 +1702,14 @@ app.post('/api/chat/upload', authenticateToken, chatUpload.single('file'), async
 
     if (file.originalname.endsWith('.csv') || file.mimetype === 'text/csv') {
       const raw = fsChat.readFileSync(file.path, 'utf8');
-      const lines = raw.split('\n').filter(l => l.trim());
+      const allLines = raw.split('\n');
+      // Find header line (skip LinkedIn notes/blank lines at top)
+      let headerIdx = 0;
+      for (let i = 0; i < Math.min(allLines.length, 10); i++) {
+        const trimmed = allLines[i].trim();
+        if (trimmed && trimmed.includes(',')) { headerIdx = i; break; }
+      }
+      const lines = allLines.slice(headerIdx).filter(l => l.trim());
       if (lines.length) {
         function parseCSV(line) { const r=[]; let c='',q=false; for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"')q=!q;else if(ch===','&&!q){r.push(c.trim());c='';}else c+=ch;} r.push(c.trim()); return r; }
         const headers = parseCSV(lines[0]);
@@ -1548,13 +1719,38 @@ app.post('/api/chat/upload', authenticateToken, chatUpload.single('file'), async
           const vals = parseCSV(lines[i]);
           const row = {}; headers.forEach((h,idx) => { row[h] = vals[idx]||''; }); meta.preview.push(row);
         }
-        const lh = headers.map(h => h.toLowerCase());
-        meta.suggestedMapping = {};
-        if (lh.some(h=>h.includes('name'))) meta.suggestedMapping.full_name = headers[lh.findIndex(h=>h.includes('name'))];
-        if (lh.some(h=>h.includes('title')||h.includes('role'))) meta.suggestedMapping.current_title = headers[lh.findIndex(h=>h.includes('title')||h.includes('role'))];
-        if (lh.some(h=>h.includes('company')||h.includes('org'))) meta.suggestedMapping.current_company_name = headers[lh.findIndex(h=>h.includes('company')||h.includes('org'))];
-        if (lh.some(h=>h.includes('email'))) meta.suggestedMapping.email = headers[lh.findIndex(h=>h.includes('email'))];
-        if (lh.some(h=>h.includes('location')||h.includes('city'))) meta.suggestedMapping.location = headers[lh.findIndex(h=>h.includes('location')||h.includes('city'))];
+
+        // Detect LinkedIn CSV type
+        const lh = headers.map(h => h.toLowerCase().trim());
+        const hasFirstName = lh.includes('first name');
+        const hasLastName = lh.includes('last name');
+        const hasURL = lh.includes('url');
+        const hasConnectedOn = lh.includes('connected on');
+        const hasPosition = lh.includes('position');
+        const hasFrom = lh.some(h => h === 'from');
+        const hasTo = lh.some(h => h === 'to');
+        const hasContent = lh.some(h => h === 'content' || h === 'body');
+        const hasConversationId = lh.some(h => h.includes('conversation'));
+        const hasPhoneNumbers = lh.some(h => h.includes('phone'));
+
+        if (hasFirstName && hasLastName && hasConnectedOn && hasURL) {
+          meta.linkedinType = 'connections';
+          meta.suggestedMapping = { full_name: 'First Name+Last Name', linkedin_url: 'URL', email: 'Email Address', company: 'Company', position: 'Position', connected_on: 'Connected On' };
+        } else if ((hasFrom || hasTo) && (hasContent || hasConversationId)) {
+          meta.linkedinType = 'messages';
+          meta.suggestedMapping = { from: headers[lh.findIndex(h => h === 'from')], to: headers[lh.findIndex(h => h === 'to')], content: headers[lh.findIndex(h => h === 'content' || h === 'body')], date: headers[lh.findIndex(h => h.includes('date'))] };
+        } else if (hasFirstName && hasLastName && hasPhoneNumbers) {
+          meta.linkedinType = 'contacts';
+          meta.suggestedMapping = { full_name: 'First Name+Last Name', email: headers[lh.findIndex(h => h.includes('email'))], phone: headers[lh.findIndex(h => h.includes('phone'))], company: headers[lh.findIndex(h => h.includes('company') || h.includes('org'))] };
+        } else {
+          // Generic CSV mapping
+          meta.suggestedMapping = {};
+          if (lh.some(h=>h.includes('name'))) meta.suggestedMapping.full_name = headers[lh.findIndex(h=>h.includes('name'))];
+          if (lh.some(h=>h.includes('title')||h.includes('role'))) meta.suggestedMapping.current_title = headers[lh.findIndex(h=>h.includes('title')||h.includes('role'))];
+          if (lh.some(h=>h.includes('company')||h.includes('org'))) meta.suggestedMapping.current_company_name = headers[lh.findIndex(h=>h.includes('company')||h.includes('org'))];
+          if (lh.some(h=>h.includes('email'))) meta.suggestedMapping.email = headers[lh.findIndex(h=>h.includes('email'))];
+          if (lh.some(h=>h.includes('location')||h.includes('city'))) meta.suggestedMapping.location = headers[lh.findIndex(h=>h.includes('location')||h.includes('city'))];
+        }
       }
     }
     if (file.originalname.endsWith('.pdf') || file.mimetype === 'application/pdf') {
@@ -1565,7 +1761,7 @@ app.post('/api/chat/upload', authenticateToken, chatUpload.single('file'), async
     uploadedFiles.set(fileId, meta);
     setTimeout(() => { uploadedFiles.delete(fileId); try { fsChat.unlinkSync(file.path); } catch(e){} }, 30*60*1000);
 
-    res.json({ file_id: fileId, filename: file.originalname, size: file.size, type: file.mimetype, columns: meta.columns||null, row_count: meta.preview?.length||null, pages: meta.pages||null, suggested_mapping: meta.suggestedMapping||null });
+    res.json({ file_id: fileId, filename: file.originalname, size: file.size, type: file.mimetype, columns: meta.columns||null, row_count: meta.preview?.length||null, pages: meta.pages||null, suggested_mapping: meta.suggestedMapping||null, linkedin_type: meta.linkedinType||null });
   } catch (err) { console.error('Upload error:', err); res.status(500).json({ error: 'Upload failed' }); }
 });
 
@@ -1582,6 +1778,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
       const fm = uploadedFiles.get(file_id);
       if (fm) {
         userContent += `\n\n[File: ${fm.originalname} (${fm.mimetype}, ${fm.size}b)]`;
+        if (fm.linkedinType) userContent += `\n[LinkedIn Export Type: ${fm.linkedinType}]`;
         if (fm.columns) userContent += `\n[Columns: ${fm.columns.join(', ')}]`;
         if (fm.preview) userContent += `\n[${fm.preview.length} rows]`;
         if (fm.suggestedMapping) userContent += `\n[Mapping: ${JSON.stringify(fm.suggestedMapping)}]`;
@@ -1609,7 +1806,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
       const toolResultContent = [];
       for (const tc of toolCalls) {
         console.log(`  🔧 ${tc.name}`, JSON.stringify(tc.input).slice(0, 150));
-        const result = await executeTool(tc.name, tc.input);
+        const result = await executeTool(tc.name, tc.input, req.user.id);
         toolResultContent.push({ type: 'tool_result', tool_use_id: tc.id, content: result });
         toolsUsed.push(tc.name);
       }
@@ -1634,17 +1831,125 @@ app.delete('/api/chat/history', authenticateToken, (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// XERO OAUTH 2.0
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Initiate OAuth flow — visit this in browser
+app.get('/api/xero/connect', authenticateToken, (req, res) => {
+  if (!process.env.XERO_CLIENT_ID) return res.status(500).json({ error: 'XERO_CLIENT_ID not configured' });
+  const state = crypto.randomBytes(16).toString('hex');
+  const authUrl = 'https://login.xero.com/identity/connect/authorize?' + new URLSearchParams({
+    response_type: 'code',
+    client_id: process.env.XERO_CLIENT_ID,
+    redirect_uri: process.env.XERO_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/xero/callback`,
+    scope: process.env.XERO_SCOPES || 'openid profile email accounting.transactions.read accounting.contacts.read offline_access',
+    state
+  });
+  res.redirect(authUrl);
+});
+
+// OAuth callback — exchanges code for tokens
+app.get('/api/xero/callback', async (req, res) => {
+  const { code } = req.query;
+  if (!code) return res.status(400).send('Missing authorization code');
+
+  try {
+    const credentials = Buffer.from(
+      `${process.env.XERO_CLIENT_ID}:${process.env.XERO_CLIENT_SECRET}`
+    ).toString('base64');
+
+    // Exchange code for tokens
+    const tokenRes = await fetch('https://identity.xero.com/connect/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${credentials}`
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: process.env.XERO_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/xero/callback`
+      })
+    });
+
+    if (!tokenRes.ok) {
+      const err = await tokenRes.text();
+      return res.status(400).send(`Token exchange failed: ${err}`);
+    }
+
+    const tokenData = await tokenRes.json();
+
+    // Get connected tenants
+    const tenantsRes = await fetch('https://api.xero.com/connections', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    });
+    const tenants = await tenantsRes.json();
+
+    if (!tenants.length) return res.status(400).send('No Xero organisations found');
+
+    // Save tokens for each tenant (usually just one)
+    const { saveTokens } = require('./scripts/sync_xero');
+    for (const tenant of tenants) {
+      await saveTokens(tokenData, tenant.tenantId, tenant.tenantName);
+      console.log(`✅ Xero connected: ${tenant.tenantName} (${tenant.tenantId})`);
+    }
+
+    res.send(`
+      <html><body style="font-family:system-ui;text-align:center;padding:60px">
+        <h2>Xero Connected</h2>
+        <p>Organisation: <strong>${tenants[0].tenantName}</strong></p>
+        <p>You can close this window. Invoice sync will run automatically.</p>
+        <p><a href="/">Return to dashboard</a></p>
+      </body></html>
+    `);
+  } catch (err) {
+    console.error('Xero OAuth error:', err);
+    res.status(500).send('Xero connection failed: ' + err.message);
+  }
+});
+
+// Check Xero connection status
+app.get('/api/xero/status', authenticateToken, async (req, res) => {
+  const tokens = await pool.query('SELECT tenant_id, tenant_name, expires_at, updated_at FROM xero_tokens').catch(() => ({ rows: [] }));
+  const sync = await pool.query('SELECT * FROM xero_sync_state').catch(() => ({ rows: [] }));
+  res.json({ connected: tokens.rows.length > 0, tenants: tokens.rows, sync: sync.rows });
+});
+
+// Manual sync trigger
+app.post('/api/xero/sync', authenticateToken, async (req, res) => {
+  try {
+    const { pipelineSyncXero } = require('./scripts/sync_xero');
+    res.json({ message: 'Xero sync triggered' });
+    pipelineSyncXero().catch(e => console.error('Xero sync error:', e.message));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // CATCH-ALL — Serve static HTML pages (MUST be LAST)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+// PIPELINE SCHEDULER
+// ─────────────────────────────────────────────────────────────────────────────
+try {
+  const scheduler = require('./scripts/scheduler.js');
+  scheduler.registerRoutes(app, authenticateToken);
+  scheduler.startScheduler().catch(e => console.log('Scheduler error:', e.message));
+  console.log('  ✅ Pipeline scheduler started');
+} catch(e) {
+  console.log('  ⚠️  Scheduler skipped:', e.message);
+}
 // MCP ENDPOINT — Claude.ai remote MCP integration at POST /mcp
 // ─────────────────────────────────────────────────────────────────────────────
 try {
   const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
-  const { server: mcpServer } = require('./scripts/mcp_server.js');
+  const { createMcpServer } = require('./scripts/mcp_server.js');
   app.post('/mcp', async (req, res) => {
+    const mcpServer = createMcpServer();
     const t = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     res.on('close', () => t.close());
     await mcpServer.connect(t);
@@ -1665,6 +1970,8 @@ app.get('*', (req, res) => {
     }
   });
 });
+
+app.get('/autonodal', (req, res) => res.sendFile(path.join(__dirname, 'public/autonodal.html')));
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // START SERVER
