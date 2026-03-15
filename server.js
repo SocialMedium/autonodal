@@ -103,7 +103,7 @@ async function optionalAuth(req, res, next) {
 // Google OAuth — initiate
 app.get('/api/auth/google', (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' });
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+  const redirectUri = process.env.GOOGLE_REDIRECT_URL || process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
   const returnTo = req.query.return_to || '/index.html';
   const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
@@ -126,7 +126,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
   if (!code) return res.redirect(returnTo + '?auth_error=no_code');
 
   try {
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+    const redirectUri = process.env.GOOGLE_REDIRECT_URL || process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
 
     // Exchange code for tokens
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -223,7 +223,7 @@ app.post('/api/auth/logout', authenticateToken, async (req, res) => {
 
 app.get('/api/auth/gmail/connect', authenticateToken, (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' });
-  const redirectUri = process.env.GOOGLE_GMAIL_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/gmail/callback`;
+  const redirectUri = process.env.GOOGLE_GMAIL_REDIRECT_URL || `${req.protocol}://${req.get('host')}/api/auth/gmail/callback`;
   const state = Buffer.from(JSON.stringify({
     userId: req.user.user_id,
     token: req.headers.authorization.replace('Bearer ', ''),
@@ -252,7 +252,7 @@ app.get('/api/auth/gmail/callback', async (req, res) => {
   if (error || !code) return res.redirect(returnTo + '?gmail_error=' + encodeURIComponent(error || 'no_code'));
 
   try {
-    const redirectUri = process.env.GOOGLE_GMAIL_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/gmail/callback`;
+    const redirectUri = process.env.GOOGLE_GMAIL_REDIRECT_URL || `${req.protocol}://${req.get('host')}/api/auth/gmail/callback`;
 
     // Exchange code for tokens
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
