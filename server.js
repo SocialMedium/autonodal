@@ -218,6 +218,112 @@ app.post('/api/auth/logout', authenticateToken, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// GMAIL CONNECT (separate from login — requests gmail.readonly scope)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/auth/gmail/connect', authenticateToken, (req, res) => {
+  if (!process.env.GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' });
+  const redirectUri = process.env.GOOGLE_GMAIL_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/gmail/callback`;
+  const state = Buffer.from(JSON.stringify({
+    userId: req.user.user_id,
+    token: req.headers.authorization.replace('Bearer ', ''),
+    returnTo: req.query.return_to || '/index.html'
+  })).toString('base64');
+
+  const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+    client_id: process.env.GOOGLE_CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid email profile https://www.googleapis.com/auth/gmail.readonly',
+    access_type: 'offline',
+    prompt: 'consent',
+    hd: 'mitchellake.com',
+    state
+  });
+  res.redirect(authUrl);
+});
+
+app.get('/api/auth/gmail/callback', async (req, res) => {
+  const { code, error, state } = req.query;
+  let stateData = {};
+  try { stateData = JSON.parse(Buffer.from(state || '', 'base64').toString('utf-8')); } catch (e) {}
+  const returnTo = stateData.returnTo || '/index.html';
+
+  if (error || !code) return res.redirect(returnTo + '?gmail_error=' + encodeURIComponent(error || 'no_code'));
+
+  try {
+    const redirectUri = process.env.GOOGLE_GMAIL_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/gmail/callback`;
+
+    // Exchange code for tokens
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code'
+      })
+    });
+
+    if (!tokenRes.ok) {
+      console.error('Gmail token exchange failed:', await tokenRes.text());
+      return res.redirect(returnTo + '?gmail_error=token_exchange_failed');
+    }
+
+    const tokens = await tokenRes.json();
+
+    // Get email from the token
+    const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` }
+    });
+    const userInfo = await userInfoRes.json();
+
+    // Store in user_google_accounts
+    await pool.query(`
+      INSERT INTO user_google_accounts (user_id, google_email, access_token, refresh_token, token_expires_at, scopes, sync_enabled, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW())
+      ON CONFLICT (user_id, google_email) DO UPDATE SET
+        access_token = EXCLUDED.access_token,
+        refresh_token = COALESCE(EXCLUDED.refresh_token, user_google_accounts.refresh_token),
+        token_expires_at = EXCLUDED.token_expires_at,
+        scopes = EXCLUDED.scopes,
+        sync_enabled = true,
+        updated_at = NOW()
+    `, [
+      stateData.userId,
+      userInfo.email,
+      tokens.access_token,
+      tokens.refresh_token || null,
+      tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000) : null,
+      ['openid', 'email', 'profile', 'https://www.googleapis.com/auth/gmail.readonly']
+    ]);
+
+    console.log(`✅ Gmail connected: ${userInfo.email} for user ${stateData.userId}`);
+    const sep = returnTo.includes('?') ? '&' : '?';
+    res.redirect(`${returnTo}${sep}gmail=connected`);
+  } catch (err) {
+    console.error('Gmail connect error:', err);
+    res.redirect(returnTo + '?gmail_error=server_error');
+  }
+});
+
+// Check Gmail connection status
+app.get('/api/auth/gmail/status', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT google_email, sync_enabled, token_expires_at, updated_at
+       FROM user_google_accounts WHERE user_id = $1`,
+      [req.user.user_id]
+    );
+    res.json({ connected: rows.length > 0, accounts: rows });
+  } catch (err) {
+    res.json({ connected: false, accounts: [] });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD STATS
 // ═══════════════════════════════════════════════════════════════════════════════
 
