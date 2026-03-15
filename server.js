@@ -1003,9 +1003,19 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
                c.sector, c.geography, c.is_client, c.country_code, c.company_tier,
                ed.source_name, ed.source_type AS doc_source_type,
                ed.title AS doc_title, ed.summary AS doc_summary,
-               (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id) AS contact_count,
+               (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) AS contact_count,
+               (SELECT COUNT(DISTINCT tp2.person_id) FROM team_proximity tp2
+                JOIN people p2 ON p2.id = tp2.person_id AND p2.current_company_id = se.company_id AND p2.tenant_id = $1
+                WHERE tp2.tenant_id = $1 AND tp2.relationship_strength >= 0.25
+               ) AS prox_connection_count,
+               (SELECT u2.name FROM team_proximity tp3
+                JOIN people p3 ON p3.id = tp3.person_id AND p3.current_company_id = se.company_id AND p3.tenant_id = $1
+                JOIN users u2 ON u2.id = tp3.team_member_id
+                WHERE tp3.tenant_id = $1 AND tp3.relationship_strength >= 0.25
+                ORDER BY tp3.relationship_strength DESC LIMIT 1
+               ) AS best_connector_name,
                (SELECT COUNT(*) FROM conversions pl JOIN accounts cl ON cl.id = pl.client_id
-                WHERE cl.company_id = se.company_id) AS placement_count,
+                WHERE cl.company_id = se.company_id AND pl.tenant_id = $1) AS placement_count,
                sd.id AS dispatch_id, sd.status AS dispatch_status,
                sd.claimed_by, sd.claimed_by_name, sd.blog_title AS dispatch_blog_title
         FROM signal_events se
@@ -1130,6 +1140,147 @@ app.patch('/api/signals/:id/triage', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Triage error:', err.message);
     res.status(500).json({ error: 'Failed to update triage' });
+  }
+});
+
+// ─── Signal Proximity Graph (for popup mini-graph) ───
+app.get('/api/signals/:id/proximity-graph', authenticateToken, async (req, res) => {
+  try {
+    const tenantId = req.tenant_id;
+    const signalId = req.params.id;
+
+    // 1. Get the signal
+    const { rows: [sig] } = await pool.query(
+      'SELECT * FROM signal_events WHERE id = $1 AND tenant_id = $2',
+      [signalId, tenantId]
+    );
+    if (!sig) return res.status(404).json({ error: 'Signal not found' });
+
+    // 2. Get team members
+    const { rows: team } = await pool.query(
+      `SELECT id, name FROM users WHERE tenant_id = $1 AND role != 'viewer'`,
+      [tenantId]
+    );
+
+    // 3. Get contacts with proximity to signal company + their scores
+    const { rows: contacts } = await pool.query(`
+      SELECT
+        p.id, p.full_name, p.current_title, p.current_company_name,
+        ps.timing_score, ps.receptivity_score,
+        json_object_agg(
+          tp.team_member_id::text,
+          json_build_object(
+            'strength', tp.relationship_strength,
+            'type', tp.relationship_type,
+            'last_interaction', tp.last_interaction_date
+          )
+        ) AS proximity_by_user,
+        MAX(tp.relationship_strength) AS best_strength,
+        (SELECT json_agg(json_build_object('type', psg.signal_type::text, 'date', psg.detected_at))
+         FROM person_signals psg
+         WHERE psg.person_id = p.id AND psg.tenant_id = $1
+           AND psg.detected_at >= NOW() - INTERVAL '90 days'
+         LIMIT 3
+        ) AS recent_signals
+      FROM people p
+      JOIN team_proximity tp ON tp.person_id = p.id AND tp.tenant_id = $1
+      LEFT JOIN person_scores ps ON ps.person_id = p.id AND ps.tenant_id = $1
+      WHERE p.tenant_id = $1
+        AND p.current_company_id = $2
+        AND tp.relationship_strength >= 0.20
+      GROUP BY p.id, p.full_name, p.current_title, p.current_company_name,
+               ps.timing_score, ps.receptivity_score
+      ORDER BY MAX(tp.relationship_strength) DESC
+      LIMIT 12
+    `, [tenantId, sig.company_id]);
+
+    // 4. Check if signal company is an account/client
+    const { rows: [account] } = await pool.query(`
+      SELECT a.id, a.name, a.relationship_tier
+      FROM accounts a
+      WHERE a.tenant_id = $1
+        AND (a.company_id = $2 OR LOWER(a.name) = LOWER((SELECT name FROM companies WHERE id = $2)))
+      LIMIT 1
+    `, [tenantId, sig.company_id]);
+
+    // 5. Build graph nodes and links
+    const nodes = [];
+    const links = [];
+
+    // Company node (focal point)
+    nodes.push({
+      id: `company-${sig.company_id}`,
+      type: 'company',
+      label: sig.company_name || 'Unknown',
+      companyId: sig.company_id,
+      isClient: !!account,
+      clientTier: account?.relationship_tier,
+      signalType: sig.signal_type,
+      signalConfidence: sig.confidence_score
+    });
+
+    // Team nodes — only those connected via contacts
+    const connectedUserIds = new Set(
+      contacts.flatMap(c => Object.keys(c.proximity_by_user || {}))
+    );
+    team.filter(u => connectedUserIds.has(u.id)).forEach(u => {
+      const initials = (u.name || '').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+      nodes.push({ id: `user-${u.id}`, type: 'team', label: initials, fullName: u.name, userId: u.id });
+    });
+
+    // Contact nodes
+    contacts.forEach(c => {
+      const bestStrength = parseFloat(c.best_strength) || 0;
+      nodes.push({
+        id: `contact-${c.id}`,
+        type: 'contact',
+        label: c.full_name,
+        personId: c.id,
+        role: c.current_title,
+        bestStrength,
+        proximityByUser: c.proximity_by_user || {},
+        recentSignals: c.recent_signals || [],
+        timingScore: c.timing_score,
+        receptivityScore: c.receptivity_score
+      });
+
+      // Contact → company links
+      links.push({
+        source: `contact-${c.id}`,
+        target: `company-${sig.company_id}`,
+        strength: bestStrength * 0.7,
+        type: 'works_at'
+      });
+
+      // Team → contact links
+      Object.entries(c.proximity_by_user || {}).forEach(([userId, prox]) => {
+        if (prox.strength >= 0.20) {
+          links.push({
+            source: `user-${userId}`,
+            target: `contact-${c.id}`,
+            strength: prox.strength,
+            type: prox.type || 'connection'
+          });
+        }
+      });
+    });
+
+    res.json({
+      signal: {
+        id: sig.id,
+        type: sig.signal_type,
+        confidence: sig.confidence_score,
+        headline: sig.evidence_summary,
+        company: sig.company_name,
+        detectedAt: sig.detected_at
+      },
+      graph: { nodes, links },
+      account: account ? { id: account.id, name: account.name, tier: account.relationship_tier } : null,
+      connectionCount: contacts.length
+    });
+  } catch (err) {
+    console.error('Proximity graph error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
