@@ -493,6 +493,153 @@ app.get('/api/stats', authenticateToken, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// TALENT IN MOTION — flight risk, activity spikes, re-engagement windows
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/talent-in-motion', authenticateToken, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 10, 30);
+
+    // 1. People at companies with restructuring/layoff signals (flight risk)
+    const { rows: flightRisk } = await pool.query(`
+      SELECT DISTINCT ON (p.id)
+        p.id, p.full_name, p.current_title, p.current_company_name, p.current_company_id,
+        p.seniority_level, p.linkedin_url,
+        se.signal_type, se.evidence_summary, se.detected_at, se.confidence_score,
+        ps.flight_risk_score, ps.timing_score,
+        (SELECT COUNT(*) FROM people p2 WHERE p2.current_company_id = p.current_company_id) as colleagues_affected,
+        (SELECT COUNT(*) FROM people p2 WHERE p2.current_company_id = p.current_company_id
+         AND p2.seniority_level IN ('c_suite','vp','director')) as senior_affected,
+        (SELECT COUNT(*) FROM search_candidates sc JOIN searches s ON s.id = sc.search_id AND s.status IN ('sourcing','interviewing')
+         WHERE sc.person_id = p.id) as active_search_matches
+      FROM people p
+      JOIN companies c ON c.id = p.current_company_id
+      JOIN signal_events se ON se.company_id = c.id
+        AND se.signal_type IN ('restructuring', 'layoffs', 'ma_activity')
+        AND se.detected_at > NOW() - INTERVAL '14 days'
+      LEFT JOIN person_scores ps ON ps.person_id = p.id
+      WHERE p.seniority_level IN ('c_suite', 'vp', 'director', 'manager', 'senior_ic')
+        OR ps.flight_risk_score > 0.5
+      ORDER BY p.id, se.detected_at DESC
+      LIMIT $1
+    `, [limit]);
+
+    // 2. People with high activity / timing scores (activity spikes & re-engage)
+    const { rows: activeProfiles } = await pool.query(`
+      SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.current_company_id,
+             p.seniority_level, p.linkedin_url,
+             ps.activity_score, ps.timing_score, ps.receptivity_score, ps.flight_risk_score,
+             ps.engagement_score, ps.activity_trend, ps.engagement_trend,
+             ps.last_interaction_at, ps.interaction_count_30d, ps.external_signals_30d,
+             (SELECT COUNT(*) FROM search_candidates sc JOIN searches s ON s.id = sc.search_id AND s.status IN ('sourcing','interviewing')
+              WHERE sc.person_id = p.id) as active_search_matches
+      FROM people p
+      JOIN person_scores ps ON ps.person_id = p.id
+      WHERE (ps.timing_score > 0.6 OR ps.activity_score > 0.6 OR ps.receptivity_score > 0.7)
+        AND p.current_title IS NOT NULL
+      ORDER BY (COALESCE(ps.timing_score,0) + COALESCE(ps.activity_score,0) + COALESCE(ps.receptivity_score,0)) DESC
+      LIMIT $1
+    `, [limit]);
+
+    // 3. Recent person signals (flight_risk_alert, activity_spike, timing_opportunity)
+    const { rows: personSignals } = await pool.query(`
+      SELECT psg.id, psg.signal_type, psg.title, psg.description, psg.confidence_score, psg.detected_at,
+             p.id as person_id, p.full_name, p.current_title, p.current_company_name, p.seniority_level
+      FROM person_signals psg
+      JOIN people p ON p.id = psg.person_id
+      WHERE psg.signal_type IN ('flight_risk_alert', 'activity_spike', 'timing_opportunity', 'new_role', 'company_exit')
+        AND psg.detected_at > NOW() - INTERVAL '14 days'
+      ORDER BY psg.detected_at DESC
+      LIMIT $1
+    `, [limit]);
+
+    res.json({ flight_risk: flightRisk, active_profiles: activeProfiles, person_signals: personSignals });
+  } catch (err) {
+    console.error('Talent in motion error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONVERGING THEMES — triangulated signal patterns
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/converging-themes', authenticateToken, async (req, res) => {
+  try {
+    // Find signal_type clusters with high activity, cross-reference with clients and candidates
+    const { rows: themes } = await pool.query(`
+      SELECT
+        se.signal_type,
+        COUNT(DISTINCT se.company_id) as company_count,
+        COUNT(DISTINCT CASE WHEN c.is_client = true THEN se.company_id END) as client_count,
+        COUNT(*) as signal_count,
+        ROUND(AVG(se.confidence_score)::numeric, 2) as avg_confidence,
+        (SELECT COUNT(DISTINCT p.id) FROM people p
+         JOIN companies c2 ON c2.id = p.current_company_id
+         JOIN signal_events se2 ON se2.company_id = c2.id AND se2.signal_type = se.signal_type
+           AND se2.detected_at > NOW() - INTERVAL '30 days'
+         WHERE p.current_title IS NOT NULL) as candidate_count,
+        array_agg(DISTINCT c.name ORDER BY c.name) FILTER (WHERE c.is_client = true) as client_names,
+        array_agg(DISTINCT se.company_name ORDER BY se.company_name) FILTER (WHERE se.company_name IS NOT NULL) as company_names
+      FROM signal_events se
+      LEFT JOIN companies c ON c.id = se.company_id
+      WHERE se.detected_at > NOW() - INTERVAL '30 days'
+        AND se.signal_type IS NOT NULL
+      GROUP BY se.signal_type
+      HAVING COUNT(DISTINCT se.company_id) >= 3
+      ORDER BY COUNT(DISTINCT CASE WHEN c.is_client = true THEN se.company_id END) DESC,
+               COUNT(DISTINCT se.company_id) DESC
+      LIMIT 5
+    `);
+
+    // Find sector-based convergences
+    const { rows: sectorThemes } = await pool.query(`
+      SELECT
+        c.sector,
+        COUNT(DISTINCT se.company_id) as company_count,
+        COUNT(DISTINCT CASE WHEN c.is_client = true THEN c.id END) as client_count,
+        COUNT(*) as signal_count,
+        array_agg(DISTINCT se.signal_type) as signal_types,
+        (SELECT COUNT(DISTINCT p.id) FROM people p WHERE p.current_company_id IN (
+          SELECT DISTINCT se2.company_id FROM signal_events se2
+          JOIN companies c2 ON c2.id = se2.company_id AND c2.sector = c.sector
+          WHERE se2.detected_at > NOW() - INTERVAL '30 days'
+        )) as candidate_count,
+        array_agg(DISTINCT c.name ORDER BY c.name) FILTER (WHERE c.is_client = true) as client_names
+      FROM signal_events se
+      JOIN companies c ON c.id = se.company_id AND c.sector IS NOT NULL
+      WHERE se.detected_at > NOW() - INTERVAL '30 days'
+      GROUP BY c.sector
+      HAVING COUNT(DISTINCT se.company_id) >= 3 AND COUNT(*) >= 5
+      ORDER BY COUNT(DISTINCT CASE WHEN c.is_client = true THEN c.id END) DESC,
+               COUNT(*) DESC
+      LIMIT 5
+    `);
+
+    // Placement pipeline potential — searches with matching signals
+    const { rows: pipeline } = await pool.query(`
+      SELECT s.title as search_title, s.status, cl.name as client_name,
+             COUNT(DISTINCT se.id) as matching_signals,
+             COUNT(DISTINCT se.company_id) as signalling_companies
+      FROM searches s
+      JOIN clients cl ON cl.id = s.client_id
+      JOIN companies co ON co.id = cl.company_id
+      JOIN signal_events se ON se.company_id = co.id AND se.detected_at > NOW() - INTERVAL '30 days'
+      WHERE s.status IN ('sourcing', 'interviewing')
+      GROUP BY s.id, s.title, s.status, cl.name
+      HAVING COUNT(DISTINCT se.id) >= 2
+      ORDER BY COUNT(DISTINCT se.id) DESC
+      LIMIT 5
+    `);
+
+    res.json({ signal_themes: themes, sector_themes: sectorThemes, pipeline });
+  } catch (err) {
+    console.error('Converging themes error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SIGNALS
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2434,6 +2581,7 @@ app.get('/api/dispatches', authenticateToken, async (req, res) => {
       geos.forEach(g => { idx++; orParts.push(`c.geography ILIKE $${idx}`); params.push(`%${g}%`); });
       geos.forEach(g => { idx++; orParts.push(`sd.company_name ILIKE $${idx}`); params.push(`%${g}%`); });
       geos.forEach(g => { idx++; orParts.push(`sd.signal_summary ILIKE $${idx}`); params.push(`%${g}%`); });
+      geos.forEach(g => { idx++; orParts.push(`sd.opportunity_angle ILIKE $${idx}`); params.push(`%${g}%`); });
       where += ` AND (${orParts.join(' OR ')})`;
     }
 

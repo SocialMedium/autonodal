@@ -1568,102 +1568,30 @@ body {
       <button class="load-more-btn" id="loadMoreBtn" onclick="loadMoreSignals()">Load more signals</button>
     </div>
 
-    <!-- TALENT IN MOTION (aspirational — static for now) -->
+    <!-- TALENT IN MOTION (live) -->
     <div class="zone">
       <div class="zone-header">
         <div class="zone-rule"></div>
         <div class="zone-title-row">
           <div class="zone-title">Talent in Motion</div>
-          <div class="zone-count">COMING SOON</div>
+          <div class="zone-count" id="talentCount"></div>
         </div>
         <div class="zone-subtitle">Candidates showing movement signals — flight risk, activity spikes, re-engagement windows</div>
       </div>
-
-      <div class="talent-card urgent">
-        <div class="talent-top">
-          <div>
-            <div class="talent-name">Atlassian Restructuring</div>
-            <div class="talent-role">47 MLX candidates affected across engineering & product</div>
-          </div>
-          <div class="talent-signal-tag flight">FLIGHT RISK</div>
-        </div>
-        <div class="talent-evidence">Restructuring announced this morning. 47 people in MLX network currently at Atlassian, including 12 at VP+ level. 8 match active search briefs.</div>
-        <div class="talent-meta">
-          <span>🕐 2h ago</span>
-          <span>⚡ 8 match active searches</span>
-          <span>📧 Outreach drafted for top 3</span>
-        </div>
-      </div>
-
-      <div class="talent-card opportunity">
-        <div class="talent-top">
-          <div>
-            <div class="talent-name">Marcus Chen</div>
-            <div class="talent-role">VP Engineering · Stripe</div>
-          </div>
-          <div class="talent-signal-tag reengag">RE-ENGAGE</div>
-        </div>
-        <div class="talent-evidence">8 months since "timing not right." WhatsApp reply time 14 min avg. Project Atlas shipped last week — natural transition window.</div>
-        <div class="talent-meta">
-          <span>⏱️ Window: ~4 weeks</span>
-          <span>💬 Best channel: WhatsApp</span>
-        </div>
-      </div>
-
-      <div class="talent-card watch">
-        <div class="talent-top">
-          <div>
-            <div class="talent-name">Sarah Park</div>
-            <div class="talent-role">CPO · Airtasker</div>
-          </div>
-          <div class="talent-signal-tag spike">ACTIVITY +400%</div>
-        </div>
-        <div class="talent-evidence">LinkedIn activity up 400% this month. Published 3 articles, 2 podcast appearances. Pattern consistent with pre-move visibility building.</div>
-        <div class="talent-meta">
-          <span>📈 30-day trend</span>
-          <span>🎙️ Podcast queue: 2 episodes</span>
-        </div>
-      </div>
+      <div id="talentCards"><div style="text-align:center;padding:20px;color:var(--ink-4);font-size:13px">Loading talent signals...</div></div>
     </div>
 
-    <!-- CONVERGING THEMES (aspirational — static for now) -->
+    <!-- CONVERGING THEMES (live) -->
     <div class="zone">
       <div class="zone-header">
         <div class="zone-rule"></div>
         <div class="zone-title-row">
           <div class="zone-title">Converging Themes</div>
-          <div class="zone-count">COMING SOON</div>
+          <div class="zone-count" id="themeCount"></div>
         </div>
         <div class="zone-subtitle">Triangulated patterns across signals pointing to structural demand shifts</div>
       </div>
-
-      <div class="theme-card">
-        <div class="theme-top">
-          <div class="theme-name">AI/ML Leadership Demand Surge</div>
-          <div class="theme-revenue">$1.2M potential</div>
-        </div>
-        <div class="theme-description">14 companies raising to build AI teams. 6 clients have active or upcoming AI leadership needs. 31 candidates in network with relevant background.</div>
-        <div class="theme-stats">
-          <div class="theme-stat"><div class="theme-stat-value">14</div><div class="theme-stat-label">Companies</div></div>
-          <div class="theme-stat"><div class="theme-stat-value">6</div><div class="theme-stat-label">Clients</div></div>
-          <div class="theme-stat"><div class="theme-stat-value">31</div><div class="theme-stat-label">Candidates</div></div>
-          <div class="theme-stat"><div class="theme-stat-value">8</div><div class="theme-stat-label">Signals</div></div>
-        </div>
-      </div>
-
-      <div class="theme-card">
-        <div class="theme-top">
-          <div class="theme-name">PE Operating Partner Cycle</div>
-          <div class="theme-revenue">$1.8M potential</div>
-        </div>
-        <div class="theme-description">3 PE firms making platform acquisitions. Pattern: 12-18 months post-acquisition, they need operating leadership. Cycle starting now.</div>
-        <div class="theme-stats">
-          <div class="theme-stat"><div class="theme-stat-value">3</div><div class="theme-stat-label">PE Firms</div></div>
-          <div class="theme-stat"><div class="theme-stat-value">7</div><div class="theme-stat-label">Portfolios</div></div>
-          <div class="theme-stat"><div class="theme-stat-value">19</div><div class="theme-stat-label">Candidates</div></div>
-          <div class="theme-stat"><div class="theme-stat-value">5</div><div class="theme-stat-label">Signals</div></div>
-        </div>
-      </div>
+      <div id="themeCards"><div style="text-align:center;padding:20px;color:var(--ink-4);font-size:13px">Loading themes...</div></div>
     </div>
 
   </div>
@@ -2447,6 +2375,184 @@ function esc(str) {
 }
 
 // ── Init ──
+// ── Talent in Motion ──
+async function loadTalentInMotion() {
+  const container = document.getElementById('talentCards');
+  const countEl = document.getElementById('talentCount');
+  try {
+    const data = await api('/api/talent-in-motion?limit=6');
+    if (!data) return;
+
+    let cards = '';
+    let total = 0;
+
+    // Flight risk cards — people at companies with restructuring/layoff signals
+    if (data.flight_risk && data.flight_risk.length > 0) {
+      data.flight_risk.slice(0, 3).forEach(p => {
+        total++;
+        const affected = parseInt(p.colleagues_affected) || 0;
+        const senior = parseInt(p.senior_affected) || 0;
+        const matches = parseInt(p.active_search_matches) || 0;
+        cards += `<div class="talent-card urgent" style="cursor:pointer" onclick="window.location='/person.html?id=${p.id}'">
+          <div class="talent-top">
+            <div>
+              <div class="talent-name">${esc(p.current_company_name)} — ${esc((p.signal_type||'').replace(/_/g,' '))}</div>
+              <div class="talent-role">${affected} MLX contacts affected${senior > 0 ? ', ' + senior + ' at VP+ level' : ''}</div>
+            </div>
+            <div class="talent-signal-tag flight">FLIGHT RISK</div>
+          </div>
+          <div class="talent-evidence"><strong>${esc(p.full_name)}</strong> · ${esc(p.current_title || '')}${p.evidence_summary ? '<br>' + esc(p.evidence_summary.slice(0, 120)) : ''}</div>
+          <div class="talent-meta">
+            <span>🕐 ${ago(p.detected_at)}</span>
+            ${matches > 0 ? '<span>⚡ ' + matches + ' match active searches</span>' : ''}
+            ${p.flight_risk_score ? '<span>📊 Risk: ' + Math.round(p.flight_risk_score * 100) + '%</span>' : ''}
+          </div>
+        </div>`;
+      });
+    }
+
+    // Active profiles — high timing/activity/receptivity scores
+    if (data.active_profiles && data.active_profiles.length > 0) {
+      data.active_profiles.slice(0, 3).forEach(p => {
+        total++;
+        const timing = p.timing_score ? Math.round(p.timing_score * 100) : 0;
+        const activity = p.activity_score ? Math.round(p.activity_score * 100) : 0;
+        const receptivity = p.receptivity_score ? Math.round(p.receptivity_score * 100) : 0;
+        const matches = parseInt(p.active_search_matches) || 0;
+        const isReEngage = timing > 60 && receptivity > 50;
+        const isSpike = activity > 60;
+        const tagClass = isReEngage ? 'reengag' : (isSpike ? 'spike' : 'watch');
+        const tagText = isReEngage ? 'RE-ENGAGE' : (isSpike ? 'ACTIVE +' + activity + '%' : 'TIMING ' + timing + '%');
+
+        cards += `<div class="talent-card ${isReEngage ? 'opportunity' : 'watch'}" style="cursor:pointer" onclick="window.location='/person.html?id=${p.id}'">
+          <div class="talent-top">
+            <div>
+              <div class="talent-name">${esc(p.full_name)}</div>
+              <div class="talent-role">${esc(p.current_title || '')} · ${esc(p.current_company_name || '')}</div>
+            </div>
+            <div class="talent-signal-tag ${tagClass}">${tagText}</div>
+          </div>
+          <div class="talent-evidence">${isReEngage ? 'High receptivity (' + receptivity + '%) with good timing window.' : 'Activity trending ' + (p.activity_trend || 'up') + '.'} ${p.external_signals_30d > 0 ? p.external_signals_30d + ' external signals in 30 days.' : ''} ${matches > 0 ? matches + ' active search matches.' : ''}</div>
+          <div class="talent-meta">
+            <span>📊 Timing: ${timing}%</span>
+            <span>📈 Activity: ${activity}%</span>
+            ${p.last_interaction_at ? '<span>💬 Last contact: ' + ago(p.last_interaction_at) + '</span>' : ''}
+          </div>
+        </div>`;
+      });
+    }
+
+    // Person signals as cards
+    if (data.person_signals && data.person_signals.length > 0 && total < 6) {
+      data.person_signals.slice(0, 6 - total).forEach(s => {
+        total++;
+        const tagMap = { flight_risk_alert: ['flight', 'FLIGHT RISK'], activity_spike: ['spike', 'ACTIVITY SPIKE'], timing_opportunity: ['reengag', 'TIMING WINDOW'], new_role: ['watch', 'NEW ROLE'], company_exit: ['flight', 'EXIT'] };
+        const [tagClass, tagText] = tagMap[s.signal_type] || ['watch', s.signal_type.replace(/_/g, ' ').toUpperCase()];
+        cards += `<div class="talent-card" style="cursor:pointer" onclick="window.location='/person.html?id=${s.person_id}'">
+          <div class="talent-top">
+            <div>
+              <div class="talent-name">${esc(s.full_name)}</div>
+              <div class="talent-role">${esc(s.current_title || '')} · ${esc(s.current_company_name || '')}</div>
+            </div>
+            <div class="talent-signal-tag ${tagClass}">${tagText}</div>
+          </div>
+          <div class="talent-evidence">${esc(s.title || s.description || '')}</div>
+          <div class="talent-meta"><span>🕐 ${ago(s.detected_at)}</span></div>
+        </div>`;
+      });
+    }
+
+    if (total === 0) {
+      cards = '<div style="padding:16px;font-size:13px;color:var(--ink-3)">No active talent signals detected in the last 14 days. Signals will appear here as restructurings, activity spikes, and timing windows are detected.</div>';
+    }
+
+    if (countEl) countEl.textContent = total + ' active';
+    container.innerHTML = cards;
+  } catch (e) {
+    console.error('Talent in motion error:', e);
+    container.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--ink-4)">Could not load talent signals</div>';
+  }
+}
+
+// ── Converging Themes ──
+async function loadConvergingThemes() {
+  const container = document.getElementById('themeCards');
+  const countEl = document.getElementById('themeCount');
+  try {
+    const data = await api('/api/converging-themes');
+    if (!data) return;
+
+    let cards = '';
+    let total = 0;
+    const SIG_LABELS = { capital_raising: 'Capital Raising', ma_activity: 'M&A Activity', leadership_change: 'Leadership Change', geographic_expansion: 'Geographic Expansion', restructuring: 'Restructuring', product_launch: 'Product Launch', strategic_hiring: 'Strategic Hiring', partnership: 'Partnership', layoffs: 'Layoffs' };
+
+    // Signal type themes
+    if (data.signal_themes) {
+      data.signal_themes.slice(0, 3).forEach(t => {
+        total++;
+        const label = SIG_LABELS[t.signal_type] || t.signal_type.replace(/_/g, ' ');
+        const clients = t.client_names ? t.client_names.filter(Boolean).slice(0, 3) : [];
+        cards += `<div class="theme-card">
+          <div class="theme-top">
+            <div class="theme-name">${esc(label)} Surge</div>
+            ${parseInt(t.client_count) > 0 ? '<div class="theme-revenue">⭐ ' + t.client_count + ' clients</div>' : ''}
+          </div>
+          <div class="theme-description">${t.company_count} companies with ${esc(label.toLowerCase())} signals in the last 30 days.${clients.length > 0 ? ' Clients: ' + clients.map(c => esc(c)).join(', ') + '.' : ''} ${parseInt(t.candidate_count) > 0 ? t.candidate_count + ' candidates in network at these companies.' : ''}</div>
+          <div class="theme-stats">
+            <div class="theme-stat"><div class="theme-stat-value">${t.company_count}</div><div class="theme-stat-label">Companies</div></div>
+            <div class="theme-stat"><div class="theme-stat-value">${t.client_count}</div><div class="theme-stat-label">Clients</div></div>
+            <div class="theme-stat"><div class="theme-stat-value">${t.candidate_count}</div><div class="theme-stat-label">Candidates</div></div>
+            <div class="theme-stat"><div class="theme-stat-value">${t.signal_count}</div><div class="theme-stat-label">Signals</div></div>
+          </div>
+        </div>`;
+      });
+    }
+
+    // Sector themes
+    if (data.sector_themes && total < 5) {
+      data.sector_themes.slice(0, 5 - total).forEach(t => {
+        total++;
+        const types = (t.signal_types || []).map(st => SIG_LABELS[st] || st.replace(/_/g, ' ')).slice(0, 3);
+        const clients = t.client_names ? t.client_names.filter(Boolean).slice(0, 3) : [];
+        cards += `<div class="theme-card">
+          <div class="theme-top">
+            <div class="theme-name">${esc(t.sector)} Activity</div>
+            ${parseInt(t.client_count) > 0 ? '<div class="theme-revenue">⭐ ' + t.client_count + ' clients</div>' : ''}
+          </div>
+          <div class="theme-description">${t.company_count} ${esc(t.sector)} companies generating signals: ${types.join(', ')}.${clients.length > 0 ? ' Clients: ' + clients.map(c => esc(c)).join(', ') + '.' : ''}</div>
+          <div class="theme-stats">
+            <div class="theme-stat"><div class="theme-stat-value">${t.company_count}</div><div class="theme-stat-label">Companies</div></div>
+            <div class="theme-stat"><div class="theme-stat-value">${t.client_count}</div><div class="theme-stat-label">Clients</div></div>
+            <div class="theme-stat"><div class="theme-stat-value">${t.candidate_count}</div><div class="theme-stat-label">Candidates</div></div>
+            <div class="theme-stat"><div class="theme-stat-value">${t.signal_count}</div><div class="theme-stat-label">Signals</div></div>
+          </div>
+        </div>`;
+      });
+    }
+
+    // Pipeline matches
+    if (data.pipeline && data.pipeline.length > 0) {
+      cards += '<div style="margin-top:12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--emerald);margin-bottom:6px">Active Searches with Signals</div>';
+      data.pipeline.slice(0, 3).forEach(p => {
+        cards += `<div style="padding:8px 0;border-bottom:1px solid var(--rule);font-size:13px">
+          <strong>${esc(p.search_title)}</strong> <span style="font-size:11px;color:var(--ink-3)">for ${esc(p.client_name)}</span><br>
+          <span style="font-size:11px;color:var(--ink-4)">${p.matching_signals} signals at ${p.signalling_companies} companies · ${esc(p.status)}</span>
+        </div>`;
+      });
+    }
+
+    if (total === 0 && (!data.pipeline || data.pipeline.length === 0)) {
+      cards = '<div style="padding:16px;font-size:13px;color:var(--ink-3)">Not enough signal density to detect themes yet. Themes emerge when 3+ companies show the same signal pattern within 30 days.</div>';
+    }
+
+    if (countEl) countEl.textContent = total + ' themes';
+    container.innerHTML = cards;
+  } catch (e) {
+    console.error('Converging themes error:', e);
+    container.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--ink-4)">Could not load themes</div>';
+  }
+}
+
 async function init() {
   setEditionDate();
 
@@ -2473,6 +2579,8 @@ async function init() {
   loadRegionCards();
   loadSignals();
   loadContentQueue();
+  loadTalentInMotion();
+  loadConvergingThemes();
 }
 
 // ── Onboarding ──
