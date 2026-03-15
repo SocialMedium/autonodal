@@ -3675,6 +3675,17 @@ app.listen(PORT, async () => {
     `);
   } catch (e) { /* indexes may already exist */ }
 
+  // Run multi-tenant migration
+  try {
+    const mtMigration = require('path').join(__dirname, 'sql', 'migration_multi_tenant.sql');
+    if (require('fs').existsSync(mtMigration)) {
+      await pool.query(require('fs').readFileSync(mtMigration, 'utf8'));
+      console.log('  \u2705 Multi-tenant migration complete');
+    }
+  } catch (e) {
+    console.log('  \u26a0\ufe0f Multi-tenant migration:', e.message);
+  }
+
   // Backfill: mark companies as clients if they have placements
   try {
     // First, try to link clients to companies by name match
