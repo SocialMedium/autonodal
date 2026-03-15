@@ -114,3 +114,90 @@ CREATE INDEX IF NOT EXISTS idx_placements_tenant ON placements(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_signal_dispatches_tenant ON signal_dispatches(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_team_proximity_tenant ON team_proximity(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_external_documents_tenant ON external_documents(tenant_id);
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- DEPLOY 2: TABLE RENAMES WITH BACKWARD-COMPATIBLE VIEWS
+-- VIEWs ensure any code still using old names continues to work
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+-- Helper: only rename if the old table exists and new table doesn't
+-- Each rename creates a VIEW with the old name for backward compatibility
+
+-- clients → accounts
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='clients')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='accounts') THEN
+    ALTER TABLE clients RENAME TO accounts;
+    CREATE OR REPLACE VIEW clients AS SELECT * FROM accounts;
+  END IF;
+END $$;
+
+-- projects → engagements
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='projects')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='engagements') THEN
+    ALTER TABLE projects RENAME TO engagements;
+    CREATE OR REPLACE VIEW projects AS SELECT * FROM engagements;
+  END IF;
+END $$;
+
+-- searches → opportunities
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='searches')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='opportunities') THEN
+    ALTER TABLE searches RENAME TO opportunities;
+    CREATE OR REPLACE VIEW searches AS SELECT * FROM opportunities;
+  END IF;
+END $$;
+
+-- search_candidates → pipeline_contacts
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='search_candidates')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='pipeline_contacts') THEN
+    ALTER TABLE search_candidates RENAME TO pipeline_contacts;
+    CREATE OR REPLACE VIEW search_candidates AS SELECT * FROM pipeline_contacts;
+  END IF;
+END $$;
+
+-- search_activities → pipeline_activities
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='search_activities')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='pipeline_activities') THEN
+    ALTER TABLE search_activities RENAME TO pipeline_activities;
+    CREATE OR REPLACE VIEW search_activities AS SELECT * FROM pipeline_activities;
+  END IF;
+END $$;
+
+-- client_contacts → account_contacts
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='client_contacts')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='account_contacts') THEN
+    ALTER TABLE client_contacts RENAME TO account_contacts;
+    CREATE OR REPLACE VIEW client_contacts AS SELECT * FROM account_contacts;
+  END IF;
+END $$;
+
+-- placements → conversions
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='placements')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='conversions') THEN
+    ALTER TABLE placements RENAME TO conversions;
+    CREATE OR REPLACE VIEW placements AS SELECT * FROM conversions;
+  END IF;
+END $$;
+
+-- client_financials → account_financials
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='client_financials')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='account_financials') THEN
+    ALTER TABLE client_financials RENAME TO account_financials;
+    CREATE OR REPLACE VIEW client_financials AS SELECT * FROM account_financials;
+  END IF;
+END $$;
+
+-- Add flexible metadata columns to conversions (if not already there)
+DO $$ BEGIN
+  ALTER TABLE conversions ADD COLUMN IF NOT EXISTS value NUMERIC(12,2);
+  ALTER TABLE conversions ADD COLUMN IF NOT EXISTS converted_at TIMESTAMPTZ;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;

@@ -468,6 +468,39 @@ app.get('/api/auth/gmail/status', authenticateToken, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// TENANT CONFIG & TERMINOLOGY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/config/tenant', authenticateToken, async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id || process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+    const { rows } = await pool.query(
+      'SELECT id, name, slug, vertical, logo_url, primary_color, plan, onboarding_complete, focus_geographies, focus_sectors FROM tenants WHERE id = $1',
+      [tenantId]
+    );
+    res.json(rows[0] || null);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/config/terminology', authenticateToken, async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id || process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+    const { rows } = await pool.query('SELECT vertical FROM tenants WHERE id = $1', [tenantId]);
+    if (!rows.length) return res.status(404).json({ error: 'Tenant not found' });
+
+    const { getTerminology, SIGNAL_LABELS } = require('./lib/terminology');
+    const vertical = rows[0].vertical;
+    const t = getTerminology(vertical);
+
+    res.json({ vertical, terminology: t, signal_labels: SIGNAL_LABELS[vertical] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD STATS
 // ═══════════════════════════════════════════════════════════════════════════════
 
