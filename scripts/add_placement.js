@@ -43,14 +43,14 @@ async function addPlacement() {
     
     // Find or create client
     let client = await pool.query(
-      `SELECT id, name FROM clients WHERE LOWER(name) = LOWER($1) LIMIT 1`,
+      `SELECT id, name FROM accounts WHERE LOWER(name) = LOWER($1) LIMIT 1`,
       [clientName]
     );
     
     if (client.rows.length === 0) {
       console.log('🆕 Creating new client...');
       client = await pool.query(
-  `INSERT INTO clients (name, relationship_status) VALUES ($1, 'active') RETURNING id, name`,
+  `INSERT INTO accounts (name, relationship_status) VALUES ($1, 'active') RETURNING id, name`,
   [clientName]
 );
 
@@ -78,7 +78,7 @@ async function addPlacement() {
     
     // Create placement
     const placement = await pool.query(`
-      INSERT INTO placements (
+      INSERT INTO conversions (
         client_id,
         placed_by_user_id,
         role_title,
@@ -107,7 +107,7 @@ async function addPlacement() {
     
     // Update client financials
     await pool.query(`
-      INSERT INTO client_financials (
+      INSERT INTO account_financials (
         client_id, total_invoiced, total_paid, total_placements,
         first_placement_date, last_placement_date, payment_reliability, computed_at
       )
@@ -120,7 +120,7 @@ async function addPlacement() {
         MAX(start_date),
         1.0,
         NOW()
-      FROM placements WHERE client_id = $1
+      FROM conversions WHERE client_id = $1
       ON CONFLICT (client_id) DO UPDATE SET
         total_invoiced = EXCLUDED.total_invoiced,
         total_paid = EXCLUDED.total_paid,

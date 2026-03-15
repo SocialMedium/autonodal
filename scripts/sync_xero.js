@@ -184,7 +184,7 @@ async function processXeroInvoice(invoice) {
   const paymentStatus = mapPaymentStatus(invoice.Status, invoice.AmountDue, invoice.DueDate);
 
   const result = await pool.query(`
-    INSERT INTO placements (
+    INSERT INTO conversions (
       person_id, client_id, role_title, role_level,
       placement_fee, currency, invoice_number, invoice_date,
       payment_status, payment_date, payment_amount, outstanding_amount,

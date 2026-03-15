@@ -24,8 +24,8 @@ async function setupTeamProximity() {
     console.log('═'.repeat(60));
     console.log('Tables created:');
     console.log('  ✅ team_proximity');
-    console.log('  ✅ placements');
-    console.log('  ✅ client_financials');
+    console.log('  ✅ conversions');
+    console.log('  ✅ account_financials');
     console.log('Triggers created:');
     console.log('  ✅ Auto-create team_proximity on placement insert');
     console.log('═'.repeat(60));

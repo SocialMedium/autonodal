@@ -690,7 +690,7 @@ async function pipelineMatchSearches() {
   const searches = await pool.query(`
     SELECT id, title, brief_summary, role_overview, required_experience, 
            ideal_background, location, seniority_level, target_companies
-    FROM searches WHERE status = 'active'
+    FROM opportunities WHERE status = 'active'
   `).catch(() => ({ rows: [] }));
 
   for (const search of searches.rows) {

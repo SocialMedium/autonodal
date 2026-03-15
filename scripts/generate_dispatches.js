@@ -236,9 +236,9 @@ async function buildProximityMap(signal) {
              cl.name AS client_name,
              pl.placed_by_user_id AS user_id,
              u.name AS team_member
-      FROM placements pl
+      FROM conversions pl
       JOIN people p ON p.id = pl.person_id
-      JOIN clients cl ON cl.id = pl.client_id
+      JOIN accounts cl ON cl.id = pl.client_id
       LEFT JOIN users u ON u.id = pl.placed_by_user_id
       WHERE (${placeConds})
          OR (cl.company_id IS NOT NULL AND cl.company_id = $${nameVariants.length + 1})
@@ -548,7 +548,7 @@ async function generateDispatches() {
            c.name AS co_name, c.sector, c.geography, c.employee_count_band,
            c.is_client, c.domain,
            (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) AS contact_count,
-           (SELECT COUNT(*) FROM placements pl JOIN clients cl ON cl.id = pl.client_id
+           (SELECT COUNT(*) FROM conversions pl JOIN accounts cl ON cl.id = pl.client_id
             WHERE cl.company_id = c.id) AS placement_count
     FROM signal_events se
     LEFT JOIN companies c ON c.id = se.company_id

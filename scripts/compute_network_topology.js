@@ -75,7 +75,7 @@ async function computeCompanyAdjacency() {
   // Get placement counts per client name
   const { rows: placementData } = await pool.query(`
     SELECT LOWER(TRIM(cl.name)) AS co_key, COUNT(*) AS cnt
-    FROM placements pl JOIN clients cl ON cl.id = pl.client_id
+    FROM conversions pl JOIN accounts cl ON cl.id = pl.client_id
     GROUP BY LOWER(TRIM(cl.name))
   `);
   const placementMap = new Map(placementData.map(r => [r.co_key, parseInt(r.cnt)]));
@@ -84,14 +84,14 @@ async function computeCompanyAdjacency() {
   const { rows: clientData } = await pool.query(`
     SELECT LOWER(TRIM(cl.name)) AS co_key, cl.relationship_tier,
            cl.relationship_status, cl.company_id
-    FROM clients cl
+    FROM accounts cl
   `);
   const clientMap = new Map(clientData.map(r => [r.co_key, r]));
 
   // Get active searches targeting companies
   const { rows: searchData } = await pool.query(`
     SELECT LOWER(TRIM(UNNEST(target_companies))) AS co_key, COUNT(*) AS cnt
-    FROM searches
+    FROM opportunities
     WHERE status NOT IN ('placed','cancelled','on_hold')
       AND target_companies IS NOT NULL
     GROUP BY LOWER(TRIM(UNNEST(target_companies)))

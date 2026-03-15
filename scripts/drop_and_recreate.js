@@ -14,11 +14,11 @@ async function dropAndRecreate() {
   
   try {
     // Drop existing tables
-    await pool.query('DROP TABLE IF EXISTS placements CASCADE');
-    console.log('✅ Dropped placements');
-    
-    await pool.query('DROP TABLE IF EXISTS client_financials CASCADE');
-    console.log('✅ Dropped client_financials');
+    await pool.query('DROP TABLE IF EXISTS conversions CASCADE');
+    console.log('✅ Dropped conversions');
+
+    await pool.query('DROP TABLE IF EXISTS account_financials CASCADE');
+    console.log('✅ Dropped account_financials');
     
     await pool.query('DROP TABLE IF EXISTS team_proximity CASCADE');
     console.log('✅ Dropped team_proximity');
@@ -36,8 +36,8 @@ async function dropAndRecreate() {
     console.log('═'.repeat(60));
     console.log('Tables created:');
     console.log('  ✅ team_proximity');
-    console.log('  ✅ placements');
-    console.log('  ✅ client_financials');
+    console.log('  ✅ conversions');
+    console.log('  ✅ account_financials');
     console.log('═'.repeat(60));
     
   } catch (error) {

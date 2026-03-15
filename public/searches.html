@@ -234,7 +234,7 @@
 
     async function loadSearches() {
       try {
-        const res = await fetch('/api/searches', {
+        const res = await fetch('/api/opportunities', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!res.ok) throw new Error('Failed to load searches');
@@ -321,7 +321,7 @@
 
     async function openSearch(id) {
       try {
-        const res = await fetch(`/api/searches/${id}`, {
+        const res = await fetch(`/api/opportunities/${id}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!res.ok) throw new Error('Failed to load search');
@@ -347,7 +347,7 @@
 
     async function loadCandidates() {
       try {
-        const res = await fetch(`/api/searches/${currentSearch.id}/candidates`, {
+        const res = await fetch(`/api/opportunities/${currentSearch.id}/candidates`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!res.ok) return;
@@ -385,7 +385,7 @@
 
     async function loadMatches() {
       try {
-        const res = await fetch(`/api/searches/${currentSearch.id}/matches`, {
+        const res = await fetch(`/api/opportunities/${currentSearch.id}/matches`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!res.ok) return;
@@ -442,7 +442,7 @@
       const data = Object.fromEntries(formData);
 
       try {
-        const res = await fetch('/api/searches', {
+        const res = await fetch('/api/opportunities', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,

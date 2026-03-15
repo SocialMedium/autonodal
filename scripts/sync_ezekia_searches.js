@@ -76,7 +76,7 @@ async function upsertClient(company, isDryRun) {
 
   // Find existing client
   const existingClient = await db.queryOne(
-    `SELECT id FROM clients WHERE name ILIKE $1 LIMIT 1`,
+    `SELECT id FROM accounts WHERE name ILIKE $1 LIMIT 1`,
     [company.name]
   );
 
@@ -88,7 +88,7 @@ async function upsertClient(company, isDryRun) {
   }
 
   const result = await db.query(
-    `INSERT INTO clients (company_id, name, relationship_status, relationship_tier, first_engagement_date, created_at, updated_at)
+    `INSERT INTO accounts (company_id, name, relationship_status, relationship_tier, first_engagement_date, created_at, updated_at)
      VALUES ($1, $2, 'active', 'standard', NOW(), NOW(), NOW())
      RETURNING id`,
     [companyId, company.name]
@@ -102,7 +102,7 @@ async function upsertProject(ezekiaProject, clientId, isDryRun) {
   const externalId = `ezekia_${ezekiaProject.id}`;
   
   const existing = await db.queryOne(
-    `SELECT id FROM projects WHERE code = $1`,
+    `SELECT id FROM engagements WHERE code = $1`,
     [externalId]
   );
   if (existing) return { id: existing.id, isNew: false };
@@ -116,7 +116,7 @@ async function upsertProject(ezekiaProject, clientId, isDryRun) {
   const industries = ezekiaProject.industries?.map(i => i.name).join(', ') || null;
 
   const result = await db.query(
-    `INSERT INTO projects (
+    `INSERT INTO engagements (
       client_id, name, code, project_type, description, status,
       kick_off_date, target_completion_date, client_context,
       created_at, updated_at
@@ -142,7 +142,7 @@ async function upsertSearch(ezekiaProject, projectId, leadUserId, isDryRun) {
   const externalId = `ezekia_${ezekiaProject.id}`;
 
   const existing = await db.queryOne(
-    `SELECT id FROM searches WHERE code = $1`,
+    `SELECT id FROM opportunities WHERE code = $1`,
     [externalId]
   );
   if (existing) return { id: existing.id, isNew: false };
@@ -157,7 +157,7 @@ async function upsertSearch(ezekiaProject, projectId, leadUserId, isDryRun) {
   const industries = ezekiaProject.industries?.map(i => i.name) || [];
 
   const result = await db.query(
-    `INSERT INTO searches (
+    `INSERT INTO opportunities (
       project_id, title, code, status, seniority_level,
       lead_consultant_id, kick_off_date,
       brief_summary, target_industries,

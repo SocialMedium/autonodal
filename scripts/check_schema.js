@@ -18,11 +18,11 @@ async function checkSchema() {
     `);
     console.log('Users name columns:', usersColumns.rows);
     
-    console.log('\n=== Checking placements table date columns ===');
+    console.log('\n=== Checking conversions table date columns ===');
     const placementsColumns = await pool.query(`
-      SELECT column_name, data_type 
-      FROM information_schema.columns 
-      WHERE table_name = 'placements' AND column_name LIKE '%date%' 
+      SELECT column_name, data_type
+      FROM information_schema.columns
+      WHERE table_name = 'conversions' AND column_name LIKE '%date%'
       ORDER BY ordinal_position
     `);
     console.log('Placements date columns:', placementsColumns.rows);
@@ -38,7 +38,7 @@ async function checkSchema() {
         u.name as user_name,
         u.full_name as user_full_name,
         u.email as user_email
-      FROM placements p
+      FROM conversions p
       LEFT JOIN users u ON p.placed_by_user_id = u.id
       LIMIT 1
     `);

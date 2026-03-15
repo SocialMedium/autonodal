@@ -16,10 +16,10 @@ async function checkEzekiaData() {
         COUNT(CASE WHEN status = 'placed' THEN 1 END) as placed_count,
         COUNT(CASE WHEN status = 'shortlisted' THEN 1 END) as shortlisted_count,
         array_agg(DISTINCT status) as all_statuses
-      FROM search_candidates
+      FROM pipeline_contacts
     `);
-    
-    console.log('📊 SEARCH_CANDIDATES TABLE:');
+
+    console.log('📊 PIPELINE_CONTACTS TABLE:');
     console.log('  Total candidates:', candidates.rows[0].total);
     console.log('  Placed:', candidates.rows[0].placed_count);
     console.log('  Shortlisted:', candidates.rows[0].shortlisted_count);
@@ -32,11 +32,11 @@ async function checkEzekiaData() {
         c.name as client_name,
         sc.status,
         sc.added_date
-      FROM search_candidates sc
+      FROM pipeline_contacts sc
       JOIN people p ON sc.person_id = p.id
-      JOIN searches s ON sc.search_id = s.id
-      JOIN projects pr ON s.project_id = pr.id
-      JOIN clients c ON pr.client_id = c.id
+      JOIN opportunities s ON sc.search_id = s.id
+      JOIN engagements pr ON s.project_id = pr.id
+      JOIN accounts c ON pr.client_id = c.id
       WHERE sc.status = 'placed'
       ORDER BY sc.added_date DESC
       LIMIT 5

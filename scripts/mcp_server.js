@@ -340,8 +340,8 @@ Args:
       // Active search matches
       const matchR = await dbQuery(`
         SELECT s.title, sc.overall_fit_score, sc.status
-        FROM search_candidates sc
-        JOIN searches s ON sc.search_id = s.id
+        FROM pipeline_contacts sc
+        JOIN opportunities s ON sc.search_id = s.id
         WHERE sc.person_id = $1
         ORDER BY sc.overall_fit_score DESC NULLS LAST LIMIT 5
       `, [personRow.id]);
@@ -391,7 +391,7 @@ Args:
       let pi = 2;
 
       if (is_client) {
-        conditions.push(`EXISTS (SELECT 1 FROM clients cl WHERE cl.company_id = c.id OR cl.name ILIKE c.name)`);
+        conditions.push(`EXISTS (SELECT 1 FROM accounts cl WHERE cl.company_id = c.id OR cl.name ILIKE c.name)`);
       }
       if (sector) {
         conditions.push(`c.industry ILIKE $${pi++}`);
@@ -402,20 +402,20 @@ Args:
         SELECT c.*,
           (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) as employee_count,
           (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.detected_at > NOW() - INTERVAL '90 days') as recent_signals,
-          EXISTS (SELECT 1 FROM clients cl WHERE cl.company_id = c.id) as is_client
+          EXISTS (SELECT 1 FROM accounts cl WHERE cl.company_id = c.id) as is_client
         FROM companies c
         WHERE ${conditions.join(' AND ')}
         ORDER BY c.name
         LIMIT $${pi}
       `, [...params, limit]);
 
-      // Also search clients table for unlinked clients (no company_id)
+      // Also search accounts table for unlinked accounts (no company_id)
       const clientResult = await dbQuery(`
         SELECT cl.id as client_id, cl.name, cl.relationship_status, cl.relationship_tier, cl.company_id,
           COALESCE(cf.total_placements, 0) as total_placements,
           COALESCE(cf.total_invoiced, 0) as total_revenue
-        FROM clients cl
-        LEFT JOIN client_financials cf ON cf.client_id = cl.id
+        FROM accounts cl
+        LEFT JOIN account_financials cf ON cf.client_id = cl.id
         WHERE cl.name ILIKE $1
           AND (cl.company_id IS NULL OR NOT EXISTS (SELECT 1 FROM companies co WHERE co.id = cl.company_id AND co.name ILIKE $1))
         LIMIT $2
@@ -491,7 +491,7 @@ Args:
       if (co.description) sections.push(`\n${co.description}`);
 
       // MitchelLake relationship
-      const clientR = await dbQuery(`SELECT * FROM clients WHERE company_id = $1 OR name ILIKE $2`, [co.id, co.name]);
+      const clientR = await dbQuery(`SELECT * FROM accounts WHERE company_id = $1 OR name ILIKE $2`, [co.id, co.name]);
       if (clientR.rows.length > 0) {
         const cl = clientR.rows[0];
         sections.push(`\n## MitchelLake Relationship`);
@@ -504,9 +504,9 @@ Args:
       // Past searches
       const searchR = await dbQuery(`
         SELECT s.title, s.status, s.kick_off_date
-        FROM searches s
-        JOIN projects pr ON s.project_id = pr.id
-        JOIN clients cl ON pr.client_id = cl.id
+        FROM opportunities s
+        JOIN engagements pr ON s.project_id = pr.id
+        JOIN accounts cl ON pr.client_id = cl.id
         WHERE cl.company_id = $1 OR cl.name ILIKE $2
         ORDER BY s.kick_off_date DESC LIMIT 10
       `, [co.id, `%${co.name}%`]);
@@ -669,10 +669,10 @@ Args:
       const result = await dbQuery(`
         SELECT s.id, s.title, s.status, s.seniority_level, s.kick_off_date, s.location,
                cl.name as client_name, 
-               (SELECT COUNT(*) FROM search_candidates sc WHERE sc.search_id = s.id) as candidate_count
-        FROM searches s
-        JOIN projects pr ON s.project_id = pr.id
-        JOIN clients cl ON pr.client_id = cl.id
+               (SELECT COUNT(*) FROM pipeline_contacts sc WHERE sc.search_id = s.id) as candidate_count
+        FROM opportunities s
+        JOIN engagements pr ON s.project_id = pr.id
+        JOIN accounts cl ON pr.client_id = cl.id
         WHERE ${conditions.join(' AND ')}
         ORDER BY s.kick_off_date DESC NULLS LAST
         LIMIT $${pi}
@@ -720,9 +720,9 @@ Args:
     try {
       const searchR = await dbQuery(`
         SELECT s.*, cl.name as client_name
-        FROM searches s
-        JOIN projects pr ON s.project_id = pr.id
-        JOIN clients cl ON pr.client_id = cl.id
+        FROM opportunities s
+        JOIN engagements pr ON s.project_id = pr.id
+        JOIN accounts cl ON pr.client_id = cl.id
         WHERE s.id = $1
       `, [search_id]);
 
@@ -742,7 +742,7 @@ Args:
         SELECT sc.status, sc.overall_fit_score, sc.assessment_notes,
                p.full_name, p.current_title, p.current_company_name, p.location,
                ps.engagement_score, ps.receptivity_score, ps.timing_score
-        FROM search_candidates sc
+        FROM pipeline_contacts sc
         JOIN people p ON sc.person_id = p.id
         LEFT JOIN person_scores ps ON p.id = ps.person_id
         WHERE sc.search_id = $1
@@ -1004,7 +1004,7 @@ server.registerTool(
       const [people, companies, searches, signals, interactions, scores] = await Promise.all([
         dbQuery('SELECT COUNT(*) FROM people'),
         dbQuery('SELECT COUNT(*) FROM companies'),
-        dbQuery(`SELECT status, COUNT(*) FROM searches GROUP BY status ORDER BY count DESC`),
+        dbQuery(`SELECT status, COUNT(*) FROM opportunities GROUP BY status ORDER BY count DESC`),
         dbQuery(`SELECT COUNT(*) FROM signal_events WHERE detected_at > NOW() - INTERVAL '7 days'`),
         dbQuery(`SELECT COUNT(*) FROM interactions WHERE interaction_at > NOW() - INTERVAL '30 days'`),
         dbQuery('SELECT COUNT(*) FROM person_scores')

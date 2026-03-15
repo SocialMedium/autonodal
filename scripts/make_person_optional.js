@@ -7,11 +7,11 @@ const pool = new Pool({
 });
 
 async function makePersonOptional() {
-  console.log('🔧 Making person_id optional in placements table...\n');
-  
+  console.log('🔧 Making person_id optional in conversions table...\n');
+
   try {
     await pool.query(`
-      ALTER TABLE placements 
+      ALTER TABLE conversions
       ALTER COLUMN person_id DROP NOT NULL
     `);
     

@@ -125,9 +125,9 @@ async function embedCompanies(options = {}) {
         COUNT(*) FILTER (WHERE p.fee_category = 'placement') as placement_count,
         COUNT(*) FILTER (WHERE p.fee_category = 'retainer') as retainer_count,
         COUNT(*) FILTER (WHERE p.fee_category = 'project') as project_count
-      FROM clients c
-      LEFT JOIN client_financials cf ON c.id = cf.client_id
-      LEFT JOIN placements p ON c.id = p.client_id
+      FROM accounts c
+      LEFT JOIN account_financials cf ON c.id = cf.client_id
+      LEFT JOIN conversions p ON c.id = p.client_id
       WHERE cf.total_placements > 0 ${whereClause}
       GROUP BY c.id, c.name, c.relationship_tier, cf.total_placements, 
                cf.total_invoiced, cf.average_placement_fee, cf.first_placement_date,

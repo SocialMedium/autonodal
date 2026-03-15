@@ -303,7 +303,7 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
           (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id) as contact_count
         FROM signal_events se
         JOIN companies c ON c.id = se.company_id AND c.is_client = true
-        JOIN clients cl ON cl.company_id = c.id
+        JOIN accounts cl ON cl.company_id = c.id
         WHERE se.detected_at > NOW() - INTERVAL '7 days'
         ORDER BY se.company_id, se.confidence_score DESC
         LIMIT 5
@@ -516,7 +516,7 @@ app.get('/api/stats', authenticateToken, async (req, res) => {
       pool.query('SELECT COUNT(*) AS cnt FROM signal_events'),
       pool.query('SELECT COUNT(*) AS cnt FROM companies'),
       pool.query('SELECT COUNT(*) AS cnt FROM external_documents'),
-      pool.query('SELECT COUNT(*) AS cnt, COALESCE(SUM(placement_fee), 0) AS total_fees FROM placements'),
+      pool.query('SELECT COUNT(*) AS cnt, COALESCE(SUM(placement_fee), 0) AS total_fees FROM conversions'),
       pool.query('SELECT COUNT(*) AS cnt FROM rss_sources WHERE enabled = true'),
       pool.query(`SELECT COUNT(DISTINCT person_id) AS cnt FROM interactions WHERE interaction_type = 'research_note'`),
       pool.query(`SELECT signal_type, COUNT(*) AS cnt FROM signal_events GROUP BY signal_type ORDER BY cnt DESC`),
@@ -632,7 +632,7 @@ app.get('/api/talent-in-motion', authenticateToken, async (req, res) => {
         (SELECT COUNT(*) FROM people p2 WHERE p2.current_company_id = p.current_company_id) as colleagues_affected,
         (SELECT COUNT(*) FROM people p2 WHERE p2.current_company_id = p.current_company_id
          AND p2.seniority_level IN ('c_suite','vp','director')) as senior_affected,
-        (SELECT COUNT(*) FROM search_candidates sc JOIN searches s ON s.id = sc.search_id AND s.status IN ('sourcing','interviewing')
+        (SELECT COUNT(*) FROM pipeline_contacts sc JOIN opportunities s ON s.id = sc.search_id AND s.status IN ('sourcing','interviewing')
          WHERE sc.person_id = p.id) as active_search_matches
       FROM people p
       JOIN companies c ON c.id = p.current_company_id
@@ -653,7 +653,7 @@ app.get('/api/talent-in-motion', authenticateToken, async (req, res) => {
              ps.activity_score, ps.timing_score, ps.receptivity_score, ps.flight_risk_score,
              ps.engagement_score, ps.activity_trend, ps.engagement_trend,
              ps.last_interaction_at, ps.interaction_count_30d, ps.external_signals_30d,
-             (SELECT COUNT(*) FROM search_candidates sc JOIN searches s ON s.id = sc.search_id AND s.status IN ('sourcing','interviewing')
+             (SELECT COUNT(*) FROM pipeline_contacts sc JOIN opportunities s ON s.id = sc.search_id AND s.status IN ('sourcing','interviewing')
               WHERE sc.person_id = p.id) as active_search_matches
       FROM people p
       JOIN person_scores ps ON ps.person_id = p.id
@@ -748,8 +748,8 @@ app.get('/api/converging-themes', authenticateToken, async (req, res) => {
       SELECT s.title as search_title, s.status, cl.name as client_name,
              COUNT(DISTINCT se.id) as matching_signals,
              COUNT(DISTINCT se.company_id) as signalling_companies
-      FROM searches s
-      JOIN clients cl ON cl.id = s.client_id
+      FROM opportunities s
+      JOIN accounts cl ON cl.id = s.client_id
       JOIN companies co ON co.id = cl.company_id
       JOIN signal_events se ON se.company_id = co.id AND se.detected_at > NOW() - INTERVAL '30 days'
       WHERE s.status IN ('sourcing', 'interviewing')
@@ -875,7 +875,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
                ed.source_name, ed.source_type AS doc_source_type,
                ed.title AS doc_title, ed.summary AS doc_summary,
                (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id) AS contact_count,
-               (SELECT COUNT(*) FROM placements pl JOIN clients cl ON cl.id = pl.client_id
+               (SELECT COUNT(*) FROM conversions pl JOIN accounts cl ON cl.id = pl.client_id
                 WHERE cl.company_id = se.company_id) AS placement_count,
                sd.id AS dispatch_id, sd.status AS dispatch_status,
                sd.claimed_by, sd.claimed_by_name, sd.blog_title AS dispatch_blog_title
@@ -1453,13 +1453,13 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
               projectsFound++;
               // Try to link to our searches table
               const { rows: [existingSearch] } = await pool.query(
-                `SELECT id FROM searches WHERE code = $1 OR title ILIKE $2 LIMIT 1`,
+                `SELECT id FROM opportunities WHERE code = $1 OR title ILIKE $2 LIMIT 1`,
                 [`ezekia_${proj.id}`, `%${proj.name}%`]
               );
               if (existingSearch) {
                 // Link person as search candidate
                 await pool.query(`
-                  INSERT INTO search_candidates (search_id, person_id, status, source, added_at)
+                  INSERT INTO pipeline_contacts (search_id, person_id, status, source, added_at)
                   VALUES ($1, $2, 'sourced', 'ezekia_enrich', NOW())
                   ON CONFLICT DO NOTHING
                 `, [existingSearch.id, req.params.id]);
@@ -1723,10 +1723,10 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
   }
 });
 
-// ─── Reconcile Client → Company (create companies record for unlinked clients) ───
+// ─── Reconcile Account → Company (create companies record for unlinked clients) ───
 app.post('/api/clients/:id/reconcile', authenticateToken, async (req, res) => {
   try {
-    const { rows: [client] } = await pool.query('SELECT * FROM clients WHERE id = $1', [req.params.id]);
+    const { rows: [client] } = await pool.query('SELECT * FROM accounts WHERE id = $1', [req.params.id]);
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
     // Already linked?
@@ -1754,7 +1754,7 @@ app.post('/api/clients/:id/reconcile', authenticateToken, async (req, res) => {
     }
 
     // Link client to company
-    await pool.query('UPDATE clients SET company_id = $1, updated_at = NOW() WHERE id = $2', [companyId, client.id]);
+    await pool.query('UPDATE accounts SET company_id = $1, updated_at = NOW() WHERE id = $2', [companyId, client.id]);
 
     // Also link any people whose current_company_name matches
     const { rowCount: linkedPeople } = await pool.query(`
@@ -1769,11 +1769,11 @@ app.post('/api/clients/:id/reconcile', authenticateToken, async (req, res) => {
   }
 });
 
-// ─── Bulk reconcile all unlinked clients ───
+// ─── Bulk reconcile all unlinked accounts ───
 app.post('/api/clients/reconcile-all', authenticateToken, async (req, res) => {
   try {
     const { rows: unlinked } = await pool.query(`
-      SELECT cl.id, cl.name FROM clients cl
+      SELECT cl.id, cl.name FROM accounts cl
       WHERE cl.company_id IS NULL
       ORDER BY cl.name
     `);
@@ -1798,7 +1798,7 @@ app.post('/api/clients/reconcile-all', authenticateToken, async (req, res) => {
           created++;
         }
 
-        await pool.query('UPDATE clients SET company_id = $1, updated_at = NOW() WHERE id = $2', [companyId, client.id]);
+        await pool.query('UPDATE accounts SET company_id = $1, updated_at = NOW() WHERE id = $2', [companyId, client.id]);
         await pool.query(`
           UPDATE people SET current_company_id = $1, updated_at = NOW()
           WHERE current_company_name ILIKE $2 AND (current_company_id IS NULL OR current_company_id != $1)
@@ -1864,16 +1864,16 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
       }
     }
 
-    // 2. Placement history from client record
+    // 2. Conversion history from account record
     try {
       const { rows: [clientRecord] } = await pool.query(
-        'SELECT cl.id, cl.relationship_status, cl.relationship_tier FROM clients cl WHERE cl.company_id = $1 LIMIT 1',
+        'SELECT cl.id, cl.relationship_status, cl.relationship_tier FROM accounts cl WHERE cl.company_id = $1 LIMIT 1',
         [req.params.id]
       );
       if (clientRecord) {
         const { rows: placements } = await pool.query(
           `SELECT p.role_title, p.start_date, p.placement_fee, p.currency, pe.full_name
-           FROM placements p
+           FROM conversions p
            LEFT JOIN people pe ON pe.id = p.person_id
            WHERE p.client_id = $1 ORDER BY p.start_date DESC LIMIT 10`,
           [clientRecord.id]
@@ -1950,7 +1950,7 @@ app.get('/api/companies', authenticateToken, async (req, res) => {
     const offset = parseInt(req.query.offset) || 0;
     const q = req.query.q;
 
-    // ── CLIENTS filter: query the clients table directly ──
+    // ── CLIENTS filter: query the accounts table directly ──
     if (req.query.is_client === 'true') {
       let clWhere = 'WHERE 1=1';
       const clParams = [];
@@ -1975,14 +1975,14 @@ app.get('/api/companies', authenticateToken, async (req, res) => {
                  COALESCE(cf.total_invoiced, 0) AS total_revenue,
                  (SELECT COUNT(*) FROM people p WHERE p.current_company_id = cl.company_id) AS people_count,
                  (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = cl.company_id) AS signal_count
-          FROM clients cl
+          FROM accounts cl
           LEFT JOIN companies co ON cl.company_id = co.id
-          LEFT JOIN client_financials cf ON cf.client_id = cl.id
+          LEFT JOIN account_financials cf ON cf.client_id = cl.id
           ${clWhere}
           ORDER BY COALESCE(cf.total_invoiced, 0) DESC, cl.name
           LIMIT $${clLimitIdx} OFFSET $${clOffsetIdx}
         `, clParams),
-        pool.query(`SELECT COUNT(*) AS cnt FROM clients cl ${clWhere}`, clParams.slice(0, -2)),
+        pool.query(`SELECT COUNT(*) AS cnt FROM accounts cl ${clWhere}`, clParams.slice(0, -2)),
       ]);
 
       return res.json({
@@ -2073,7 +2073,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
         SELECT cl.*, co.id AS resolved_company_id,
                co.sector, co.geography, co.domain, co.employee_count_band,
                co.description AS company_description, co.is_client AS co_is_client
-        FROM clients cl
+        FROM accounts cl
         LEFT JOIN companies co ON cl.company_id = co.id
         WHERE cl.id = $1
       `, [companyId]);
@@ -2105,8 +2105,8 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
     let financials = null;
     try {
       const { rows: [cf] } = await pool.query(`
-        SELECT cf.* FROM client_financials cf
-        JOIN clients cl ON cf.client_id = cl.id
+        SELECT cf.* FROM account_financials cf
+        JOIN accounts cl ON cf.client_id = cl.id
         WHERE cl.company_id = $1 OR cl.id = $1
       `, [companyId]);
       financials = cf || null;
@@ -2142,9 +2142,9 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
       const { rows } = await pool.query(`
         SELECT pl.id, pe.full_name AS candidate_name, pl.role_title, pl.start_date,
                pl.placement_fee, pl.fee_category
-        FROM placements pl
+        FROM conversions pl
         LEFT JOIN people pe ON pl.person_id = pe.id
-        LEFT JOIN clients cl ON pl.client_id = cl.id
+        LEFT JOIN accounts cl ON pl.client_id = cl.id
         WHERE cl.company_id = $1 OR cl.id = $1
         ORDER BY pl.start_date DESC NULLS LAST
       `, [companyId]);
@@ -2461,7 +2461,7 @@ app.get('/api/health', (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Ranked opportunities — triangulated scores
-app.get('/api/opportunities', authenticateToken, async (req, res) => {
+app.get('/api/network/opportunities', authenticateToken, async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const offset = parseInt(req.query.offset) || 0;
@@ -2511,7 +2511,7 @@ app.get('/api/opportunities', authenticateToken, async (req, res) => {
 });
 
 // Top opportunities by region
-app.get('/api/opportunities/by-region', authenticateToken, async (req, res) => {
+app.get('/api/network/opportunities/by-region', authenticateToken, async (req, res) => {
   try {
     const perRegion = Math.min(parseInt(req.query.per_region) || 5, 20);
 
@@ -2701,7 +2701,7 @@ app.get('/api/dispatches', authenticateToken, async (req, res) => {
                jsonb_array_length(COALESCE(sd.send_to, '[]'::jsonb)) AS recipient_count,
                c.sector, c.geography, c.is_client,
                (SELECT COUNT(*) FROM people p2 WHERE p2.current_company_id = sd.company_id) AS people_at_company,
-               (SELECT COUNT(*) FROM placements pl JOIN clients cl ON cl.id = pl.client_id
+               (SELECT COUNT(*) FROM conversions pl JOIN accounts cl ON cl.id = pl.client_id
                 WHERE cl.company_id = sd.company_id) AS placement_count
         FROM signal_dispatches sd
         LEFT JOIN companies c ON c.id = sd.company_id
@@ -2885,7 +2885,7 @@ Return valid JSON only.`;
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PLACEMENTS / REVENUE
+// CONVERSIONS / REVENUE
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.get('/api/placements', authenticateToken, async (req, res) => {
@@ -2927,8 +2927,8 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
                pl.placement_fee, pl.fee_category, pl.fee_type, pl.invoice_number,
                cl.id AS company_id, cl.name AS company_name,
                co.sector AS company_sector
-        FROM placements pl
-        LEFT JOIN clients cl ON pl.client_id = cl.id
+        FROM conversions pl
+        LEFT JOIN accounts cl ON pl.client_id = cl.id
         LEFT JOIN companies co ON cl.company_id = co.id
         LEFT JOIN people pe ON pl.person_id = pe.id
         ${where}
@@ -2941,8 +2941,8 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
                COUNT(DISTINCT pl.client_id) AS client_count,
                MIN(pl.start_date) AS earliest,
                MAX(pl.start_date) AS latest
-        FROM placements pl
-        LEFT JOIN clients cl ON pl.client_id = cl.id
+        FROM conversions pl
+        LEFT JOIN accounts cl ON pl.client_id = cl.id
         LEFT JOIN people pe ON pl.person_id = pe.id
         ${where}
       `, params.slice(0, -2)),
@@ -2953,7 +2953,7 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
       SELECT EXTRACT(YEAR FROM start_date)::int AS year,
              COUNT(*) AS count,
              COALESCE(SUM(placement_fee), 0) AS revenue
-      FROM placements
+      FROM conversions
       WHERE start_date IS NOT NULL
       GROUP BY year ORDER BY year DESC
     `);
@@ -2962,8 +2962,8 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
     const { rows: topClients } = await pool.query(`
       SELECT cl.id, cl.name, COUNT(*) AS placement_count,
              COALESCE(SUM(pl.placement_fee), 0) AS total_revenue
-      FROM placements pl
-      LEFT JOIN clients cl ON pl.client_id = cl.id
+      FROM conversions pl
+      LEFT JOIN accounts cl ON pl.client_id = cl.id
       GROUP BY cl.id, cl.name
       ORDER BY total_revenue DESC LIMIT 20
     `);
@@ -3122,7 +3122,7 @@ async function executeTool(name, input, userId) {
         if (!co) return JSON.stringify({ error: 'Not found' });
         const { rows: sigs } = await pool.query(`SELECT signal_type, evidence_summary, confidence_score, detected_at FROM signal_events WHERE company_id = $1 ORDER BY detected_at DESC LIMIT 15`, [input.company_id]);
         const { rows: ppl } = await pool.query(`SELECT id, full_name, current_title, seniority_level FROM people WHERE current_company_id = $1 ORDER BY full_name LIMIT 30`, [input.company_id]);
-        let pls = []; try { const { rows } = await pool.query(`SELECT pe.full_name AS candidate_name, pl.role_title, pl.start_date, pl.placement_fee FROM placements pl LEFT JOIN clients cl ON pl.client_id = cl.id LEFT JOIN people pe ON pl.person_id = pe.id WHERE cl.company_id = $1 OR cl.name ILIKE (SELECT name FROM companies WHERE id = $1) ORDER BY pl.start_date DESC`, [input.company_id]); pls = rows; } catch (e) {}
+        let pls = []; try { const { rows } = await pool.query(`SELECT pe.full_name AS candidate_name, pl.role_title, pl.start_date, pl.placement_fee FROM conversions pl LEFT JOIN accounts cl ON pl.client_id = cl.id LEFT JOIN people pe ON pl.person_id = pe.id WHERE cl.company_id = $1 OR cl.name ILIKE (SELECT name FROM companies WHERE id = $1) ORDER BY pl.start_date DESC`, [input.company_id]); pls = rows; } catch (e) {}
         return JSON.stringify({ ...co, signals: sigs, people: ppl, placements: pls });
       }
       case 'search_signals': {
@@ -3136,7 +3136,7 @@ async function executeTool(name, input, userId) {
       }
       case 'search_placements': {
         const { query = '', limit = 20 } = input;
-        const { rows } = await pool.query(`SELECT pe.full_name AS candidate_name, pl.role_title, pl.start_date, pl.placement_fee, cl.name AS company_name, cl.id AS company_id FROM placements pl LEFT JOIN clients cl ON pl.client_id = cl.id LEFT JOIN people pe ON pl.person_id = pe.id WHERE pe.full_name ILIKE $1 OR pl.role_title ILIKE $1 OR cl.name ILIKE $1 ORDER BY pl.start_date DESC NULLS LAST LIMIT $2`, [`%${query}%`, limit]);
+        const { rows } = await pool.query(`SELECT pe.full_name AS candidate_name, pl.role_title, pl.start_date, pl.placement_fee, cl.name AS company_name, cl.id AS company_id FROM conversions pl LEFT JOIN accounts cl ON pl.client_id = cl.id LEFT JOIN people pe ON pl.person_id = pe.id WHERE pe.full_name ILIKE $1 OR pl.role_title ILIKE $1 OR cl.name ILIKE $1 ORDER BY pl.start_date DESC NULLS LAST LIMIT $2`, [`%${query}%`, limit]);
         return JSON.stringify(rows);
       }
       case 'search_research_notes': {
@@ -3327,7 +3327,7 @@ async function executeTool(name, input, userId) {
         return JSON.stringify({ explanation: input.explanation, row_count: rows.length, results: rows });
       }
       case 'get_platform_stats': {
-        const { rows: [s] } = await pool.query(`SELECT (SELECT COUNT(*) FROM signal_events) AS signals, (SELECT COUNT(*) FROM companies WHERE sector IS NOT NULL OR is_client = true) AS companies, (SELECT COUNT(*) FROM people) AS people, (SELECT COUNT(*) FROM external_documents) AS documents, (SELECT COUNT(*) FROM placements) AS placements, (SELECT COALESCE(SUM(placement_fee),0) FROM placements) AS revenue`);
+        const { rows: [s] } = await pool.query(`SELECT (SELECT COUNT(*) FROM signal_events) AS signals, (SELECT COUNT(*) FROM companies WHERE sector IS NOT NULL OR is_client = true) AS companies, (SELECT COUNT(*) FROM people) AS people, (SELECT COUNT(*) FROM external_documents) AS documents, (SELECT COUNT(*) FROM conversions) AS placements, (SELECT COALESCE(SUM(placement_fee),0) FROM conversions) AS revenue`);
         return JSON.stringify(s);
       }
       default: return JSON.stringify({ error: `Unknown tool: ${name}` });
@@ -3723,10 +3723,10 @@ app.listen(PORT, async () => {
   try {
     // First, try to link clients to companies by name match
     const { rowCount: linked } = await pool.query(`
-      UPDATE clients SET company_id = co.id
+      UPDATE accounts SET company_id = co.id
       FROM companies co
-      WHERE clients.company_id IS NULL
-        AND LOWER(TRIM(clients.name)) = LOWER(TRIM(co.name))
+      WHERE accounts.company_id IS NULL
+        AND LOWER(TRIM(accounts.name)) = LOWER(TRIM(co.name))
     `);
     if (linked > 0) console.log(`  ✅ Linked ${linked} clients to companies by name`);
 
@@ -3734,8 +3734,8 @@ app.listen(PORT, async () => {
     const { rowCount } = await pool.query(`
       UPDATE companies SET is_client = true
       WHERE id IN (
-        SELECT DISTINCT cl.company_id FROM clients cl
-        JOIN placements pl ON pl.client_id = cl.id
+        SELECT DISTINCT cl.company_id FROM accounts cl
+        JOIN conversions pl ON pl.client_id = cl.id
         WHERE cl.company_id IS NOT NULL
       ) AND (is_client IS NULL OR is_client = false)
     `);

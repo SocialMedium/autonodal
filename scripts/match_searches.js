@@ -242,7 +242,7 @@ async function matchSearch(searchId) {
 
   // Get search details
   const searchResult = await pool.query(`
-    SELECT * FROM searches WHERE id = $1
+    SELECT * FROM opportunities WHERE id = $1
   `, [searchId]);
 
   if (searchResult.rows.length === 0) {
@@ -286,7 +286,7 @@ async function matchSearch(searchId) {
 
   // Get people already in pipeline (to exclude)
   const pipelineResult = await pool.query(`
-    SELECT person_id FROM search_candidates WHERE search_id = $1
+    SELECT person_id FROM pipeline_contacts WHERE search_id = $1
   `, [searchId]);
   const existingIds = new Set(pipelineResult.rows.map(r => r.person_id));
 
@@ -354,7 +354,7 @@ async function main() {
     // Get all active searches
     const result = await pool.query(`
       SELECT id, title
-      FROM searches
+      FROM opportunities
       WHERE status IN ('sourcing', 'outreach', 'research', 'interviewing', 'shortlist')
       ORDER BY updated_at DESC
     `);

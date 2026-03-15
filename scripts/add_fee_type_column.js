@@ -7,12 +7,12 @@ const pool = new Pool({
 });
 
 async function addFeeTypeColumn() {
-  console.log('🔧 Adding fee_type column to placements table...\n');
-  
+  console.log('🔧 Adding fee_type column to conversions table...\n');
+
   try {
     // Add the column if it doesn't exist
     await pool.query(`
-      ALTER TABLE placements 
+      ALTER TABLE conversions
       ADD COLUMN IF NOT EXISTS fee_category VARCHAR(50) DEFAULT 'placement'
     `);
     

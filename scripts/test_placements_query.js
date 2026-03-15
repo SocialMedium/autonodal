@@ -9,14 +9,14 @@ const pool = new Pool({
 async function testQuery() {
   try {
     // Get Acme Corp ID
-    const client = await pool.query(`SELECT id, name FROM clients WHERE name = 'Acme Corp'`);
+    const client = await pool.query(`SELECT id, name FROM accounts WHERE name = 'Acme Corp'`);
     console.log('Acme Corp:', client.rows[0]);
     
     const clientId = client.rows[0].id;
     
     // Simple query - just get placements for this client
     const placements = await pool.query(`
-      SELECT * FROM placements WHERE client_id = $1
+      SELECT * FROM conversions WHERE client_id = $1
     `, [clientId]);
     
     console.log('\nPlacements:', placements.rows.length);

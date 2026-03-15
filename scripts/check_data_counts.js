@@ -11,12 +11,12 @@ async function checkCounts() {
   
   const tables = [
     'people',
-    'clients', 
-    'projects',
-    'searches',
-    'search_candidates',
+    'accounts',
+    'engagements',
+    'opportunities',
+    'pipeline_contacts',
     'interactions',
-    'placements',
+    'conversions',
     'team_proximity'
   ];
   

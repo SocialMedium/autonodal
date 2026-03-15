@@ -122,7 +122,7 @@ async function findOrCreateClient(clientName) {
   }
   
   let result = await pool.query(
-    `SELECT id, name FROM clients WHERE LOWER(name) = LOWER($1) LIMIT 1`,
+    `SELECT id, name FROM accounts WHERE LOWER(name) = LOWER($1) LIMIT 1`,
     [clientName.trim()]
   );
   
@@ -131,7 +131,7 @@ async function findOrCreateClient(clientName) {
   }
   
   result = await pool.query(
-    `INSERT INTO clients (name, type, status)
+    `INSERT INTO accounts (name, type, status)
      VALUES ($1, 'direct', 'active')
      RETURNING id, name`,
     [clientName.trim()]
@@ -245,7 +245,7 @@ async function ingestXeroInvoices(csvFilePath) {
                            invoice.status.toLowerCase().includes('overdue') ? 'overdue' : 'pending';
       
       const result = await pool.query(`
-        INSERT INTO placements (
+        INSERT INTO conversions (
           person_id, client_id, role_title, role_level,
           placement_fee, currency, invoice_number, invoice_date,
           payment_status, payment_date, start_date,
@@ -314,7 +314,7 @@ async function ingestXeroInvoices(csvFilePath) {
 
 async function updateClientFinancials() {
   await pool.query(`
-    INSERT INTO client_financials (
+    INSERT INTO account_financials (
       client_id, total_invoiced, total_paid, total_outstanding,
       total_placements, active_placements,
       average_placement_fee, highest_placement_fee, lowest_placement_fee,
@@ -338,7 +338,7 @@ async function updateClientFinancials() {
         ELSE ROUND(1.0 * SUM(CASE WHEN pl.payment_status = 'paid' THEN 1 ELSE 0 END) / COUNT(*), 2)
       END as payment_reliability,
       NOW() as computed_at
-    FROM placements pl
+    FROM conversions pl
     GROUP BY pl.client_id
     ON CONFLICT (client_id) DO UPDATE SET
       total_invoiced = EXCLUDED.total_invoiced,

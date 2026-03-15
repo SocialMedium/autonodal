@@ -100,6 +100,6 @@ async function calculateSharedProjectProximity() {
         s.assigned_to as team_member_id,
         s.id as search_id,
         s.title as search_title
-      FROM search_candidates sc
-      JOIN searches s ON sc.search_id = s.id
+      FROM pipeline_contacts sc
+      JOIN opportunities s ON sc.search_id = s.id
       WHERE s.assigned_to IS NOT NULL

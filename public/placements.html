@@ -189,7 +189,7 @@ async function loadPlacements(reset) {
   const params = new URLSearchParams({ limit: 50, offset });
   if (q) params.set('q', q);
 
-  const data = await api('/api/placements?' + params);
+  const data = await api('/api/conversions?' + params);
 
   // Stats
   document.getElementById('totalRevenue').textContent = fmtMoney(data.total_revenue);
