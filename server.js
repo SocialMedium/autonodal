@@ -82,8 +82,11 @@ async function authenticateToken(req, res, next) {
 
   try {
     const { rows } = await pool.query(
-      `SELECT s.user_id, u.email, u.name, u.role
-       FROM sessions s JOIN users u ON s.user_id = u.id
+      `SELECT s.user_id, u.email, u.name, u.role, u.tenant_id,
+              t.vertical, t.name as tenant_name, t.slug as tenant_slug
+       FROM sessions s
+       JOIN users u ON s.user_id = u.id
+       LEFT JOIN tenants t ON t.id = u.tenant_id
        WHERE s.token = $1 AND s.expires_at > NOW()`,
       [token]
     );
@@ -91,6 +94,9 @@ async function authenticateToken(req, res, next) {
     if (rows.length === 0) return res.status(401).json({ error: 'Invalid or expired token' });
 
     req.user = rows[0];
+    // Ensure tenant_id is always available (fallback to ML tenant)
+    req.user.tenant_id = req.user.tenant_id || process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+    req.tenant_id = req.user.tenant_id;
     next();
   } catch (err) {
     console.error('Auth error:', err.message);
@@ -105,12 +111,16 @@ async function optionalAuth(req, res, next) {
   if (token) {
     try {
       const { rows } = await pool.query(
-        `SELECT s.user_id, u.email, u.name, u.role
+        `SELECT s.user_id, u.email, u.name, u.role, u.tenant_id
          FROM sessions s JOIN users u ON s.user_id = u.id
          WHERE s.token = $1 AND s.expires_at > NOW()`,
         [token]
       );
-      if (rows.length > 0) req.user = rows[0];
+      if (rows.length > 0) {
+        req.user = rows[0];
+        req.user.tenant_id = req.user.tenant_id || process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+        req.tenant_id = req.user.tenant_id;
+      }
     } catch (e) { /* ignore */ }
   }
   next();
@@ -269,8 +279,8 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
 
     // Run all 4 queries in parallel
     const geos = REGION_MAP[userRegion] || REGION_MAP['APAC'];
-    const geoConditions = geos.map((_, i) => `c.geography ILIKE $${i + 1} OR sd.signal_summary ILIKE $${i + 1}`).join(' OR ');
-    const geoParams = geos.map(g => `%${g}%`);
+    const geoConditions = geos.map((_, i) => `c.geography ILIKE $${i + 2} OR sd.signal_summary ILIKE $${i + 2}`).join(' OR ');
+    const geoParams = [req.tenant_id, ...geos.map(g => `%${g}%`)];
 
     const [contactResult, clientResult, dispatchResult, statsResult] = await Promise.all([
       // 1. My contacts in recent signals
@@ -282,7 +292,7 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
           tp.proximity_strength, tp.proximity_type,
           i.interaction_at as last_contact
         FROM team_proximity tp
-        JOIN people p ON p.id = tp.person_id
+        JOIN people p ON p.id = tp.person_id AND p.tenant_id = $2
         JOIN companies c ON c.id = p.current_company_id
         JOIN signal_events se ON se.company_id = c.id AND se.detected_at > NOW() - INTERVAL '7 days'
         LEFT JOIN LATERAL (
@@ -290,10 +300,10 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
           WHERE person_id = p.id AND user_id = $1
           ORDER BY interaction_at DESC LIMIT 1
         ) i ON true
-        WHERE tp.user_id = $1
+        WHERE tp.user_id = $1 AND tp.tenant_id = $2
         ORDER BY p.id, se.confidence_score DESC, se.detected_at DESC
         LIMIT 5
-      `, [userId]),
+      `, [userId, req.tenant_id]),
       // 2. Client signals
       pool.query(`
         SELECT DISTINCT ON (se.company_id)
@@ -302,12 +312,12 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
           cl.relationship_status, cl.relationship_tier,
           (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id) as contact_count
         FROM signal_events se
-        JOIN companies c ON c.id = se.company_id AND c.is_client = true
-        JOIN accounts cl ON cl.company_id = c.id
-        WHERE se.detected_at > NOW() - INTERVAL '7 days'
+        JOIN companies c ON c.id = se.company_id AND c.is_client = true AND c.tenant_id = $1
+        JOIN accounts cl ON cl.company_id = c.id AND cl.tenant_id = $1
+        WHERE se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1
         ORDER BY se.company_id, se.confidence_score DESC
         LIMIT 5
-      `),
+      `, [req.tenant_id]),
       // 3. Top dispatches for user's region
       pool.query(`
         SELECT sd.id, sd.company_name, sd.signal_type, sd.signal_summary,
@@ -317,6 +327,7 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
         FROM signal_dispatches sd
         LEFT JOIN companies c ON c.id = sd.company_id
         WHERE sd.status = 'draft' AND sd.claimed_by IS NULL
+          AND sd.tenant_id = $1
           AND (${geoConditions})
         ORDER BY
           CASE WHEN c.is_client = true THEN 0 ELSE 1 END,
@@ -327,10 +338,10 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
       // 4. Quick stats
       pool.query(`
         SELECT
-          (SELECT COUNT(*) FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours') as signals_24h,
-          (SELECT COUNT(*) FROM signal_dispatches WHERE status = 'draft' AND claimed_by IS NULL) as unclaimed_dispatches,
-          (SELECT COUNT(*) FROM signal_events se JOIN companies c ON c.id = se.company_id AND c.is_client = true WHERE se.detected_at > NOW() - INTERVAL '7 days') as client_signals_7d
-      `)
+          (SELECT COUNT(*) FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND tenant_id = $1) as signals_24h,
+          (SELECT COUNT(*) FROM signal_dispatches WHERE status = 'draft' AND claimed_by IS NULL AND tenant_id = $1) as unclaimed_dispatches,
+          (SELECT COUNT(*) FROM signal_events se JOIN companies c ON c.id = se.company_id AND c.is_client = true WHERE se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1) as client_signals_7d
+      `, [req.tenant_id])
     ]);
 
     const contactSignals = contactResult.rows;
@@ -511,16 +522,16 @@ app.get('/api/stats', authenticateToken, async (req, res) => {
       documents, placements, activeSources,
       peopleWithNotes, signalsByType, docsByType
     ] = await Promise.all([
-      pool.query('SELECT COUNT(*) AS cnt FROM people'),
-      pool.query(`SELECT COUNT(*) AS cnt FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours'`),
-      pool.query('SELECT COUNT(*) AS cnt FROM signal_events'),
-      pool.query('SELECT COUNT(*) AS cnt FROM companies'),
-      pool.query('SELECT COUNT(*) AS cnt FROM external_documents'),
-      pool.query('SELECT COUNT(*) AS cnt, COALESCE(SUM(placement_fee), 0) AS total_fees FROM conversions'),
+      pool.query('SELECT COUNT(*) AS cnt FROM people WHERE tenant_id = $1', [req.tenant_id]),
+      pool.query(`SELECT COUNT(*) AS cnt FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND tenant_id = $1`, [req.tenant_id]),
+      pool.query('SELECT COUNT(*) AS cnt FROM signal_events WHERE tenant_id = $1', [req.tenant_id]),
+      pool.query('SELECT COUNT(*) AS cnt FROM companies WHERE tenant_id = $1', [req.tenant_id]),
+      pool.query('SELECT COUNT(*) AS cnt FROM external_documents WHERE tenant_id = $1', [req.tenant_id]),
+      pool.query('SELECT COUNT(*) AS cnt, COALESCE(SUM(placement_fee), 0) AS total_fees FROM conversions WHERE tenant_id = $1', [req.tenant_id]),
       pool.query('SELECT COUNT(*) AS cnt FROM rss_sources WHERE enabled = true'),
-      pool.query(`SELECT COUNT(DISTINCT person_id) AS cnt FROM interactions WHERE interaction_type = 'research_note'`),
-      pool.query(`SELECT signal_type, COUNT(*) AS cnt FROM signal_events GROUP BY signal_type ORDER BY cnt DESC`),
-      pool.query(`SELECT source_type, COUNT(*) AS cnt FROM external_documents GROUP BY source_type ORDER BY cnt DESC`),
+      pool.query(`SELECT COUNT(DISTINCT person_id) AS cnt FROM interactions WHERE interaction_type = 'research_note' AND tenant_id = $1`, [req.tenant_id]),
+      pool.query(`SELECT signal_type, COUNT(*) AS cnt FROM signal_events WHERE tenant_id = $1 GROUP BY signal_type ORDER BY cnt DESC`, [req.tenant_id]),
+      pool.query(`SELECT source_type, COUNT(*) AS cnt FROM external_documents WHERE tenant_id = $1 GROUP BY source_type ORDER BY cnt DESC`, [req.tenant_id]),
     ]);
 
     res.json({
@@ -553,18 +564,18 @@ app.get('/api/market-temperature', authenticateToken, async (req, res) => {
       SELECT se.signal_type, COUNT(*) as cnt,
              array_agg(DISTINCT se.company_name ORDER BY se.company_name) FILTER (WHERE se.company_name IS NOT NULL) as companies
       FROM signal_events se
-      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days'
+      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1
       GROUP BY se.signal_type ORDER BY cnt DESC
-    `);
+    `, [req.tenant_id]);
 
     // Headline signals — the most notable recent megacap moves
     const { rows: headlines } = await pool.query(`
       SELECT se.company_name, se.signal_type, se.evidence_summary, se.detected_at, se.confidence_score
       FROM signal_events se
-      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days'
+      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1
       ORDER BY se.confidence_score DESC, se.detected_at DESC
       LIMIT 8
-    `);
+    `, [req.tenant_id]);
 
     // Sentiment indicators
     const growth = byType.filter(t => ['capital_raising', 'product_launch', 'strategic_hiring', 'geographic_expansion', 'partnership'].includes(t.signal_type)).reduce((sum, t) => sum + parseInt(t.cnt), 0);
@@ -640,11 +651,12 @@ app.get('/api/talent-in-motion', authenticateToken, async (req, res) => {
         AND se.signal_type IN ('restructuring', 'layoffs', 'ma_activity')
         AND se.detected_at > NOW() - INTERVAL '14 days'
       LEFT JOIN person_scores ps ON ps.person_id = p.id
-      WHERE p.seniority_level IN ('c_suite', 'vp', 'director', 'manager', 'senior_ic')
-        OR ps.flight_risk_score > 0.5
+      WHERE (p.seniority_level IN ('c_suite', 'vp', 'director', 'manager', 'senior_ic')
+        OR ps.flight_risk_score > 0.5)
+        AND p.tenant_id = $2
       ORDER BY p.id, se.detected_at DESC
       LIMIT $1
-    `, [limit]);
+    `, [limit, req.tenant_id]);
 
     // 2. People with high activity / timing scores (activity spikes & re-engage)
     const { rows: activeProfiles } = await pool.query(`
@@ -659,9 +671,10 @@ app.get('/api/talent-in-motion', authenticateToken, async (req, res) => {
       JOIN person_scores ps ON ps.person_id = p.id
       WHERE (ps.timing_score > 0.6 OR ps.activity_score > 0.6 OR ps.receptivity_score > 0.7)
         AND p.current_title IS NOT NULL
+        AND p.tenant_id = $2
       ORDER BY (COALESCE(ps.timing_score,0) + COALESCE(ps.activity_score,0) + COALESCE(ps.receptivity_score,0)) DESC
       LIMIT $1
-    `, [limit]);
+    `, [limit, req.tenant_id]);
 
     // 3. Recent person signals (flight_risk_alert, activity_spike, timing_opportunity)
     const { rows: personSignals } = await pool.query(`
@@ -671,9 +684,10 @@ app.get('/api/talent-in-motion', authenticateToken, async (req, res) => {
       JOIN people p ON p.id = psg.person_id
       WHERE psg.signal_type IN ('flight_risk_alert', 'activity_spike', 'timing_opportunity', 'new_role', 'company_exit')
         AND psg.detected_at > NOW() - INTERVAL '14 days'
+        AND psg.tenant_id = $2
       ORDER BY psg.detected_at DESC
       LIMIT $1
-    `, [limit]);
+    `, [limit, req.tenant_id]);
 
     res.json({ flight_risk: flightRisk, active_profiles: activeProfiles, person_signals: personSignals });
   } catch (err) {
@@ -695,7 +709,7 @@ app.get('/api/converging-themes', authenticateToken, async (req, res) => {
         FROM people p
         JOIN companies c2 ON c2.id = p.current_company_id
         JOIN signal_events se2 ON se2.company_id = c2.id AND se2.detected_at > NOW() - INTERVAL '30 days'
-        WHERE p.current_title IS NOT NULL
+        WHERE p.current_title IS NOT NULL AND p.tenant_id = $1
         GROUP BY se2.signal_type
       )
       SELECT
@@ -712,12 +726,13 @@ app.get('/api/converging-themes', authenticateToken, async (req, res) => {
       LEFT JOIN candidate_counts cc ON cc.signal_type = se.signal_type
       WHERE se.detected_at > NOW() - INTERVAL '30 days'
         AND se.signal_type IS NOT NULL
+        AND se.tenant_id = $1
       GROUP BY se.signal_type, cc.cnt
       HAVING COUNT(DISTINCT se.company_id) >= 3
       ORDER BY COUNT(DISTINCT CASE WHEN c.is_client = true THEN se.company_id END) DESC,
                COUNT(DISTINCT se.company_id) DESC
       LIMIT 5
-    `);
+    `, [req.tenant_id]);
 
     // Find sector-based convergences
     const { rows: sectorThemes } = await pool.query(`
@@ -736,12 +751,13 @@ app.get('/api/converging-themes', authenticateToken, async (req, res) => {
       FROM signal_events se
       JOIN companies c ON c.id = se.company_id AND c.sector IS NOT NULL
       WHERE se.detected_at > NOW() - INTERVAL '30 days'
+        AND se.tenant_id = $1
       GROUP BY c.sector
       HAVING COUNT(DISTINCT se.company_id) >= 3 AND COUNT(*) >= 5
       ORDER BY COUNT(DISTINCT CASE WHEN c.is_client = true THEN c.id END) DESC,
                COUNT(*) DESC
       LIMIT 5
-    `);
+    `, [req.tenant_id]);
 
     // Placement pipeline potential — searches with matching signals
     const { rows: pipeline } = await pool.query(`
@@ -753,11 +769,12 @@ app.get('/api/converging-themes', authenticateToken, async (req, res) => {
       JOIN companies co ON co.id = cl.company_id
       JOIN signal_events se ON se.company_id = co.id AND se.detected_at > NOW() - INTERVAL '30 days'
       WHERE s.status IN ('sourcing', 'interviewing')
+        AND s.tenant_id = $1
       GROUP BY s.id, s.title, s.status, cl.name
       HAVING COUNT(DISTINCT se.id) >= 2
       ORDER BY COUNT(DISTINCT se.id) DESC
       LIMIT 5
-    `);
+    `, [req.tenant_id]);
 
     res.json({ signal_themes: themes, sector_themes: sectorThemes, pipeline });
   } catch (err) {
@@ -781,9 +798,9 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
     const minConf = parseFloat(req.query.min_confidence) || 0;
     const networkOnly = req.query.network === 'true'; // only signals where we have contacts
 
-    let where = 'WHERE 1=1';
-    const params = [];
-    let paramIdx = 0;
+    let where = 'WHERE se.tenant_id = $1';
+    const params = [req.tenant_id];
+    let paramIdx = 1;
 
     if (type) {
       paramIdx++;
@@ -938,8 +955,8 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
         FROM signal_events se
         LEFT JOIN companies c ON se.company_id = c.id
         LEFT JOIN external_documents ed ON se.source_document_id = ed.id
-        WHERE se.detected_at > NOW() - INTERVAL '7 days'
-      `);
+        WHERE se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1
+      `, [req.tenant_id]);
       regionStats = rStats[0];
     } catch (e) { /* ignore */ }
 
@@ -966,8 +983,8 @@ app.get('/api/signals/:id', authenticateToken, async (req, res) => {
       FROM signal_events se
       LEFT JOIN companies c ON se.company_id = c.id
       LEFT JOIN external_documents ed ON se.source_document_id = ed.id
-      WHERE se.id = $1
-    `, [req.params.id]);
+      WHERE se.id = $1 AND se.tenant_id = $2
+    `, [req.params.id, req.tenant_id]);
 
     if (rows.length === 0) return res.status(404).json({ error: 'Signal not found' });
     res.json(rows[0]);
@@ -992,9 +1009,9 @@ app.patch('/api/signals/:id/triage', authenticateToken, async (req, res) => {
           triaged_by = $3,
           triaged_at = NOW(),
           updated_at = NOW()
-      WHERE id = $4
+      WHERE id = $4 AND tenant_id = $5
       RETURNING id, triage_status, triaged_at
-    `, [status, notes, req.user.user_id, req.params.id]);
+    `, [status, notes, req.user.user_id, req.params.id, req.tenant_id]);
 
     if (rows.length === 0) return res.status(404).json({ error: 'Signal not found' });
     res.json(rows[0]);
@@ -1014,9 +1031,9 @@ app.get('/api/people', authenticateToken, async (req, res) => {
     const offset = parseInt(req.query.offset) || 0;
     const q = req.query.q;
 
-    let where = 'WHERE 1=1';
-    const params = [];
-    let paramIdx = 0;
+    let where = 'WHERE p.tenant_id = $1';
+    const params = [req.tenant_id];
+    let paramIdx = 1;
 
     // Privacy filter — hide private contacts from non-owners
     const userId = req.user?.user_id;
@@ -1044,7 +1061,7 @@ app.get('/api/people', authenticateToken, async (req, res) => {
       params.push(req.query.source);
     }
     if (req.query.has_notes === 'true') {
-      where += ` AND p.id IN (SELECT DISTINCT person_id FROM interactions WHERE interaction_type = 'research_note')`;
+      where += ` AND p.id IN (SELECT DISTINCT person_id FROM interactions WHERE interaction_type = 'research_note' AND tenant_id = $1)`;
     }
     if (req.query.seniority) {
       paramIdx++;
@@ -1113,9 +1130,9 @@ app.get('/api/people/stream/recent-contacts', authenticateToken, async (req, res
       FROM interactions i
       JOIN people p ON p.id = i.person_id
       LEFT JOIN users u ON u.id = i.user_id
-      WHERE i.interaction_at IS NOT NULL
+      WHERE i.interaction_at IS NOT NULL AND i.tenant_id = $1
       ORDER BY i.person_id, i.interaction_at DESC
-    `);
+    `, [req.tenant_id]);
     // Sort by most recent interaction across all people
     rows.sort((a, b) => new Date(b.interaction_at) - new Date(a.interaction_at));
     res.json({ contacts: rows.slice(0, limit) });
@@ -1140,9 +1157,10 @@ app.get('/api/people/stream/signal-connected', authenticateToken, async (req, re
       JOIN signal_events se ON se.company_id = c.id
       WHERE se.detected_at > NOW() - INTERVAL '30 days'
         AND (p.current_title IS NOT NULL OR p.headline IS NOT NULL)
+        AND p.tenant_id = $2
       ORDER BY se.detected_at DESC, se.confidence_score DESC
       LIMIT $1
-    `, [limit]);
+    `, [limit, req.tenant_id]);
     res.json({ people: rows });
   } catch (err) {
     console.error('Signal-connected error:', err.message);
@@ -1163,8 +1181,8 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
              c.domain AS company_domain, c.is_client AS company_is_client
       FROM people p
       LEFT JOIN companies c ON p.current_company_id = c.id
-      WHERE p.id = $1
-    `, [req.params.id]);
+      WHERE p.id = $1 AND p.tenant_id = $2
+    `, [req.params.id, req.tenant_id]);
 
     if (!person) return res.status(404).json({ error: 'Person not found' });
 
@@ -1178,10 +1196,10 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
       SELECT id, summary, subject, email_snippet, interaction_at, created_at,
              note_quality, extracted_intelligence, source, interaction_type
       FROM interactions
-      WHERE person_id = $1 AND interaction_type = 'research_note'
+      WHERE person_id = $1 AND interaction_type = 'research_note' AND tenant_id = $2
       ORDER BY interaction_at DESC NULLS LAST
       LIMIT 50
-    `, [req.params.id]);
+    `, [req.params.id, req.tenant_id]);
 
     // All other interactions (emails, calls, meetings)
     const { rows: interactions } = await pool.query(`
@@ -1192,27 +1210,28 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
       FROM interactions
       WHERE person_id = $1 AND interaction_type != 'research_note'
         AND (visibility IS NULL OR visibility != 'private' OR owner_user_id = $2)
+        AND tenant_id = $3
       ORDER BY interaction_at DESC NULLS LAST
       LIMIT 30
-    `, [req.params.id, req.user?.user_id]);
+    `, [req.params.id, req.user?.user_id, req.tenant_id]);
 
     // Person signals
     const { rows: signals } = await pool.query(`
       SELECT id, signal_type, signal_category, title, description,
              confidence_score, signal_date, detected_at
       FROM person_signals
-      WHERE person_id = $1
+      WHERE person_id = $1 AND tenant_id = $2
       ORDER BY detected_at DESC
-    `, [req.params.id]);
+    `, [req.params.id, req.tenant_id]);
 
     // Company signals (if person has a linked company)
     let companySignals = [];
     if (person.current_company_id) {
       const { rows } = await pool.query(`
         SELECT id, signal_type, confidence_score, evidence_summary, detected_at, triage_status
-        FROM signal_events WHERE company_id = $1
+        FROM signal_events WHERE company_id = $1 AND tenant_id = $2
         ORDER BY detected_at DESC LIMIT 10
-      `, [person.current_company_id]);
+      `, [person.current_company_id, req.tenant_id]);
       companySignals = rows;
     }
 
@@ -1227,13 +1246,13 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
              COUNT(*) FILTER (WHERE interaction_type NOT IN ('research_note','email','gmail','enrich_gmail','call','meeting','linkedin_message','linkedin')) AS other,
              MIN(interaction_at) AS first_interaction,
              MAX(interaction_at) AS last_interaction
-      FROM interactions WHERE person_id = $1
-    `, [req.params.id]);
+      FROM interactions WHERE person_id = $1 AND tenant_id = $2
+    `, [req.params.id, req.tenant_id]);
 
     // Also get type breakdown for debugging
     const { rows: typeCounts } = await pool.query(
-      `SELECT interaction_type, COUNT(*) AS cnt FROM interactions WHERE person_id = $1 GROUP BY interaction_type ORDER BY cnt DESC`,
-      [req.params.id]
+      `SELECT interaction_type, COUNT(*) AS cnt FROM interactions WHERE person_id = $1 AND tenant_id = $2 GROUP BY interaction_type ORDER BY cnt DESC`,
+      [req.params.id, req.tenant_id]
     );
     stats.type_breakdown = typeCounts;
 
@@ -1243,9 +1262,9 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
       const { rows } = await pool.query(`
         SELECT id, full_name, current_title, seniority_level
         FROM people
-        WHERE current_company_id = $1 AND id != $2
+        WHERE current_company_id = $1 AND id != $2 AND tenant_id = $3
         ORDER BY full_name LIMIT 20
-      `, [person.current_company_id, req.params.id]);
+      `, [person.current_company_id, req.params.id, req.tenant_id]);
       colleagues = rows;
     }
 
@@ -1270,9 +1289,9 @@ app.get('/api/people/:id/notes', authenticateToken, async (req, res) => {
       SELECT id, summary, subject, interaction_at, created_at, note_quality,
              extracted_intelligence, source
       FROM interactions
-      WHERE person_id = $1 AND interaction_type = 'research_note'
+      WHERE person_id = $1 AND interaction_type = 'research_note' AND tenant_id = $2
       ORDER BY interaction_at DESC NULLS LAST
-    `, [req.params.id]);
+    `, [req.params.id, req.tenant_id]);
 
     res.json({ notes: rows });
   } catch (err) {
@@ -1314,8 +1333,8 @@ app.patch('/api/people/:id', authenticateToken, async (req, res) => {
     // If company name changed, try to link to company record
     if (req.body.current_company_name) {
       const { rows: [match] } = await pool.query(
-        `SELECT id FROM companies WHERE name ILIKE $1 LIMIT 1`,
-        [req.body.current_company_name]
+        `SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1`,
+        [req.body.current_company_name, req.tenant_id]
       );
       if (match) {
         idx++;
@@ -1324,8 +1343,10 @@ app.patch('/api/people/:id', authenticateToken, async (req, res) => {
       }
     }
 
+    idx++;
+    params.push(req.tenant_id);
     const { rows } = await pool.query(
-      `UPDATE people SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      `UPDATE people SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $1 AND tenant_id = $${idx} RETURNING *`,
       params
     );
 
@@ -1343,7 +1364,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
     const { rows: [person] } = await pool.query(
       `SELECT id, full_name, email, source_id, source, current_title,
               current_company_name, current_company_id, linkedin_url, location
-       FROM people WHERE id = $1`, [req.params.id]
+       FROM people WHERE id = $1 AND tenant_id = $2`, [req.params.id, req.tenant_id]
     );
     if (!person) return res.status(404).json({ error: 'Person not found' });
 
@@ -1365,8 +1386,8 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           if (match) {
             ezekiaId = String(match.id);
             // Link this person to Ezekia for future enrichments
-            await pool.query('UPDATE people SET source_id = $1, source = $2 WHERE id = $3 AND source_id IS NULL',
-              [ezekiaId, 'ezekia', req.params.id]);
+            await pool.query('UPDATE people SET source_id = $1, source = $2 WHERE id = $3 AND source_id IS NULL AND tenant_id = $4',
+              [ezekiaId, 'ezekia', req.params.id, req.tenant_id]);
           }
         }
 
@@ -1410,8 +1431,9 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 
           if (Object.keys(updates).length > 0) {
             const setClauses = Object.entries(updates).map(([k, v], i) => `${k} = $${i + 2}`);
-            await pool.query(`UPDATE people SET ${setClauses.join(', ')}, synced_at = NOW(), updated_at = NOW() WHERE id = $1`,
-              [req.params.id, ...Object.values(updates)]);
+            const updateVals = Object.values(updates);
+            await pool.query(`UPDATE people SET ${setClauses.join(', ')}, synced_at = NOW(), updated_at = NOW() WHERE id = $1 AND tenant_id = $${updateVals.length + 2}`,
+              [req.params.id, ...updateVals, req.tenant_id]);
             enrichResults.ezekia_profile = { updated_fields: Object.keys(updates) };
           } else {
             enrichResults.ezekia_profile = { message: 'No new profile data' };
@@ -1426,7 +1448,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
     }
 
     // Resolve ezekiaId for projects step (may have been linked above)
-    const ezekiaId = person.source_id || (await pool.query('SELECT source_id FROM people WHERE id = $1', [req.params.id]).then(r => r.rows[0]?.source_id));
+    const ezekiaId = person.source_id || (await pool.query('SELECT source_id FROM people WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]).then(r => r.rows[0]?.source_id));
 
     // 1b. Ezekia Projects API — find which projects/searches this person is in
     if (ezekiaId && process.env.EZEKIA_API_TOKEN) {
@@ -1453,16 +1475,16 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
               projectsFound++;
               // Try to link to our searches table
               const { rows: [existingSearch] } = await pool.query(
-                `SELECT id FROM opportunities WHERE code = $1 OR title ILIKE $2 LIMIT 1`,
-                [`ezekia_${proj.id}`, `%${proj.name}%`]
+                `SELECT id FROM opportunities WHERE (code = $1 OR title ILIKE $2) AND tenant_id = $3 LIMIT 1`,
+                [`ezekia_${proj.id}`, `%${proj.name}%`, req.tenant_id]
               );
               if (existingSearch) {
                 // Link person as search candidate
                 await pool.query(`
-                  INSERT INTO pipeline_contacts (search_id, person_id, status, source, added_at)
-                  VALUES ($1, $2, 'sourced', 'ezekia_enrich', NOW())
+                  INSERT INTO pipeline_contacts (search_id, person_id, status, source, added_at, tenant_id)
+                  VALUES ($1, $2, 'sourced', 'ezekia_enrich', NOW(), $3)
                   ON CONFLICT DO NOTHING
-                `, [existingSearch.id, req.params.id]);
+                `, [existingSearch.id, req.params.id, req.tenant_id]);
                 searchesLinked++;
               }
             }
@@ -1539,8 +1561,8 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
             if (gmailData.messages && gmailData.messages.length > 0) {
               for (const msg of gmailData.messages.slice(0, 5)) {
                 const { rows: existing } = await pool.query(
-                  `SELECT id FROM interactions WHERE person_id = $1 AND external_id = $2`,
-                  [req.params.id, msg.id]
+                  `SELECT id FROM interactions WHERE person_id = $1 AND external_id = $2 AND tenant_id = $3`,
+                  [req.params.id, msg.id, req.tenant_id]
                 );
                 if (existing.length > 0) continue;
 
@@ -1560,12 +1582,12 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 
                   await pool.query(`
                     INSERT INTO interactions (person_id, user_id, interaction_type, direction, subject, email_snippet,
-                                              email_from, email_to, source, external_id, channel, interaction_at, created_at)
-                    VALUES ($1, $2, 'email', $3, $4, $5, $6, $7, 'enrich_gmail', $8, 'email', $9, NOW())
+                                              email_from, email_to, source, external_id, channel, interaction_at, created_at, tenant_id)
+                    VALUES ($1, $2, 'email', $3, $4, $5, $6, $7, 'enrich_gmail', $8, 'email', $9, NOW(), $10)
                     ON CONFLICT DO NOTHING
                   `, [req.params.id, acct.user_id, direction, subject, msgDetail.snippet || '',
                       from, person.email, msg.id,
-                      dateStr ? new Date(dateStr).toISOString() : new Date().toISOString()]);
+                      dateStr ? new Date(dateStr).toISOString() : new Date().toISOString(), req.tenant_id]);
                   newEmails++;
                 } catch (e) { /* skip individual message errors */ }
               }
@@ -1603,9 +1625,10 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           WHERE to_tsvector('english', COALESCE(ed.title,'') || ' ' || COALESCE(ed.summary,'') || ' ' || COALESCE(ed.content,''))
                 @@ plainto_tsquery('english', $1)
             AND ed.published_at > NOW() - INTERVAL '90 days'
+            AND ed.tenant_id = $2
           ORDER BY relevance DESC
           LIMIT 10
-        `, [person.full_name]);
+        `, [person.full_name, req.tenant_id]);
 
         // Generate person signals from mentions via Claude
         let newSignals = 0;
@@ -1631,15 +1654,15 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
               for (const sig of signals) {
                 // Avoid duplicates
                 const { rows: existing } = await pool.query(
-                  `SELECT id FROM person_signals WHERE person_id = $1 AND signal_type = $2 AND title = $3`,
-                  [req.params.id, sig.signal_type, sig.title]
+                  `SELECT id FROM person_signals WHERE person_id = $1 AND signal_type = $2 AND title = $3 AND tenant_id = $4`,
+                  [req.params.id, sig.signal_type, sig.title, req.tenant_id]
                 );
                 if (existing.length > 0) continue;
 
                 await pool.query(`
-                  INSERT INTO person_signals (person_id, signal_type, title, description, confidence_score, source, detected_at)
-                  VALUES ($1, $2, $3, $4, $5, 'enrichment', NOW())
-                `, [req.params.id, sig.signal_type, sig.title, sig.description, sig.confidence || 0.7]);
+                  INSERT INTO person_signals (person_id, signal_type, title, description, confidence_score, source, detected_at, tenant_id)
+                  VALUES ($1, $2, $3, $4, $5, 'enrichment', NOW(), $6)
+                `, [req.params.id, sig.signal_type, sig.title, sig.description, sig.confidence || 0.7, req.tenant_id]);
                 newSignals++;
               }
             } catch (e) { /* JSON parse failed */ }
@@ -1662,9 +1685,9 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
         const { rows: companySignals } = await pool.query(`
           SELECT signal_type, evidence_summary, confidence_score, detected_at
           FROM signal_events
-          WHERE company_id = $1 AND detected_at > NOW() - INTERVAL '60 days'
+          WHERE company_id = $1 AND detected_at > NOW() - INTERVAL '60 days' AND tenant_id = $2
           ORDER BY detected_at DESC LIMIT 5
-        `, [person.current_company_id]).catch(() => ({ rows: [] }));
+        `, [person.current_company_id, req.tenant_id]).catch(() => ({ rows: [] }));
 
         enrichResults.web = {
           company_signals: companySignals.length,
@@ -1679,17 +1702,17 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 
     // 5. Re-embed the person with all enriched data
     try {
-      const { rows: [latest] } = await pool.query(`SELECT * FROM people WHERE id = $1`, [req.params.id]);
+      const { rows: [latest] } = await pool.query(`SELECT * FROM people WHERE id = $1 AND tenant_id = $2`, [req.params.id, req.tenant_id]);
       const parts = [latest.full_name, latest.current_title, latest.current_company_name, latest.headline, latest.bio, latest.location].filter(Boolean);
       if (latest.expertise_tags?.length) parts.push('Skills: ' + latest.expertise_tags.join(', '));
       if (latest.industries?.length) parts.push('Industries: ' + latest.industries.join(', '));
 
       // Get latest notes for embedding context
-      const { rows: notes } = await pool.query(`SELECT summary FROM interactions WHERE person_id = $1 AND interaction_type = 'research_note' ORDER BY interaction_at DESC NULLS LAST LIMIT 5`, [req.params.id]);
+      const { rows: notes } = await pool.query(`SELECT summary FROM interactions WHERE person_id = $1 AND interaction_type = 'research_note' AND tenant_id = $2 ORDER BY interaction_at DESC NULLS LAST LIMIT 5`, [req.params.id, req.tenant_id]);
       notes.forEach(n => { if (n.summary) parts.push(n.summary.slice(0, 500)); });
 
       // Get person signals for embedding context
-      const { rows: psigs } = await pool.query(`SELECT title, description FROM person_signals WHERE person_id = $1 ORDER BY detected_at DESC LIMIT 3`, [req.params.id]);
+      const { rows: psigs } = await pool.query(`SELECT title, description FROM person_signals WHERE person_id = $1 AND tenant_id = $2 ORDER BY detected_at DESC LIMIT 3`, [req.params.id, req.tenant_id]);
       psigs.forEach(s => { if (s.title) parts.push(s.title + (s.description ? ': ' + s.description.slice(0, 200) : '')); });
 
       if (parts.join(' ').length > 10 && process.env.QDRANT_URL) {
@@ -1707,7 +1730,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           qReq.write(body);
           qReq.end();
         });
-        await pool.query('UPDATE people SET embedded_at = NOW() WHERE id = $1', [req.params.id]);
+        await pool.query('UPDATE people SET embedded_at = NOW() WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
         enrichResults.embedding = { message: 'Re-embedded with enriched data' };
       } else {
         enrichResults.embedding = { message: 'Insufficient data for embedding' };
@@ -1726,18 +1749,18 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 // ─── Reconcile Account → Company (create companies record for unlinked clients) ───
 app.post('/api/clients/:id/reconcile', authenticateToken, async (req, res) => {
   try {
-    const { rows: [client] } = await pool.query('SELECT * FROM accounts WHERE id = $1', [req.params.id]);
+    const { rows: [client] } = await pool.query('SELECT * FROM accounts WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
     // Already linked?
     if (client.company_id) {
-      const { rows: [co] } = await pool.query('SELECT id, name FROM companies WHERE id = $1', [client.company_id]);
+      const { rows: [co] } = await pool.query('SELECT id, name FROM companies WHERE id = $1 AND tenant_id = $2', [client.company_id, req.tenant_id]);
       if (co) return res.json({ company_id: co.id, message: 'Already linked', company_name: co.name });
     }
 
     // Check if a companies record already exists by name
     let { rows: [existing] } = await pool.query(
-      'SELECT id FROM companies WHERE name ILIKE $1 LIMIT 1', [client.name]
+      'SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1', [client.name, req.tenant_id]
     );
 
     let companyId;
@@ -1746,21 +1769,21 @@ app.post('/api/clients/:id/reconcile', authenticateToken, async (req, res) => {
     } else {
       // Create a new companies record from the client
       const { rows: [newCo] } = await pool.query(`
-        INSERT INTO companies (name, is_client, created_at, updated_at)
-        VALUES ($1, true, NOW(), NOW())
+        INSERT INTO companies (name, is_client, created_at, updated_at, tenant_id)
+        VALUES ($1, true, NOW(), NOW(), $2)
         RETURNING id
-      `, [client.name]);
+      `, [client.name, req.tenant_id]);
       companyId = newCo.id;
     }
 
     // Link client to company
-    await pool.query('UPDATE accounts SET company_id = $1, updated_at = NOW() WHERE id = $2', [companyId, client.id]);
+    await pool.query('UPDATE accounts SET company_id = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3', [companyId, client.id, req.tenant_id]);
 
     // Also link any people whose current_company_name matches
     const { rowCount: linkedPeople } = await pool.query(`
       UPDATE people SET current_company_id = $1, updated_at = NOW()
-      WHERE current_company_name ILIKE $2 AND (current_company_id IS NULL OR current_company_id != $1)
-    `, [companyId, client.name]);
+      WHERE current_company_name ILIKE $2 AND (current_company_id IS NULL OR current_company_id != $1) AND tenant_id = $3
+    `, [companyId, client.name, req.tenant_id]);
 
     res.json({ company_id: companyId, client_id: client.id, people_linked: linkedPeople, message: existing ? 'Linked to existing company' : 'Created new company record' });
   } catch (err) {
@@ -1774,15 +1797,15 @@ app.post('/api/clients/reconcile-all', authenticateToken, async (req, res) => {
   try {
     const { rows: unlinked } = await pool.query(`
       SELECT cl.id, cl.name FROM accounts cl
-      WHERE cl.company_id IS NULL
+      WHERE cl.company_id IS NULL AND cl.tenant_id = $1
       ORDER BY cl.name
-    `);
+    `, [req.tenant_id]);
 
     let created = 0, linked = 0, errors = 0;
     for (const client of unlinked) {
       try {
         let { rows: [existing] } = await pool.query(
-          'SELECT id FROM companies WHERE name ILIKE $1 LIMIT 1', [client.name]
+          'SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1', [client.name, req.tenant_id]
         );
 
         let companyId;
@@ -1791,18 +1814,18 @@ app.post('/api/clients/reconcile-all', authenticateToken, async (req, res) => {
           linked++;
         } else {
           const { rows: [newCo] } = await pool.query(
-            `INSERT INTO companies (name, is_client, created_at, updated_at) VALUES ($1, true, NOW(), NOW()) RETURNING id`,
-            [client.name]
+            `INSERT INTO companies (name, is_client, created_at, updated_at, tenant_id) VALUES ($1, true, NOW(), NOW(), $2) RETURNING id`,
+            [client.name, req.tenant_id]
           );
           companyId = newCo.id;
           created++;
         }
 
-        await pool.query('UPDATE accounts SET company_id = $1, updated_at = NOW() WHERE id = $2', [companyId, client.id]);
+        await pool.query('UPDATE accounts SET company_id = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3', [companyId, client.id, req.tenant_id]);
         await pool.query(`
           UPDATE people SET current_company_id = $1, updated_at = NOW()
-          WHERE current_company_name ILIKE $2 AND (current_company_id IS NULL OR current_company_id != $1)
-        `, [companyId, client.name]);
+          WHERE current_company_name ILIKE $2 AND (current_company_id IS NULL OR current_company_id != $1) AND tenant_id = $3
+        `, [companyId, client.name, req.tenant_id]);
       } catch (e) { errors++; }
     }
 
@@ -1815,7 +1838,7 @@ app.post('/api/clients/reconcile-all', authenticateToken, async (req, res) => {
 // ─── Company Enrichment ───
 app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
   try {
-    const { rows: [company] } = await pool.query('SELECT * FROM companies WHERE id = $1', [req.params.id]);
+    const { rows: [company] } = await pool.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
     if (!company) return res.status(404).json({ error: 'Company not found' });
 
     const enrichResults = {};
@@ -1850,8 +1873,9 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
 
           if (Object.keys(updates).length > 0) {
             const setClauses = Object.entries(updates).map(([k, v], i) => `${k} = $${i + 2}`);
-            await pool.query(`UPDATE companies SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = $1`,
-              [req.params.id, ...Object.values(updates)]);
+            const coUpdateVals = Object.values(updates);
+            await pool.query(`UPDATE companies SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = $1 AND tenant_id = $${coUpdateVals.length + 2}`,
+              [req.params.id, ...coUpdateVals, req.tenant_id]);
             enrichResults.ezekia = { updated_fields: Object.keys(updates), ezekia_id: ezekiaCompany.id };
           } else {
             enrichResults.ezekia = { message: 'No new data from Ezekia', ezekia_id: ezekiaCompany.id };
@@ -1867,19 +1891,19 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
     // 2. Conversion history from account record
     try {
       const { rows: [clientRecord] } = await pool.query(
-        'SELECT cl.id, cl.relationship_status, cl.relationship_tier FROM accounts cl WHERE cl.company_id = $1 LIMIT 1',
-        [req.params.id]
+        'SELECT cl.id, cl.relationship_status, cl.relationship_tier FROM accounts cl WHERE cl.company_id = $1 AND cl.tenant_id = $2 LIMIT 1',
+        [req.params.id, req.tenant_id]
       );
       if (clientRecord) {
         const { rows: placements } = await pool.query(
           `SELECT p.role_title, p.start_date, p.placement_fee, p.currency, pe.full_name
            FROM conversions p
            LEFT JOIN people pe ON pe.id = p.person_id
-           WHERE p.client_id = $1 ORDER BY p.start_date DESC LIMIT 10`,
-          [clientRecord.id]
+           WHERE p.client_id = $1 AND p.tenant_id = $2 ORDER BY p.start_date DESC LIMIT 10`,
+          [clientRecord.id, req.tenant_id]
         );
         // Mark as client in companies table
-        await pool.query('UPDATE companies SET is_client = true, updated_at = NOW() WHERE id = $1 AND (is_client IS NULL OR is_client = false)', [req.params.id]);
+        await pool.query('UPDATE companies SET is_client = true, updated_at = NOW() WHERE id = $1 AND (is_client IS NULL OR is_client = false) AND tenant_id = $2', [req.params.id, req.tenant_id]);
         enrichResults.client = {
           status: clientRecord.relationship_status,
           tier: clientRecord.relationship_tier,
@@ -1896,8 +1920,8 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
     // 3. People at this company
     try {
       const { rows: people } = await pool.query(
-        `SELECT full_name, current_title, email FROM people WHERE current_company_id = $1 ORDER BY current_title LIMIT 20`,
-        [req.params.id]
+        `SELECT full_name, current_title, email FROM people WHERE current_company_id = $1 AND tenant_id = $2 ORDER BY current_title LIMIT 20`,
+        [req.params.id, req.tenant_id]
       );
       enrichResults.people = { count: people.length, sample: people.slice(0, 5).map(p => `${p.full_name} — ${p.current_title}`) };
     } catch (e) {
@@ -1906,13 +1930,13 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
 
     // 4. Re-embed with all enriched data
     try {
-      const { rows: [latest] } = await pool.query('SELECT * FROM companies WHERE id = $1', [req.params.id]);
+      const { rows: [latest] } = await pool.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
       const parts = [latest.name, latest.sector, latest.geography, latest.description, latest.domain].filter(Boolean);
 
-      const { rows: signals } = await pool.query(`SELECT evidence_summary FROM signal_events WHERE company_id = $1 AND evidence_summary IS NOT NULL ORDER BY detected_at DESC LIMIT 5`, [req.params.id]);
+      const { rows: signals } = await pool.query(`SELECT evidence_summary FROM signal_events WHERE company_id = $1 AND evidence_summary IS NOT NULL AND tenant_id = $2 ORDER BY detected_at DESC LIMIT 5`, [req.params.id, req.tenant_id]);
       signals.forEach(s => parts.push(s.evidence_summary));
 
-      const { rows: people } = await pool.query(`SELECT full_name, current_title FROM people WHERE current_company_id = $1 AND current_title IS NOT NULL LIMIT 10`, [req.params.id]);
+      const { rows: people } = await pool.query(`SELECT full_name, current_title FROM people WHERE current_company_id = $1 AND current_title IS NOT NULL AND tenant_id = $2 LIMIT 10`, [req.params.id, req.tenant_id]);
       if (people.length) parts.push('Key people: ' + people.map(p => `${p.full_name} — ${p.current_title}`).join(', '));
 
       if (parts.join(' ').length > 10 && process.env.QDRANT_URL) {
@@ -1926,7 +1950,7 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
           qReq.write(body);
           qReq.end();
         });
-        await pool.query('UPDATE companies SET embedded_at = NOW() WHERE id = $1', [req.params.id]);
+        await pool.query('UPDATE companies SET embedded_at = NOW() WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
         enrichResults.embedding = { message: 'Re-embedded successfully' };
       }
     } catch (e) {
@@ -1952,9 +1976,9 @@ app.get('/api/companies', authenticateToken, async (req, res) => {
 
     // ── CLIENTS filter: query the accounts table directly ──
     if (req.query.is_client === 'true') {
-      let clWhere = 'WHERE 1=1';
-      const clParams = [];
-      let clIdx = 0;
+      let clWhere = 'WHERE cl.tenant_id = $1';
+      const clParams = [req.tenant_id];
+      let clIdx = 1;
       if (q) {
         clIdx++;
         clWhere += ` AND cl.name ILIKE $${clIdx}`;
@@ -1993,9 +2017,9 @@ app.get('/api/companies', authenticateToken, async (req, res) => {
     }
 
     // ── ALL / filtered companies ──
-    let where = 'WHERE 1=1';
-    const params = [];
-    let paramIdx = 0;
+    let where = 'WHERE c.tenant_id = $1';
+    const params = [req.tenant_id];
+    let paramIdx = 1;
 
     // Filter out junk companies: require at least one quality signal
     if (req.query.show_all !== 'true') {
@@ -2064,7 +2088,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
     let clientRecord = null;
 
     // Try companies table first
-    const { rows: [co] } = await pool.query('SELECT * FROM companies WHERE id = $1', [companyId]);
+    const { rows: [co] } = await pool.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [companyId, req.tenant_id]);
     if (co) {
       company = co;
     } else {
@@ -2075,11 +2099,11 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
                co.description AS company_description, co.is_client AS co_is_client
         FROM accounts cl
         LEFT JOIN companies co ON cl.company_id = co.id
-        WHERE cl.id = $1
-      `, [companyId]);
+        WHERE cl.id = $1 AND cl.tenant_id = $2
+      `, [companyId, req.tenant_id]);
       if (cl && cl.resolved_company_id) {
         // Client has a linked company — use that
-        const { rows: [linked] } = await pool.query('SELECT * FROM companies WHERE id = $1', [cl.resolved_company_id]);
+        const { rows: [linked] } = await pool.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [cl.resolved_company_id, req.tenant_id]);
         company = linked;
         companyId = cl.resolved_company_id;
         clientRecord = cl;
@@ -2107,8 +2131,8 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
       const { rows: [cf] } = await pool.query(`
         SELECT cf.* FROM account_financials cf
         JOIN accounts cl ON cf.client_id = cl.id
-        WHERE cl.company_id = $1 OR cl.id = $1
-      `, [companyId]);
+        WHERE (cl.company_id = $1 OR cl.id = $1) AND cf.tenant_id = $2
+      `, [companyId, req.tenant_id]);
       financials = cf || null;
     } catch (e) {}
 
@@ -2120,21 +2144,21 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
              ed.title AS doc_title, ed.source_name AS doc_source
       FROM signal_events se
       LEFT JOIN external_documents ed ON se.source_document_id = ed.id
-      WHERE se.company_id = $1
+      WHERE se.company_id = $1 AND se.tenant_id = $2
       ORDER BY se.detected_at DESC LIMIT 30
-    `, [companyId]);
+    `, [companyId, req.tenant_id]);
 
     // People at this company
     const { rows: people } = await pool.query(`
       SELECT p.id, p.full_name, p.current_title, p.seniority_level, p.location,
              p.expertise_tags, p.linkedin_url, p.email,
              (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id AND i.interaction_type = 'research_note') AS note_count
-      FROM people p WHERE p.current_company_id = $1
+      FROM people p WHERE p.current_company_id = $1 AND p.tenant_id = $2
       ORDER BY
         CASE WHEN p.seniority_level IN ('C-Level','VP','Director') THEN 0 ELSE 1 END,
         p.full_name
       LIMIT 100
-    `, [companyId]);
+    `, [companyId, req.tenant_id]);
 
     // Placements at this company
     let placements = [];
@@ -2145,9 +2169,9 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
         FROM conversions pl
         LEFT JOIN people pe ON pl.person_id = pe.id
         LEFT JOIN accounts cl ON pl.client_id = cl.id
-        WHERE cl.company_id = $1 OR cl.id = $1
+        WHERE (cl.company_id = $1 OR cl.id = $1) AND pl.tenant_id = $2
         ORDER BY pl.start_date DESC NULLS LAST
-      `, [companyId]);
+      `, [companyId, req.tenant_id]);
       placements = rows;
     } catch (e) { /* table may not exist */ }
 
@@ -2159,10 +2183,10 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
                ed.published_at
         FROM external_documents ed
         JOIN document_companies dc ON dc.document_id = ed.id
-        WHERE dc.company_id = $1
+        WHERE dc.company_id = $1 AND ed.tenant_id = $2
         ORDER BY ed.published_at DESC NULLS LAST
         LIMIT 20
-      `, [companyId]);
+      `, [companyId, req.tenant_id]);
       documents = rows;
     } catch (e) { /* table may not exist */ }
 
@@ -2275,8 +2299,8 @@ app.get('/api/search', authenticateToken, async (req, res) => {
           SELECT id, full_name, current_title, current_company_name, headline,
                  location, seniority_level, expertise_tags, industries, source,
                  email, linkedin_url
-          FROM people WHERE id = ANY($1::uuid[])
-        `, [pointIds]);
+          FROM people WHERE id = ANY($1::uuid[]) AND tenant_id = $2
+        `, [pointIds, req.tenant_id]);
 
         const peopleMap = new Map(people.map(p => [p.id, p]));
 
@@ -2312,8 +2336,8 @@ app.get('/api/search', authenticateToken, async (req, res) => {
                  c.employee_count_band, c.description,
                  (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id) AS signal_count,
                  (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) AS people_count
-          FROM companies c WHERE c.id = ANY($1::uuid[])
-        `, [compIds]);
+          FROM companies c WHERE c.id = ANY($1::uuid[]) AND c.tenant_id = $2
+        `, [compIds, req.tenant_id]);
 
         const compMap = new Map(companies.map(c => [c.id, c]));
 
@@ -2345,8 +2369,8 @@ app.get('/api/search', authenticateToken, async (req, res) => {
         } else {
         const { rows: docs } = await pool.query(`
           SELECT id, title, source_type, source_name, source_url, author, published_at
-          FROM external_documents WHERE id = ANY($1::uuid[])
-        `, [docIds]);
+          FROM external_documents WHERE id = ANY($1::uuid[]) AND tenant_id = $2
+        `, [docIds, req.tenant_id]);
 
         const docMap = new Map(docs.map(d => [d.id, d]));
 
@@ -2386,9 +2410,9 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
     const offset = parseInt(req.query.offset) || 0;
     const sourceType = req.query.source_type;
 
-    let where = 'WHERE 1=1';
-    const params = [];
-    let paramIdx = 0;
+    let where = 'WHERE tenant_id = $1';
+    const params = [req.tenant_id];
+    let paramIdx = 1;
 
     if (sourceType) {
       paramIdx++;
@@ -2412,7 +2436,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
 
     const { rows: [{ cnt }] } = await pool.query(
       `SELECT COUNT(*) AS cnt FROM external_documents ${where}`,
-      params.slice(0, sourceType ? 1 : 0)
+      params.slice(0, sourceType ? 2 : 1)
     );
 
     res.json({ documents: rows, total: parseInt(cnt), limit, offset });
@@ -2427,10 +2451,10 @@ app.get('/api/documents/sources', authenticateToken, async (req, res) => {
     const { rows } = await pool.query(`
       SELECT rs.id, rs.name, rs.source_type, rs.url, rs.enabled,
              rs.last_fetched_at, rs.last_error, rs.consecutive_errors,
-             (SELECT COUNT(*) FROM external_documents ed WHERE ed.source_id = rs.id) AS doc_count
+             (SELECT COUNT(*) FROM external_documents ed WHERE ed.source_id = rs.id AND ed.tenant_id = $1) AS doc_count
       FROM rss_sources rs
       ORDER BY rs.source_type, rs.name
-    `);
+    `, [req.tenant_id]);
     res.json({ sources: rows });
   } catch (err) {
     console.error('Sources error:', err.message);
@@ -2602,7 +2626,7 @@ app.post('/api/dispatches/:id/claim', authenticateToken, async (req, res) => {
   try {
     // Check if already claimed
     const { rows: [dispatch] } = await pool.query(
-      'SELECT id, claimed_by, status FROM signal_dispatches WHERE id = $1', [req.params.id]
+      'SELECT id, claimed_by, status FROM signal_dispatches WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]
     );
     if (!dispatch) return res.status(404).json({ error: 'Dispatch not found' });
 
@@ -2619,9 +2643,9 @@ app.post('/api/dispatches/:id/claim', authenticateToken, async (req, res) => {
     const { rows: [updated] } = await pool.query(`
       UPDATE signal_dispatches
       SET claimed_by = $2, claimed_at = NOW(), status = CASE WHEN status = 'draft' THEN 'claimed' ELSE status END, updated_at = NOW()
-      WHERE id = $1
+      WHERE id = $1 AND tenant_id = $3
       RETURNING *
-    `, [req.params.id, req.user?.user_id]);
+    `, [req.params.id, req.user?.user_id, req.tenant_id]);
 
     res.json({ dispatch: updated, claimed_by: req.user?.name });
   } catch (err) {
@@ -2636,9 +2660,9 @@ app.post('/api/dispatches/:id/unclaim', authenticateToken, async (req, res) => {
     const { rows: [updated] } = await pool.query(`
       UPDATE signal_dispatches
       SET claimed_by = NULL, claimed_at = NULL, status = 'draft', updated_at = NOW()
-      WHERE id = $1 AND (claimed_by = $2 OR claimed_by IS NULL)
+      WHERE id = $1 AND (claimed_by = $2 OR claimed_by IS NULL) AND tenant_id = $3
       RETURNING *
-    `, [req.params.id, req.user?.user_id]);
+    `, [req.params.id, req.user?.user_id, req.tenant_id]);
 
     if (!updated) return res.status(403).json({ error: 'Can only unclaim your own dispatches' });
     res.json({ dispatch: updated });
@@ -2667,9 +2691,9 @@ app.get('/api/dispatches', authenticateToken, async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 50, 100);
     const offset = parseInt(req.query.offset) || 0;
 
-    let where = 'WHERE 1=1';
-    const params = [];
-    let idx = 0;
+    let where = 'WHERE sd.tenant_id = $1';
+    const params = [req.tenant_id];
+    let idx = 1;
 
     if (status) {
       idx++; where += ` AND sd.status = $${idx}`; params.push(status);
@@ -2742,8 +2766,8 @@ app.get('/api/dispatches/:id', authenticateToken, async (req, res) => {
       LEFT JOIN companies c ON c.id = sd.company_id
       LEFT JOIN signal_events se ON se.id = sd.signal_event_id
       LEFT JOIN users u_claim ON u_claim.id = sd.claimed_by
-      WHERE sd.id = $1
-    `, [req.params.id]);
+      WHERE sd.id = $1 AND sd.tenant_id = $2
+    `, [req.params.id, req.tenant_id]);
 
     if (rows.length === 0) return res.status(404).json({ error: 'Dispatch not found' });
     res.json(rows[0]);
@@ -2776,8 +2800,10 @@ app.patch('/api/dispatches/:id', authenticateToken, async (req, res) => {
       idx++; updates.push(`blog_title = $${idx}`); params.push(blog_title);
     }
 
+    idx++;
+    params.push(req.tenant_id);
     const { rows } = await pool.query(
-      `UPDATE signal_dispatches SET ${updates.join(', ')} WHERE id = $1 RETURNING *`,
+      `UPDATE signal_dispatches SET ${updates.join(', ')} WHERE id = $1 AND tenant_id = $${idx} RETURNING *`,
       params
     );
 
@@ -2792,7 +2818,7 @@ app.patch('/api/dispatches/:id', authenticateToken, async (req, res) => {
 // Regenerate blog post for a dispatch
 app.post('/api/dispatches/:id/regenerate', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM signal_dispatches WHERE id = $1', [req.params.id]);
+    const { rows } = await pool.query('SELECT * FROM signal_dispatches WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Dispatch not found' });
 
     const dispatch = rows[0];
@@ -2802,8 +2828,8 @@ app.post('/api/dispatches/:id/regenerate', authenticateToken, async (req, res) =
     let company = {};
     if (dispatch.company_id) {
       const { rows: [co] } = await pool.query(
-        'SELECT sector, geography, employee_count_band FROM companies WHERE id = $1',
-        [dispatch.company_id]
+        'SELECT sector, geography, employee_count_band FROM companies WHERE id = $1 AND tenant_id = $2',
+        [dispatch.company_id, req.tenant_id]
       );
       if (co) company = co;
     }
@@ -2874,8 +2900,8 @@ Return valid JSON only.`;
     await pool.query(`
       UPDATE signal_dispatches
       SET blog_theme = $2, blog_title = $3, blog_body = $4, blog_keywords = $5, updated_at = NOW()
-      WHERE id = $1
-    `, [dispatch.id, theme, blog.title, blog.body, blog.keywords || []]);
+      WHERE id = $1 AND tenant_id = $6
+    `, [dispatch.id, theme, blog.title, blog.body, blog.keywords || [], req.tenant_id]);
 
     res.json({ title: blog.title, body: blog.body, keywords: blog.keywords });
   } catch (err) {
@@ -2894,9 +2920,9 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
     const offset = parseInt(req.query.offset) || 0;
     const q = req.query.q;
 
-    let where = 'WHERE 1=1';
-    const params = [];
-    let paramIdx = 0;
+    let where = 'WHERE pl.tenant_id = $1';
+    const params = [req.tenant_id];
+    let paramIdx = 1;
 
     if (q) {
       paramIdx++;
@@ -2954,9 +2980,9 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
              COUNT(*) AS count,
              COALESCE(SUM(placement_fee), 0) AS revenue
       FROM conversions
-      WHERE start_date IS NOT NULL
+      WHERE start_date IS NOT NULL AND tenant_id = $1
       GROUP BY year ORDER BY year DESC
-    `);
+    `, [req.tenant_id]);
 
     // Top clients by revenue
     const { rows: topClients } = await pool.query(`
@@ -2964,9 +2990,10 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
              COALESCE(SUM(pl.placement_fee), 0) AS total_revenue
       FROM conversions pl
       LEFT JOIN accounts cl ON pl.client_id = cl.id
+      WHERE pl.tenant_id = $1
       GROUP BY cl.id, cl.name
       ORDER BY total_revenue DESC LIMIT 20
-    `);
+    `, [req.tenant_id]);
 
     const stats = statsResult.rows[0];
     res.json({
@@ -3070,7 +3097,7 @@ const CHAT_TOOLS = [
   { name: 'get_platform_stats', description: 'Current platform statistics.', input_schema: { type: 'object', properties: {} } },
 ];
 
-async function executeTool(name, input, userId) {
+async function executeTool(name, input, userId, tenantId) {
   try {
     switch (name) {
       case 'search_people': {
@@ -3084,7 +3111,7 @@ async function executeTool(name, input, userId) {
               (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id AND i.interaction_type = 'research_note') AS note_count,
               (SELECT MAX(i.interaction_at) FROM interactions i WHERE i.person_id = p.id AND i.interaction_type = 'research_note') AS latest_note_date,
               (SELECT i.subject FROM interactions i WHERE i.person_id = p.id AND i.interaction_type = 'research_note' ORDER BY i.interaction_at DESC NULLS LAST LIMIT 1) AS latest_note_subject
-              FROM people p WHERE p.id = ANY($1::uuid[])`, [qr.map(r => r.id)]);
+              FROM people p WHERE p.id = ANY($1::uuid[]) AND p.tenant_id = $2`, [qr.map(r => r.id), tenantId]);
             const map = new Map(rows.map(r => [r.id, r]));
             results = qr.map(r => ({ ...map.get(r.id), score: r.score })).filter(r => r.full_name);
           }
@@ -3093,7 +3120,7 @@ async function executeTool(name, input, userId) {
           const { rows } = await pool.query(`SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.location, p.seniority_level, p.email, p.headline,
             (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id AND i.interaction_type = 'research_note') AS note_count,
             (SELECT MAX(i.interaction_at) FROM interactions i WHERE i.person_id = p.id AND i.interaction_type = 'research_note') AS latest_note_date
-            FROM people p WHERE (p.full_name ILIKE $1 OR p.current_title ILIKE $1 OR p.current_company_name ILIKE $1 OR p.headline ILIKE $1) ORDER BY p.full_name LIMIT $2`, [`%${query}%`, limit]);
+            FROM people p WHERE (p.full_name ILIKE $1 OR p.current_title ILIKE $1 OR p.current_company_name ILIKE $1 OR p.headline ILIKE $1) AND p.tenant_id = $3 ORDER BY p.full_name LIMIT $2`, [`%${query}%`, limit, tenantId]);
           const existing = new Set(results.map(r => r.id));
           rows.forEach(r => { if (!existing.has(r.id)) results.push(r); });
         }
@@ -3107,63 +3134,63 @@ async function executeTool(name, input, userId) {
       }
       case 'search_companies': {
         const { query, filters = {}, limit = 10 } = input;
-        const { rows } = await pool.query(`SELECT c.id, c.name, c.sector, c.geography, c.domain, c.employee_count_band, c.is_client, c.description, (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) AS people_count, (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id) AS signal_count FROM companies c WHERE (c.name ILIKE $1 OR c.sector ILIKE $1 OR c.geography ILIKE $1) ${filters.is_client ? 'AND c.is_client = true' : ''} ORDER BY c.is_client DESC, c.name LIMIT $2`, [`%${query}%`, limit]);
+        const { rows } = await pool.query(`SELECT c.id, c.name, c.sector, c.geography, c.domain, c.employee_count_band, c.is_client, c.description, (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) AS people_count, (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id) AS signal_count FROM companies c WHERE (c.name ILIKE $1 OR c.sector ILIKE $1 OR c.geography ILIKE $1) AND c.tenant_id = $3 ${filters.is_client ? 'AND c.is_client = true' : ''} ORDER BY c.is_client DESC, c.name LIMIT $2`, [`%${query}%`, limit, tenantId]);
         return JSON.stringify(rows);
       }
       case 'get_person_detail': {
-        const { rows: [p] } = await pool.query(`SELECT p.*, c.name AS company_name_linked, c.id AS company_id_linked FROM people p LEFT JOIN companies c ON p.current_company_id = c.id WHERE p.id = $1`, [input.person_id]);
+        const { rows: [p] } = await pool.query(`SELECT p.*, c.name AS company_name_linked, c.id AS company_id_linked FROM people p LEFT JOIN companies c ON p.current_company_id = c.id WHERE p.id = $1 AND p.tenant_id = $2`, [input.person_id, tenantId]);
         if (!p) return JSON.stringify({ error: 'Not found' });
-        const { rows: notes } = await pool.query(`SELECT subject, summary, interaction_at, note_quality, extracted_intelligence FROM interactions WHERE person_id = $1 AND interaction_type = 'research_note' ORDER BY interaction_at DESC NULLS LAST LIMIT 10`, [input.person_id]);
-        const { rows: sigs } = await pool.query(`SELECT signal_type, title, description, confidence_score FROM person_signals WHERE person_id = $1 ORDER BY detected_at DESC LIMIT 10`, [input.person_id]);
+        const { rows: notes } = await pool.query(`SELECT subject, summary, interaction_at, note_quality, extracted_intelligence FROM interactions WHERE person_id = $1 AND interaction_type = 'research_note' AND tenant_id = $2 ORDER BY interaction_at DESC NULLS LAST LIMIT 10`, [input.person_id, tenantId]);
+        const { rows: sigs } = await pool.query(`SELECT signal_type, title, description, confidence_score FROM person_signals WHERE person_id = $1 AND tenant_id = $2 ORDER BY detected_at DESC LIMIT 10`, [input.person_id, tenantId]);
         return JSON.stringify({ ...p, research_notes: notes, person_signals: sigs });
       }
       case 'get_company_detail': {
-        const { rows: [co] } = await pool.query('SELECT * FROM companies WHERE id = $1', [input.company_id]);
+        const { rows: [co] } = await pool.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [input.company_id, tenantId]);
         if (!co) return JSON.stringify({ error: 'Not found' });
-        const { rows: sigs } = await pool.query(`SELECT signal_type, evidence_summary, confidence_score, detected_at FROM signal_events WHERE company_id = $1 ORDER BY detected_at DESC LIMIT 15`, [input.company_id]);
-        const { rows: ppl } = await pool.query(`SELECT id, full_name, current_title, seniority_level FROM people WHERE current_company_id = $1 ORDER BY full_name LIMIT 30`, [input.company_id]);
-        let pls = []; try { const { rows } = await pool.query(`SELECT pe.full_name AS candidate_name, pl.role_title, pl.start_date, pl.placement_fee FROM conversions pl LEFT JOIN accounts cl ON pl.client_id = cl.id LEFT JOIN people pe ON pl.person_id = pe.id WHERE cl.company_id = $1 OR cl.name ILIKE (SELECT name FROM companies WHERE id = $1) ORDER BY pl.start_date DESC`, [input.company_id]); pls = rows; } catch (e) {}
+        const { rows: sigs } = await pool.query(`SELECT signal_type, evidence_summary, confidence_score, detected_at FROM signal_events WHERE company_id = $1 AND tenant_id = $2 ORDER BY detected_at DESC LIMIT 15`, [input.company_id, tenantId]);
+        const { rows: ppl } = await pool.query(`SELECT id, full_name, current_title, seniority_level FROM people WHERE current_company_id = $1 AND tenant_id = $2 ORDER BY full_name LIMIT 30`, [input.company_id, tenantId]);
+        let pls = []; try { const { rows } = await pool.query(`SELECT pe.full_name AS candidate_name, pl.role_title, pl.start_date, pl.placement_fee FROM conversions pl LEFT JOIN accounts cl ON pl.client_id = cl.id LEFT JOIN people pe ON pl.person_id = pe.id WHERE (cl.company_id = $1 OR cl.name ILIKE (SELECT name FROM companies WHERE id = $1)) AND pl.tenant_id = $2 ORDER BY pl.start_date DESC`, [input.company_id, tenantId]); pls = rows; } catch (e) {}
         return JSON.stringify({ ...co, signals: sigs, people: ppl, placements: pls });
       }
       case 'search_signals': {
         const { signal_type, category, company_name, min_confidence = 0.5, days_back = 30, limit = 15 } = input;
-        const w = [`se.confidence_score >= ${min_confidence}`, `se.detected_at >= NOW() - INTERVAL '${days_back} days'`];
+        const w = [`se.confidence_score >= ${min_confidence}`, `se.detected_at >= NOW() - INTERVAL '${days_back} days'`, `se.tenant_id = $1`];
         if (signal_type) w.push(`se.signal_type = '${signal_type}'`);
         if (category) w.push(`se.signal_category = '${category}'`);
         if (company_name) w.push(`c.name ILIKE '%${company_name}%'`);
-        const { rows } = await pool.query(`SELECT se.signal_type, se.signal_category, se.evidence_summary, se.confidence_score, se.detected_at, se.source_url, c.name AS company_name, c.id AS company_id FROM signal_events se LEFT JOIN companies c ON se.company_id = c.id WHERE ${w.join(' AND ')} ORDER BY se.confidence_score DESC LIMIT ${limit}`);
+        const { rows } = await pool.query(`SELECT se.signal_type, se.signal_category, se.evidence_summary, se.confidence_score, se.detected_at, se.source_url, c.name AS company_name, c.id AS company_id FROM signal_events se LEFT JOIN companies c ON se.company_id = c.id WHERE ${w.join(' AND ')} ORDER BY se.confidence_score DESC LIMIT ${limit}`, [tenantId]);
         return JSON.stringify(rows);
       }
       case 'search_placements': {
         const { query = '', limit = 20 } = input;
-        const { rows } = await pool.query(`SELECT pe.full_name AS candidate_name, pl.role_title, pl.start_date, pl.placement_fee, cl.name AS company_name, cl.id AS company_id FROM conversions pl LEFT JOIN accounts cl ON pl.client_id = cl.id LEFT JOIN people pe ON pl.person_id = pe.id WHERE pe.full_name ILIKE $1 OR pl.role_title ILIKE $1 OR cl.name ILIKE $1 ORDER BY pl.start_date DESC NULLS LAST LIMIT $2`, [`%${query}%`, limit]);
+        const { rows } = await pool.query(`SELECT pe.full_name AS candidate_name, pl.role_title, pl.start_date, pl.placement_fee, cl.name AS company_name, cl.id AS company_id FROM conversions pl LEFT JOIN accounts cl ON pl.client_id = cl.id LEFT JOIN people pe ON pl.person_id = pe.id WHERE (pe.full_name ILIKE $1 OR pl.role_title ILIKE $1 OR cl.name ILIKE $1) AND pl.tenant_id = $3 ORDER BY pl.start_date DESC NULLS LAST LIMIT $2`, [`%${query}%`, limit, tenantId]);
         return JSON.stringify(rows);
       }
       case 'search_research_notes': {
         const { query, person_name, limit = 10 } = input;
         let extra = person_name ? ` AND p.full_name ILIKE '%${person_name}%'` : '';
-        const { rows } = await pool.query(`SELECT i.subject, i.summary, i.interaction_at, i.note_quality, i.extracted_intelligence, p.full_name, p.id AS person_id, p.current_title, p.current_company_name FROM interactions i JOIN people p ON i.person_id = p.id WHERE i.interaction_type = 'research_note' AND (i.summary ILIKE $1 OR i.subject ILIKE $1)${extra} ORDER BY i.interaction_at DESC NULLS LAST LIMIT $2`, [`%${query}%`, limit]);
+        const { rows } = await pool.query(`SELECT i.subject, i.summary, i.interaction_at, i.note_quality, i.extracted_intelligence, p.full_name, p.id AS person_id, p.current_title, p.current_company_name FROM interactions i JOIN people p ON i.person_id = p.id WHERE i.interaction_type = 'research_note' AND (i.summary ILIKE $1 OR i.subject ILIKE $1) AND i.tenant_id = $3${extra} ORDER BY i.interaction_at DESC NULLS LAST LIMIT $2`, [`%${query}%`, limit, tenantId]);
         return JSON.stringify(rows);
       }
       case 'log_intelligence': {
         const { person_name, company_name, intelligence, subject, extracted = {} } = input;
         let personId;
-        const { rows: ex } = await pool.query(`SELECT id FROM people WHERE full_name ILIKE $1 LIMIT 1`, [person_name]);
+        const { rows: ex } = await pool.query(`SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [person_name, tenantId]);
         if (ex.length) { personId = ex[0].id; }
         else {
-          const { rows: [np] } = await pool.query(`INSERT INTO people (full_name, current_company_name, source) VALUES ($1, $2, 'chat_intel') RETURNING id`, [person_name, company_name || null]);
+          const { rows: [np] } = await pool.query(`INSERT INTO people (full_name, current_company_name, source, tenant_id) VALUES ($1, $2, 'chat_intel', $3) RETURNING id`, [person_name, company_name || null, tenantId]);
           personId = np.id;
         }
-        const { rows: [note] } = await pool.query(`INSERT INTO interactions (person_id, interaction_type, subject, summary, extracted_intelligence, source, interaction_at) VALUES ($1, 'research_note', $2, $3, $4, 'chat_concierge', NOW()) RETURNING id`, [personId, subject, intelligence, JSON.stringify(extracted)]);
+        const { rows: [note] } = await pool.query(`INSERT INTO interactions (person_id, interaction_type, subject, summary, extracted_intelligence, source, interaction_at, tenant_id) VALUES ($1, 'research_note', $2, $3, $4, 'chat_concierge', NOW(), $5) RETURNING id`, [personId, subject, intelligence, JSON.stringify(extracted), tenantId]);
         return JSON.stringify({ success: true, person_id: personId, note_id: note.id, person_name, subject, extracted, message: `Saved on ${person_name}'s record` });
       }
       case 'create_person': {
         const { full_name, current_title, current_company_name, email, phone, location, linkedin_url, seniority_level } = input;
-        const { rows: dupes } = await pool.query(`SELECT id, full_name, current_title FROM people WHERE full_name ILIKE $1 LIMIT 3`, [full_name]);
+        const { rows: dupes } = await pool.query(`SELECT id, full_name, current_title FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 3`, [full_name, tenantId]);
         if (dupes.length) return JSON.stringify({ existing_matches: dupes, message: 'Possible duplicates found' });
         let coId = null;
-        if (current_company_name) { const { rows } = await pool.query(`SELECT id FROM companies WHERE name ILIKE $1 LIMIT 1`, [current_company_name]); if (rows.length) coId = rows[0].id; }
-        const { rows: [p] } = await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, current_company_id, email, phone, location, linkedin_url, seniority_level, source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'chat_concierge') RETURNING id, full_name`, [full_name, current_title||null, current_company_name||null, coId, email||null, phone||null, location||null, linkedin_url||null, seniority_level||null]);
+        if (current_company_name) { const { rows } = await pool.query(`SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [current_company_name, tenantId]); if (rows.length) coId = rows[0].id; }
+        const { rows: [p] } = await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, current_company_id, email, phone, location, linkedin_url, seniority_level, source, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'chat_concierge',$10) RETURNING id, full_name`, [full_name, current_title||null, current_company_name||null, coId, email||null, phone||null, location||null, linkedin_url||null, seniority_level||null, tenantId]);
         return JSON.stringify({ ...p, message: `Created ${full_name}` });
       }
       case 'process_uploaded_file': {
@@ -3179,17 +3206,17 @@ async function executeTool(name, input, userId) {
           for (const row of fm.preview) {
             const name = row[m.full_name||'Name']||row['Full Name']||row['name'];
             if (!name || name.trim().length < 2) { skipped++; continue; }
-            const { rows: d } = await pool.query(`SELECT id FROM people WHERE full_name ILIKE $1 LIMIT 1`, [name.trim()]);
+            const { rows: d } = await pool.query(`SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [name.trim(), tenantId]);
             if (d.length) { skipped++; continue; }
-            await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, email, location, linkedin_url, source) VALUES ($1,$2,$3,$4,$5,$6,'csv_import')`,
-              [name.trim(), row[m.current_title||'Title']||row['Job Title']||null, row[m.current_company_name||'Company']||row['Organization']||null, row[m.email||'Email']||null, row[m.location||'Location']||null, row[m.linkedin_url||'LinkedIn']||null]);
+            await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, email, location, linkedin_url, source, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,'csv_import',$7)`,
+              [name.trim(), row[m.current_title||'Title']||row['Job Title']||null, row[m.current_company_name||'Company']||row['Organization']||null, row[m.email||'Email']||null, row[m.location||'Location']||null, row[m.linkedin_url||'LinkedIn']||null, tenantId]);
             imported++;
           }
           return JSON.stringify({ imported, skipped, total: fm.preview.length });
         }
         if (action === 'import_linkedin_connections' && fm.preview) {
           // Load people for matching
-          const { rows: dbPeople } = await pool.query(`SELECT id, full_name, first_name, last_name, linkedin_url, current_company_name, email FROM people WHERE full_name IS NOT NULL AND full_name != ''`);
+          const { rows: dbPeople } = await pool.query(`SELECT id, full_name, first_name, last_name, linkedin_url, current_company_name, email FROM people WHERE full_name IS NOT NULL AND full_name != '' AND tenant_id = $1`, [tenantId]);
           const linkedinIndex = new Map(), nameIndex = new Map(), emailIndex = new Map();
           for (const p of dbPeople) {
             if (p.linkedin_url) { const slug = p.linkedin_url.toLowerCase().replace(/\/+$/, '').split('?')[0].match(/linkedin\.com\/in\/([^\/]+)/); if (slug) linkedinIndex.set(slug[1], p); }
@@ -3236,23 +3263,23 @@ async function executeTool(name, input, userId) {
                   let strength = 0.5;
                   if (connectedOn) { const yrs = (Date.now() - new Date(connectedOn).getTime()) / (365.25*24*60*60*1000); if (yrs > 5) strength = 0.8; else if (yrs > 2) strength = 0.7; else if (yrs > 1) strength = 0.6; }
                   strength = Math.min(1.0, strength + (matchConfidence - 0.5) * 0.2);
-                  await pool.query(`INSERT INTO team_proximity (person_id, team_member_id, proximity_type, source, strength, context, connected_at, metadata) VALUES ($1,$2,'linkedin_connection','linkedin_import',$3,$4,$5,$6) ON CONFLICT (person_id, team_member_id, proximity_type, source) DO UPDATE SET strength = GREATEST(team_proximity.strength, EXCLUDED.strength), context = EXCLUDED.context, updated_at = NOW()`, [matchedPerson.id, userId, strength.toFixed(2), `${position} @ ${company}`, connectedOn, JSON.stringify({ linkedin_url: linkedinUrl, match_method: matchMethod, match_confidence: matchConfidence })]);
+                  await pool.query(`INSERT INTO team_proximity (person_id, team_member_id, proximity_type, source, strength, context, connected_at, metadata, tenant_id) VALUES ($1,$2,'linkedin_connection','linkedin_import',$3,$4,$5,$6,$7) ON CONFLICT (person_id, team_member_id, proximity_type, source) DO UPDATE SET strength = GREATEST(team_proximity.strength, EXCLUDED.strength), context = EXCLUDED.context, updated_at = NOW()`, [matchedPerson.id, userId, strength.toFixed(2), `${position} @ ${company}`, connectedOn, JSON.stringify({ linkedin_url: linkedinUrl, match_method: matchMethod, match_confidence: matchConfidence }), tenantId]);
                   stats.proximity_created++;
                 } catch (e) { if (!e.message.includes('duplicate')) stats.errors++; }
               }
               // Update LinkedIn URL if missing
-              if (linkedinUrl && !matchedPerson.linkedin_url) { try { await pool.query('UPDATE people SET linkedin_url = $1, updated_at = NOW() WHERE id = $2 AND linkedin_url IS NULL', [linkedinUrl, matchedPerson.id]); } catch (e) {} }
+              if (linkedinUrl && !matchedPerson.linkedin_url) { try { await pool.query('UPDATE people SET linkedin_url = $1, updated_at = NOW() WHERE id = $2 AND linkedin_url IS NULL AND tenant_id = $3', [linkedinUrl, matchedPerson.id, tenantId]); } catch (e) {} }
             } else {
               stats.unmatched++;
               // Create new person record for unmatched connections
               try {
-                const { rows: dupes } = await pool.query('SELECT id FROM people WHERE full_name ILIKE $1 LIMIT 1', [fullName]);
+                const { rows: dupes } = await pool.query('SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1', [fullName, tenantId]);
                 if (!dupes.length) {
-                  const { rows: [np] } = await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, linkedin_url, email, source) VALUES ($1,$2,$3,$4,$5,'linkedin_import') RETURNING id`, [fullName, position || null, company || null, linkedinUrl || null, email || null]);
+                  const { rows: [np] } = await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, linkedin_url, email, source, tenant_id) VALUES ($1,$2,$3,$4,$5,'linkedin_import',$6) RETURNING id`, [fullName, position || null, company || null, linkedinUrl || null, email || null, tenantId]);
                   stats.new_people++;
                   // Also create proximity for new person
                   if (userId && np) {
-                    try { await pool.query(`INSERT INTO team_proximity (person_id, team_member_id, proximity_type, source, strength, context, connected_at) VALUES ($1,$2,'linkedin_connection','linkedin_import',0.5,$3,$4) ON CONFLICT DO NOTHING`, [np.id, userId, `${position} @ ${company}`, connectedOn]); stats.proximity_created++; } catch (e) {}
+                    try { await pool.query(`INSERT INTO team_proximity (person_id, team_member_id, proximity_type, source, strength, context, connected_at, tenant_id) VALUES ($1,$2,'linkedin_connection','linkedin_import',0.5,$3,$4,$5) ON CONFLICT DO NOTHING`, [np.id, userId, `${position} @ ${company}`, connectedOn, tenantId]); stats.proximity_created++; } catch (e) {}
                   }
                 }
               } catch (e) { stats.errors++; }
@@ -3270,7 +3297,7 @@ async function executeTool(name, input, userId) {
           const stats = { total: 0, matched: 0, interactions_created: 0, unmatched_senders: new Set(), errors: 0 };
 
           // Load people for matching by name
-          const { rows: dbPeople } = await pool.query(`SELECT id, full_name FROM people WHERE full_name IS NOT NULL`);
+          const { rows: dbPeople } = await pool.query(`SELECT id, full_name FROM people WHERE full_name IS NOT NULL AND tenant_id = $1`, [tenantId]);
           const nameMap = new Map();
           for (const p of dbPeople) { nameMap.set(p.full_name.toLowerCase().trim(), p); }
 
@@ -3305,7 +3332,7 @@ async function executeTool(name, input, userId) {
                 const latestDate = sorted[sorted.length - 1]?.date;
 
                 try {
-                  await pool.query(`INSERT INTO interactions (person_id, interaction_type, subject, summary, source, interaction_at) VALUES ($1, 'linkedin_message', $2, $3, 'linkedin_import', $4) ON CONFLICT DO NOTHING`, [match.id, `LinkedIn conversation (${messages.length} messages)`, summary, latestDate ? new Date(latestDate).toISOString() : new Date().toISOString()]);
+                  await pool.query(`INSERT INTO interactions (person_id, interaction_type, subject, summary, source, interaction_at, tenant_id) VALUES ($1, 'linkedin_message', $2, $3, 'linkedin_import', $4, $5) ON CONFLICT DO NOTHING`, [match.id, `LinkedIn conversation (${messages.length} messages)`, summary, latestDate ? new Date(latestDate).toISOString() : new Date().toISOString(), tenantId]);
                   stats.interactions_created++;
                 } catch (e) { stats.errors++; }
               } else {
@@ -3327,7 +3354,7 @@ async function executeTool(name, input, userId) {
         return JSON.stringify({ explanation: input.explanation, row_count: rows.length, results: rows });
       }
       case 'get_platform_stats': {
-        const { rows: [s] } = await pool.query(`SELECT (SELECT COUNT(*) FROM signal_events) AS signals, (SELECT COUNT(*) FROM companies WHERE sector IS NOT NULL OR is_client = true) AS companies, (SELECT COUNT(*) FROM people) AS people, (SELECT COUNT(*) FROM external_documents) AS documents, (SELECT COUNT(*) FROM conversions) AS placements, (SELECT COALESCE(SUM(placement_fee),0) FROM conversions) AS revenue`);
+        const { rows: [s] } = await pool.query(`SELECT (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1) AS signals, (SELECT COUNT(*) FROM companies WHERE (sector IS NOT NULL OR is_client = true) AND tenant_id = $1) AS companies, (SELECT COUNT(*) FROM people WHERE tenant_id = $1) AS people, (SELECT COUNT(*) FROM external_documents WHERE tenant_id = $1) AS documents, (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1) AS placements, (SELECT COALESCE(SUM(placement_fee),0) FROM conversions WHERE tenant_id = $1) AS revenue`, [tenantId]);
         return JSON.stringify(s);
       }
       default: return JSON.stringify({ error: `Unknown tool: ${name}` });
@@ -3454,7 +3481,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
       const toolResultContent = [];
       for (const tc of toolCalls) {
         console.log(`  🔧 ${tc.name}`, JSON.stringify(tc.input).slice(0, 150));
-        const result = await executeTool(tc.name, tc.input, req.user.id);
+        const result = await executeTool(tc.name, tc.input, req.user.id, req.tenant_id);
         toolResultContent.push({ type: 'tool_result', tool_use_id: tc.id, content: result });
         toolsUsed.push(tc.name);
       }

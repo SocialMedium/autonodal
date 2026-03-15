@@ -28,6 +28,8 @@ const { Pool } = require('pg');
 const { QdrantClient } = require('@qdrant/js-client-rest');
 const OpenAI = require('openai');
 
+const ML_TENANT_ID = process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CLIENTS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -147,13 +149,15 @@ Examples:
       if (semantic) {
         // Vector search in Qdrant
         const vector = await embedText(query);
-        const hits = await vectorSearch('people', vector, limit);
+        const hits = await vectorSearch('people', vector, limit, {
+          must: [{ key: 'tenant_id', match: { value: ML_TENANT_ID } }]
+        });
         const ids = hits.map(h => h.id).filter(Boolean);
 
         if (ids.length > 0) {
-          const conditions = ['p.id = ANY($1)'];
-          const params = [ids];
-          let pi = 2;
+          const conditions = ['p.id = ANY($1)', 'p.tenant_id = $2'];
+          const params = [ids, ML_TENANT_ID];
+          let pi = 3;
           if (company) { conditions.push(`p.current_company_name ILIKE $${pi++}`); params.push(`%${company}%`); }
           if (location) { conditions.push(`(p.location ILIKE $${pi++} OR p.city ILIKE $${pi - 1} OR p.country ILIKE $${pi - 1})`); params.push(`%${location}%`); }
           if (seniority) { conditions.push(`p.seniority_level = $${pi++}`); params.push(seniority); }
@@ -161,7 +165,7 @@ Examples:
           const result = await dbQuery(`
             SELECT p.*, ps.engagement_score, ps.receptivity_score, ps.timing_score, ps.flight_risk_score
             FROM people p
-            LEFT JOIN person_scores ps ON p.id = ps.person_id
+            LEFT JOIN person_scores ps ON p.id = ps.person_id AND ps.tenant_id = p.tenant_id
             WHERE ${conditions.join(' AND ')}
             LIMIT $${pi}
           `, [...params, limit]);
@@ -169,9 +173,9 @@ Examples:
         }
       } else {
         // Keyword search
-        const conditions = [`(p.full_name ILIKE $1 OR p.current_title ILIKE $1 OR p.current_company_name ILIKE $1 OR p.headline ILIKE $1)`];
-        const params = [`%${query}%`];
-        let pi = 2;
+        const conditions = [`(p.full_name ILIKE $1 OR p.current_title ILIKE $1 OR p.current_company_name ILIKE $1 OR p.headline ILIKE $1)`, `p.tenant_id = $2`];
+        const params = [`%${query}%`, ML_TENANT_ID];
+        let pi = 3;
         if (company) { conditions.push(`p.current_company_name ILIKE $${pi++}`); params.push(`%${company}%`); }
         if (location) { conditions.push(`(p.location ILIKE $${pi++} OR p.city ILIKE $${pi - 1} OR p.country ILIKE $${pi - 1})`); params.push(`%${location}%`); }
         if (seniority) { conditions.push(`p.seniority_level = $${pi++}`); params.push(seniority); }
@@ -179,7 +183,7 @@ Examples:
         const result = await dbQuery(`
           SELECT p.*, ps.engagement_score, ps.receptivity_score, ps.timing_score, ps.flight_risk_score
           FROM people p
-          LEFT JOIN person_scores ps ON p.id = ps.person_id
+          LEFT JOIN person_scores ps ON p.id = ps.person_id AND ps.tenant_id = p.tenant_id
           WHERE ${conditions.join(' AND ')}
           ORDER BY p.full_name
           LIMIT $${pi}
@@ -235,10 +239,10 @@ Args:
     try {
       let personRow;
       if (person_id) {
-        const r = await dbQuery('SELECT * FROM people WHERE id = $1', [person_id]);
+        const r = await dbQuery('SELECT * FROM people WHERE id = $1 AND tenant_id = $2', [person_id, ML_TENANT_ID]);
         personRow = r.rows[0];
       } else if (name) {
-        const r = await dbQuery(`SELECT * FROM people WHERE full_name ILIKE $1 ORDER BY full_name LIMIT 1`, [`%${name}%`]);
+        const r = await dbQuery(`SELECT * FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 ORDER BY full_name LIMIT 1`, [`%${name}%`, ML_TENANT_ID]);
         personRow = r.rows[0];
       }
 
@@ -256,7 +260,7 @@ Args:
       if (personRow.bio) sections.push(`\n${personRow.bio}`);
 
       // Scores
-      const scoresR = await dbQuery('SELECT * FROM person_scores WHERE person_id = $1', [personRow.id]);
+      const scoresR = await dbQuery('SELECT * FROM person_scores WHERE person_id = $1 AND tenant_id = $2', [personRow.id, ML_TENANT_ID]);
       if (scoresR.rows[0]) {
         const s = scoresR.rows[0];
         sections.push(`\n## Scores`);
@@ -288,9 +292,9 @@ Args:
         const sigsR = await dbQuery(`
           SELECT signal_type, detected_at, title, description, source
           FROM person_signals
-          WHERE person_id = $1
+          WHERE person_id = $1 AND tenant_id = $2
           ORDER BY detected_at DESC LIMIT 10
-        `, [personRow.id]);
+        `, [personRow.id, ML_TENANT_ID]);
         if (sigsR.rows.length > 0) {
           sections.push(`\n## Recent Signals`);
           for (const sig of sigsR.rows) {
@@ -306,9 +310,9 @@ Args:
           SELECT interaction_type, direction, subject, summary, interaction_at, u.name as user_name
           FROM interactions i
           LEFT JOIN users u ON i.user_id = u.id
-          WHERE i.person_id = $1
+          WHERE i.person_id = $1 AND i.tenant_id = $2
           ORDER BY interaction_at DESC LIMIT 10
-        `, [personRow.id]);
+        `, [personRow.id, ML_TENANT_ID]);
         if (intR.rows.length > 0) {
           sections.push(`\n## Interaction History`);
           for (const int of intR.rows) {
@@ -325,9 +329,9 @@ Args:
           SELECT tp.relationship_type, tp.relationship_strength, tp.connected_date, u.name as team_member
           FROM team_proximity tp
           LEFT JOIN users u ON tp.team_member_id = u.id
-          WHERE tp.person_id = $1
+          WHERE tp.person_id = $1 AND tp.tenant_id = $2
           ORDER BY tp.relationship_strength DESC LIMIT 5
-        `, [personRow.id]);
+        `, [personRow.id, ML_TENANT_ID]);
         if (proxR.rows.length > 0) {
           sections.push(`\n## Team Proximity (Who Knows Them)`);
           for (const p of proxR.rows) {
@@ -342,9 +346,9 @@ Args:
         SELECT s.title, sc.overall_fit_score, sc.status
         FROM pipeline_contacts sc
         JOIN opportunities s ON sc.search_id = s.id
-        WHERE sc.person_id = $1
+        WHERE sc.person_id = $1 AND sc.tenant_id = $2
         ORDER BY sc.overall_fit_score DESC NULLS LAST LIMIT 5
-      `, [personRow.id]);
+      `, [personRow.id, ML_TENANT_ID]);
       if (matchR.rows.length > 0) {
         sections.push(`\n## Active Search Matches`);
         for (const m of matchR.rows) {
@@ -386,12 +390,12 @@ Args:
   },
   async ({ query, is_client, sector, limit }) => {
     try {
-      const conditions = [`c.name ILIKE $1`];
-      const params = [`%${query}%`];
-      let pi = 2;
+      const conditions = [`c.name ILIKE $1`, `c.tenant_id = $2`];
+      const params = [`%${query}%`, ML_TENANT_ID];
+      let pi = 3;
 
       if (is_client) {
-        conditions.push(`EXISTS (SELECT 1 FROM accounts cl WHERE cl.company_id = c.id OR cl.name ILIKE c.name)`);
+        conditions.push(`EXISTS (SELECT 1 FROM accounts cl WHERE (cl.company_id = c.id OR cl.name ILIKE c.name) AND cl.tenant_id = c.tenant_id)`);
       }
       if (sector) {
         conditions.push(`c.industry ILIKE $${pi++}`);
@@ -400,9 +404,9 @@ Args:
 
       const result = await dbQuery(`
         SELECT c.*,
-          (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) as employee_count,
-          (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.detected_at > NOW() - INTERVAL '90 days') as recent_signals,
-          EXISTS (SELECT 1 FROM accounts cl WHERE cl.company_id = c.id) as is_client
+          (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id AND p.tenant_id = c.tenant_id) as employee_count,
+          (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.tenant_id = c.tenant_id AND se.detected_at > NOW() - INTERVAL '90 days') as recent_signals,
+          EXISTS (SELECT 1 FROM accounts cl WHERE cl.company_id = c.id AND cl.tenant_id = c.tenant_id) as is_client
         FROM companies c
         WHERE ${conditions.join(' AND ')}
         ORDER BY c.name
@@ -415,11 +419,11 @@ Args:
           COALESCE(cf.total_placements, 0) as total_placements,
           COALESCE(cf.total_invoiced, 0) as total_revenue
         FROM accounts cl
-        LEFT JOIN account_financials cf ON cf.client_id = cl.id
-        WHERE cl.name ILIKE $1
-          AND (cl.company_id IS NULL OR NOT EXISTS (SELECT 1 FROM companies co WHERE co.id = cl.company_id AND co.name ILIKE $1))
-        LIMIT $2
-      `, [`%${query}%`, limit]);
+        LEFT JOIN account_financials cf ON cf.client_id = cl.id AND cf.tenant_id = cl.tenant_id
+        WHERE cl.name ILIKE $1 AND cl.tenant_id = $2
+          AND (cl.company_id IS NULL OR NOT EXISTS (SELECT 1 FROM companies co WHERE co.id = cl.company_id AND co.tenant_id = cl.tenant_id AND co.name ILIKE $1))
+        LIMIT $3
+      `, [`%${query}%`, ML_TENANT_ID, limit]);
 
       if (result.rows.length === 0 && clientResult.rows.length === 0) return okText(`No companies found matching "${query}"`);
 
@@ -476,10 +480,10 @@ Args:
     try {
       let co;
       if (company_id) {
-        const r = await dbQuery('SELECT * FROM companies WHERE id = $1', [company_id]);
+        const r = await dbQuery('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [company_id, ML_TENANT_ID]);
         co = r.rows[0];
       } else if (name) {
-        const r = await dbQuery('SELECT * FROM companies WHERE name ILIKE $1 LIMIT 1', [`%${name}%`]);
+        const r = await dbQuery('SELECT * FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1', [`%${name}%`, ML_TENANT_ID]);
         co = r.rows[0];
       }
       if (!co) return okText(`Company not found: ${company_id || name}`);
@@ -491,7 +495,7 @@ Args:
       if (co.description) sections.push(`\n${co.description}`);
 
       // MitchelLake relationship
-      const clientR = await dbQuery(`SELECT * FROM accounts WHERE company_id = $1 OR name ILIKE $2`, [co.id, co.name]);
+      const clientR = await dbQuery(`SELECT * FROM accounts WHERE (company_id = $1 OR name ILIKE $2) AND tenant_id = $3`, [co.id, co.name, ML_TENANT_ID]);
       if (clientR.rows.length > 0) {
         const cl = clientR.rows[0];
         sections.push(`\n## MitchelLake Relationship`);
@@ -505,11 +509,11 @@ Args:
       const searchR = await dbQuery(`
         SELECT s.title, s.status, s.kick_off_date
         FROM opportunities s
-        JOIN engagements pr ON s.project_id = pr.id
-        JOIN accounts cl ON pr.client_id = cl.id
-        WHERE cl.company_id = $1 OR cl.name ILIKE $2
+        JOIN engagements pr ON s.project_id = pr.id AND pr.tenant_id = $3
+        JOIN accounts cl ON pr.client_id = cl.id AND cl.tenant_id = $3
+        WHERE (cl.company_id = $1 OR cl.name ILIKE $2) AND s.tenant_id = $3
         ORDER BY s.kick_off_date DESC LIMIT 10
-      `, [co.id, `%${co.name}%`]);
+      `, [co.id, `%${co.name}%`, ML_TENANT_ID]);
       if (searchR.rows.length > 0) {
         sections.push(`\n## Search History (${searchR.rows.length} searches)`);
         for (const s of searchR.rows) {
@@ -522,10 +526,10 @@ Args:
       const peopleR = await dbQuery(`
         SELECT p.full_name, p.current_title, ps.engagement_score, ps.timing_score
         FROM people p
-        LEFT JOIN person_scores ps ON p.id = ps.person_id
-        WHERE p.current_company_id = $1 OR p.current_company_name ILIKE $2
+        LEFT JOIN person_scores ps ON p.id = ps.person_id AND ps.tenant_id = p.tenant_id
+        WHERE (p.current_company_id = $1 OR p.current_company_name ILIKE $2) AND p.tenant_id = $3
         ORDER BY ps.timing_score DESC NULLS LAST LIMIT 10
-      `, [co.id, `%${co.name}%`]);
+      `, [co.id, `%${co.name}%`, ML_TENANT_ID]);
       if (peopleR.rows.length > 0) {
         sections.push(`\n## Key People (${peopleR.rows.length} tracked)`);
         for (const p of peopleR.rows) {
@@ -537,9 +541,9 @@ Args:
       const sigR = await dbQuery(`
         SELECT signal_type, confidence_score, evidence_summary, hiring_implications, detected_at
         FROM signal_events
-        WHERE company_id = $1
+        WHERE company_id = $1 AND tenant_id = $2
         ORDER BY detected_at DESC LIMIT 8
-      `, [co.id]);
+      `, [co.id, ML_TENANT_ID]);
       if (sigR.rows.length > 0) {
         sections.push(`\n## Recent Signals`);
         for (const s of sigR.rows) {
@@ -585,10 +589,11 @@ Args:
     try {
       const conditions = [
         `se.confidence_score >= $1`,
-        `se.detected_at > NOW() - INTERVAL '${days} days'`
+        `se.detected_at > NOW() - INTERVAL '${days} days'`,
+        `se.tenant_id = $2`
       ];
-      const params = [min_confidence];
-      let pi = 2;
+      const params = [min_confidence, ML_TENANT_ID];
+      let pi = 3;
 
       if (signal_type) {
         conditions.push(`se.signal_type = $${pi++}`);
@@ -655,9 +660,9 @@ Args:
   },
   async ({ query, status, active_only, limit }) => {
     try {
-      const conditions = [`(s.title ILIKE $1 OR s.brief_summary ILIKE $1 OR cl.name ILIKE $1)`];
-      const params = [`%${query}%`];
-      let pi = 2;
+      const conditions = [`(s.title ILIKE $1 OR s.brief_summary ILIKE $1 OR cl.name ILIKE $1)`, `s.tenant_id = $2`];
+      const params = [`%${query}%`, ML_TENANT_ID];
+      let pi = 3;
 
       if (status) {
         conditions.push(`s.status = $${pi++}`);
@@ -668,11 +673,11 @@ Args:
 
       const result = await dbQuery(`
         SELECT s.id, s.title, s.status, s.seniority_level, s.kick_off_date, s.location,
-               cl.name as client_name, 
-               (SELECT COUNT(*) FROM pipeline_contacts sc WHERE sc.search_id = s.id) as candidate_count
+               cl.name as client_name,
+               (SELECT COUNT(*) FROM pipeline_contacts sc WHERE sc.search_id = s.id AND sc.tenant_id = s.tenant_id) as candidate_count
         FROM opportunities s
-        JOIN engagements pr ON s.project_id = pr.id
-        JOIN accounts cl ON pr.client_id = cl.id
+        JOIN engagements pr ON s.project_id = pr.id AND pr.tenant_id = s.tenant_id
+        JOIN accounts cl ON pr.client_id = cl.id AND cl.tenant_id = s.tenant_id
         WHERE ${conditions.join(' AND ')}
         ORDER BY s.kick_off_date DESC NULLS LAST
         LIMIT $${pi}
@@ -721,10 +726,10 @@ Args:
       const searchR = await dbQuery(`
         SELECT s.*, cl.name as client_name
         FROM opportunities s
-        JOIN engagements pr ON s.project_id = pr.id
-        JOIN accounts cl ON pr.client_id = cl.id
-        WHERE s.id = $1
-      `, [search_id]);
+        JOIN engagements pr ON s.project_id = pr.id AND pr.tenant_id = s.tenant_id
+        JOIN accounts cl ON pr.client_id = cl.id AND cl.tenant_id = s.tenant_id
+        WHERE s.id = $1 AND s.tenant_id = $2
+      `, [search_id, ML_TENANT_ID]);
 
       if (searchR.rows.length === 0) return okText(`Search not found: ${search_id}`);
       const search = searchR.rows[0];
@@ -743,11 +748,11 @@ Args:
                p.full_name, p.current_title, p.current_company_name, p.location,
                ps.engagement_score, ps.receptivity_score, ps.timing_score
         FROM pipeline_contacts sc
-        JOIN people p ON sc.person_id = p.id
-        LEFT JOIN person_scores ps ON p.id = ps.person_id
-        WHERE sc.search_id = $1
+        JOIN people p ON sc.person_id = p.id AND p.tenant_id = sc.tenant_id
+        LEFT JOIN person_scores ps ON p.id = ps.person_id AND ps.tenant_id = sc.tenant_id
+        WHERE sc.search_id = $1 AND sc.tenant_id = $2
         ORDER BY sc.overall_fit_score DESC NULLS LAST, sc.status
-      `, [search_id]);
+      `, [search_id, ML_TENANT_ID]);
 
       if (candR.rows.length === 0) {
         sections.push('\n## Pipeline\nNo candidates in pipeline yet.');
@@ -815,15 +820,15 @@ Args:
       const uid = user_id || defaultUserId;
 
       const result = await dbQuery(`
-        INSERT INTO interactions (person_id, user_id, interaction_type, direction, summary, subject, interaction_at, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+        INSERT INTO interactions (person_id, user_id, interaction_type, direction, summary, subject, interaction_at, created_at, tenant_id)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW(), $7)
         RETURNING id
-      `, [person_id, uid, interaction_type, direction, summary, subject || null]);
+      `, [person_id, uid, interaction_type, direction, summary, subject || null, ML_TENANT_ID]);
 
       const id = result.rows[0]?.id;
 
       // Fetch person name for confirmation
-      const personR = await dbQuery('SELECT full_name FROM people WHERE id = $1', [person_id]);
+      const personR = await dbQuery('SELECT full_name FROM people WHERE id = $1 AND tenant_id = $2', [person_id, ML_TENANT_ID]);
       const personName = personR.rows[0]?.full_name || person_id;
 
       return okText(`✅ Interaction logged for **${personName}**\n- Type: ${interaction_type} (${direction})\n- Summary: ${summary}\n- ID: ${id}`);
@@ -872,12 +877,14 @@ Args:
       }
 
       const vector = results[0].vector;
-      const personR = await dbQuery('SELECT * FROM people WHERE id = $1', [person_id]);
+      const personR = await dbQuery('SELECT * FROM people WHERE id = $1 AND tenant_id = $2', [person_id, ML_TENANT_ID]);
       const person = personR.rows[0];
       if (!person) return okText(`Person not found: ${person_id}`);
 
       // Search for similar
-      const hits = await vectorSearch('people', vector, limit + 5);
+      const hits = await vectorSearch('people', vector, limit + 5, {
+        must: [{ key: 'tenant_id', match: { value: ML_TENANT_ID } }]
+      });
       const similarIds = hits
         .filter(h => h.id !== person_id)
         .map(h => ({ id: h.id, score: h.score }))
@@ -889,12 +896,12 @@ Args:
       let sql = `
         SELECT p.*, ps.engagement_score, ps.timing_score, ps.receptivity_score
         FROM people p
-        LEFT JOIN person_scores ps ON p.id = ps.person_id
-        WHERE p.id = ANY($1)
+        LEFT JOIN person_scores ps ON p.id = ps.person_id AND ps.tenant_id = p.tenant_id
+        WHERE p.id = ANY($1) AND p.tenant_id = $2
       `;
-      const params = [ids];
+      const params = [ids, ML_TENANT_ID];
       if (exclude_same_company && person.current_company_name) {
-        sql += ` AND p.current_company_name NOT ILIKE $2`;
+        sql += ` AND p.current_company_name NOT ILIKE $3`;
         params.push(`%${person.current_company_name}%`);
       }
 
@@ -940,13 +947,13 @@ Args:
     try {
       let pid = person_id;
       if (!pid && name) {
-        const r = await dbQuery(`SELECT id, full_name FROM people WHERE full_name ILIKE $1 LIMIT 1`, [`%${name}%`]);
+        const r = await dbQuery(`SELECT id, full_name FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [`%${name}%`, ML_TENANT_ID]);
         if (!r.rows[0]) return okText(`Person not found: ${name}`);
         pid = r.rows[0].id;
       }
       if (!pid) return okText('Provide person_id or name');
 
-      const personR = await dbQuery('SELECT full_name, current_title, current_company_name FROM people WHERE id = $1', [pid]);
+      const personR = await dbQuery('SELECT full_name, current_title, current_company_name FROM people WHERE id = $1 AND tenant_id = $2', [pid, ML_TENANT_ID]);
       const person = personR.rows[0];
       if (!person) return okText(`Person not found: ${pid}`);
 
@@ -956,9 +963,9 @@ Args:
                u.name as team_member, u.email as team_email
         FROM team_proximity tp
         LEFT JOIN users u ON tp.team_member_id = u.id
-        WHERE tp.person_id = $1
+        WHERE tp.person_id = $1 AND tp.tenant_id = $2
         ORDER BY tp.relationship_strength DESC
-      `, [pid]);
+      `, [pid, ML_TENANT_ID]);
 
       if (proxR.rows.length === 0) {
         return okText(`No direct connections found to **${person.full_name}** in the MitchelLake network.`);
@@ -1002,12 +1009,12 @@ server.registerTool(
   async () => {
     try {
       const [people, companies, searches, signals, interactions, scores] = await Promise.all([
-        dbQuery('SELECT COUNT(*) FROM people'),
-        dbQuery('SELECT COUNT(*) FROM companies'),
-        dbQuery(`SELECT status, COUNT(*) FROM opportunities GROUP BY status ORDER BY count DESC`),
-        dbQuery(`SELECT COUNT(*) FROM signal_events WHERE detected_at > NOW() - INTERVAL '7 days'`),
-        dbQuery(`SELECT COUNT(*) FROM interactions WHERE interaction_at > NOW() - INTERVAL '30 days'`),
-        dbQuery('SELECT COUNT(*) FROM person_scores')
+        dbQuery('SELECT COUNT(*) FROM people WHERE tenant_id = $1', [ML_TENANT_ID]),
+        dbQuery('SELECT COUNT(*) FROM companies WHERE tenant_id = $1', [ML_TENANT_ID]),
+        dbQuery(`SELECT status, COUNT(*) FROM opportunities WHERE tenant_id = $1 GROUP BY status ORDER BY count DESC`, [ML_TENANT_ID]),
+        dbQuery(`SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '7 days'`, [ML_TENANT_ID]),
+        dbQuery(`SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND interaction_at > NOW() - INTERVAL '30 days'`, [ML_TENANT_ID]),
+        dbQuery('SELECT COUNT(*) FROM person_scores WHERE tenant_id = $1', [ML_TENANT_ID])
       ]);
 
       const searchBreakdown = searches.rows.map(r => `  ${r.status}: ${r.count}`).join('\n');
