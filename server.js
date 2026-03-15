@@ -203,8 +203,135 @@ app.get('/api/auth/google/callback', async (req, res) => {
   }
 });
 
-app.get('/api/auth/me', authenticateToken, (req, res) => {
-  res.json({ user: req.user });
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  try {
+    const { rows: [user] } = await pool.query(
+      'SELECT id, email, name, role, region, onboarded, preferences FROM users WHERE id = $1',
+      [req.user.user_id]
+    );
+    res.json({ user: { ...req.user, region: user?.region, onboarded: user?.onboarded, preferences: user?.preferences } });
+  } catch (e) {
+    res.json({ user: req.user });
+  }
+});
+
+// Update user profile (region, preferences, onboarding)
+app.patch('/api/auth/me', authenticateToken, async (req, res) => {
+  try {
+    const allowed = ['region', 'onboarded', 'preferences'];
+    const updates = [];
+    const params = [];
+    let idx = 1;
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) {
+        idx++;
+        updates.push(`${key} = $${idx}`);
+        params.push(key === 'preferences' ? JSON.stringify(req.body[key]) : req.body[key]);
+      }
+    }
+    if (updates.length === 0) return res.json({ ok: true });
+    params.unshift(req.user.user_id);
+    await pool.query(`UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $1`, params);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Personalized Morning Brief ───
+app.get('/api/brief/personal', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+
+    // Get user's region
+    const { rows: [userRow] } = await pool.query('SELECT region FROM users WHERE id = $1', [userId]);
+    const userRegion = userRow?.region || 'APAC';
+
+    // 1. My contacts in recent signals — people I've interacted with at companies with signals
+    const { rows: contactSignals } = await pool.query(`
+      SELECT DISTINCT ON (p.id)
+        p.id as person_id, p.full_name, p.current_title, p.current_company_name,
+        se.signal_type, se.company_name as signal_company, se.confidence_score,
+        se.evidence_summary, se.detected_at,
+        tp.proximity_strength, tp.proximity_type,
+        i.interaction_at as last_contact
+      FROM team_proximity tp
+      JOIN people p ON p.id = tp.person_id
+      JOIN companies c ON c.id = p.current_company_id
+      JOIN signal_events se ON se.company_id = c.id AND se.detected_at > NOW() - INTERVAL '7 days'
+      LEFT JOIN LATERAL (
+        SELECT interaction_at FROM interactions
+        WHERE person_id = p.id AND user_id = $1
+        ORDER BY interaction_at DESC LIMIT 1
+      ) i ON true
+      WHERE tp.user_id = $1
+      ORDER BY p.id, se.confidence_score DESC, se.detected_at DESC
+      LIMIT 5
+    `, [userId]);
+
+    // 2. Client signals — signals at companies where we have client relationships
+    const { rows: clientSignals } = await pool.query(`
+      SELECT DISTINCT ON (se.company_id)
+        se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
+        se.evidence_summary, se.detected_at,
+        cl.relationship_status, cl.relationship_tier,
+        (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id) as contact_count
+      FROM signal_events se
+      JOIN companies c ON c.id = se.company_id AND c.is_client = true
+      JOIN clients cl ON cl.company_id = c.id
+      WHERE se.detected_at > NOW() - INTERVAL '7 days'
+      ORDER BY se.company_id, se.confidence_score DESC
+      LIMIT 5
+    `);
+
+    // 3. Top dispatches for user's region
+    const REGION_GEOS = {
+      'AU': ['Australia','Sydney','Melbourne','Brisbane','Perth'],
+      'SG': ['Singapore','Southeast Asia','ASEAN','Jakarta','Bangkok','Vietnam','Malaysia'],
+      'UK': ['United Kingdom','London','England','Britain'],
+      'US': ['United States','Silicon Valley','New York','San Francisco'],
+      'APAC': ['Australia','Singapore','Asia','Japan','Korea','India','Hong Kong','China','New Zealand'],
+      'EMEA': ['United Kingdom','Europe','London','Germany','France','Middle East','Africa'],
+    };
+    const geos = REGION_GEOS[userRegion] || REGION_GEOS['APAC'];
+    const geoConditions = geos.map((_, i) => `c.geography ILIKE $${i + 1} OR sd.signal_summary ILIKE $${i + 1}`).join(' OR ');
+    const geoParams = geos.map(g => `%${g}%`);
+
+    const { rows: regionDispatches } = await pool.query(`
+      SELECT sd.id, sd.company_name, sd.signal_type, sd.signal_summary,
+             sd.opportunity_angle, sd.blog_title, sd.status, sd.claimed_by,
+             c.geography, c.is_client,
+             jsonb_array_length(COALESCE(sd.proximity_map, '[]'::jsonb)) as connection_count
+      FROM signal_dispatches sd
+      LEFT JOIN companies c ON c.id = sd.company_id
+      WHERE sd.status = 'draft' AND sd.claimed_by IS NULL
+        AND (${geoConditions})
+      ORDER BY
+        CASE WHEN c.is_client = true THEN 0 ELSE 1 END,
+        jsonb_array_length(COALESCE(sd.proximity_map, '[]'::jsonb)) DESC,
+        sd.generated_at DESC
+      LIMIT 3
+    `, geoParams);
+
+    // 4. Quick stats for greeting
+    const { rows: [briefStats] } = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours') as signals_24h,
+        (SELECT COUNT(*) FROM signal_dispatches WHERE status = 'draft' AND claimed_by IS NULL) as unclaimed_dispatches,
+        (SELECT COUNT(*) FROM signal_events se JOIN companies c ON c.id = se.company_id AND c.is_client = true WHERE se.detected_at > NOW() - INTERVAL '7 days') as client_signals_7d
+    `);
+
+    res.json({
+      region: userRegion,
+      stats: briefStats,
+      contact_signals: contactSignals,
+      client_signals: clientSignals,
+      region_dispatches: regionDispatches
+    });
+  } catch (err) {
+    console.error('Personal brief error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/auth/logout', authenticateToken, async (req, res) => {
@@ -3258,6 +3385,15 @@ app.listen(PORT, async () => {
   console.log(`  Dashboard: http://localhost:${PORT}`);
   console.log(`  API:       http://localhost:${PORT}/api/health`);
   console.log('═══════════════════════════════════════════════════\n');
+
+  // Ensure user profile columns exist
+  try {
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS region VARCHAR(10);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarded BOOLEAN DEFAULT false;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT '{}'::jsonb;
+    `);
+  } catch (e) { /* columns may already exist */ }
 
   // Ensure people privacy columns exist
   try {

@@ -1683,12 +1683,12 @@ body {
         <div class="assistant-header">
           <div class="assistant-title">
             <div class="assistant-icon">✦</div>
-            Signal Assistant
+            Morning Brief
           </div>
-          <div class="assistant-status">Active</div>
+          <div class="assistant-status" id="briefRegionBadge">—</div>
         </div>
         <div class="assistant-body" id="assistantBody">
-          <div class="assistant-greeting" id="assistantGreeting">Loading intelligence...</div>
+          <div class="assistant-greeting" id="assistantGreeting">Loading your brief...</div>
         </div>
         <div class="assistant-actions" id="assistantActions"></div>
       </div>
@@ -1863,36 +1863,97 @@ async function loadStats() {
 }
 
 function buildAssistantBrief(stats) {
-  const greeting = document.getElementById('assistantGreeting');
+  // Still use stats for the fallback greeting, but the real brief comes from loadPersonalBrief()
+  const body = document.getElementById('assistantBody');
+  body.innerHTML = '<div class="assistant-greeting">Good morning. ' + stats.signals_24h + ' new signals in the last 24 hours across ' + stats.companies_count.toLocaleString() + ' companies.</div>';
+  loadPersonalBrief();
+}
+
+const REGION_FLAGS = { AU: '🇦🇺', SG: '🇸🇬', UK: '🇬🇧', US: '🇺🇸', APAC: '🌏', EMEA: '🌍' };
+const SIG_ICONS_BRIEF = { capital_raising: '💰', ma_activity: '🔗', product_launch: '🚀', partnership: '🤝', geographic_expansion: '🌐', restructuring: '⚙️', leadership_change: '👤', layoffs: '📉', strategic_hiring: '👥' };
+
+async function loadPersonalBrief() {
   const body = document.getElementById('assistantBody');
   const actions = document.getElementById('assistantActions');
+  try {
+    const data = await api('/api/brief/personal');
+    if (!data) return;
 
-  const topSignals = stats.signals_by_type.slice(0, 3);
-  const topDocs = stats.documents_by_type.slice(0, 3);
+    const flag = REGION_FLAGS[data.region] || '🌐';
+    document.getElementById('briefRegionBadge').textContent = flag + ' ' + (data.region || 'Set region');
 
-  greeting.textContent = `Good morning. ${stats.signals_total.toLocaleString()} signals across ${stats.companies_count.toLocaleString()} companies. ${stats.signals_24h} new in the last 24 hours.`;
+    let html = '<div class="assistant-greeting">Good morning. ' +
+      (data.stats?.signals_24h || 0) + ' new signals today · ' +
+      (data.stats?.client_signals_7d || 0) + ' client signals this week · ' +
+      (data.stats?.unclaimed_dispatches || 0) + ' dispatches unclaimed.</div>';
 
-  let prioritiesHtml = '';
-  topSignals.forEach((s, i) => {
-    const label = s.type.replace(/_/g, ' ');
-    prioritiesHtml += `
-      <div class="priority-item">
-        <div class="priority-number">${i + 1}</div>
-        <div class="priority-text"><strong>${s.count} ${label}</strong> signals detected. Click the filter above to review and triage.</div>
-      </div>`;
-  });
-  body.innerHTML = `<div class="assistant-greeting">${greeting.textContent}</div>` + prioritiesHtml;
+    // Section 1: Your contacts in signals
+    if (data.contact_signals && data.contact_signals.length > 0) {
+      html += '<div style="margin-top:14px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--blue);margin-bottom:6px">Your Contacts in Signals</div>';
+      data.contact_signals.slice(0, 3).forEach(c => {
+        const icon = SIG_ICONS_BRIEF[c.signal_type] || '📡';
+        html += '<div class="priority-item" style="cursor:pointer" onclick="window.location=\'/person.html?id=' + c.person_id + '\'">' +
+          '<div class="priority-number" style="font-size:16px">' + icon + '</div>' +
+          '<div class="priority-text"><strong>' + esc(c.full_name) + '</strong><br>' +
+          '<span style="font-size:11px;color:var(--ink-3)">' + esc(c.current_title || '') + ' @ ' + esc(c.current_company_name || c.signal_company || '') + '</span><br>' +
+          '<span style="font-size:11px;color:var(--ink-4)">' + esc((c.signal_type || '').replace(/_/g, ' ')) + ' · ' + (c.confidence_score ? Math.round(c.confidence_score * 100) + '%' : '') + '</span>' +
+          '</div></div>';
+      });
+      html += '</div>';
+    }
 
-  actions.innerHTML = `
-    <div class="action-row" onclick="filterSignals('${topSignals[0]?.type || 'all'}', document.querySelector('.filter-btn'))">
-      <span class="action-icon">📡</span> Triage ${topSignals[0]?.type?.replace(/_/g, ' ') || 'signals'}
-    </div>
-    <div class="action-row" onclick="document.getElementById('searchInput').focus()">
-      <span class="action-icon">🔍</span> Search your network
-    </div>
-    <div class="action-row" onclick="window.location='/people.html'">
-      <span class="action-icon">👥</span> Browse ${(stats.people_count / 1000).toFixed(0)}K people
-    </div>`;
+    // Section 2: Client signals
+    if (data.client_signals && data.client_signals.length > 0) {
+      html += '<div style="margin-top:14px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--amber);margin-bottom:6px">Client Activity</div>';
+      data.client_signals.slice(0, 3).forEach(s => {
+        const icon = SIG_ICONS_BRIEF[s.signal_type] || '📡';
+        html += '<div class="priority-item" style="cursor:pointer" onclick="window.location=\'/company.html?id=' + s.company_id + '\'">' +
+          '<div class="priority-number" style="font-size:16px">' + icon + '</div>' +
+          '<div class="priority-text"><strong>' + esc(s.company_name) + '</strong> <span style="font-size:10px;padding:1px 5px;background:var(--amber-soft);color:var(--amber);border-radius:3px;font-weight:600">' + esc(s.relationship_tier || 'client') + '</span><br>' +
+          '<span style="font-size:11px;color:var(--ink-3)">' + esc((s.signal_type || '').replace(/_/g, ' ')) + '</span>' +
+          (s.contact_count > 0 ? ' · <span style="font-size:11px;color:var(--blue)">' + s.contact_count + ' contacts</span>' : '') +
+          '</div></div>';
+      });
+      html += '</div>';
+    }
+
+    // Section 3: Top dispatches for your region
+    if (data.region_dispatches && data.region_dispatches.length > 0) {
+      html += '<div style="margin-top:14px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--emerald);margin-bottom:6px">' + flag + ' Top Dispatches</div>';
+      data.region_dispatches.forEach(d => {
+        const icon = SIG_ICONS_BRIEF[d.signal_type] || '📡';
+        html += '<div class="priority-item" style="cursor:pointer" onclick="window.location=\'/dispatches.html\';localStorage.setItem(\'open_dispatch\',\'' + d.id + '\')">' +
+          '<div class="priority-number" style="font-size:16px">' + icon + '</div>' +
+          '<div class="priority-text"><strong>' + esc(d.company_name) + '</strong>' +
+          (d.is_client ? ' <span style="font-size:10px;padding:1px 5px;background:var(--amber-soft);color:var(--amber);border-radius:3px;font-weight:600">CLIENT</span>' : '') +
+          '<br><span style="font-size:11px;color:var(--ink-3)">' + esc(d.opportunity_angle || d.signal_summary || '').slice(0, 80) + '</span>' +
+          (d.connection_count > 0 ? '<br><span style="font-size:11px;color:var(--blue)">' + d.connection_count + ' connections mapped</span>' : '') +
+          '</div></div>';
+      });
+      html += '</div>';
+    }
+
+    // Empty state
+    if ((!data.contact_signals || data.contact_signals.length === 0) &&
+        (!data.client_signals || data.client_signals.length === 0) &&
+        (!data.region_dispatches || data.region_dispatches.length === 0)) {
+      html += '<div style="padding:12px 0;font-size:13px;color:var(--ink-3)">No personalized signals yet. As you interact with contacts and claim dispatches, your brief will become more relevant.</div>';
+    }
+
+    body.innerHTML = html;
+
+    // Actions
+    actions.innerHTML =
+      '<div class="action-row" onclick="window.location=\'/dispatches.html\'"><span class="action-icon">🎯</span> View all dispatches</div>' +
+      '<div class="action-row" onclick="document.getElementById(\'searchInput\').focus()"><span class="action-icon">🔍</span> Search your network</div>' +
+      '<div class="action-row" onclick="window.location=\'/people.html\'"><span class="action-icon">👥</span> Browse contacts</div>';
+  } catch (e) {
+    console.error('Personal brief error:', e);
+    // Fallback to basic brief
+    actions.innerHTML =
+      '<div class="action-row" onclick="document.getElementById(\'searchInput\').focus()"><span class="action-icon">🔍</span> Search your network</div>' +
+      '<div class="action-row" onclick="window.location=\'/people.html\'"><span class="action-icon">👥</span> Browse contacts</div>';
+  }
 }
 
 // ── Signals ──
@@ -2394,8 +2455,14 @@ async function init() {
 
   try {
     const { user } = await api('/api/auth/me');
+    window._currentUser = user;
     const initials = (user.name || user.email || '').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
     document.getElementById('userAvatar').textContent = initials;
+
+    // Show onboarding for new users
+    if (!user.onboarded || !user.region) {
+      showOnboarding(user);
+    }
   } catch (e) {
     showLogin();
     return;
@@ -2408,12 +2475,136 @@ async function init() {
   loadContentQueue();
 }
 
+// ── Onboarding ──
+function showOnboarding(user) {
+  const overlay = document.getElementById('onboardOverlay');
+  const body = document.getElementById('onboardBody');
+  if (!overlay || !body) return;
+
+  const firstName = (user.name || '').split(' ')[0] || 'there';
+  let step = 1;
+
+  function renderStep() {
+    if (step === 1) {
+      body.innerHTML = `
+        <div style="text-align:center;margin-bottom:20px">
+          <div style="font-size:36px;margin-bottom:8px">✦</div>
+          <h2 style="font-family:var(--serif);font-size:22px;margin-bottom:4px">Welcome, ${esc(firstName)}</h2>
+          <p style="font-size:14px;color:var(--ink-3)">Let's set up your Signal Intelligence dashboard</p>
+        </div>
+        <div style="font-size:14px;color:var(--ink-2);margin-bottom:16px">
+          <strong>Select your primary region</strong> — this personalises your morning brief, dispatch queue, and signal priority.
+        </div>
+        <div id="regionSelect" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          ${[
+            { code: 'AU', flag: '🇦🇺', name: 'Australia' },
+            { code: 'SG', flag: '🇸🇬', name: 'Singapore & SEA' },
+            { code: 'UK', flag: '🇬🇧', name: 'United Kingdom' },
+            { code: 'US', flag: '🇺🇸', name: 'United States' },
+            { code: 'APAC', flag: '🌏', name: 'APAC (all)' },
+            { code: 'EMEA', flag: '🌍', name: 'EMEA (all)' },
+          ].map(r => `
+            <div class="region-opt" data-code="${r.code}" onclick="selectOnboardRegion(this, '${r.code}')"
+                 style="border:2px solid var(--rule);border-radius:8px;padding:14px;cursor:pointer;text-align:center;transition:all 0.15s${user.region === r.code ? ';border-color:var(--blue);background:var(--blue-soft)' : ''}">
+              <div style="font-size:24px;margin-bottom:4px">${r.flag}</div>
+              <div style="font-size:13px;font-weight:600">${r.name}</div>
+            </div>
+          `).join('')}
+        </div>
+        <div style="text-align:right;margin-top:16px">
+          <button onclick="onboardNext()" id="onboardNextBtn" style="padding:8px 24px;border-radius:6px;border:none;background:var(--blue);color:white;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans);opacity:${user.region ? 1 : 0.5}" ${user.region ? '' : 'disabled'}>Continue →</button>
+        </div>`;
+    } else if (step === 2) {
+      body.innerHTML = `
+        <h2 style="font-family:var(--serif);font-size:20px;margin-bottom:14px">How the platform works</h2>
+        <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;color:var(--ink-2)">
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            <span style="font-size:20px;flex-shrink:0">📡</span>
+            <div><strong>Signal Detection</strong><br>We scan thousands of sources daily for market signals — funding rounds, leadership changes, expansions, M&A. Signals are ranked by confidence and tagged to companies and regions.</div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            <span style="font-size:20px;flex-shrink:0">🔗</span>
+            <div><strong>Network Proximity</strong><br>Every signal is mapped against our network. If you or a colleague knows someone at a signalling company, it surfaces as a warm lead — not a cold call.</div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            <span style="font-size:20px;flex-shrink:0">🎯</span>
+            <div><strong>Dispatches</strong><br>High-value signals are packaged into dispatches with approach angles, blog themes, and connection maps. <strong>Claim a dispatch</strong> to own the outreach.</div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            <span style="font-size:20px;flex-shrink:0">💬</span>
+            <div><strong>Chat & Intel</strong><br>Use the chat (bottom right) to search people, update records, log interactions, and get intel. It has full access to the platform data.</div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:16px">
+          <button onclick="onboardBack()" style="padding:8px 18px;border-radius:6px;border:1px solid var(--rule);background:var(--surface);color:var(--ink-2);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--sans)">← Back</button>
+          <button onclick="onboardNext()" style="padding:8px 24px;border-radius:6px;border:none;background:var(--blue);color:white;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)">Continue →</button>
+        </div>`;
+    } else if (step === 3) {
+      body.innerHTML = `
+        <h2 style="font-family:var(--serif);font-size:20px;margin-bottom:14px">Quick actions to get started</h2>
+        <div style="display:flex;flex-direction:column;gap:10px;font-size:13px">
+          <div style="padding:12px;border:1px solid var(--rule);border-radius:8px;display:flex;gap:10px;align-items:center">
+            <span style="font-size:20px">🌅</span>
+            <div><strong>Morning Brief</strong> — Check the right panel each morning for your contacts in signals, client activity, and top dispatches for your region.</div>
+          </div>
+          <div style="padding:12px;border:1px solid var(--rule);border-radius:8px;display:flex;gap:10px;align-items:center">
+            <span style="font-size:20px">🗺️</span>
+            <div><strong>Region Cards</strong> — Click a region card to filter all signals by geography. Star signals to track, claim dispatches to own.</div>
+          </div>
+          <div style="padding:12px;border:1px solid var(--rule);border-radius:8px;display:flex;gap:10px;align-items:center">
+            <span style="font-size:20px">🔄</span>
+            <div><strong>Refresh & Enrich</strong> — On any person or company page, hit the enrich button to pull the latest from CRM, Gmail, and signals.</div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:16px">
+          <button onclick="onboardBack()" style="padding:8px 18px;border-radius:6px;border:1px solid var(--rule);background:var(--surface);color:var(--ink-2);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--sans)">← Back</button>
+          <button onclick="finishOnboarding()" style="padding:8px 24px;border-radius:6px;border:none;background:var(--emerald);color:white;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)">Start using the platform ✦</button>
+        </div>`;
+    }
+  }
+
+  window._onboardRegion = user.region || '';
+  window.selectOnboardRegion = function(el, code) {
+    document.querySelectorAll('.region-opt').forEach(o => { o.style.borderColor = 'var(--rule)'; o.style.background = 'var(--surface)'; });
+    el.style.borderColor = 'var(--blue)';
+    el.style.background = 'var(--blue-soft)';
+    window._onboardRegion = code;
+    const btn = document.getElementById('onboardNextBtn');
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+  };
+
+  window.onboardNext = async function() {
+    if (step === 1 && window._onboardRegion) {
+      await api('/api/auth/me', { method: 'PATCH', body: { region: window._onboardRegion } });
+    }
+    step++;
+    renderStep();
+  };
+  window.onboardBack = function() { step--; renderStep(); };
+  window.finishOnboarding = async function() {
+    await api('/api/auth/me', { method: 'PATCH', body: { onboarded: true } });
+    overlay.style.display = 'none';
+    loadPersonalBrief(); // Refresh brief with new region
+  };
+
+  overlay.style.display = 'flex';
+  renderStep();
+}
+
 // ── Boot ──
 init();
 
 // Auto-refresh every 5 min
 setInterval(() => { if (getToken()) loadStats(); }, 5 * 60 * 1000);
 </script>
+
+<!-- Onboarding Modal -->
+<div id="onboardOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
+  <div style="background:var(--surface);border-radius:12px;max-width:520px;width:90%;max-height:85vh;overflow-y:auto;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,0.15)">
+    <div id="onboardBody"></div>
+  </div>
+</div>
+
 <script src="/chat.js"></script>
 </body>
 </html>
