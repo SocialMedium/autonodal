@@ -53,7 +53,7 @@ async function getSignalClusters() {
     FROM signal_events se
     LEFT JOIN companies c ON c.id = se.company_id
     WHERE se.detected_at > NOW() - INTERVAL '90 days'
-      AND (se.triage_status IS NULL OR se.triage_status NOT IN ('ignore','irrelevant'))
+      AND (se.triage_status IS NULL OR se.triage_status::text NOT IN ('ignore','irrelevant'))
       AND se.company_name IS NOT NULL
     GROUP BY COALESCE(se.company_name, c.name, 'Unknown'), se.company_id,
              c.sector, c.geography, c.country_code, c.is_client, c.company_tier
