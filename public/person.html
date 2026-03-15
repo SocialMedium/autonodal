@@ -91,7 +91,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .note-intel b { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--blue); display: block; margin-bottom: 3px; }
 
 /* Signal rows */
-.sig { padding: 9px 0; border-bottom: 1px solid var(--rule); display: flex; gap: 10px; align-items: flex-start; }
+.sig { padding: 9px 0; border-bottom: 1px solid var(--rule); display: flex; gap: 10px; align-items: flex-start; transition: background 0.15s; border-radius: 4px; padding-left: 4px; padding-right: 4px; }
+.sig:hover { background: var(--surface-warm); }
 .sig-icon { font-size: 15px; flex-shrink: 0; }
 .sig-info { flex: 1; min-width: 0; }
 .sig-hl { font-size: 13px; font-weight: 500; overflow-wrap: break-word; }
@@ -99,7 +100,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .sig-conf { font-family: var(--mono); font-size: 12px; color: var(--ink-4); flex-shrink: 0; }
 
 /* Interaction rows */
-.ix { padding: 9px 0; border-bottom: 1px solid var(--rule); display: flex; gap: 10px; align-items: flex-start; }
+.ix { padding: 9px 0; border-bottom: 1px solid var(--rule); display: flex; gap: 10px; align-items: flex-start; transition: background 0.15s; border-radius: 4px; padding-left: 4px; padding-right: 4px; }
+.ix:hover { background: var(--surface-warm); }
 .ix-icon { font-size: 14px; flex-shrink: 0; }
 .ix-info { flex: 1; min-width: 0; }
 .ix-title { font-size: 13px; font-weight: 500; overflow-wrap: break-word; }
@@ -111,7 +113,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .ss-rule { height: 3px; background: var(--ink); margin-bottom: 8px; }
 .ss-title { font-family: var(--serif); font-size: 16px; font-weight: 600; margin-bottom: 10px; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; }
-.st { padding: 11px; text-align: center; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.st { padding: 11px; text-align: center; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); transition: background 0.15s; }
+.st:hover { background: var(--surface-warm); }
 .st:nth-child(2n) { border-right: none; }
 .st:nth-last-child(-n+2) { border-bottom: none; }
 .st-v { font-family: var(--serif); font-size: 20px; font-weight: 600; }
@@ -127,6 +130,15 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 
 .empty { text-align: center; padding: 20px; color: var(--ink-4); font-size: 13px; }
 .loading { text-align: center; padding: 60px; color: var(--ink-3); }
+
+/* Inline edit */
+.editable { cursor: pointer; position: relative; border-bottom: 1px dashed transparent; transition: border-color 0.15s; }
+.editable:hover { border-bottom-color: var(--blue); }
+.editable:hover::after { content: ' ✏️'; font-size: 10px; }
+.edit-input { border: 1.5px solid var(--blue); border-radius: 4px; padding: 4px 8px; font-family: var(--sans); font-size: inherit; color: var(--ink); background: var(--surface); outline: none; width: 100%; box-shadow: 0 0 0 3px rgba(37,99,235,0.08); }
+.edit-input:focus { border-color: var(--blue); }
+.save-indicator { display: inline-block; font-size: 11px; color: var(--emerald); margin-left: 6px; opacity: 0; transition: opacity 0.3s; }
+.save-indicator.show { opacity: 1; }
 
 @media (max-width: 1024px) {
   .grid { grid-template-columns: 1fr; }
@@ -147,7 +159,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 <body>
 <header class="masthead"><div class="masthead-inner">
   <a href="/" class="mast-logo">Mitchel<em>Lake</em> Signal</a>
-  <nav class="mast-nav"><a href="/">Signals</a><a href="/people.html" class="active">People</a><a href="/companies.html">Companies</a><a href="/placements.html">Revenue</a></nav>
+  <nav class="mast-nav"><a href="/">Signals</a><a href="/people.html" class="active">People</a><a href="/companies.html">Companies</a><a href="/dispatches.html">Dispatch</a><a href="/placements.html">Revenue</a></nav>
   <div style="width:34px;height:34px;border-radius:50%;background:var(--ink);color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600">JT</div>
 </div></header>
 
@@ -157,8 +169,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 </div>
 
 <script>
-const TK=localStorage.getItem('ml_token');if(!TK)location.href='/';
-async function api(u){const r=await fetch(u,{headers:{Authorization:'Bearer '+TK}});if(r.status===401){location.href='/';return null}if(!r.ok)throw new Error(r.statusText);return r.json()}
+const TK=localStorage.getItem('ml_token');if(!TK)location.href='/index.html';
+async function api(u){const r=await fetch(u,{headers:{Authorization:'Bearer '+TK}});if(r.status===401){location.href='/index.html';return null}if(!r.ok)throw new Error(r.statusText);return r.json()}
 function esc(s){return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''}
 function fmtD(t){return t?new Date(t).toLocaleDateString('en-AU',{year:'numeric',month:'short',day:'numeric'}):'—'}
 function ago(t){if(!t)return'';const m=Math.floor((Date.now()-new Date(t))/6e4);if(m<60)return m+'m';const h=Math.floor(m/60);if(h<24)return h+'h';const d=Math.floor(h/24);return d<30?d+'d':fmtD(t)}
@@ -174,11 +186,11 @@ const ini=(p.full_name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperC
 const notes=p.research_notes||[];const ixs=p.interactions||[];const csig=p.company_signals||[];const psig=p.person_signals||[];const colls=p.colleagues||[];const s=p.interaction_stats||{};
 
 const tags=[];
-if(p.seniority_level)tags.push('<span class="tag seniority">'+esc(p.seniority_level)+'</span>');
+if(p.seniority_level)tags.push('<a class="tag seniority" href="/people.html?seniority='+encodeURIComponent(p.seniority_level)+'" style="text-decoration:none">'+esc(p.seniority_level)+'</a>');
 if(p.source)tags.push('<span class="tag source">'+esc(p.source)+'</span>');
-if(p.company_is_client)tags.push('<span class="tag client">CLIENT CO</span>');
-(Array.isArray(p.industries)?p.industries:[]).slice(0,3).forEach(i=>tags.push('<span class="tag industry">'+esc(i)+'</span>'));
-(Array.isArray(p.expertise_tags)?p.expertise_tags:[]).slice(0,4).forEach(t=>tags.push('<span class="tag">'+esc(t)+'</span>'));
+if(p.company_is_client)tags.push('<a class="tag client" href="/company.html?id='+coId+'" style="text-decoration:none">CLIENT CO</a>');
+(Array.isArray(p.industries)?p.industries:[]).slice(0,3).forEach(i=>tags.push('<a class="tag industry" href="/people.html?industry='+encodeURIComponent(i)+'" style="text-decoration:none">'+esc(i)+'</a>'));
+(Array.isArray(p.expertise_tags)?p.expertise_tags:[]).slice(0,4).forEach(t=>tags.push('<a class="tag" href="/people.html?q='+encodeURIComponent(t)+'" style="text-decoration:none">'+esc(t)+'</a>'));
 
 const ct=[];
 if(p.email)ct.push('<div class="ci">✉️ <a href="mailto:'+esc(p.email)+'">'+esc(p.email)+'</a></div>');
@@ -189,17 +201,25 @@ const coId=p.company_id_linked||p.current_company_id||'';
 let h='<div class="profile">';
 h+='<div class="avatar'+(notes.length?' noted':'')+'">'+ini+'</div>';
 h+='<div class="pinfo">';
-h+='<div class="pname">'+esc(p.full_name)+'</div>';
-h+='<div class="ptitle">'+esc(p.current_title||p.headline||'')+'</div>';
+h+='<div class="pname"><span class="editable" onclick="editField(this,\'full_name\',\''+esc(p.full_name)+'\')">'+esc(p.full_name)+'</span></div>';
+h+='<div class="ptitle"><span class="editable" onclick="editField(this,\'current_title\',\''+esc(p.current_title||p.headline||'')+'\')">'+esc(p.current_title||p.headline||'Add title')+'</span></div>';
 h+='<div class="pmeta">';
-if(p.current_company_name)h+='<span>🏢 <a href="/company.html?id='+coId+'">'+esc(p.current_company_name)+'</a>'+(p.company_sector?' · '+esc(p.company_sector):'')+'</span>';
-if(p.location)h+='<span>📍 '+esc(p.location)+'</span>';
+h+='<span>🏢 <span class="editable" onclick="editField(this,\'current_company_name\',\''+esc(p.current_company_name||'')+'\')">'+esc(p.current_company_name||'Add company')+'</span>'+(p.company_sector?' · '+esc(p.company_sector):'')+'</span>';
+if(p.location)h+='<span>📍 <span class="editable" onclick="editField(this,\'location\',\''+esc(p.location)+'\')">'+esc(p.location)+'</span></span>';
+else h+='<span>📍 <span class="editable" onclick="editField(this,\'location\',\'\')">Add location</span></span>';
 if(p.functional_area)h+='<span>⚡ '+esc(p.functional_area)+'</span>';
 h+='</div>';
 if(tags.length)h+='<div class="ptags">'+tags.join('')+'</div>';
 h+='</div>';
-h+='<div class="pcontact">'+ct.join('')+'</div>';
+h+='<div class="pcontact">';
+h+='<div class="ci">✉️ <span class="editable" onclick="editField(this,\'email\',\''+esc(p.email||'')+'\')">'+esc(p.email||'Add email')+'</span></div>';
+if(p.linkedin_url)h+='<div class="ci">🔗 <a href="'+esc(p.linkedin_url)+'" target="_blank">LinkedIn</a></div>';
+else h+='<div class="ci">🔗 <span class="editable" onclick="editField(this,\'linkedin_url\',\'\')">Add LinkedIn</span></div>';
+if(p.phone)h+='<div class="ci">📞 <span class="editable" onclick="editField(this,\'phone\',\''+esc(p.phone)+'\')">'+esc(p.phone)+'</span></div>';
+h+='</div>';
 h+='<button class="enrich-btn" id="enrichBtn" onclick="enrichPerson()">🔄 Refresh &amp; Enrich</button>';
+const isPrivate = p.visibility === 'private';
+h+='<button class="enrich-btn'+(isPrivate?' done':'')+'" id="privacyBtn" onclick="togglePrivacy()" style="margin-top:6px">'+(isPrivate?'🔒 Private':'🌐 Visible to team')+'</button>';
 h+='</div>';
 
 h+='<div class="grid"><div class="main">';
@@ -222,7 +242,7 @@ h+='</div>';
 if(csig.length){
   h+='<div class="sec"><div class="sec-rule thin"></div><div class="sec-head"><div class="sec-title">Company Signals</div><div class="sec-count">'+csig.length+'</div></div><div class="sec-sub">Signals about '+esc(p.current_company_name||'employer')+'</div>';
   csig.forEach(x=>{
-    h+='<div class="sig"><div class="sig-icon">'+(SI[x.signal_type]||'📡')+'</div><div class="sig-info"><div class="sig-hl">'+esc(x.evidence_summary||x.signal_type.replace(/_/g,' '))+'</div><div class="sig-det">'+esc(x.signal_type.replace(/_/g,' '))+' · '+ago(x.detected_at)+' · '+(x.triage_status||'new')+'</div></div><div class="sig-conf">'+Math.round((x.confidence_score||0)*100)+'%</div></div>';
+    h+='<div class="sig" style="cursor:pointer" onclick="location.href=\'/company.html?id='+coId+'\'"><div class="sig-icon">'+(SI[x.signal_type]||'📡')+'</div><div class="sig-info"><div class="sig-hl">'+esc(x.evidence_summary||x.signal_type.replace(/_/g,' '))+'</div><div class="sig-det">'+esc(x.signal_type.replace(/_/g,' '))+' · '+ago(x.detected_at)+' · '+(x.triage_status||'new')+'</div></div><div class="sig-conf">'+Math.round((x.confidence_score||0)*100)+'%</div></div>';
   });
   h+='</div>';
 }
@@ -231,7 +251,10 @@ if(csig.length){
 if(ixs.length){
   h+='<div class="sec"><div class="sec-rule thin"></div><div class="sec-head"><div class="sec-title">Interactions</div><div class="sec-count">'+ixs.length+'</div></div><div class="sec-sub">Emails, calls, meetings</div>';
   ixs.forEach(i=>{
-    h+='<div class="ix"><div class="ix-icon">'+(II[i.interaction_type]||'📋')+'</div><div class="ix-info"><div class="ix-title">'+esc(i.subject||i.summary||i.interaction_type)+'</div>'+(i.email_snippet?'<div class="ix-det">'+esc(String(i.email_snippet).slice(0,200))+'</div>':'')+'<div class="ix-det">'+esc(i.interaction_type)+(i.direction?' · '+i.direction:'')+'</div></div><div class="ix-date">'+fmtD(i.interaction_at)+'</div></div>';
+    const intBadge=i.is_internal?'<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:#F3EEFE;color:#6D28D9;font-weight:600;margin-left:4px">INTERNAL</span>':'';
+    const sensBadge=i.sensitivity==='sensitive'?'<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:#FDF0F2;color:#C41D3E;font-weight:600;margin-left:4px">SENSITIVE</span>':'';
+    const privBadge=i.visibility==='private'?'<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:#FEF7E8;color:#B45309;font-weight:600;margin-left:4px">PRIVATE</span>':'';
+    h+='<div class="ix" style="cursor:pointer" onclick="toggleIx(this)"><div class="ix-icon">'+(II[i.interaction_type]||'📋')+'</div><div class="ix-info"><div class="ix-title">'+esc(i.subject||i.summary||i.interaction_type)+intBadge+sensBadge+privBadge+'</div>'+(i.email_snippet?'<div class="ix-det ix-preview">'+esc(String(i.email_snippet).slice(0,200))+'</div><div class="ix-full" style="display:none;white-space:pre-line">'+esc(i.email_snippet)+'</div>':'')+(i.summary&&i.email_snippet?'<div class="ix-full" style="display:none;margin-top:6px;font-size:12px;color:var(--ink-3)"><strong>Summary:</strong> '+esc(i.summary)+'</div>':'')+(i.email_from||i.email_to?'<div class="ix-full" style="display:none;font-size:11px;color:var(--ink-4);margin-top:4px">'+(i.email_from?'From: '+esc(i.email_from):'')+(i.email_to?' → '+esc(i.email_to):'')+'</div>':'')+'<div class="ix-det">'+esc(i.interaction_type.replace(/_/g,' '))+(i.direction?' · '+i.direction:'')+(i.source?' · '+esc(i.source):'')+'</div></div><div class="ix-date">'+fmtD(i.interaction_at)+'</div></div>';
   });
   h+='</div>';
 }
@@ -240,7 +263,10 @@ h+='</div>'; // end main
 
 // SIDEBAR
 h+='<div class="side">';
-h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">Activity</div><div class="stats"><div class="st"><div class="st-v">'+(s.notes||0)+'</div><div class="st-l">Notes</div></div><div class="st"><div class="st-v">'+(s.emails||0)+'</div><div class="st-l">Emails</div></div><div class="st"><div class="st-v">'+(s.calls||0)+'</div><div class="st-l">Calls</div></div><div class="st"><div class="st-v">'+(s.meetings||0)+'</div><div class="st-l">Meetings</div></div></div>';
+const totalIx=parseInt(s.total||0);
+const nNotes=parseInt(s.notes||0),nEmails=parseInt(s.emails||0),nLinkedin=parseInt(s.linkedin||0),nCalls=parseInt(s.calls||0)+parseInt(s.meetings||0),nOther=parseInt(s.other||0);
+h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">Activity <span style="font-size:12px;color:var(--ink-4);font-weight:400">'+totalIx+' total</span></div><div class="stats"><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Research Notes\')"><div class="st-v">'+nNotes+'</div><div class="st-l">Notes</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+nEmails+'</div><div class="st-l">Emails</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+nLinkedin+'</div><div class="st-l">LinkedIn</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+(nCalls+nOther)+'</div><div class="st-l">'+(nOther>0?'Other':'Calls/Mtgs')+'</div></div></div>';
+if(s.type_breakdown&&s.type_breakdown.length){h+='<div style="margin-top:8px;font-size:11px;color:var(--ink-4)">'+s.type_breakdown.map(t=>esc(t.interaction_type)+': '+t.cnt).join(' · ')+'</div>';}
 if(s.last_interaction)h+='<div style="font-size:11px;color:var(--ink-4);margin-top:6px">Last: '+fmtD(s.last_interaction)+'</div>';
 if(s.first_interaction)h+='<div style="font-size:11px;color:var(--ink-4)">First: '+fmtD(s.first_interaction)+'</div>';
 h+='</div>';
@@ -262,7 +288,8 @@ if(colls.length){
 if(psig.length){
   h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">Career Signals</div>';
   psig.slice(0,8).forEach(x=>{
-    h+='<div style="padding:6px 0;border-bottom:1px solid var(--rule);font-size:13px"><div style="font-weight:500">'+esc(x.title||x.signal_type.replace(/_/g,' '))+'</div>'+(x.description?'<div style="color:var(--ink-3);font-size:12px;margin-top:1px;overflow-wrap:break-word">'+esc(String(x.description).slice(0,120))+'</div>':'')+'</div>';
+    const clickable=x.source_url?'cursor:pointer" onclick="window.open(\''+esc(x.source_url)+'\',\'_blank\')':'';
+    h+='<div style="padding:6px 0;border-bottom:1px solid var(--rule);font-size:13px;'+clickable+'"><div style="font-weight:500">'+esc(x.title||x.signal_type.replace(/_/g,' '))+(x.source_url?' <span style="font-size:10px;color:var(--blue)">↗</span>':'')+'</div>'+(x.description?'<div style="color:var(--ink-3);font-size:12px;margin-top:1px;overflow-wrap:break-word">'+esc(String(x.description).slice(0,120))+'</div>':'')+'<div style="font-size:10px;color:var(--ink-4);margin-top:2px">'+esc(x.signal_type.replace(/_/g,' '))+(x.signal_date?' · '+fmtD(x.signal_date):'')+'</div></div>';
   });
   h+='</div>';
 }
@@ -286,15 +313,125 @@ async function enrichPerson() {
     if (data.error) throw new Error(data.error);
     btn.className = 'enrich-btn done';
     const msgs = [];
-    if (data.results.ezekia?.updated_fields) msgs.push('Ezekia: ' + data.results.ezekia.updated_fields.join(', '));
-    if (data.results.gmail?.messages_found) msgs.push('Gmail: ' + data.results.gmail.messages_found + ' emails');
-    if (data.results.embedding?.message) msgs.push('Embedding updated');
+    const r2 = data.results;
+    if (r2.ezekia?.updated_fields) msgs.push('CRM: ' + r2.ezekia.updated_fields.length + ' fields');
+    else if (r2.ezekia?.message) msgs.push('CRM: ' + r2.ezekia.message);
+    if (r2.gmail?.new_stored > 0) msgs.push('Gmail: +' + r2.gmail.new_stored + ' new');
+    else if (r2.gmail?.messages_found) msgs.push('Gmail: ' + r2.gmail.messages_found + ' found');
+    if (r2.signals?.new_signals > 0) msgs.push('Signals: +' + r2.signals.new_signals + ' detected');
+    else if (r2.signals?.mentions_found) msgs.push(r2.signals.mentions_found + ' mentions');
+    if (r2.web?.company_signals > 0) msgs.push(r2.web.company_signals + ' co signals');
+    if (r2.embedding?.message) msgs.push('Embedded');
     btn.textContent = '✅ ' + (msgs.length ? msgs.join(' · ') : 'Up to date');
-    setTimeout(() => location.reload(), 2000);
+    setTimeout(() => location.reload(), 2500);
   } catch (e) {
     btn.className = 'enrich-btn';
     btn.textContent = '❌ ' + e.message;
     setTimeout(() => { btn.textContent = '🔄 Refresh & Enrich'; }, 3000);
+  }
+}
+
+async function togglePrivacy() {
+  const btn = document.getElementById('privacyBtn');
+  const isCurrentlyPrivate = btn.textContent.includes('Private');
+  const newVisibility = isCurrentlyPrivate ? 'company' : 'private';
+
+  if (!isCurrentlyPrivate && !confirm('Mark this contact as private? Only you will be able to see them.')) return;
+
+  try {
+    const res = await fetch('/api/people/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + TK },
+      body: JSON.stringify({ visibility: newVisibility })
+    });
+    if (!res.ok) throw new Error('Failed');
+
+    if (newVisibility === 'private') {
+      btn.textContent = '🔒 Private';
+      btn.className = 'enrich-btn done';
+    } else {
+      btn.textContent = '🌐 Visible to team';
+      btn.className = 'enrich-btn';
+    }
+  } catch (e) {
+    alert('Failed to update privacy: ' + e.message);
+  }
+}
+
+async function editField(el, field, currentValue) {
+  // Replace the element with an input
+  const original = el.innerHTML;
+  const input = document.createElement('input');
+  input.className = 'edit-input';
+  input.value = currentValue;
+  input.placeholder = 'Enter ' + field.replace(/_/g, ' ');
+  el.innerHTML = '';
+  el.appendChild(input);
+  el.classList.remove('editable');
+  input.focus();
+  input.select();
+
+  const save = async () => {
+    const newValue = input.value.trim();
+    if (newValue === currentValue) {
+      el.innerHTML = original;
+      el.classList.add('editable');
+      el.onclick = () => editField(el, field, currentValue);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/people/' + id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + TK },
+        body: JSON.stringify({ [field]: newValue })
+      });
+      if (!res.ok) throw new Error('Save failed');
+
+      el.textContent = newValue || 'Add ' + field.replace(/_/g, ' ');
+      el.classList.add('editable');
+      el.onclick = () => editField(el, field, newValue);
+
+      // Flash save indicator
+      const indicator = document.createElement('span');
+      indicator.className = 'save-indicator show';
+      indicator.textContent = 'Saved';
+      el.appendChild(indicator);
+      setTimeout(() => indicator.remove(), 1500);
+    } catch (e) {
+      el.innerHTML = original;
+      el.classList.add('editable');
+      el.onclick = () => editField(el, field, currentValue);
+      alert('Failed to save: ' + e.message);
+    }
+  };
+
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { el.innerHTML = original; el.classList.add('editable'); el.onclick = () => editField(el, field, currentValue); }
+  });
+}
+
+function scrollToSection(title) {
+  const els = document.querySelectorAll('.sec-title');
+  for (const el of els) {
+    if (el.textContent.trim() === title) {
+      el.closest('.sec').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el.closest('.sec').style.outline = '2px solid var(--blue)';
+      setTimeout(() => el.closest('.sec').style.outline = '', 1500);
+      return;
+    }
+  }
+}
+
+function toggleIx(el) {
+  const preview = el.querySelector('.ix-preview');
+  const fulls = el.querySelectorAll('.ix-full');
+  if (preview) {
+    const showing = fulls[0] && fulls[0].style.display !== 'none';
+    if (preview) preview.style.display = showing ? '' : 'none';
+    fulls.forEach(f => f.style.display = showing ? 'none' : 'block');
   }
 }
 </script>

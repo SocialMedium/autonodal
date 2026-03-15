@@ -1381,6 +1381,7 @@ body {
       <a href="/" class="active">Signals</a>
       <a href="/people.html">People</a>
       <a href="/companies.html">Companies</a>
+      <a href="/dispatches.html">Dispatch</a>
       <a href="/placements.html">Revenue</a>
     </nav>
     <div class="masthead-right">
@@ -1740,7 +1741,7 @@ function hideLogin() { document.getElementById('loginOverlay').classList.remove(
     localStorage.setItem('ml_token', token);
     localStorage.setItem('ml_user', user);
     // Clean URL
-    window.history.replaceState({}, '', '/');
+    window.history.replaceState({}, '', '/index.html');
   }
 
   if (authError) {
@@ -1753,7 +1754,7 @@ function hideLogin() { document.getElementById('loginOverlay').classList.remove(
     };
     errEl.textContent = messages[authError] || 'Authentication failed';
     errEl.classList.add('active');
-    window.history.replaceState({}, '', '/');
+    window.history.replaceState({}, '', '/index.html');
   }
 })();
 

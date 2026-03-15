@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signal Dispatch — MitchelLake Signal</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --serif: 'Source Serif 4', 'Georgia', serif;
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+  --bg: #FAF9F7; --surface: #FFFFFF; --surface-warm: #F7F5F2; --surface-cool: #F2F4F8;
+  --ink: #1A1A1A; --ink-2: #4A4A4A; --ink-3: #7A7A7A; --ink-4: #AAAAAA;
+  --rule: #E0DDD8; --rule-bold: #C8C4BE;
+  --blue: #2563EB; --blue-soft: #EBF1FE;
+  --emerald: #0D7A50; --emerald-soft: #E8F5EE;
+  --amber: #B45309; --amber-soft: #FEF7E8;
+  --rose: #C41D3E; --rose-soft: #FDF0F2;
+  --violet: #6D28D9; --violet-soft: #F3EEFE;
+  --radius: 8px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+  --shadow-hover: 0 4px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+}
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { overflow-x: hidden; }
+body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+
+/* Masthead */
+.masthead { background: var(--surface); border-bottom: 2px solid var(--ink); padding: 0 clamp(14px, 3vw, 40px); position: sticky; top: 0; z-index: 100; }
+.masthead-top { display: flex; align-items: center; justify-content: space-between; height: 56px; max-width: 1320px; margin: 0 auto; }
+.masthead-logo { font-family: var(--serif); font-size: 22px; font-weight: 600; letter-spacing: -0.2px; text-decoration: none; color: inherit; }
+.masthead-logo em { font-style: italic; color: var(--ink-3); }
+.masthead-nav { display: flex; gap: 2px; }
+.masthead-nav a { font-size: 13px; font-weight: 500; color: var(--ink-3); text-decoration: none; padding: 6px 14px; border-radius: 6px; transition: all 0.15s; }
+.masthead-nav a:hover { color: var(--ink); background: var(--surface-warm); }
+.masthead-nav a.active { color: var(--ink); background: var(--surface-warm); font-weight: 600; }
+.masthead-user { width: 34px; height: 34px; border-radius: 50%; background: var(--ink); color: white; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+.page { max-width: 1320px; margin: 0 auto; padding: 36px clamp(14px, 3vw, 40px) 60px; }
+.page-rule { height: 3px; background: var(--ink); margin-bottom: 10px; }
+.page-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.page-title { font-family: var(--serif); font-size: 32px; font-weight: 600; letter-spacing: -0.3px; }
+.page-count { font-family: var(--mono); font-size: 13px; color: var(--ink-4); }
+.page-subtitle { font-size: 14px; color: var(--ink-3); margin-bottom: 28px; }
+
+/* Filter chips */
+.filter-chips { display: flex; gap: 6px; margin-bottom: 24px; flex-wrap: wrap; }
+.chip { padding: 5px 13px; font-size: 12px; font-weight: 500; border: 1px solid var(--rule); border-radius: 20px; cursor: pointer; background: var(--surface); color: var(--ink-3); transition: all 0.15s; }
+.chip:hover { border-color: var(--rule-bold); }
+.chip.active { background: var(--ink); color: white; border-color: var(--ink); }
+
+/* Dispatch cards */
+.dispatch-list { display: flex; flex-direction: column; gap: 16px; }
+.dispatch-card {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius);
+  padding: 24px 28px; box-shadow: var(--shadow-card); transition: all 0.2s; cursor: pointer;
+}
+.dispatch-card:hover { box-shadow: var(--shadow-hover); border-color: var(--rule-bold); }
+.dispatch-card.status-reviewed { border-left: 3px solid var(--blue); }
+.dispatch-card.status-sent { border-left: 3px solid var(--emerald); }
+
+.dc-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+.dc-company { font-family: var(--serif); font-size: 20px; font-weight: 600; }
+.dc-time { font-size: 12px; color: var(--ink-4); font-family: var(--mono); white-space: nowrap; }
+.dc-meta { font-size: 13px; color: var(--ink-3); margin-bottom: 10px; }
+.dc-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; font-size: 11px; font-weight: 600; border-radius: 4px; letter-spacing: 0.3px; }
+.badge.signal { background: var(--amber-soft); color: var(--amber); }
+.badge.connections { background: var(--blue-soft); color: var(--blue); }
+.badge.status-draft { background: var(--surface-warm); color: var(--ink-3); }
+.badge.status-reviewed { background: var(--blue-soft); color: var(--blue); }
+.badge.status-sent { background: var(--emerald-soft); color: var(--emerald); }
+.badge.client { background: var(--violet-soft); color: var(--violet); }
+
+.dc-summary { font-size: 13px; color: var(--ink-2); line-height: 1.5; margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dc-contacts { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; padding: 10px 14px; background: var(--surface-cool); border-radius: 6px; }
+.dc-contact { display: flex; align-items: center; gap: 10px; }
+.dc-contact-av { width: 28px; height: 28px; border-radius: 50%; background: var(--surface); border: 1px solid var(--rule); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: var(--ink-3); flex-shrink: 0; }
+.dc-contact-info { flex: 1; min-width: 0; }
+.dc-contact-name { font-size: 13px; font-weight: 600; margin-right: 6px; }
+.dc-contact-role { font-size: 12px; color: var(--ink-3); }
+.dc-contact-type { font-size: 10px; padding: 1px 7px; border-radius: 3px; background: var(--blue-soft); color: var(--blue); font-weight: 600; white-space: nowrap; }
+.dc-blog-title { font-family: var(--serif); font-size: 16px; font-weight: 500; color: var(--ink-2); font-style: italic; margin-bottom: 8px; }
+.dc-entry { font-size: 13px; color: var(--ink-3); margin-bottom: 4px; }
+.dc-entry strong { color: var(--ink-2); }
+.dc-angle { font-size: 12px; color: var(--amber); font-weight: 500; }
+
+.load-more { display: none; width: 100%; padding: 14px; margin-top: 20px; background: none; border: 1px solid var(--rule); border-radius: 8px; font-family: var(--sans); font-size: 13px; font-weight: 500; color: var(--ink-3); cursor: pointer; }
+.load-more:hover { border-color: var(--rule-bold); color: var(--ink); }
+.empty-state { text-align: center; padding: 60px 20px; color: var(--ink-3); }
+.empty-state h3 { font-family: var(--serif); font-size: 20px; color: var(--ink-2); margin-bottom: 8px; }
+
+/* ═══ Detail Panel (slide-over) ═══ */
+.panel-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 200; display: none; opacity: 0; transition: opacity 0.2s; }
+.panel-overlay.active { display: block; opacity: 1; }
+.panel {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(720px, 90vw); background: var(--bg);
+  z-index: 201; overflow-y: auto; box-shadow: -4px 0 24px rgba(0,0,0,0.1);
+  transform: translateX(100%); transition: transform 0.25s ease;
+}
+.panel.active { transform: translateX(0); }
+.panel-close { position: sticky; top: 0; background: var(--bg); padding: 16px 28px; border-bottom: 1px solid var(--rule); display: flex; justify-content: space-between; align-items: center; z-index: 1; }
+.panel-close-btn { background: none; border: 1px solid var(--rule); border-radius: 6px; padding: 6px 14px; font-family: var(--sans); font-size: 13px; cursor: pointer; color: var(--ink-3); }
+.panel-close-btn:hover { border-color: var(--rule-bold); color: var(--ink); }
+.panel-body { padding: 28px; }
+
+/* Panel sections */
+.psec { margin-bottom: 32px; }
+.psec-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--ink-4); margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid var(--rule); }
+
+/* Signal section */
+.signal-box { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 18px 22px; }
+.signal-company { font-family: var(--serif); font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+.signal-summary { font-size: 14px; color: var(--ink-2); line-height: 1.5; margin-top: 10px; }
+.signal-meta { display: flex; gap: 16px; margin-top: 10px; font-size: 12px; color: var(--ink-3); flex-wrap: wrap; }
+.confidence-bar { width: 60px; height: 6px; background: var(--rule); border-radius: 3px; display: inline-block; vertical-align: middle; overflow: hidden; }
+.confidence-fill { height: 100%; border-radius: 3px; }
+
+/* Proximity map */
+.prox-list { display: flex; flex-direction: column; gap: 10px; }
+.prox-card { display: flex; gap: 14px; align-items: center; padding: 14px 18px; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); }
+.prox-card.best { border-color: var(--amber); background: var(--amber-soft); }
+.prox-av { width: 40px; height: 40px; border-radius: 50%; background: var(--surface-cool); border: 1.5px solid var(--rule); display: flex; align-items: center; justify-content: center; font-family: var(--serif); font-size: 15px; font-weight: 600; color: var(--ink-3); flex-shrink: 0; }
+.prox-card.best .prox-av { background: var(--amber-soft); color: var(--amber); border-color: var(--amber); }
+.prox-info { flex: 1; min-width: 0; }
+.prox-name { font-weight: 600; font-size: 14px; }
+.prox-title { font-size: 12px; color: var(--ink-3); }
+.prox-badges { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+.prox-badge { font-size: 10px; padding: 1px 7px; border-radius: 3px; font-weight: 600; }
+.prox-badge.type { background: var(--blue-soft); color: var(--blue); }
+.prox-badge.strength-direct { background: var(--emerald-soft); color: var(--emerald); }
+.prox-badge.strength-warm { background: var(--amber-soft); color: var(--amber); }
+.prox-badge.strength-cold { background: var(--surface-warm); color: var(--ink-3); }
+.prox-score { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--ink-3); }
+
+/* Approach */
+.approach-angle { font-family: var(--serif); font-size: 18px; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
+.approach-rationale { font-size: 14px; color: var(--ink-2); line-height: 1.6; }
+
+/* Blog */
+.blog-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+.blog-title-display { font-family: var(--serif); font-size: 22px; font-weight: 600; line-height: 1.3; flex: 1; }
+.blog-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.btn-sm { padding: 6px 14px; font-size: 12px; font-weight: 500; border: 1px solid var(--rule); border-radius: 6px; cursor: pointer; background: var(--surface); color: var(--ink-2); font-family: var(--sans); transition: all 0.15s; }
+.btn-sm:hover { border-color: var(--rule-bold); color: var(--ink); }
+.btn-sm.primary { background: var(--blue); color: white; border-color: var(--blue); }
+.btn-sm.primary:hover { background: #1d4ed8; }
+.btn-sm.success { background: var(--emerald); color: white; border-color: var(--emerald); }
+.blog-body { font-size: 15px; line-height: 1.75; color: var(--ink-2); white-space: pre-line; }
+.blog-keywords { display: flex; gap: 6px; margin-top: 14px; flex-wrap: wrap; }
+.keyword { padding: 2px 10px; font-size: 11px; background: var(--surface-cool); border-radius: 20px; color: var(--ink-3); }
+
+/* Send-to section */
+.send-card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 10px; }
+.send-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.send-name { font-weight: 600; font-size: 14px; }
+.send-channel { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 3px; }
+.send-channel.email { background: var(--blue-soft); color: var(--blue); }
+.send-channel.linkedin { background: var(--violet-soft); color: var(--violet); }
+.send-note { width: 100%; border: 1px solid var(--rule); border-radius: 6px; padding: 10px 14px; font-family: var(--sans); font-size: 13px; color: var(--ink-2); line-height: 1.5; resize: vertical; min-height: 60px; background: var(--surface-warm); }
+.send-note:focus { outline: none; border-color: var(--blue); }
+
+/* Bottom actions */
+.panel-actions { display: flex; gap: 8px; padding: 20px 28px; border-top: 1px solid var(--rule); background: var(--surface); position: sticky; bottom: 0; }
+.panel-actions .btn-sm { flex: 1; text-align: center; padding: 10px; }
+
+/* Regenerate modal */
+.regen-row { display: flex; gap: 8px; margin-top: 12px; }
+.regen-input { flex: 1; border: 1px solid var(--rule); border-radius: 6px; padding: 8px 14px; font-family: var(--sans); font-size: 13px; }
+.regen-input:focus { outline: none; border-color: var(--blue); }
+
+@media (max-width: 768px) {
+  .masthead-nav { display: none; }
+  .panel { width: 100vw; }
+}
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-top">
+    <a href="/index.html" class="masthead-logo">Mitchel<em>Lake</em> Signal</a>
+    <nav class="masthead-nav">
+      <a href="/index.html">Signals</a>
+      <a href="/people.html">People</a>
+      <a href="/companies.html">Companies</a>
+      <a href="/dispatches.html" class="active">Dispatch</a>
+      <a href="/placements.html">Revenue</a>
+    </nav>
+    <div class="masthead-user" id="userAvatar">JT</div>
+  </div>
+</header>
+
+<div class="page">
+  <div class="page-rule"></div>
+  <div class="page-header">
+    <div class="page-title">Signal Dispatch</div>
+    <div class="page-count" id="pageCount"></div>
+  </div>
+  <div class="page-subtitle" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Intelligence briefs with proximity maps, approach angles, and thought leadership — generated from live signals</span>
+    <span style="display:flex;gap:6px">
+      <button class="btn-sm" id="rescanBtn" onclick="triggerRescan()" style="padding:6px 14px;font-size:12px;font-weight:500;border:1px solid var(--rule);border-radius:6px;cursor:pointer;background:var(--surface);color:var(--ink-2);font-family:var(--sans)">Rescan Contacts</button>
+      <button class="btn-sm primary" id="generateBtn" onclick="triggerGenerate()" style="padding:6px 14px;font-size:12px;font-weight:500;border:1px solid var(--blue);border-radius:6px;cursor:pointer;background:var(--blue);color:white;font-family:var(--sans)">Generate Now</button>
+    </span>
+  </div>
+
+  <div class="filter-chips">
+    <div class="chip active" onclick="setFilter(this, '')">All</div>
+    <div class="chip" onclick="setFilter(this, 'draft')">Draft</div>
+    <div class="chip" onclick="setFilter(this, 'reviewed')">Reviewed</div>
+    <div class="chip" onclick="setFilter(this, 'sent')">Sent</div>
+  </div>
+
+  <div class="dispatch-list" id="dispatchList">
+    <div style="text-align:center;padding:40px;color:var(--ink-4)">Loading dispatches...</div>
+  </div>
+  <button class="load-more" id="loadMore" onclick="loadMoreDispatches()">Load more</button>
+</div>
+
+<!-- Detail Panel -->
+<div class="panel-overlay" id="panelOverlay" onclick="closePanel()"></div>
+<div class="panel" id="detailPanel">
+  <div class="panel-close">
+    <span style="font-family:var(--serif);font-size:16px;font-weight:600">Dispatch Detail</span>
+    <button class="panel-close-btn" onclick="closePanel()">Close</button>
+  </div>
+  <div class="panel-body" id="panelBody">
+    <div style="text-align:center;padding:40px;color:var(--ink-4)">Loading...</div>
+  </div>
+  <div class="panel-actions" id="panelActions"></div>
+</div>
+
+<script>
+const TK = localStorage.getItem('ml_token');
+if (!TK) location.href = '/index.html';
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + TK, ...opts.headers },
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  if (res.status === 401) { location.href = '/index.html'; return null; }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Request failed'); }
+  return res.json();
+}
+
+function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : ''; }
+function ago(t) {
+  if (!t) return '';
+  const m = Math.floor((Date.now() - new Date(t)) / 6e4);
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  const d = Math.floor(h / 24);
+  if (d < 30) return d + 'd ago';
+  return new Date(t).toLocaleDateString('en-AU', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+const SIG_ICONS = {
+  capital_raising: '\ud83d\udcb0', ma_activity: '\ud83d\udd17', restructuring: '\u2699\ufe0f',
+  leadership_change: '\ud83d\udc64', geographic_expansion: '\ud83c\udf10', product_launch: '\ud83d\ude80',
+  strategic_hiring: '\ud83d\udc65', layoffs: '\ud83d\udcc9', partnership: '\ud83e\udd1d'
+};
+
+// ── Feed ──
+let offset = 0, currentFilter = '';
+
+function setFilter(el, filter) {
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  currentFilter = filter;
+  offset = 0;
+  document.getElementById('dispatchList').innerHTML = '';
+  loadDispatches();
+}
+
+async function loadDispatches() {
+  const params = new URLSearchParams({ limit: 20, offset });
+  if (currentFilter) params.set('status', currentFilter);
+
+  try {
+    const data = await api('/api/dispatches?' + params);
+    if (!data) return;
+
+    document.getElementById('pageCount').textContent = data.total + ' DISPATCHES';
+    const list = document.getElementById('dispatchList');
+
+    if (data.dispatches.length === 0 && offset === 0) {
+      list.innerHTML = '<div class="empty-state"><h3>No dispatches yet</h3><p>Dispatches are generated automatically from high-confidence signals every 2 hours</p></div>';
+      document.getElementById('loadMore').style.display = 'none';
+      return;
+    }
+
+    data.dispatches.forEach(d => {
+      const icon = SIG_ICONS[d.signal_type] || '\ud83d\udce1';
+      const entry = d.best_entry_point ? (typeof d.best_entry_point === 'string' ? JSON.parse(d.best_entry_point) : d.best_entry_point) : null;
+      const prox = d.proximity_map ? (typeof d.proximity_map === 'string' ? JSON.parse(d.proximity_map) : d.proximity_map) : [];
+      const peopleAtCo = parseInt(d.people_at_company) || 0;
+      const placements = parseInt(d.placement_count) || 0;
+
+      // Build contacts preview — show top 3 connections
+      let contactsHtml = '';
+      if (prox.length > 0) {
+        contactsHtml = '<div class="dc-contacts">';
+        prox.slice(0, 3).forEach(p => {
+          const ini = (p.name || '').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+          const relType = (p.relationship_type || '').replace(/_/g, ' ');
+          contactsHtml += '<div class="dc-contact">' +
+            '<div class="dc-contact-av">' + ini + '</div>' +
+            '<div class="dc-contact-info">' +
+              '<span class="dc-contact-name">' + esc(p.name) + '</span>' +
+              '<span class="dc-contact-role">' + esc(p.title || relType) + '</span>' +
+            '</div>' +
+            '<span class="dc-contact-type">' + esc(relType) + '</span>' +
+          '</div>';
+        });
+        if (prox.length > 3) contactsHtml += '<div style="font-size:11px;color:var(--ink-4);padding:2px 0">+' + (prox.length - 3) + ' more</div>';
+        contactsHtml += '</div>';
+      }
+
+      list.insertAdjacentHTML('beforeend', `
+        <div class="dispatch-card status-${d.status}" onclick="openDispatch('${d.id}')">
+          <div class="dc-top">
+            <div class="dc-company">${esc(d.company_name)}${d.is_client ? ' <span class="badge client" style="vertical-align:middle;margin-left:6px">CLIENT</span>' : ''}</div>
+            <div class="dc-time">${ago(d.generated_at)}</div>
+          </div>
+          <div class="dc-meta">
+            ${d.sector ? esc(d.sector) : ''}${d.geography ? ' \u00b7 ' + esc(d.geography) : ''}
+            ${peopleAtCo > 0 ? ' \u00b7 ' + peopleAtCo + ' contacts in network' : ''}
+            ${placements > 0 ? ' \u00b7 ' + placements + ' past placement' + (placements > 1 ? 's' : '') : ''}
+          </div>
+          <div class="dc-badges">
+            <span class="badge signal">${icon} ${esc((d.signal_type || '').replace(/_/g, ' '))}</span>
+            <span class="badge connections">\ud83d\udd17 ${d.connection_count || 0} connections</span>
+            <span class="badge status-${d.status}">${d.status}</span>
+          </div>
+          ${d.signal_summary ? '<div class="dc-summary">' + esc(String(d.signal_summary).slice(0, 180)) + '</div>' : ''}
+          ${contactsHtml}
+          ${d.blog_title ? '<div class="dc-blog-title">\u201c' + esc(d.blog_title) + '\u201d</div>' : ''}
+          ${entry ? '<div class="dc-entry">\u2b50 Best entry: <strong>' + esc(entry.name) + '</strong>' + (entry.title ? ' \u00b7 ' + esc(entry.title) : '') + (entry.approach_via ? ' \u00b7 via ' + esc(entry.approach_via) : '') + '</div>' : ''}
+          ${d.opportunity_angle ? '<div class="dc-angle">\ud83c\udfaf ' + esc(d.opportunity_angle) + '</div>' : ''}
+        </div>
+      `);
+    });
+
+    document.getElementById('loadMore').style.display =
+      (offset + data.dispatches.length < data.total) ? 'block' : 'none';
+  } catch (err) {
+    document.getElementById('dispatchList').innerHTML = '<div class="empty-state"><p>Failed to load dispatches</p></div>';
+  }
+}
+
+function loadMoreDispatches() { offset += 20; loadDispatches(); }
+
+// ── Detail Panel ──
+let currentDispatchId = null;
+
+async function openDispatch(id) {
+  currentDispatchId = id;
+  document.getElementById('panelOverlay').classList.add('active');
+  document.getElementById('detailPanel').classList.add('active');
+  document.getElementById('panelBody').innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink-4)">Loading dispatch...</div>';
+
+  try {
+    const d = await api('/api/dispatches/' + id);
+    if (!d) return;
+    renderDetail(d);
+  } catch (err) {
+    document.getElementById('panelBody').innerHTML = '<div class="empty-state"><p>Failed to load dispatch</p></div>';
+  }
+}
+
+function closePanel() {
+  document.getElementById('panelOverlay').classList.remove('active');
+  document.getElementById('detailPanel').classList.remove('active');
+  currentDispatchId = null;
+}
+
+function renderDetail(d) {
+  const prox = typeof d.proximity_map === 'string' ? JSON.parse(d.proximity_map) : (d.proximity_map || []);
+  const entry = typeof d.best_entry_point === 'string' ? JSON.parse(d.best_entry_point) : (d.best_entry_point || null);
+  const sendTo = typeof d.send_to === 'string' ? JSON.parse(d.send_to) : (d.send_to || []);
+  const confidence = d.signal_confidence ? Math.round(d.signal_confidence * 100) : null;
+  const confColor = confidence >= 80 ? 'var(--emerald)' : confidence >= 60 ? 'var(--amber)' : 'var(--ink-3)';
+  const icon = SIG_ICONS[d.signal_type] || '\ud83d\udce1';
+
+  let html = '';
+
+  // Section 1: The Signal
+  html += '<div class="psec"><div class="psec-label">The Signal</div>';
+  html += '<div class="signal-box">';
+  html += '<div class="signal-company">' + esc(d.company_name) + '</div>';
+  html += '<div class="dc-badges" style="margin-top:8px">';
+  html += '<span class="badge signal">' + icon + ' ' + esc((d.signal_type || '').replace(/_/g, ' ')) + '</span>';
+  if (d.is_client) html += '<span class="badge client">CLIENT</span>';
+  if (d.sector) html += '<span class="badge" style="background:var(--surface-warm);color:var(--ink-3)">' + esc(d.sector) + '</span>';
+  html += '</div>';
+  if (d.signal_summary) html += '<div class="signal-summary">' + esc(d.signal_summary) + '</div>';
+  html += '<div class="signal-meta">';
+  if (confidence) html += '<span>Confidence: <strong>' + confidence + '%</strong> <span class="confidence-bar"><span class="confidence-fill" style="width:' + confidence + '%;background:' + confColor + '"></span></span></span>';
+  if (d.signal_detected_at) html += '<span>Detected: ' + ago(d.signal_detected_at) + '</span>';
+  if (d.geography) html += '<span>' + esc(d.geography) + '</span>';
+  html += '</div></div></div>';
+
+  // Section 2: Proximity Map
+  html += '<div class="psec"><div class="psec-label">Proximity Map (' + prox.length + ' connections)</div>';
+  if (prox.length === 0) {
+    html += '<div style="padding:16px;color:var(--ink-4);font-size:13px">No connections found in network</div>';
+  } else {
+    html += '<div class="prox-list">';
+    prox.forEach((p, i) => {
+      const isBest = entry && p.person_id === entry.person_id;
+      const ini = (p.name || '').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+      html += '<div class="prox-card' + (isBest ? ' best' : '') + '" style="cursor:pointer" onclick="location.href=\'/person.html?id=' + p.person_id + '\'">';
+      html += '<div class="prox-av">' + (isBest ? '\u2b50' : ini) + '</div>';
+      html += '<div class="prox-info">';
+      html += '<div class="prox-name">' + esc(p.name) + (isBest ? ' <span style="font-size:11px;color:var(--amber)">BEST ENTRY</span>' : '') + '</div>';
+      html += '<div class="prox-title">' + esc(p.title) + '</div>';
+      html += '<div class="prox-badges">';
+      html += '<span class="prox-badge type">' + esc((p.relationship_type || '').replace(/_/g, ' ')) + '</span>';
+      html += '<span class="prox-badge strength-' + (p.strength || 'cold') + '">' + esc(p.strength || 'cold') + '</span>';
+      if (p.team_member) html += '<span class="prox-badge type">via ' + esc(p.team_member) + '</span>';
+      if (p.last_contact) html += '<span style="font-size:10px;color:var(--ink-4)">Last: ' + ago(p.last_contact) + '</span>';
+      html += '</div></div>';
+      html += '<div class="prox-score">' + (p.score || 0) + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // Section 3: Approach Angle
+  html += '<div class="psec"><div class="psec-label">Approach Angle</div>';
+  html += '<div class="approach-angle">' + esc(d.opportunity_angle) + '</div>';
+  html += '<div class="approach-rationale">' + esc(d.approach_rationale) + '</div>';
+  html += '</div>';
+
+  // Section 4: The Article
+  html += '<div class="psec"><div class="psec-label">Thought Leadership Article</div>';
+  html += '<div class="blog-header">';
+  html += '<div class="blog-title-display">' + esc(d.blog_title) + '</div>';
+  html += '<div class="blog-actions">';
+  html += '<button class="btn-sm" onclick="copyBlog()">Copy</button>';
+  html += '<button class="btn-sm" onclick="toggleRegenerate()">Regenerate</button>';
+  html += '</div></div>';
+  html += '<div class="regen-row" id="regenRow" style="display:none">';
+  html += '<input class="regen-input" id="regenTheme" placeholder="New theme (optional — leave empty for random)">';
+  html += '<button class="btn-sm primary" onclick="regenerateBlog()">Generate</button>';
+  html += '</div>';
+  html += '<div class="blog-body" id="blogBody">' + esc(d.blog_body) + '</div>';
+  if (d.blog_keywords && d.blog_keywords.length > 0) {
+    html += '<div class="blog-keywords">' + d.blog_keywords.map(k => '<span class="keyword">' + esc(k) + '</span>').join('') + '</div>';
+  }
+  html += '</div>';
+
+  // Section 5: Send To
+  html += '<div class="psec"><div class="psec-label">Distribution Plan (' + sendTo.length + ' recipients)</div>';
+  if (sendTo.length === 0) {
+    html += '<div style="padding:16px;color:var(--ink-4);font-size:13px">No recipients — add connections to generate distribution plan</div>';
+  } else {
+    sendTo.forEach((s, i) => {
+      html += '<div class="send-card">';
+      html += '<div class="send-top">';
+      html += '<div class="send-name">' + esc(s.name) + (s.title ? ' <span style="font-weight:400;color:var(--ink-3);font-size:12px">' + esc(s.title) + '</span>' : '') + '</div>';
+      html += '<span class="send-channel ' + (s.channel || 'email') + '">' + esc(s.channel || 'email') + '</span>';
+      html += '</div>';
+      html += '<textarea class="send-note" data-send-idx="' + i + '">' + esc(s.personal_note || '') + '</textarea>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+
+  document.getElementById('panelBody').innerHTML = html;
+
+  // Bottom actions
+  let actions = '';
+  if (d.status === 'draft') {
+    actions += '<button class="btn-sm primary" onclick="updateStatus(\'reviewed\')">Mark Reviewed</button>';
+  }
+  if (d.status === 'reviewed') {
+    actions += '<button class="btn-sm success" onclick="updateStatus(\'sent\')">Mark Sent</button>';
+  }
+  if (d.status !== 'archived') {
+    actions += '<button class="btn-sm" onclick="updateStatus(\'archived\')">Archive</button>';
+  }
+  document.getElementById('panelActions').innerHTML = actions;
+
+  // Store data for copy/regen
+  window._currentDispatch = d;
+}
+
+function copyBlog() {
+  const d = window._currentDispatch;
+  const text = d.blog_title + '\n\n' + d.blog_body;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('.blog-actions .btn-sm');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1500);
+  });
+}
+
+function toggleRegenerate() {
+  const row = document.getElementById('regenRow');
+  row.style.display = row.style.display === 'none' ? 'flex' : 'none';
+}
+
+async function regenerateBlog() {
+  const theme = document.getElementById('regenTheme').value.trim();
+  const btn = document.querySelector('#regenRow .btn-sm');
+  btn.textContent = 'Generating...';
+  btn.disabled = true;
+
+  try {
+    const result = await api('/api/dispatches/' + currentDispatchId + '/regenerate', {
+      method: 'POST',
+      body: theme ? { theme } : {}
+    });
+    if (!result) return;
+
+    document.querySelector('.blog-title-display').textContent = result.title;
+    document.getElementById('blogBody').textContent = result.body;
+    window._currentDispatch.blog_title = result.title;
+    window._currentDispatch.blog_body = result.body;
+    document.getElementById('regenRow').style.display = 'none';
+  } catch (err) {
+    alert('Regeneration failed: ' + err.message);
+  } finally {
+    btn.textContent = 'Generate';
+    btn.disabled = false;
+  }
+}
+
+async function updateStatus(newStatus) {
+  try {
+    // Collect any edited send notes
+    const notes = document.querySelectorAll('.send-note');
+    let sendTo = window._currentDispatch.send_to;
+    if (typeof sendTo === 'string') sendTo = JSON.parse(sendTo);
+    notes.forEach(n => {
+      const idx = parseInt(n.dataset.sendIdx);
+      if (sendTo[idx]) sendTo[idx].personal_note = n.value;
+    });
+
+    await api('/api/dispatches/' + currentDispatchId, {
+      method: 'PATCH',
+      body: { status: newStatus, send_to: sendTo }
+    });
+
+    closePanel();
+    // Refresh list
+    offset = 0;
+    document.getElementById('dispatchList').innerHTML = '';
+    loadDispatches();
+  } catch (err) {
+    alert('Update failed: ' + err.message);
+  }
+}
+
+// ── Generate trigger ──
+async function triggerGenerate() {
+  const btn = document.getElementById('generateBtn');
+  btn.textContent = 'Generating...';
+  btn.disabled = true;
+  try {
+    await api('/api/dispatches/generate', { method: 'POST', body: {} });
+    btn.textContent = 'Running...';
+    // Poll for new results after a delay
+    setTimeout(() => {
+      btn.textContent = 'Generate Now';
+      btn.disabled = false;
+      offset = 0;
+      document.getElementById('dispatchList').innerHTML = '';
+      loadDispatches();
+    }, 15000);
+  } catch (err) {
+    btn.textContent = 'Generate Now';
+    btn.disabled = false;
+    alert('Failed to trigger: ' + err.message);
+  }
+}
+
+// ── Rescan contacts ──
+async function triggerRescan() {
+  const btn = document.getElementById('rescanBtn');
+  btn.textContent = 'Rescanning...';
+  btn.disabled = true;
+  try {
+    await api('/api/dispatches/rescan', { method: 'POST', body: {} });
+    btn.textContent = 'Running...';
+    setTimeout(() => {
+      btn.textContent = 'Rescan Contacts';
+      btn.disabled = false;
+      offset = 0;
+      document.getElementById('dispatchList').innerHTML = '';
+      loadDispatches();
+    }, 20000);
+  } catch (err) {
+    btn.textContent = 'Rescan Contacts';
+    btn.disabled = false;
+    alert('Failed: ' + err.message);
+  }
+}
+
+// ── Init ──
+loadDispatches();
+</script>
+<script src="/chat.js"></script>
+</body>
+</html>

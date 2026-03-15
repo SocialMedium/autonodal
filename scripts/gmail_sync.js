@@ -345,19 +345,33 @@ async function processMessage(msg, account, stats) {
   
   if (existing.rows.length > 0) return; // Already synced
   
+  // Detect internal MitchelLake-to-MitchelLake conversations
+  const allParties = [fromEmail, ...toEmails, ...ccEmails];
+  const isInternal = allParties.length > 0 && allParties.every(e => e && e.endsWith('@mitchellake.com'));
+
+  // Detect potentially sensitive topics
+  const lowerSubject = (subject || '').toLowerCase();
+  const lowerSnippet = (snippet || '').toLowerCase();
+  const sensitiveKeywords = ['salary', 'salaries', 'wage', 'wages', 'compensation', 'comp review',
+    'disciplinary', 'termination', 'dismissal', 'performance review', 'pip',
+    'confidential', 'redundancy', 'grievance', 'warning', 'misconduct'];
+  const isSensitive = sensitiveKeywords.some(kw => lowerSubject.includes(kw) || lowerSnippet.includes(kw));
+  const sensitivity = isSensitive ? 'sensitive' : 'normal';
+  const visibility = isInternal && isSensitive ? 'private' : 'team';
+
   // Store as interaction
   await pool.query(`
     INSERT INTO interactions (
       person_id, user_id, interaction_type, direction,
-      subject, summary, channel, source, 
-      email_message_id, email_thread_id, email_subject, 
-      email_snippet, email_from, email_to, 
+      subject, summary, channel, source,
+      email_message_id, email_thread_id, email_subject,
+      email_snippet, email_from, email_to,
       email_labels, email_has_attachments,
       interaction_at, created_at,
-      visibility, owner_user_id
+      visibility, owner_user_id, is_internal, sensitivity
     ) VALUES ($1, $2, 'email', $3, $4, $5, 'email', 'gmail_sync',
               $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(),
-              'team', $2)
+              $15, $2, $16, $17)
     ON CONFLICT DO NOTHING
   `, [
     personId,
@@ -373,7 +387,10 @@ async function processMessage(msg, account, stats) {
     allOtherEmails.join(', '),
     labels,
     hasAttachments,
-    emailDate
+    emailDate,
+    visibility,
+    isInternal,
+    sensitivity
   ]);
   
   stats.messages++;

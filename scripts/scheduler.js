@@ -1008,6 +1008,16 @@ const PIPELINES = {
     },
     schedule: '0 7,19 * * *',
     description: 'Fetch new/updated invoices from Xero, update placements & financials'
+  },
+  signal_dispatch: {
+    name: 'Signal Dispatch Generator',
+    icon: '🎯',
+    fn: async () => {
+      const { generateDispatches } = require('./generate_dispatches');
+      return generateDispatches();
+    },
+    schedule: '0 */2 * * *',
+    description: 'Generate intelligence briefs with proximity maps, approach angles, and thought leadership content'
   }
 };
 

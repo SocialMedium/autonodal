@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Person — MitchelLake Signal</title>
+<title>People — MitchelLake Signal</title>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -17,8 +17,10 @@
   --emerald: #0D7A50; --emerald-soft: #E8F5EE;
   --amber: #B45309; --amber-soft: #FEF7E8;
   --rose: #C41D3E; --rose-soft: #FDF0F2;
+  --violet: #6D28D9; --violet-soft: #F3EEFE;
   --radius: 8px;
   --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+  --shadow-hover: 0 4px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
 }
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { overflow-x: hidden; }
@@ -26,277 +28,426 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 
 /* Masthead */
 .masthead { background: var(--surface); border-bottom: 2px solid var(--ink); padding: 0 clamp(14px, 3vw, 40px); position: sticky; top: 0; z-index: 100; }
-.masthead-inner { display: flex; align-items: center; justify-content: space-between; height: 56px; max-width: 1320px; margin: 0 auto; }
-.mast-logo { font-family: var(--serif); font-size: 22px; font-weight: 600; text-decoration: none; color: var(--ink); }
-.mast-logo em { font-style: italic; color: var(--ink-3); }
-.mast-nav { display: flex; gap: 2px; }
-.mast-nav a { font-size: 13px; font-weight: 500; color: var(--ink-3); text-decoration: none; padding: 6px 14px; border-radius: 6px; }
-.mast-nav a:hover { color: var(--ink); background: var(--surface-warm); }
-.mast-nav a.active { color: var(--ink); background: var(--surface-warm); font-weight: 600; }
+.masthead-top { display: flex; align-items: center; justify-content: space-between; height: 56px; max-width: 1320px; margin: 0 auto; }
+.masthead-brand { display: flex; align-items: baseline; gap: 8px; }
+.masthead-logo { font-family: var(--serif); font-size: 22px; font-weight: 600; letter-spacing: -0.2px; }
+.masthead-logo em { font-style: italic; color: var(--ink-3); }
+.masthead-nav { display: flex; gap: 2px; }
+.masthead-nav a { font-size: 13px; font-weight: 500; color: var(--ink-3); text-decoration: none; padding: 6px 14px; border-radius: 6px; transition: all 0.15s; }
+.masthead-nav a:hover { color: var(--ink); background: var(--surface-warm); }
+.masthead-nav a.active { color: var(--ink); background: var(--surface-warm); font-weight: 600; }
+.masthead-user { width: 34px; height: 34px; border-radius: 50%; background: var(--ink); color: white; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; cursor: pointer; }
 
 /* Page */
-.page { max-width: 1320px; margin: 0 auto; padding: 32px clamp(14px, 3vw, 40px) 60px; overflow: hidden; }
-.back { font-size: 13px; color: var(--ink-3); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; margin-bottom: 20px; }
-.back:hover { color: var(--ink); }
+.page { max-width: 1320px; margin: 0 auto; padding: 36px clamp(14px, 3vw, 40px) 60px; overflow: hidden; }
+.page-rule { height: 3px; background: var(--ink); margin-bottom: 10px; }
+.page-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.page-title { font-family: var(--serif); font-size: 32px; font-weight: 600; letter-spacing: -0.3px; }
+.page-count { font-family: var(--mono); font-size: 13px; color: var(--ink-4); }
+.page-subtitle { font-size: 14px; color: var(--ink-3); margin-bottom: 28px; }
 
-/* Profile */
-.profile { display: flex; gap: 20px; align-items: flex-start; padding-bottom: 24px; margin-bottom: 32px; border-bottom: 2px solid var(--ink); }
-.avatar { width: 68px; height: 68px; border-radius: 50%; background: var(--surface-cool); border: 2px solid var(--rule); display: flex; align-items: center; justify-content: center; font-family: var(--serif); font-size: 24px; font-weight: 600; color: var(--ink-3); flex-shrink: 0; }
-.avatar.noted { background: var(--blue-soft); color: var(--blue); border-color: var(--blue); }
-.enrich-btn { background: var(--surface-warm); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 14px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--ink-2); font-family: var(--sans); white-space: nowrap; transition: all 0.15s; align-self: flex-start; }
-.enrich-btn:hover { background: #EBF1FE; border-color: var(--blue); color: var(--blue); }
-.enrich-btn.loading { opacity: 0.6; pointer-events: none; }
-.enrich-btn.done { background: #E6F5EC; border-color: var(--emerald); color: var(--emerald); }
-.pinfo { flex: 1; min-width: 0; }
-.pname { font-family: var(--serif); font-size: clamp(22px, 4vw, 28px); font-weight: 600; line-height: 1.2; overflow-wrap: break-word; }
-.ptitle { font-size: 15px; color: var(--ink-2); margin-top: 3px; overflow-wrap: break-word; }
-.pmeta { display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap; font-size: 13px; color: var(--ink-3); }
-.pmeta a { color: var(--blue); text-decoration: none; font-weight: 500; }
-.pmeta a:hover { text-decoration: underline; }
-.ptags { display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
-.tag { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 3px; background: var(--surface-warm); color: var(--ink-3); white-space: nowrap; }
-.tag.seniority { background: var(--amber-soft); color: var(--amber); }
-.tag.source { background: var(--emerald-soft); color: var(--emerald); }
-.tag.client { background: var(--amber-soft); color: var(--amber); }
-.tag.industry { background: var(--blue-soft); color: var(--blue); }
-.pcontact { flex-shrink: 0; }
-.ci { font-size: 13px; color: var(--ink-3); margin-bottom: 5px; }
-.ci a { color: var(--blue); text-decoration: none; word-break: break-all; }
-.ci a:hover { text-decoration: underline; }
+/* Semantic search */
+.search-hero { margin-bottom: 32px; }
+.search-box { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1.5px solid var(--rule); border-radius: 10px; padding: 12px 18px; transition: all 0.2s; }
+.search-box:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,0.06); }
+.search-box input { border: none; background: none; font-family: var(--sans); font-size: 15px; color: var(--ink); outline: none; width: 100%; }
+.search-box input::placeholder { color: var(--ink-4); }
+.search-icon { color: var(--ink-4); font-size: 16px; flex-shrink: 0; }
+.search-prompts { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.search-prompt { padding: 5px 13px; font-size: 12px; font-weight: 500; border: 1px solid var(--rule); border-radius: 20px; cursor: pointer; background: var(--surface); color: var(--ink-3); transition: all 0.15s; }
+.search-prompt:hover { border-color: var(--rule-bold); color: var(--ink); }
+.search-results { margin-top: 16px; display: none; }
+.search-results.active { display: block; }
+.search-results-header { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--ink-4); margin-bottom: 10px; }
 
-/* Grid */
-.grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 0; }
-.main { padding-right: 32px; border-right: 1px solid var(--rule); min-width: 0; }
-.side { padding-left: 28px; min-width: 0; }
+/* Stream sections */
+.stream { margin-bottom: 40px; }
+.stream-header { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 2px solid var(--ink); padding-bottom: 8px; margin-bottom: 16px; }
+.stream-title { font-family: var(--serif); font-size: 22px; font-weight: 600; }
+.stream-subtitle { font-size: 13px; color: var(--ink-3); }
+.stream-count { font-family: var(--mono); font-size: 12px; color: var(--ink-4); }
 
-/* Sections */
-.sec { margin-bottom: 32px; }
-.sec-rule { height: 3px; background: var(--ink); margin-bottom: 8px; }
-.sec-rule.thin { height: 1px; background: var(--rule); margin-bottom: 8px; }
-.sec-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
-.sec-title { font-family: var(--serif); font-size: 19px; font-weight: 600; }
-.sec-count { font-family: var(--mono); font-size: 11px; color: var(--ink-4); }
-.sec-sub { font-size: 13px; color: var(--ink-3); margin-bottom: 12px; }
-
-/* Notes */
-.note { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 10px; box-shadow: var(--shadow-card); overflow: hidden; }
-.note-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
-.note-subj { font-family: var(--serif); font-size: 15px; font-weight: 600; min-width: 0; overflow-wrap: break-word; }
-.note-date { font-size: 10px; color: var(--ink-4); font-family: var(--mono); white-space: nowrap; }
-.note-body { font-size: 13px; color: var(--ink-2); line-height: 1.65; white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word; max-height: 280px; overflow-y: auto; }
-.note-q { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; white-space: nowrap; }
-.note-q.high { background: var(--emerald-soft); color: var(--emerald); }
-.note-q.medium { background: var(--amber-soft); color: var(--amber); }
-.note-intel { margin-top: 10px; padding: 10px 12px; background: var(--surface-cool); border-radius: 6px; border-left: 3px solid var(--blue); font-size: 12px; color: var(--ink-2); line-height: 1.55; word-break: break-word; }
-.note-intel b { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--blue); display: block; margin-bottom: 3px; }
-
-/* Signal rows */
-.sig { padding: 9px 0; border-bottom: 1px solid var(--rule); display: flex; gap: 10px; align-items: flex-start; }
-.sig-icon { font-size: 15px; flex-shrink: 0; }
-.sig-info { flex: 1; min-width: 0; }
-.sig-hl { font-size: 13px; font-weight: 500; overflow-wrap: break-word; }
-.sig-det { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
-.sig-conf { font-family: var(--mono); font-size: 12px; color: var(--ink-4); flex-shrink: 0; }
-
-/* Interaction rows */
-.ix { padding: 9px 0; border-bottom: 1px solid var(--rule); display: flex; gap: 10px; align-items: flex-start; }
-.ix-icon { font-size: 14px; flex-shrink: 0; }
-.ix-info { flex: 1; min-width: 0; }
-.ix-title { font-size: 13px; font-weight: 500; overflow-wrap: break-word; }
-.ix-det { font-size: 12px; color: var(--ink-3); margin-top: 1px; overflow-wrap: break-word; }
-.ix-date { font-size: 10px; color: var(--ink-4); font-family: var(--mono); flex-shrink: 0; white-space: nowrap; }
-
-/* Side */
-.ss { margin-bottom: 24px; }
-.ss-rule { height: 3px; background: var(--ink); margin-bottom: 8px; }
-.ss-title { font-family: var(--serif); font-size: 16px; font-weight: 600; margin-bottom: 10px; }
-.stats { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; }
-.st { padding: 11px; text-align: center; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
-.st:nth-child(2n) { border-right: none; }
-.st:nth-last-child(-n+2) { border-bottom: none; }
-.st-v { font-family: var(--serif); font-size: 20px; font-weight: 600; }
-.st-l { font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--ink-4); font-weight: 600; }
-
-.coll { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--rule); cursor: pointer; }
-.coll:hover { background: var(--surface-warm); margin: 0 -6px; padding: 6px; border-radius: 4px; }
-.coll:last-child { border-bottom: none; }
-.coll-av { width: 28px; height: 28px; border-radius: 50%; background: var(--surface-cool); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: var(--ink-3); flex-shrink: 0; }
-.coll-info { min-width: 0; }
-.coll-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.coll-title { font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-.empty { text-align: center; padding: 20px; color: var(--ink-4); font-size: 13px; }
-.loading { text-align: center; padding: 60px; color: var(--ink-3); }
-
-@media (max-width: 1024px) {
-  .grid { grid-template-columns: 1fr; }
-  .main { padding-right: 0; border-right: none; }
-  .side { padding-left: 0; margin-top: 32px; padding-top: 24px; border-top: 2px solid var(--ink); }
+/* Person cards */
+.person-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.person-card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s;
+  cursor: pointer;
+  overflow: hidden;
 }
+.person-card:hover { box-shadow: var(--shadow-hover); border-color: var(--rule-bold); }
+.person-card.has-notes { border-left: 3px solid var(--blue); }
+
+.person-top { display: flex; gap: 14px; align-items: flex-start; }
+.person-avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--surface-cool); border: 1.5px solid var(--rule); display: flex; align-items: center; justify-content: center; font-family: var(--serif); font-size: 16px; font-weight: 600; color: var(--ink-3); flex-shrink: 0; }
+.person-avatar.noted { background: var(--blue-soft); color: var(--blue); border-color: var(--blue); }
+.person-info { flex: 1; min-width: 0; }
+.person-name { font-family: var(--serif); font-size: 17px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.person-title { font-size: 13px; color: var(--ink-2); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.person-company { font-size: 13px; color: var(--ink-3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.person-badges { display: flex; gap: 5px; margin-top: 10px; flex-wrap: wrap; }
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; font-size: 11px; font-weight: 600; border-radius: 4px; letter-spacing: 0.3px; }
+.badge.notes { background: var(--blue-soft); color: var(--blue); }
+.badge.seniority { background: var(--surface-warm); color: var(--ink-3); }
+.badge.signal { background: var(--amber-soft); color: var(--amber); }
+.badge.score { background: var(--emerald-soft); color: var(--emerald); }
+.badge.type { background: var(--violet-soft); color: var(--violet); }
+
+/* Contact stream card extras */
+.contact-meta { display: flex; gap: 12px; margin-top: 8px; font-size: 12px; color: var(--ink-3); flex-wrap: wrap; }
+.contact-meta-item { display: flex; align-items: center; gap: 4px; }
+.contact-subject { font-size: 13px; color: var(--ink-2); margin-top: 6px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Signal context on card */
+.signal-context { margin-top: 8px; padding: 8px 12px; background: var(--amber-soft); border-radius: 6px; font-size: 12px; color: var(--amber); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Browse section */
+.browse-filters { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.filter-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { padding: 5px 13px; font-size: 12px; font-weight: 500; border: 1px solid var(--rule); border-radius: 20px; cursor: pointer; background: var(--surface); color: var(--ink-3); transition: all 0.15s; }
+.chip:hover { border-color: var(--rule-bold); }
+.chip.active { background: var(--ink); color: white; border-color: var(--ink); }
+
+.load-more { display: none; width: 100%; padding: 14px; margin-top: 16px; background: none; border: 1px solid var(--rule); border-radius: 8px; font-family: var(--sans); font-size: 13px; font-weight: 500; color: var(--ink-3); cursor: pointer; }
+.load-more:hover { border-color: var(--rule-bold); color: var(--ink); }
+.empty-state { text-align: center; padding: 40px 20px; color: var(--ink-3); grid-column: 1 / -1; }
+.empty-state h3 { font-family: var(--serif); font-size: 18px; color: var(--ink-2); margin-bottom: 6px; }
+
+.loading-spinner { text-align: center; padding: 30px; color: var(--ink-4); font-size: 13px; grid-column: 1 / -1; }
+
 @media (max-width: 768px) {
-  .profile { flex-direction: column; gap: 14px; }
-  .pcontact { text-align: left; }
-  .mast-nav { display: none; }
-}
-@media (max-width: 480px) {
-  .avatar { width: 52px; height: 52px; font-size: 18px; }
-  .note { padding: 12px 14px; }
+  .person-grid { grid-template-columns: 1fr; }
+  .masthead-nav { display: none; }
 }
 </style>
 </head>
 <body>
-<header class="masthead"><div class="masthead-inner">
-  <a href="/" class="mast-logo">Mitchel<em>Lake</em> Signal</a>
-  <nav class="mast-nav"><a href="/">Signals</a><a href="/people.html" class="active">People</a><a href="/companies.html">Companies</a><a href="/placements.html">Revenue</a></nav>
-  <div style="width:34px;height:34px;border-radius:50%;background:var(--ink);color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600">JT</div>
-</div></header>
+<header class="masthead">
+  <div class="masthead-top">
+    <div class="masthead-brand">
+      <a href="/index.html" style="text-decoration:none;color:inherit"><div class="masthead-logo">Mitchel<em>Lake</em> Signal</div></a>
+    </div>
+    <nav class="masthead-nav">
+      <a href="/index.html">Signals</a>
+      <a href="/people.html" class="active">People</a>
+      <a href="/companies.html">Companies</a>
+      <a href="/dispatches.html">Dispatch</a>
+      <a href="/placements.html">Revenue</a>
+    </nav>
+    <div class="masthead-user" id="userAvatar">JT</div>
+  </div>
+</header>
 
 <div class="page">
-  <a href="/people.html" class="back">← People</a>
-  <div id="app"><div class="loading">Loading dossier…</div></div>
+  <div class="page-rule"></div>
+  <div class="page-header">
+    <div class="page-title">People</div>
+    <div class="page-count" id="pageCount"></div>
+  </div>
+  <div class="page-subtitle">Network intelligence across candidates, contacts, and connections</div>
+
+  <!-- Semantic search -->
+  <div class="search-hero">
+    <div class="search-box">
+      <span class="search-icon">&#x2726;</span>
+      <input type="text" id="searchInput" placeholder="Semantic search — try 'VP engineering fintech APAC' or 'CFO recently left Big 4'..." onkeydown="if(event.key==='Enter')doSearch()">
+    </div>
+    <div class="search-prompts">
+      <div class="search-prompt" onclick="runPrompt(this)">VP Eng fintech APAC</div>
+      <div class="search-prompt" onclick="runPrompt(this)">Board-level restructuring</div>
+      <div class="search-prompt" onclick="runPrompt(this)">CTO startup AI ML</div>
+      <div class="search-prompt" onclick="runPrompt(this)">CFO private equity</div>
+      <div class="search-prompt" onclick="runPrompt(this)">Recently exited executives</div>
+    </div>
+    <div class="search-results" id="searchResults"></div>
+  </div>
+
+  <!-- Stream 1: Recent contacts -->
+  <div class="stream" id="contactStream">
+    <div class="stream-header">
+      <div>
+        <div class="stream-title">Recent Contacts</div>
+        <div class="stream-subtitle">Latest interactions by the MitchelLake team</div>
+      </div>
+    </div>
+    <div class="person-grid" id="contactGrid">
+      <div class="loading-spinner">Loading recent contacts...</div>
+    </div>
+  </div>
+
+  <!-- Stream 2: Signal-connected candidates -->
+  <div class="stream" id="signalStream">
+    <div class="stream-header">
+      <div>
+        <div class="stream-title">Signal-Connected</div>
+        <div class="stream-subtitle">Candidates at companies with recent growth, investment, or restructuring signals</div>
+      </div>
+    </div>
+    <div class="person-grid" id="signalGrid">
+      <div class="loading-spinner">Loading signal-connected people...</div>
+    </div>
+  </div>
+
+  <!-- Browse all -->
+  <div class="stream">
+    <div class="stream-header">
+      <div>
+        <div class="stream-title">Browse All</div>
+        <div class="stream-subtitle">Full network directory</div>
+      </div>
+      <div class="stream-count" id="browseCount"></div>
+    </div>
+    <div class="filter-chips" id="browseFilters">
+      <div class="chip active" onclick="setChip(this, '')">All</div>
+      <div class="chip" onclick="setChip(this, 'has_notes')">With Notes</div>
+      <div class="chip" onclick="setChip(this, 'c_suite')">C-Suite</div>
+      <div class="chip" onclick="setChip(this, 'vp')">VP+</div>
+      <div class="chip" onclick="setChip(this, 'director')">Director</div>
+    </div>
+    <div class="person-grid" id="browseGrid"></div>
+    <button class="load-more" id="loadMore" onclick="loadMoreBrowse()">Load more</button>
+  </div>
 </div>
 
 <script>
-const TK=localStorage.getItem('ml_token');if(!TK)location.href='/';
-async function api(u){const r=await fetch(u,{headers:{Authorization:'Bearer '+TK}});if(r.status===401){location.href='/';return null}if(!r.ok)throw new Error(r.statusText);return r.json()}
-function esc(s){return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''}
-function fmtD(t){return t?new Date(t).toLocaleDateString('en-AU',{year:'numeric',month:'short',day:'numeric'}):'—'}
-function ago(t){if(!t)return'';const m=Math.floor((Date.now()-new Date(t))/6e4);if(m<60)return m+'m';const h=Math.floor(m/60);if(h<24)return h+'h';const d=Math.floor(h/24);return d<30?d+'d':fmtD(t)}
+const TK = localStorage.getItem('ml_token');
+if (!TK) location.href = '/index.html';
 
-const SI={capital_raising:'💰',ma_activity:'🔗',product_launch:'🚀',partnership:'🤝',geographic_expansion:'🌐',restructuring:'⚙️',leadership_change:'👤',layoffs:'📉',strategic_hiring:'👥'};
-const II={email:'✉️',call:'📞',meeting:'🤝',linkedin_message:'💼',whatsapp:'💬',sms:'📱'};
-const id=new URLSearchParams(location.search).get('id');if(!id)location.href='/people.html';
-
-(async()=>{
-const p=await api('/api/people/'+id);if(!p)return;
-document.title=(p.full_name||'Person')+' — MitchelLake';
-const ini=(p.full_name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-const notes=p.research_notes||[];const ixs=p.interactions||[];const csig=p.company_signals||[];const psig=p.person_signals||[];const colls=p.colleagues||[];const s=p.interaction_stats||{};
-
-const tags=[];
-if(p.seniority_level)tags.push('<span class="tag seniority">'+esc(p.seniority_level)+'</span>');
-if(p.source)tags.push('<span class="tag source">'+esc(p.source)+'</span>');
-if(p.company_is_client)tags.push('<span class="tag client">CLIENT CO</span>');
-(Array.isArray(p.industries)?p.industries:[]).slice(0,3).forEach(i=>tags.push('<span class="tag industry">'+esc(i)+'</span>'));
-(Array.isArray(p.expertise_tags)?p.expertise_tags:[]).slice(0,4).forEach(t=>tags.push('<span class="tag">'+esc(t)+'</span>'));
-
-const ct=[];
-if(p.email)ct.push('<div class="ci">✉️ <a href="mailto:'+esc(p.email)+'">'+esc(p.email)+'</a></div>');
-if(p.linkedin_url)ct.push('<div class="ci">🔗 <a href="'+esc(p.linkedin_url)+'" target="_blank">LinkedIn</a></div>');
-if(p.phone)ct.push('<div class="ci">📞 '+esc(p.phone)+'</div>');
-
-const coId=p.company_id_linked||p.current_company_id||'';
-let h='<div class="profile">';
-h+='<div class="avatar'+(notes.length?' noted':'')+'">'+ini+'</div>';
-h+='<div class="pinfo">';
-h+='<div class="pname">'+esc(p.full_name)+'</div>';
-h+='<div class="ptitle">'+esc(p.current_title||p.headline||'')+'</div>';
-h+='<div class="pmeta">';
-if(p.current_company_name)h+='<span>🏢 <a href="/company.html?id='+coId+'">'+esc(p.current_company_name)+'</a>'+(p.company_sector?' · '+esc(p.company_sector):'')+'</span>';
-if(p.location)h+='<span>📍 '+esc(p.location)+'</span>';
-if(p.functional_area)h+='<span>⚡ '+esc(p.functional_area)+'</span>';
-h+='</div>';
-if(tags.length)h+='<div class="ptags">'+tags.join('')+'</div>';
-h+='</div>';
-h+='<div class="pcontact">'+ct.join('')+'</div>';
-h+='<button class="enrich-btn" id="enrichBtn" onclick="enrichPerson()">🔄 Refresh &amp; Enrich</button>';
-h+='</div>';
-
-h+='<div class="grid"><div class="main">';
-
-// Research Notes
-h+='<div class="sec"><div class="sec-rule"></div><div class="sec-head"><div class="sec-title">Research Notes</div><div class="sec-count">'+notes.length+' NOTES</div></div><div class="sec-sub">Internal MitchelLake intelligence</div>';
-if(!notes.length)h+='<div class="empty">No research notes yet</div>';
-else notes.forEach(n=>{
-  const qb=n.note_quality?'<span class="note-q '+(n.note_quality==='high'?'high':'medium')+'">'+n.note_quality+'</span>':'';
-  let intel='';
-  if(n.extracted_intelligence&&typeof n.extracted_intelligence==='object'){
-    const e=Object.entries(n.extracted_intelligence).filter(([k,v])=>v&&String(v).length).map(([k,v])=>'<strong>'+esc(k.replace(/_/g,' '))+':</strong> '+esc(typeof v==='object'?JSON.stringify(v):String(v)));
-    if(e.length)intel='<div class="note-intel"><b>Extracted Intelligence</b>'+e.join(' · ')+'</div>';
-  }
-  h+='<div class="note"><div class="note-top"><div class="note-subj">'+esc(n.subject||'Research Note')+qb+'</div><div class="note-date">'+fmtD(n.interaction_at||n.created_at)+'</div></div><div class="note-body">'+esc(n.summary||'')+'</div>'+intel+'</div>';
-});
-h+='</div>';
-
-// Company Signals
-if(csig.length){
-  h+='<div class="sec"><div class="sec-rule thin"></div><div class="sec-head"><div class="sec-title">Company Signals</div><div class="sec-count">'+csig.length+'</div></div><div class="sec-sub">Signals about '+esc(p.current_company_name||'employer')+'</div>';
-  csig.forEach(x=>{
-    h+='<div class="sig"><div class="sig-icon">'+(SI[x.signal_type]||'📡')+'</div><div class="sig-info"><div class="sig-hl">'+esc(x.evidence_summary||x.signal_type.replace(/_/g,' '))+'</div><div class="sig-det">'+esc(x.signal_type.replace(/_/g,' '))+' · '+ago(x.detected_at)+' · '+(x.triage_status||'new')+'</div></div><div class="sig-conf">'+Math.round((x.confidence_score||0)*100)+'%</div></div>';
-  });
-  h+='</div>';
+async function api(path) {
+  const res = await fetch(path, { headers: { Authorization: 'Bearer ' + TK } });
+  if (res.status === 401) { location.href = '/index.html'; return null; }
+  if (!res.ok) throw new Error(res.statusText);
+  return res.json();
 }
 
-// Interactions
-if(ixs.length){
-  h+='<div class="sec"><div class="sec-rule thin"></div><div class="sec-head"><div class="sec-title">Interactions</div><div class="sec-count">'+ixs.length+'</div></div><div class="sec-sub">Emails, calls, meetings</div>';
-  ixs.forEach(i=>{
-    h+='<div class="ix"><div class="ix-icon">'+(II[i.interaction_type]||'📋')+'</div><div class="ix-info"><div class="ix-title">'+esc(i.subject||i.summary||i.interaction_type)+'</div>'+(i.email_snippet?'<div class="ix-det">'+esc(String(i.email_snippet).slice(0,200))+'</div>':'')+'<div class="ix-det">'+esc(i.interaction_type)+(i.direction?' · '+i.direction:'')+'</div></div><div class="ix-date">'+fmtD(i.interaction_at)+'</div></div>';
-  });
-  h+='</div>';
+function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : ''; }
+function initials(name) { return (name || '').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2); }
+function ago(t) {
+  if (!t) return '';
+  const m = Math.floor((Date.now() - new Date(t)) / 6e4);
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  const d = Math.floor(h / 24);
+  if (d < 30) return d + 'd ago';
+  return new Date(t).toLocaleDateString('en-AU', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-h+='</div>'; // end main
+const IX_ICONS = { research_note: '\ud83d\udcdd', email: '\u2709\ufe0f', call: '\ud83d\udcde', meeting: '\ud83e\udd1d', linkedin_message: '\ud83d\udcbc', whatsapp: '\ud83d\udcac', sms: '\ud83d\udcf1' };
+const SIG_ICONS = { capital_raising: '\ud83d\udcb0', ma_activity: '\ud83d\udd17', restructuring: '\u2699\ufe0f', leadership_change: '\ud83d\udc64', geographic_expansion: '\ud83c\udf10', product_launch: '\ud83d\ude80', strategic_hiring: '\ud83d\udc65', layoffs: '\ud83d\udcc9' };
 
-// SIDEBAR
-h+='<div class="side">';
-h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">Activity</div><div class="stats"><div class="st"><div class="st-v">'+(s.notes||0)+'</div><div class="st-l">Notes</div></div><div class="st"><div class="st-v">'+(s.emails||0)+'</div><div class="st-l">Emails</div></div><div class="st"><div class="st-v">'+(s.calls||0)+'</div><div class="st-l">Calls</div></div><div class="st"><div class="st-v">'+(s.meetings||0)+'</div><div class="st-l">Meetings</div></div></div>';
-if(s.last_interaction)h+='<div style="font-size:11px;color:var(--ink-4);margin-top:6px">Last: '+fmtD(s.last_interaction)+'</div>';
-if(s.first_interaction)h+='<div style="font-size:11px;color:var(--ink-4)">First: '+fmtD(s.first_interaction)+'</div>';
-h+='</div>';
-
-if(p.bio){
-  h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">Bio</div><div style="font-size:13px;color:var(--ink-2);line-height:1.6;overflow-wrap:break-word">'+esc(p.bio)+'</div></div>';
+// ── Semantic search ──
+let searchTimeout;
+function runPrompt(el) {
+  document.getElementById('searchInput').value = el.textContent;
+  doSearch();
 }
 
-if(colls.length){
-  h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">At '+esc(p.current_company_name||'Company')+'</div>';
-  colls.slice(0,12).forEach(c=>{
-    const ci=(c.full_name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-    h+='<div class="coll" onclick="location.href=\'/person.html?id='+c.id+'\'"><div class="coll-av">'+ci+'</div><div class="coll-info"><div class="coll-name">'+esc(c.full_name)+'</div><div class="coll-title">'+esc(c.current_title||'')+'</div></div></div>';
-  });
-  if(colls.length>12)h+='<div style="font-size:11px;color:var(--ink-4);padding:6px 0">+'+String(colls.length-12)+' more</div>';
-  h+='</div>';
-}
+async function doSearch() {
+  const q = document.getElementById('searchInput').value.trim();
+  const resultsEl = document.getElementById('searchResults');
+  if (q.length < 2) { resultsEl.classList.remove('active'); return; }
 
-if(psig.length){
-  h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">Career Signals</div>';
-  psig.slice(0,8).forEach(x=>{
-    h+='<div style="padding:6px 0;border-bottom:1px solid var(--rule);font-size:13px"><div style="font-weight:500">'+esc(x.title||x.signal_type.replace(/_/g,' '))+'</div>'+(x.description?'<div style="color:var(--ink-3);font-size:12px;margin-top:1px;overflow-wrap:break-word">'+esc(String(x.description).slice(0,120))+'</div>':'')+'</div>';
-  });
-  h+='</div>';
-}
+  resultsEl.innerHTML = '<div class="loading-spinner">Searching...</div>';
+  resultsEl.classList.add('active');
 
-h+='</div></div>'; // end side + grid
-document.getElementById('app').innerHTML=h;
-})();
-
-async function enrichPerson() {
-  const btn = document.getElementById('enrichBtn');
-  if (!btn) return;
-  btn.className = 'enrich-btn loading';
-  btn.textContent = '⏳ Enriching…';
   try {
-    const id = new URLSearchParams(location.search).get('id');
-    const r = await fetch('/api/people/' + id + '/enrich', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('ml_token') },
-    });
-    const data = await r.json();
-    if (data.error) throw new Error(data.error);
-    btn.className = 'enrich-btn done';
-    const msgs = [];
-    if (data.results.ezekia?.updated_fields) msgs.push('Ezekia: ' + data.results.ezekia.updated_fields.join(', '));
-    if (data.results.gmail?.messages_found) msgs.push('Gmail: ' + data.results.gmail.messages_found + ' emails');
-    if (data.results.embedding?.message) msgs.push('Embedding updated');
-    btn.textContent = '✅ ' + (msgs.length ? msgs.join(' · ') : 'Up to date');
-    setTimeout(() => location.reload(), 2000);
-  } catch (e) {
-    btn.className = 'enrich-btn';
-    btn.textContent = '❌ ' + e.message;
-    setTimeout(() => { btn.textContent = '🔄 Refresh & Enrich'; }, 3000);
+    const data = await api('/api/search?q=' + encodeURIComponent(q) + '&collection=people&limit=20');
+    if (!data) return;
+
+    const people = data.results.people || [];
+    if (people.length === 0) {
+      resultsEl.innerHTML = '<div class="empty-state"><h3>No matches</h3><p>Try different search terms</p></div>';
+      return;
+    }
+
+    resultsEl.innerHTML = '<div class="search-results-header">' + people.length + ' match' + (people.length !== 1 ? 'es' : '') + '</div><div class="person-grid">' +
+      people.map(p => personCard(p, { score: p.match_score })).join('') + '</div>';
+  } catch (err) {
+    resultsEl.innerHTML = '<div class="empty-state"><p>Search failed — try again</p></div>';
   }
 }
+
+// ── Person card renderer ──
+function personCard(p, opts = {}) {
+  const ini = initials(p.full_name);
+  const hasNotes = parseInt(p.note_count) > 0 || p.has_research_notes;
+  let badges = '';
+  if (hasNotes) badges += '<span class="badge notes">\ud83d\udcdd Notes</span>';
+  if (p.seniority_level) badges += '<span class="badge seniority">' + esc(p.seniority_level) + '</span>';
+  if (opts.score) badges += '<span class="badge score">' + opts.score + '% match</span>';
+
+  let extra = '';
+  if (opts.interaction) {
+    const ix = opts.interaction;
+    const icon = IX_ICONS[ix.interaction_type] || '\ud83d\udcac';
+    extra += '<div class="contact-meta">';
+    extra += '<span class="contact-meta-item">' + icon + ' ' + esc((ix.interaction_type || '').replace(/_/g, ' ')) + '</span>';
+    if (ix.contacted_by) extra += '<span class="contact-meta-item">\ud83d\udc64 ' + esc(ix.contacted_by) + '</span>';
+    extra += '<span class="contact-meta-item">\ud83d\udd52 ' + ago(ix.interaction_at) + '</span>';
+    if (ix.direction) extra += '<span class="contact-meta-item">' + (ix.direction === 'outbound' ? '\u2197\ufe0f' : '\u2199\ufe0f') + ' ' + esc(ix.direction) + '</span>';
+    extra += '</div>';
+    if (ix.subject || ix.summary) extra += '<div class="contact-subject">' + esc(ix.subject || ix.summary) + '</div>';
+  }
+
+  if (opts.signal) {
+    const sig = opts.signal;
+    const icon = SIG_ICONS[sig.signal_type] || '\ud83d\udce1';
+    extra += '<div class="signal-context">' + icon + ' ' + esc((sig.signal_type || '').replace(/_/g, ' ')) +
+      (sig.evidence_summary ? ' — ' + esc(String(sig.evidence_summary).slice(0, 120)) : '') +
+      ' <span style="opacity:0.7">(' + ago(sig.signal_detected_at) + ')</span></div>';
+  }
+
+  const personId = p.id || p.person_id;
+  return '<div class="person-card' + (hasNotes ? ' has-notes' : '') + '" onclick="location.href=\'/person.html?id=' + personId + '\'">' +
+    '<div class="person-top">' +
+      '<div class="person-avatar' + (hasNotes ? ' noted' : '') + '">' + ini + '</div>' +
+      '<div class="person-info">' +
+        '<div class="person-name">' + esc(p.full_name) + '</div>' +
+        (p.current_title ? '<div class="person-title">' + esc(p.current_title) + '</div>' : '') +
+        (p.current_company_name ? '<div class="person-company">' + esc(p.current_company_name) + (p.location ? ' \u00b7 ' + esc(p.location) : '') + '</div>' : (p.location ? '<div class="person-company">' + esc(p.location) + '</div>' : '')) +
+      '</div>' +
+    '</div>' +
+    (badges ? '<div class="person-badges">' + badges + '</div>' : '') +
+    extra +
+  '</div>';
+}
+
+// ── Stream 1: Recent contacts ──
+async function loadContacts() {
+  try {
+    const data = await api('/api/people/stream/recent-contacts?limit=20');
+    if (!data) return;
+    const grid = document.getElementById('contactGrid');
+    if (!data.contacts || data.contacts.length === 0) {
+      grid.innerHTML = '<div class="empty-state"><p>No recent interactions found</p></div>';
+      return;
+    }
+    grid.innerHTML = data.contacts.map(c => personCard({
+      id: c.person_id,
+      person_id: c.person_id,
+      full_name: c.full_name,
+      current_title: c.current_title,
+      current_company_name: c.current_company_name,
+      location: c.location,
+      seniority_level: c.seniority_level,
+      note_count: c.interaction_type === 'research_note' ? 1 : 0
+    }, {
+      interaction: c
+    })).join('');
+  } catch (err) {
+    document.getElementById('contactGrid').innerHTML = '<div class="empty-state"><p>Failed to load contacts</p></div>';
+  }
+}
+
+// ── Stream 2: Signal-connected ──
+async function loadSignalConnected() {
+  try {
+    const data = await api('/api/people/stream/signal-connected?limit=20');
+    if (!data) return;
+    const grid = document.getElementById('signalGrid');
+    if (!data.people || data.people.length === 0) {
+      grid.innerHTML = '<div class="empty-state"><p>No signal-connected candidates in the last 30 days</p></div>';
+      return;
+    }
+    grid.innerHTML = data.people.map(p => personCard(p, {
+      signal: p
+    })).join('');
+  } catch (err) {
+    document.getElementById('signalGrid').innerHTML = '<div class="empty-state"><p>Failed to load signal-connected people</p></div>';
+  }
+}
+
+// ── Browse all ──
+let browseOffset = 0, browseFilter = '';
+
+function setChip(el, filter) {
+  document.querySelectorAll('#browseFilters .chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  browseFilter = filter;
+  browseOffset = 0;
+  document.getElementById('browseGrid').innerHTML = '';
+  loadBrowse();
+}
+
+async function loadBrowse() {
+  const params = new URLSearchParams({ limit: 30, offset: browseOffset });
+  if (browseFilter === 'has_notes') params.set('has_notes', 'true');
+  if (browseFilter === 'c_suite') params.set('seniority', 'C-Suite');
+  if (browseFilter === 'vp') params.set('seniority', 'VP');
+  if (browseFilter === 'director') params.set('seniority', 'Director');
+  if (browseFilter.startsWith('industry:')) params.set('industry', browseFilter.replace('industry:', ''));
+
+  try {
+    const data = await api('/api/people?' + params);
+    if (!data) return;
+
+    document.getElementById('browseCount').textContent = data.total.toLocaleString() + ' people';
+    if (!document.getElementById('pageCount').textContent) {
+      document.getElementById('pageCount').textContent = data.total.toLocaleString() + ' PEOPLE';
+    }
+
+    const grid = document.getElementById('browseGrid');
+    if (data.people.length === 0 && browseOffset === 0) {
+      grid.innerHTML = '<div class="empty-state"><h3>No people found</h3><p>Try a different filter</p></div>';
+      document.getElementById('loadMore').style.display = 'none';
+      return;
+    }
+
+    data.people.forEach(p => {
+      grid.insertAdjacentHTML('beforeend', personCard(p));
+    });
+
+    document.getElementById('loadMore').style.display =
+      (browseOffset + data.people.length < data.total) ? 'block' : 'none';
+  } catch (err) {
+    document.getElementById('browseGrid').innerHTML = '<div class="empty-state"><p>Failed to load people</p></div>';
+  }
+}
+
+function loadMoreBrowse() {
+  browseOffset += 30;
+  loadBrowse();
+}
+
+// ── Init — handle URL params for click-through from person page ──
+(function init() {
+  const urlParams = new URLSearchParams(location.search);
+  const q = urlParams.get('q');
+  const seniority = urlParams.get('seniority');
+  const industry = urlParams.get('industry');
+
+  if (q) {
+    // Trigger semantic search
+    document.getElementById('searchInput').value = q;
+    doSearch();
+  }
+  if (seniority) {
+    // Set browse filter to matching seniority
+    const chipMap = { 'C-Suite': 'c_suite', 'VP': 'vp', 'Director': 'director' };
+    const chipKey = chipMap[seniority];
+    if (chipKey) {
+      browseFilter = chipKey;
+      document.querySelectorAll('#browseFilters .chip').forEach(c => {
+        c.classList.toggle('active', c.textContent.trim() === seniority || (seniority === 'VP' && c.textContent.trim() === 'VP+'));
+        if (c.textContent.trim() === 'All') c.classList.remove('active');
+      });
+    }
+  }
+  if (industry) {
+    // Use industry as search query for browse
+    browseFilter = 'industry:' + industry;
+  }
+
+  loadContacts();
+  loadSignalConnected();
+  loadBrowse();
+})();
 </script>
 <script src="/chat.js"></script>
 </body>

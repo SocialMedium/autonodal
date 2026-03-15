@@ -29,6 +29,16 @@ const pool = new Pool({
 
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
+
+// Serve Autonodal landing page as homepage when accessed via autonodal.com
+app.get('/', (req, res, next) => {
+  const host = req.hostname;
+  if (host === 'autonodal.com' || host === 'www.autonodal.com') {
+    return res.sendFile(path.join(__dirname, 'public/autonodal.html'));
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // CORS for development
@@ -94,7 +104,7 @@ async function optionalAuth(req, res, next) {
 app.get('/api/auth/google', (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' });
   const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
-  const returnTo = req.query.return_to || '/';
+  const returnTo = req.query.return_to || '/index.html';
   const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
     redirect_uri: redirectUri,
@@ -111,7 +121,7 @@ app.get('/api/auth/google', (req, res) => {
 // Google OAuth — callback
 app.get('/api/auth/google/callback', async (req, res) => {
   const { code, error, state } = req.query;
-  const returnTo = (state && state.startsWith('/')) ? state : '/';
+  const returnTo = (state && state.startsWith('/')) ? state : '/index.html';
   if (error) return res.redirect(returnTo + '?auth_error=' + encodeURIComponent(error));
   if (!code) return res.redirect(returnTo + '?auth_error=no_code');
 
@@ -134,7 +144,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
     if (!tokenRes.ok) {
       const err = await tokenRes.text();
       console.error('Google token exchange failed:', err);
-      return res.redirect('/?auth_error=token_exchange_failed');
+      return res.redirect('/index.html?auth_error=token_exchange_failed');
     }
 
     const tokenData = await tokenRes.json();
@@ -147,7 +157,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
 
     // Enforce mitchellake.com domain
     if (!userInfo.email || !userInfo.email.endsWith('@mitchellake.com')) {
-      return res.redirect('/?auth_error=domain_restricted');
+      return res.redirect('/index.html?auth_error=domain_restricted');
     }
 
     // Find or create user
@@ -387,6 +397,16 @@ app.get('/api/people', authenticateToken, async (req, res) => {
     const params = [];
     let paramIdx = 0;
 
+    // Privacy filter — hide private contacts from non-owners
+    const userId = req.user?.user_id;
+    if (userId) {
+      paramIdx++;
+      where += ` AND (p.visibility IS NULL OR p.visibility != 'private' OR p.owner_user_id = $${paramIdx})`;
+      params.push(userId);
+    } else {
+      where += ` AND (p.visibility IS NULL OR p.visibility != 'private')`;
+    }
+
     // By default, only show people with actual profile data
     if (req.query.show_all !== 'true') {
       where += ` AND (p.current_title IS NOT NULL OR p.headline IS NOT NULL OR p.source = 'ezekia')`;
@@ -458,6 +478,57 @@ app.get('/api/people', authenticateToken, async (req, res) => {
   }
 });
 
+// Recent interactions stream — who MitchelLake team contacted recently
+app.get('/api/people/stream/recent-contacts', authenticateToken, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const { rows } = await pool.query(`
+      SELECT DISTINCT ON (i.person_id)
+        i.person_id, i.interaction_type, i.subject, i.summary,
+        i.interaction_at, i.direction, i.channel, i.source,
+        p.full_name, p.current_title, p.current_company_name, p.location,
+        p.seniority_level, p.linkedin_url,
+        u.name AS contacted_by
+      FROM interactions i
+      JOIN people p ON p.id = i.person_id
+      LEFT JOIN users u ON u.id = i.user_id
+      WHERE i.interaction_at IS NOT NULL
+      ORDER BY i.person_id, i.interaction_at DESC
+    `);
+    // Sort by most recent interaction across all people
+    rows.sort((a, b) => new Date(b.interaction_at) - new Date(a.interaction_at));
+    res.json({ contacts: rows.slice(0, limit) });
+  } catch (err) {
+    console.error('Recent contacts error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch recent contacts' });
+  }
+});
+
+// Signal-connected candidates — people at companies with recent signals
+app.get('/api/people/stream/signal-connected', authenticateToken, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const { rows } = await pool.query(`
+      SELECT p.id, p.full_name, p.current_title, p.current_company_name,
+             p.location, p.seniority_level, p.linkedin_url,
+             se.signal_type, se.evidence_summary, se.confidence_score,
+             se.detected_at AS signal_detected_at, se.company_name AS signal_company,
+             (SELECT COUNT(*) FROM interactions ix WHERE ix.person_id = p.id AND ix.interaction_type = 'research_note') AS note_count
+      FROM people p
+      JOIN companies c ON c.id = p.current_company_id
+      JOIN signal_events se ON se.company_id = c.id
+      WHERE se.detected_at > NOW() - INTERVAL '30 days'
+        AND (p.current_title IS NOT NULL OR p.headline IS NOT NULL)
+      ORDER BY se.detected_at DESC, se.confidence_score DESC
+      LIMIT $1
+    `, [limit]);
+    res.json({ people: rows });
+  } catch (err) {
+    console.error('Signal-connected error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch signal-connected people' });
+  }
+});
+
 app.get('/api/people/:id', authenticateToken, async (req, res) => {
   try {
     // Guard against invalid UUIDs (e.g. "null", "undefined", empty)
@@ -476,6 +547,11 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
 
     if (!person) return res.status(404).json({ error: 'Person not found' });
 
+    // Privacy check — block access to private contacts unless owner
+    if (person.visibility === 'private' && person.owner_user_id && person.owner_user_id !== req.user?.user_id) {
+      return res.status(403).json({ error: 'This contact is private' });
+    }
+
     // Research notes
     const { rows: notes } = await pool.query(`
       SELECT id, summary, subject, email_snippet, interaction_at, created_at,
@@ -489,12 +565,15 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
     // All other interactions (emails, calls, meetings)
     const { rows: interactions } = await pool.query(`
       SELECT id, interaction_type, summary, subject, email_snippet,
-             interaction_at, created_at, channel, direction, source
+             interaction_at, created_at, channel, direction, source,
+             visibility, is_internal, sensitivity,
+             email_from, email_to
       FROM interactions
       WHERE person_id = $1 AND interaction_type != 'research_note'
+        AND (visibility IS NULL OR visibility != 'private' OR owner_user_id = $2)
       ORDER BY interaction_at DESC NULLS LAST
       LIMIT 30
-    `, [req.params.id]);
+    `, [req.params.id, req.user?.user_id]);
 
     // Person signals
     const { rows: signals } = await pool.query(`
@@ -516,17 +595,26 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
       companySignals = rows;
     }
 
-    // Interaction stats
+    // Interaction stats — count all types
     const { rows: [stats] } = await pool.query(`
       SELECT COUNT(*) AS total,
              COUNT(*) FILTER (WHERE interaction_type = 'research_note') AS notes,
-             COUNT(*) FILTER (WHERE interaction_type = 'email') AS emails,
+             COUNT(*) FILTER (WHERE interaction_type IN ('email', 'gmail', 'enrich_gmail')) AS emails,
              COUNT(*) FILTER (WHERE interaction_type = 'call') AS calls,
              COUNT(*) FILTER (WHERE interaction_type = 'meeting') AS meetings,
+             COUNT(*) FILTER (WHERE interaction_type IN ('linkedin_message', 'linkedin')) AS linkedin,
+             COUNT(*) FILTER (WHERE interaction_type NOT IN ('research_note','email','gmail','enrich_gmail','call','meeting','linkedin_message','linkedin')) AS other,
              MIN(interaction_at) AS first_interaction,
              MAX(interaction_at) AS last_interaction
       FROM interactions WHERE person_id = $1
     `, [req.params.id]);
+
+    // Also get type breakdown for debugging
+    const { rows: typeCounts } = await pool.query(
+      `SELECT interaction_type, COUNT(*) AS cnt FROM interactions WHERE person_id = $1 GROUP BY interaction_type ORDER BY cnt DESC`,
+      [req.params.id]
+    );
+    stats.type_breakdown = typeCounts;
 
     // Colleagues at same company
     let colleagues = [];
@@ -572,23 +660,81 @@ app.get('/api/people/:id/notes', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── Edit Person ───
+app.patch('/api/people/:id', authenticateToken, async (req, res) => {
+  try {
+    const allowedFields = ['full_name', 'current_title', 'current_company_name', 'email', 'phone',
+                           'linkedin_url', 'location', 'headline', 'seniority_level', 'functional_area', 'bio',
+                           'visibility'];
+    const updates = [];
+    const params = [req.params.id];
+    let idx = 1;
+
+    for (const [key, value] of Object.entries(req.body)) {
+      if (!allowedFields.includes(key)) continue;
+      idx++;
+      updates.push(`${key} = $${idx}`);
+      params.push(value || null);
+    }
+
+    if (updates.length === 0) return res.status(400).json({ error: 'No valid fields to update' });
+
+    // If visibility changed to private, set owner and timestamp
+    if (req.body.visibility === 'private') {
+      idx++;
+      updates.push(`owner_user_id = $${idx}`);
+      params.push(req.user?.user_id || null);
+      updates.push(`marked_private_at = NOW()`);
+    } else if (req.body.visibility === 'company') {
+      updates.push(`owner_user_id = NULL`);
+      updates.push(`marked_private_at = NULL`);
+    }
+
+    // If company name changed, try to link to company record
+    if (req.body.current_company_name) {
+      const { rows: [match] } = await pool.query(
+        `SELECT id FROM companies WHERE name ILIKE $1 LIMIT 1`,
+        [req.body.current_company_name]
+      );
+      if (match) {
+        idx++;
+        updates.push(`current_company_id = $${idx}`);
+        params.push(match.id);
+      }
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE people SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      params
+    );
+
+    if (rows.length === 0) return res.status(404).json({ error: 'Person not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Person update error:', err.message);
+    res.status(500).json({ error: 'Failed to update person' });
+  }
+});
+
 // ─── Person Enrichment ───
 app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
   try {
     const { rows: [person] } = await pool.query(
-      `SELECT id, full_name, email, external_id, current_company_name, current_company_id FROM people WHERE id = $1`, [req.params.id]
+      `SELECT id, full_name, email, source_id, source, current_title,
+              current_company_name, current_company_id, linkedin_url, location
+       FROM people WHERE id = $1`, [req.params.id]
     );
     if (!person) return res.status(404).json({ error: 'Person not found' });
 
-    const enrichResults = { ezekia: null, gmail: null, embedding: null };
+    const enrichResults = { ezekia: null, gmail: null, signals: null, web: null, embedding: null };
 
-    // 1. Try Ezekia if we have external_id
-    if (person.external_id && process.env.EZEKIA_API_KEY) {
+    // 1. Ezekia CRM sync — pull latest profile data
+    if (person.source_id && person.source === 'ezekia' && process.env.EZEKIA_API_KEY) {
       try {
         const ezRes = await new Promise((resolve, reject) => {
-          const req = https.request({
+          const r = https.request({
             hostname: process.env.EZEKIA_HOST || 'app.ezekia.com',
-            path: `/api/v1/candidates/${person.external_id}?fields[]=profile.positions&fields[]=relationships.billings`,
+            path: `/api/v1/candidates/${person.source_id}?fields[]=profile.positions&fields[]=relationships.billings`,
             method: 'GET',
             headers: { 'Authorization': `Bearer ${process.env.EZEKIA_API_KEY}`, 'Accept': 'application/json' },
             timeout: 15000,
@@ -597,18 +743,17 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
             res.on('data', c => chunks.push(c));
             res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch (e) { reject(e); } });
           });
-          req.on('error', reject);
-          req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
-          req.end();
+          r.on('error', reject);
+          r.on('timeout', () => { r.destroy(); reject(new Error('Timeout')); });
+          r.end();
         });
 
-        // Update person with latest Ezekia data
         if (ezRes && ezRes.data) {
           const d = ezRes.data;
           const updates = {};
           if (d.headline) updates.headline = d.headline;
-          if (d.current_title || (d.profile?.positions?.[0]?.title)) updates.current_title = d.current_title || d.profile.positions[0].title;
-          if (d.current_company || (d.profile?.positions?.[0]?.company)) updates.current_company_name = d.current_company || d.profile.positions[0].company;
+          if (d.current_title || d.profile?.positions?.[0]?.title) updates.current_title = d.current_title || d.profile.positions[0].title;
+          if (d.current_company || d.profile?.positions?.[0]?.company) updates.current_company_name = d.current_company || d.profile.positions[0].company;
           if (d.email) updates.email = d.email;
           if (d.phone) updates.phone = d.phone;
           if (d.linkedin_url) updates.linkedin_url = d.linkedin_url;
@@ -616,75 +761,234 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 
           if (Object.keys(updates).length > 0) {
             const setClauses = Object.entries(updates).map(([k, v], i) => `${k} = $${i + 2}`);
-            const vals = [req.params.id, ...Object.values(updates)];
-            await pool.query(`UPDATE people SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = $1`, vals);
+            await pool.query(`UPDATE people SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = $1`, [req.params.id, ...Object.values(updates)]);
             enrichResults.ezekia = { updated_fields: Object.keys(updates) };
           } else {
-            enrichResults.ezekia = { message: 'No new data from Ezekia' };
+            enrichResults.ezekia = { message: 'No new data' };
           }
         }
       } catch (e) {
         enrichResults.ezekia = { error: e.message };
       }
     } else {
-      enrichResults.ezekia = { message: person.external_id ? 'EZEKIA_API_KEY not configured' : 'No Ezekia ID linked' };
+      enrichResults.ezekia = { message: !person.source_id ? 'No CRM ID linked' : !process.env.EZEKIA_API_KEY ? 'API key not configured' : 'Not an Ezekia contact' };
     }
 
-    // 2. Try Gmail search if configured and person has email
-    if (person.email && process.env.GOOGLE_ACCESS_TOKEN) {
+    // 2. Gmail — search for recent email interactions
+    if (person.email) {
       try {
-        // Search Gmail for recent emails to/from this person
-        const searchQuery = encodeURIComponent(`from:${person.email} OR to:${person.email} newer_than:90d`);
-        const gmailRes = await new Promise((resolve, reject) => {
-          const req = https.request({
-            hostname: 'gmail.googleapis.com',
-            path: `/gmail/v1/users/me/messages?q=${searchQuery}&maxResults=5`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${process.env.GOOGLE_ACCESS_TOKEN}` },
-            timeout: 10000,
-          }, (res) => {
-            const chunks = [];
-            res.on('data', c => chunks.push(c));
-            res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch (e) { reject(e); } });
-          });
-          req.on('error', reject);
-          req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
-          req.end();
-        });
+        // Find all gmail accounts configured
+        const { rows: gmailAccounts } = await pool.query(
+          `SELECT user_id, gmail_access_token, gmail_refresh_token, gmail_token_expiry
+           FROM users WHERE gmail_access_token IS NOT NULL LIMIT 5`
+        ).catch(() => ({ rows: [] }));
 
-        const msgCount = gmailRes.resultSizeEstimate || 0;
-        enrichResults.gmail = { messages_found: msgCount, message: `${msgCount} emails in last 90 days` };
+        let totalEmails = 0;
+        let newEmails = 0;
+
+        for (const acct of gmailAccounts) {
+          try {
+            const token = acct.gmail_access_token;
+            const searchQuery = encodeURIComponent(`from:${person.email} OR to:${person.email} newer_than:90d`);
+            const gmailRes = await new Promise((resolve, reject) => {
+              const r = https.request({
+                hostname: 'gmail.googleapis.com',
+                path: `/gmail/v1/users/me/messages?q=${searchQuery}&maxResults=10`,
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` },
+                timeout: 10000,
+              }, (res) => {
+                const chunks = [];
+                res.on('data', c => chunks.push(c));
+                res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch (e) { reject(e); } });
+              });
+              r.on('error', reject);
+              r.on('timeout', () => { r.destroy(); reject(new Error('Timeout')); });
+              r.end();
+            });
+
+            totalEmails += gmailRes.resultSizeEstimate || 0;
+
+            // Fetch and store new messages as interactions
+            if (gmailRes.messages && gmailRes.messages.length > 0) {
+              for (const msg of gmailRes.messages.slice(0, 5)) {
+                // Check if already stored
+                const { rows: existing } = await pool.query(
+                  `SELECT id FROM interactions WHERE person_id = $1 AND external_id = $2`,
+                  [req.params.id, msg.id]
+                );
+                if (existing.length > 0) continue;
+
+                // Fetch message detail
+                try {
+                  const msgDetail = await new Promise((resolve, reject) => {
+                    const r = https.request({
+                      hostname: 'gmail.googleapis.com',
+                      path: `/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date`,
+                      method: 'GET',
+                      headers: { 'Authorization': `Bearer ${token}` },
+                      timeout: 10000,
+                    }, (res) => {
+                      const chunks = [];
+                      res.on('data', c => chunks.push(c));
+                      res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch (e) { reject(e); } });
+                    });
+                    r.on('error', reject);
+                    r.on('timeout', () => { r.destroy(); reject(new Error('Timeout')); });
+                    r.end();
+                  });
+
+                  const headers = msgDetail.payload?.headers || [];
+                  const subject = headers.find(h => h.name === 'Subject')?.value || '';
+                  const from = headers.find(h => h.name === 'From')?.value || '';
+                  const dateStr = headers.find(h => h.name === 'Date')?.value;
+                  const direction = from.toLowerCase().includes(person.email.toLowerCase()) ? 'inbound' : 'outbound';
+
+                  await pool.query(`
+                    INSERT INTO interactions (person_id, user_id, interaction_type, direction, subject, email_snippet,
+                                              source, external_id, channel, interaction_at, created_at)
+                    VALUES ($1, $2, 'email', $3, $4, $5, 'enrich_gmail', $6, 'email', $7, NOW())
+                    ON CONFLICT DO NOTHING
+                  `, [req.params.id, acct.user_id, direction, subject, msgDetail.snippet || '', msg.id,
+                      dateStr ? new Date(dateStr).toISOString() : new Date().toISOString()]);
+                  newEmails++;
+                } catch (e) { /* skip individual message errors */ }
+              }
+            }
+          } catch (e) { /* skip account errors */ }
+        }
+
+        enrichResults.gmail = { messages_found: totalEmails, new_stored: newEmails, message: `${totalEmails} emails found, ${newEmails} new stored` };
       } catch (e) {
         enrichResults.gmail = { error: e.message };
       }
     } else {
-      enrichResults.gmail = { message: person.email ? 'Google OAuth not configured' : 'No email address' };
+      enrichResults.gmail = { message: 'No email address on file' };
     }
 
-    // 3. Re-embed the person
+    // 3. Signal scan — search for recent news/signals about this person
+    if (process.env.ANTHROPIC_API_KEY && (person.full_name || person.current_company_name)) {
+      try {
+        // Check existing external_documents for mentions
+        const searchTerms = [person.full_name];
+        if (person.current_company_name) searchTerms.push(person.current_company_name);
+
+        const { rows: mentions } = await pool.query(`
+          SELECT ed.id, ed.title, ed.source_name, ed.published_at, ed.source_url,
+                 ts_rank(to_tsvector('english', COALESCE(ed.title,'') || ' ' || COALESCE(ed.summary,'') || ' ' || COALESCE(ed.content,'')),
+                         plainto_tsquery('english', $1)) AS relevance
+          FROM external_documents ed
+          WHERE to_tsvector('english', COALESCE(ed.title,'') || ' ' || COALESCE(ed.summary,'') || ' ' || COALESCE(ed.content,''))
+                @@ plainto_tsquery('english', $1)
+            AND ed.published_at > NOW() - INTERVAL '90 days'
+          ORDER BY relevance DESC
+          LIMIT 10
+        `, [person.full_name]);
+
+        // Generate person signals from mentions via Claude
+        let newSignals = 0;
+        if (mentions.length > 0 && process.env.ANTHROPIC_API_KEY) {
+          const mentionSummaries = mentions.map(m => `- "${m.title}" (${m.source_name}, ${m.published_at ? new Date(m.published_at).toLocaleDateString() : 'recent'})`).join('\n');
+
+          const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({
+              model: 'claude-sonnet-4-20250514', max_tokens: 1024,
+              system: 'Extract career signals from news mentions about a person. Return JSON array of signals: [{signal_type, title, description, confidence}]. signal_type must be one of: new_role, promotion, company_exit, board_appointment, speaking_engagement, publication, award_recognition, news_mention. Only include clear, factual signals. Return [] if no clear signals.',
+              messages: [{ role: 'user', content: `Person: ${person.full_name}\nCurrent role: ${person.current_title || 'unknown'} at ${person.current_company_name || 'unknown'}\n\nRecent mentions:\n${mentionSummaries}\n\nExtract career signals. Return JSON array only.` }]
+            })
+          });
+
+          if (claudeRes.ok) {
+            const data = await claudeRes.json();
+            const raw = data.content?.[0]?.text || '[]';
+            try {
+              const jsonMatch = raw.match(/\[[\s\S]*\]/);
+              const signals = JSON.parse(jsonMatch ? jsonMatch[0] : '[]');
+              for (const sig of signals) {
+                // Avoid duplicates
+                const { rows: existing } = await pool.query(
+                  `SELECT id FROM person_signals WHERE person_id = $1 AND signal_type = $2 AND title = $3`,
+                  [req.params.id, sig.signal_type, sig.title]
+                );
+                if (existing.length > 0) continue;
+
+                await pool.query(`
+                  INSERT INTO person_signals (person_id, signal_type, title, description, confidence_score, source, detected_at)
+                  VALUES ($1, $2, $3, $4, $5, 'enrichment', NOW())
+                `, [req.params.id, sig.signal_type, sig.title, sig.description, sig.confidence || 0.7]);
+                newSignals++;
+              }
+            } catch (e) { /* JSON parse failed */ }
+          }
+        }
+
+        enrichResults.signals = { mentions_found: mentions.length, new_signals: newSignals, message: `${mentions.length} mentions scanned, ${newSignals} new signals detected` };
+      } catch (e) {
+        enrichResults.signals = { error: e.message };
+      }
+    } else {
+      enrichResults.signals = { message: 'ANTHROPIC_API_KEY not configured' };
+    }
+
+    // 4. Web search — search for recent public information
+    if (person.full_name && person.current_company_name) {
+      try {
+        // Use existing documents as a proxy for web signals
+        // Also check for company signals that relate to this person's employer
+        const { rows: companySignals } = await pool.query(`
+          SELECT signal_type, evidence_summary, confidence_score, detected_at
+          FROM signal_events
+          WHERE company_id = $1 AND detected_at > NOW() - INTERVAL '60 days'
+          ORDER BY detected_at DESC LIMIT 5
+        `, [person.current_company_id]).catch(() => ({ rows: [] }));
+
+        enrichResults.web = {
+          company_signals: companySignals.length,
+          message: `${companySignals.length} company signals in last 60 days`
+        };
+      } catch (e) {
+        enrichResults.web = { error: e.message };
+      }
+    } else {
+      enrichResults.web = { message: 'Need name and company for web search' };
+    }
+
+    // 5. Re-embed the person with all enriched data
     try {
       const { rows: [latest] } = await pool.query(`SELECT * FROM people WHERE id = $1`, [req.params.id]);
       const parts = [latest.full_name, latest.current_title, latest.current_company_name, latest.headline, latest.bio, latest.location].filter(Boolean);
       if (latest.expertise_tags?.length) parts.push('Skills: ' + latest.expertise_tags.join(', '));
+      if (latest.industries?.length) parts.push('Industries: ' + latest.industries.join(', '));
 
-      // Get latest notes for embedding
-      const { rows: notes } = await pool.query(`SELECT summary FROM interactions WHERE person_id = $1 AND interaction_type = 'research_note' ORDER BY interaction_at DESC NULLS LAST LIMIT 3`, [req.params.id]);
+      // Get latest notes for embedding context
+      const { rows: notes } = await pool.query(`SELECT summary FROM interactions WHERE person_id = $1 AND interaction_type = 'research_note' ORDER BY interaction_at DESC NULLS LAST LIMIT 5`, [req.params.id]);
       notes.forEach(n => { if (n.summary) parts.push(n.summary.slice(0, 500)); });
 
-      if (parts.join(' ').length > 10) {
+      // Get person signals for embedding context
+      const { rows: psigs } = await pool.query(`SELECT title, description FROM person_signals WHERE person_id = $1 ORDER BY detected_at DESC LIMIT 3`, [req.params.id]);
+      psigs.forEach(s => { if (s.title) parts.push(s.title + (s.description ? ': ' + s.description.slice(0, 200) : '')); });
+
+      if (parts.join(' ').length > 10 && process.env.QDRANT_URL) {
         const embedding = await generateQueryEmbedding(parts.join('\n'));
-        // Upsert to Qdrant
         const url = new URL('/collections/people/points', process.env.QDRANT_URL);
         await new Promise((resolve, reject) => {
-          const body = JSON.stringify({ points: [{ id: req.params.id, vector: embedding, payload: { name: latest.full_name, title: latest.current_title, company: latest.current_company_name } }] });
-          const qReq = https.request({ hostname: url.hostname, port: url.port || 443, path: url.pathname + '?wait=true', method: 'PUT', headers: { 'Content-Type': 'application/json', 'api-key': process.env.QDRANT_API_KEY }, timeout: 10000 },
+          const body = JSON.stringify({ points: [{ id: req.params.id, vector: embedding, payload: {
+            name: latest.full_name, title: latest.current_title, company: latest.current_company_name,
+            has_research_notes: notes.length > 0
+          } }] });
+          const qReq = https.request({ hostname: url.hostname, port: url.port || 443, path: url.pathname + '?wait=true', method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'api-key': process.env.QDRANT_API_KEY }, timeout: 10000 },
             (res) => { const c = []; res.on('data', d => c.push(d)); res.on('end', () => resolve()); });
           qReq.on('error', reject);
           qReq.write(body);
           qReq.end();
         });
         await pool.query('UPDATE people SET embedded_at = NOW() WHERE id = $1', [req.params.id]);
-        enrichResults.embedding = { message: 'Re-embedded successfully' };
+        enrichResults.embedding = { message: 'Re-embedded with enriched data' };
+      } else {
+        enrichResults.embedding = { message: 'Insufficient data for embedding' };
       }
     } catch (e) {
       enrichResults.embedding = { error: e.message };
@@ -1065,8 +1369,12 @@ app.get('/api/search', authenticateToken, async (req, res) => {
       const qdrantResults = await qdrantSearch('people', vector, limit);
 
       if (qdrantResults.length > 0) {
-        const pointIds = qdrantResults.map(r => r.id);
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const pointIds = qdrantResults.map(r => String(r.id)).filter(id => uuidRegex.test(id));
 
+        if (pointIds.length === 0) {
+          // No valid UUIDs — skip DB query
+        } else {
         const { rows: people } = await pool.query(`
           SELECT id, full_name, current_title, current_company_name, headline,
                  location, seniority_level, expertise_tags, industries, source,
@@ -1087,6 +1395,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
             };
           })
           .filter(Boolean);
+        }
       }
     }
 
@@ -1096,8 +1405,12 @@ app.get('/api/search', authenticateToken, async (req, res) => {
       const qdrantResults = await qdrantSearch('companies', vector, compLimit);
 
       if (qdrantResults.length > 0) {
-        const compIds = qdrantResults.map(r => r.id);
+        const uuidRx = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const compIds = qdrantResults.map(r => String(r.id)).filter(id => uuidRx.test(id));
 
+        if (compIds.length === 0) {
+          // No valid UUIDs — skip
+        } else {
         const { rows: companies } = await pool.query(`
           SELECT c.id, c.name, c.sector, c.geography, c.domain, c.is_client,
                  c.employee_count_band, c.description,
@@ -1118,6 +1431,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
             };
           })
           .filter(Boolean);
+        }
       }
     }
 
@@ -1127,8 +1441,12 @@ app.get('/api/search', authenticateToken, async (req, res) => {
       const qdrantResults = await qdrantSearch('documents', vector, docLimit);
 
       if (qdrantResults.length > 0) {
-        const docIds = qdrantResults.map(r => r.id);
+        const uuidRx2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const docIds = qdrantResults.map(r => String(r.id)).filter(id => uuidRx2.test(id));
 
+        if (docIds.length === 0) {
+          // No valid UUIDs — skip
+        } else {
         const { rows: docs } = await pool.query(`
           SELECT id, title, source_type, source_name, source_url, author, published_at
           FROM external_documents WHERE id = ANY($1::uuid[])
@@ -1146,6 +1464,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
             };
           })
           .filter(Boolean);
+        }
       }
     }
 
@@ -1239,6 +1558,240 @@ app.get('/api/db-test', async (req, res) => {
 });
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SIGNAL DISPATCHES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Manual trigger for dispatch generation
+app.post('/api/dispatches/generate', authenticateToken, async (req, res) => {
+  try {
+    const { generateDispatches } = require('./scripts/generate_dispatches');
+    res.json({ status: 'started', message: 'Dispatch generation triggered' });
+    generateDispatches().then(r => console.log('Dispatch generation complete:', r)).catch(e => console.error('Dispatch generation failed:', e.message));
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to trigger dispatch generation: ' + err.message });
+  }
+});
+
+// Rescan proximity maps for existing dispatches
+app.post('/api/dispatches/rescan', authenticateToken, async (req, res) => {
+  try {
+    const { rescanProximity } = require('./scripts/generate_dispatches');
+    res.json({ status: 'started', message: 'Proximity rescan triggered' });
+    rescanProximity().then(r => console.log('Proximity rescan complete:', r)).catch(e => console.error('Proximity rescan failed:', e.message));
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to trigger rescan: ' + err.message });
+  }
+});
+
+// List dispatches
+app.get('/api/dispatches', authenticateToken, async (req, res) => {
+  try {
+    const status = req.query.status;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+    const offset = parseInt(req.query.offset) || 0;
+
+    let where = 'WHERE 1=1';
+    const params = [];
+    let idx = 0;
+
+    if (status) {
+      idx++; where += ` AND sd.status = $${idx}`; params.push(status);
+    }
+
+    idx++; params.push(limit);
+    idx++; params.push(offset);
+
+    const [result, countResult] = await Promise.all([
+      pool.query(`
+        SELECT sd.id, sd.signal_event_id, sd.company_id, sd.company_name,
+               sd.signal_type, sd.signal_summary,
+               sd.opportunity_angle, sd.blog_title, sd.blog_theme,
+               sd.status, sd.generated_at, sd.reviewed_at, sd.sent_at,
+               sd.best_entry_point, sd.proximity_map, sd.approach_rationale,
+               jsonb_array_length(COALESCE(sd.proximity_map, '[]'::jsonb)) AS connection_count,
+               jsonb_array_length(COALESCE(sd.send_to, '[]'::jsonb)) AS recipient_count,
+               c.sector, c.geography, c.is_client,
+               (SELECT COUNT(*) FROM people p2 WHERE p2.current_company_id = sd.company_id) AS people_at_company,
+               (SELECT COUNT(*) FROM placements pl JOIN clients cl ON cl.id = pl.client_id
+                WHERE cl.company_id = sd.company_id) AS placement_count
+        FROM signal_dispatches sd
+        LEFT JOIN companies c ON c.id = sd.company_id
+        ${where}
+        ORDER BY
+          CASE WHEN c.is_client = true THEN 0 ELSE 1 END,
+          CASE WHEN jsonb_array_length(COALESCE(sd.proximity_map, '[]'::jsonb)) > 0 THEN 0 ELSE 1 END,
+          sd.generated_at DESC
+        LIMIT $${idx - 1} OFFSET $${idx}
+      `, params),
+      pool.query(`SELECT COUNT(*) AS cnt FROM signal_dispatches sd ${where}`, status ? [status] : [])
+    ]);
+
+    res.json({
+      dispatches: result.rows,
+      total: parseInt(countResult.rows[0].cnt),
+      limit, offset
+    });
+  } catch (err) {
+    console.error('Dispatches list error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch dispatches' });
+  }
+});
+
+// Get single dispatch
+app.get('/api/dispatches/:id', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT sd.*,
+             c.sector, c.geography, c.is_client, c.employee_count_band, c.domain,
+             se.confidence_score AS signal_confidence,
+             se.evidence_snippets, se.hiring_implications,
+             se.detected_at AS signal_detected_at, se.signal_date
+      FROM signal_dispatches sd
+      LEFT JOIN companies c ON c.id = sd.company_id
+      LEFT JOIN signal_events se ON se.id = sd.signal_event_id
+      WHERE sd.id = $1
+    `, [req.params.id]);
+
+    if (rows.length === 0) return res.status(404).json({ error: 'Dispatch not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Dispatch detail error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch dispatch' });
+  }
+});
+
+// Update dispatch status
+app.patch('/api/dispatches/:id', authenticateToken, async (req, res) => {
+  try {
+    const { status, send_to, blog_body, blog_title } = req.body;
+    const updates = ['updated_at = NOW()'];
+    const params = [req.params.id];
+    let idx = 1;
+
+    if (status) {
+      idx++; updates.push(`status = $${idx}`); params.push(status);
+      if (status === 'reviewed') { updates.push('reviewed_at = NOW()'); }
+      if (status === 'sent') { updates.push('sent_at = NOW()'); }
+    }
+    if (send_to !== undefined) {
+      idx++; updates.push(`send_to = $${idx}`); params.push(JSON.stringify(send_to));
+    }
+    if (blog_body) {
+      idx++; updates.push(`blog_body = $${idx}`); params.push(blog_body);
+    }
+    if (blog_title) {
+      idx++; updates.push(`blog_title = $${idx}`); params.push(blog_title);
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE signal_dispatches SET ${updates.join(', ')} WHERE id = $1 RETURNING *`,
+      params
+    );
+
+    if (rows.length === 0) return res.status(404).json({ error: 'Dispatch not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Dispatch update error:', err.message);
+    res.status(500).json({ error: 'Failed to update dispatch' });
+  }
+});
+
+// Regenerate blog post for a dispatch
+app.post('/api/dispatches/:id/regenerate', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM signal_dispatches WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Dispatch not found' });
+
+    const dispatch = rows[0];
+    const themeOverride = req.body.theme;
+
+    // Get company info
+    let company = {};
+    if (dispatch.company_id) {
+      const { rows: [co] } = await pool.query(
+        'SELECT sector, geography, employee_count_band FROM companies WHERE id = $1',
+        [dispatch.company_id]
+      );
+      if (co) company = co;
+    }
+
+    // Regenerate via Claude
+    const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+    if (!ANTHROPIC_API_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+
+    const signalType = dispatch.signal_type || 'market_signal';
+    const theme = themeOverride || dispatch.blog_theme || 'executive talent strategy';
+
+    const systemPrompt = `You are a senior executive search consultant writing a thought leadership piece for an executive audience.
+Write with authority and insight, not sales language.
+The piece should be genuinely useful to a senior leader at a company that has just experienced a ${signalType.replace(/_/g, ' ')} event.
+It should feel like advice from a trusted advisor, not a pitch from a recruiter.
+Length: 550-700 words.
+Format: Return ONLY valid JSON with keys: "title", "body", "keywords"
+  - title: Compelling headline
+  - body: 4-5 paragraphs of flowing prose. No subheadings, no bullet points. Use \\n\\n between paragraphs.
+  - keywords: Array of 4-6 relevant keywords/phrases
+Tone: Warm, direct, intelligent. First person plural ("we've seen").
+Do not mention the company by name or the specific event.
+Do not use the word "landscape" or "navigate".`;
+
+    const userPrompt = `Write a thought leadership article for a senior leader at a ${company.sector || 'technology'} company (${company.employee_count_band || 'growth-stage'}, ${company.geography || 'global'} market) that has just experienced a ${signalType.replace(/_/g, ' ')} event.
+
+The article should explore the theme: "${theme}"
+
+Signal context: ${dispatch.signal_summary || signalType.replace(/_/g, ' ')}
+Approach angle: ${dispatch.approach_rationale || 'Market intelligence and talent advisory'}
+
+The article should leave the reader thinking about talent, leadership, and organisational design.
+
+Return valid JSON only.`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2048,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }]
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      return res.status(500).json({ error: `Claude API failed: ${err.slice(0, 200)}` });
+    }
+
+    const data = await response.json();
+    const raw = data.content[0]?.text || '';
+
+    let blog;
+    try {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      blog = JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      blog = { title: theme, body: raw, keywords: [] };
+    }
+
+    // Update dispatch
+    await pool.query(`
+      UPDATE signal_dispatches
+      SET blog_theme = $2, blog_title = $3, blog_body = $4, blog_keywords = $5, updated_at = NOW()
+      WHERE id = $1
+    `, [dispatch.id, theme, blog.title, blog.body, blog.keywords || []]);
+
+    res.json({ title: blog.title, body: blog.body, keywords: blog.keywords });
+  } catch (err) {
+    console.error('Blog regeneration error:', err.message);
+    res.status(500).json({ error: 'Failed to regenerate blog' });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1992,6 +2545,44 @@ app.listen(PORT, async () => {
   console.log(`  Dashboard: http://localhost:${PORT}`);
   console.log(`  API:       http://localhost:${PORT}/api/health`);
   console.log('═══════════════════════════════════════════════════\n');
+
+  // Ensure people privacy columns exist
+  try {
+    await pool.query(`
+      ALTER TABLE people ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) DEFAULT 'company';
+      ALTER TABLE people ADD COLUMN IF NOT EXISTS owner_user_id UUID;
+      ALTER TABLE people ADD COLUMN IF NOT EXISTS marked_private_at TIMESTAMPTZ;
+    `);
+  } catch (e) { /* columns may already exist */ }
+
+  // Ensure interactions has sensitivity flag for internal ML-to-ML
+  try {
+    await pool.query(`
+      ALTER TABLE interactions ADD COLUMN IF NOT EXISTS is_internal BOOLEAN DEFAULT false;
+      ALTER TABLE interactions ADD COLUMN IF NOT EXISTS sensitivity VARCHAR(20) DEFAULT 'normal';
+    `);
+  } catch (e) { /* columns may already exist */ }
+
+  // Ensure signal_dispatches table exists
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS signal_dispatches (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        signal_event_id UUID, company_id UUID, company_name TEXT,
+        signal_type TEXT, signal_summary TEXT,
+        proximity_map JSONB DEFAULT '[]'::jsonb,
+        best_entry_point JSONB,
+        opportunity_angle TEXT, approach_rationale TEXT,
+        blog_theme TEXT, blog_title TEXT, blog_body TEXT, blog_keywords TEXT[],
+        send_to JSONB DEFAULT '[]'::jsonb,
+        status TEXT DEFAULT 'draft',
+        generated_at TIMESTAMPTZ DEFAULT NOW(),
+        reviewed_at TIMESTAMPTZ, reviewed_by UUID,
+        sent_at TIMESTAMPTZ, created_by UUID,
+        created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  } catch (e) { /* table may already exist */ }
 
   // Backfill: mark companies as clients if they have placements
   try {
