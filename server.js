@@ -270,7 +270,9 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
     const type = req.query.type;
     const status = req.query.status;
     const category = req.query.category;
+    const region = req.query.region; // AU, SG, UK, US, APAC, EMEA, AMER, or 'all'
     const minConf = parseFloat(req.query.min_confidence) || 0;
+    const networkOnly = req.query.network === 'true'; // only signals where we have contacts
 
     let where = 'WHERE 1=1';
     const params = [];
@@ -297,6 +299,77 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
       params.push(minConf);
     }
 
+    // Region filter — map regions to geography/country patterns
+    // Searches company geography, company name, evidence text, and source document
+    const REGION_MAP = {
+      'AU': ['Australia', 'Australian', 'Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'ASX', 'Canberra', 'CSIRO'],
+      'SG': ['Singapore', 'Southeast Asia', 'ASEAN', 'Jakarta', 'Kuala Lumpur', 'Bangkok', 'Vietnam', 'Philippines', 'Indonesia', 'Malaysia', 'Thailand'],
+      'UK': ['United Kingdom', 'London', 'England', 'Britain', 'British', 'Manchester', 'Edinburgh', 'FTSE', 'LSE'],
+      'US': ['United States', 'Silicon Valley', 'New York', 'San Francisco', 'California', 'Texas', 'Boston', 'Seattle', 'NASDAQ', 'NYSE', 'SEC', 'Federal'],
+      'APAC': ['Australia', 'Australian', 'Singapore', 'Asia', 'APAC', 'Japan', 'Japanese', 'Korea', 'Korean', 'India', 'Indian', 'Hong Kong', 'Southeast Asia', 'ASEAN', 'Sydney', 'Melbourne', 'China', 'Chinese', 'Taiwan', 'New Zealand'],
+      'EMEA': ['United Kingdom', 'Europe', 'European', 'EMEA', 'London', 'Germany', 'German', 'France', 'French', 'Netherlands', 'Ireland', 'Middle East', 'Africa', 'Nordics', 'Sweden', 'Denmark', 'EU'],
+      'AMER': ['United States', 'North America', 'Canada', 'Canadian', 'Latin America', 'Brazil', 'Brazilian', 'Mexico', 'Silicon Valley', 'New York', 'NASDAQ', 'NYSE'],
+    };
+    const REGION_CODES = {
+      'AU': ['AU','NZ'],
+      'SG': ['SG','MY','ID','TH','VN','PH'],
+      'UK': ['UK','GB','IE'],
+      'US': ['US','CA'],
+      'APAC': ['AU','NZ','SG','MY','ID','TH','VN','PH','JP','KR','IN','HK','CN','TW'],
+      'EMEA': ['UK','GB','IE','DE','FR','NL','SE','DK','NO','FI','ES','IT','PT','AT','CH','BE'],
+      'AMER': ['US','CA','BR','MX','AR','CL','CO'],
+    };
+    if (region && region !== 'all' && REGION_MAP[region]) {
+      const geos = REGION_MAP[region];
+      const codes = REGION_CODES[region] || [];
+
+      // Build OR conditions across multiple fields
+      const orParts = [];
+
+      // Company geography/country_code
+      geos.forEach(g => {
+        paramIdx++;
+        orParts.push(`c.geography ILIKE $${paramIdx}`);
+        params.push(`%${g}%`);
+      });
+      codes.forEach(code => {
+        paramIdx++;
+        orParts.push(`c.country_code = $${paramIdx}`);
+        params.push(code);
+      });
+
+      // Evidence summary text
+      geos.forEach(g => {
+        paramIdx++;
+        orParts.push(`se.evidence_summary ILIKE $${paramIdx}`);
+        params.push(`%${g}%`);
+      });
+
+      // Company name (catches "Department of Health and Aged Care" etc.)
+      geos.forEach(g => {
+        paramIdx++;
+        orParts.push(`se.company_name ILIKE $${paramIdx}`);
+        params.push(`%${g}%`);
+      });
+
+      // Source document title
+      geos.forEach(g => {
+        paramIdx++;
+        orParts.push(`ed.title ILIKE $${paramIdx}`);
+        params.push(`%${g}%`);
+      });
+
+      where += ` AND (${orParts.join(' OR ')})`;
+    }
+
+    // Network filter — only signals where we have contacts at the company
+    if (networkOnly) {
+      where += ` AND (
+        EXISTS (SELECT 1 FROM people p WHERE p.current_company_id = se.company_id)
+        OR c.is_client = true
+      )`;
+    }
+
     paramIdx++;
     const limitParam = paramIdx;
     params.push(limit);
@@ -306,28 +379,87 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
 
     const [signalsResult, countResult] = await Promise.all([
       pool.query(`
-        SELECT se.id, se.signal_type, se.company_name, se.confidence_score,
+        SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
                se.evidence_summary, se.evidence_snippet, se.triage_status,
                se.detected_at, se.signal_date, se.source_url, se.signal_category,
                se.hiring_implications,
-               c.sector, c.geography, c.is_client,
+               c.sector, c.geography, c.is_client, c.country_code,
                ed.source_name, ed.source_type AS doc_source_type,
-               ed.title AS doc_title, ed.summary AS doc_summary
+               ed.title AS doc_title, ed.summary AS doc_summary,
+               (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id) AS contact_count,
+               (SELECT COUNT(*) FROM placements pl JOIN clients cl ON cl.id = pl.client_id
+                WHERE cl.company_id = se.company_id) AS placement_count,
+               sd.id AS dispatch_id, sd.status AS dispatch_status,
+               sd.claimed_by, sd.claimed_by_name, sd.blog_title AS dispatch_blog_title
         FROM signal_events se
         LEFT JOIN companies c ON se.company_id = c.id
         LEFT JOIN external_documents ed ON se.source_document_id = ed.id
+        LEFT JOIN LATERAL (
+          SELECT sd2.id, sd2.status, sd2.claimed_by,
+                 u2.name AS claimed_by_name, sd2.blog_title
+          FROM signal_dispatches sd2
+          LEFT JOIN users u2 ON u2.id = sd2.claimed_by
+          WHERE sd2.signal_event_id = se.id
+          ORDER BY sd2.generated_at DESC LIMIT 1
+        ) sd ON true
         ${where}
-        ORDER BY se.confidence_score DESC NULLS LAST, se.detected_at DESC NULLS LAST
+        ORDER BY
+          CASE WHEN c.is_client = true THEN 0 ELSE 1 END,
+          CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id) > 0 THEN 0 ELSE 1 END,
+          CASE WHEN se.signal_type = 'geographic_expansion' THEN 0 ELSE 1 END,
+          CASE WHEN se.signal_type IN ('capital_raising', 'strategic_hiring') THEN 0 ELSE 1 END,
+          se.confidence_score DESC NULLS LAST,
+          se.detected_at DESC NULLS LAST
         LIMIT $${limitParam} OFFSET $${offsetParam}
       `, params),
-      pool.query(`SELECT COUNT(*) AS cnt FROM signal_events se ${where}`, params.slice(0, -2)),
+      pool.query(`SELECT COUNT(*) AS cnt FROM signal_events se LEFT JOIN companies c ON se.company_id = c.id ${where}`, params.slice(0, -2)),
     ]);
+
+    // Compute region stats for the header — search across company geo, evidence, doc title
+    let regionStats = null;
+    try {
+      const { rows: rStats } = await pool.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE
+            c.geography ILIKE '%Australia%' OR c.country_code = 'AU'
+            OR se.evidence_summary ILIKE '%Australia%' OR se.evidence_summary ILIKE '%Sydney%' OR se.evidence_summary ILIKE '%Melbourne%'
+            OR se.company_name ILIKE '%Australian%'
+            OR ed.title ILIKE '%Australia%' OR ed.title ILIKE '%Australian%'
+          ) AS au,
+          COUNT(*) FILTER (WHERE
+            c.geography ILIKE '%Singapore%' OR c.country_code = 'SG'
+            OR c.geography ILIKE '%Southeast Asia%' OR c.geography ILIKE '%ASEAN%'
+            OR se.evidence_summary ILIKE '%Singapore%' OR se.evidence_summary ILIKE '%Southeast Asia%'
+            OR ed.title ILIKE '%Singapore%'
+          ) AS sg,
+          COUNT(*) FILTER (WHERE
+            c.geography ILIKE '%United Kingdom%' OR c.country_code IN ('UK','GB')
+            OR c.geography ILIKE '%London%' OR c.geography ILIKE '%Britain%'
+            OR se.evidence_summary ILIKE '%United Kingdom%' OR se.evidence_summary ILIKE '%London%' OR se.evidence_summary ILIKE '%Britain%'
+            OR ed.title ILIKE '%UK %' OR ed.title ILIKE '%London%' OR ed.title ILIKE '%British%'
+          ) AS uk,
+          COUNT(*) FILTER (WHERE
+            c.geography ILIKE '%United States%' OR c.country_code = 'US'
+            OR c.geography ILIKE '%America%' OR c.geography ILIKE '%Silicon Valley%'
+            OR se.evidence_summary ILIKE '%United States%' OR se.evidence_summary ILIKE '%Silicon Valley%'
+          ) AS us,
+          COUNT(*) FILTER (WHERE c.is_client = true) AS client_signals,
+          COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM people p WHERE p.current_company_id = se.company_id)) AS network_signals,
+          COUNT(*) AS total
+        FROM signal_events se
+        LEFT JOIN companies c ON se.company_id = c.id
+        LEFT JOIN external_documents ed ON se.source_document_id = ed.id
+        WHERE se.detected_at > NOW() - INTERVAL '7 days'
+      `);
+      regionStats = rStats[0];
+    } catch (e) { /* ignore */ }
 
     res.json({
       signals: signalsResult.rows,
       total: parseInt(countResult.rows[0].cnt),
       limit,
       offset,
+      region_stats: regionStats,
     });
   } catch (err) {
     console.error('Signals brief error:', err.message);
@@ -726,61 +858,123 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
     );
     if (!person) return res.status(404).json({ error: 'Person not found' });
 
-    const enrichResults = { ezekia: null, gmail: null, signals: null, web: null, embedding: null };
+    const enrichResults = { ezekia_profile: null, ezekia_projects: null, gmail: null, signals: null, web: null, embedding: null };
 
-    // 1. Ezekia CRM sync — pull latest profile data
-    if (person.source_id && person.source === 'ezekia' && process.env.EZEKIA_API_KEY) {
+    // 1a. Ezekia People API — pull latest profile data
+    if (person.source_id && process.env.EZEKIA_API_TOKEN) {
       try {
-        const ezRes = await new Promise((resolve, reject) => {
-          const r = https.request({
-            hostname: process.env.EZEKIA_HOST || 'app.ezekia.com',
-            path: `/api/v1/candidates/${person.source_id}?fields[]=profile.positions&fields[]=relationships.billings`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${process.env.EZEKIA_API_KEY}`, 'Accept': 'application/json' },
-            timeout: 15000,
-          }, (res) => {
-            const chunks = [];
-            res.on('data', c => chunks.push(c));
-            res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch (e) { reject(e); } });
-          });
-          r.on('error', reject);
-          r.on('timeout', () => { r.destroy(); reject(new Error('Timeout')); });
-          r.end();
-        });
+        const ezekia = require('./lib/ezekia');
+        const ezRes = await ezekia.getPerson(person.source_id, 'profile.positions,profile.education,profile.headline,relationships.billings,relationships.assignments');
 
         if (ezRes && ezRes.data) {
           const d = ezRes.data;
           const updates = {};
-          if (d.headline) updates.headline = d.headline;
-          if (d.current_title || d.profile?.positions?.[0]?.title) updates.current_title = d.current_title || d.profile.positions[0].title;
-          if (d.current_company || d.profile?.positions?.[0]?.company) updates.current_company_name = d.current_company || d.profile.positions[0].company;
-          if (d.email) updates.email = d.email;
-          if (d.phone) updates.phone = d.phone;
-          if (d.linkedin_url) updates.linkedin_url = d.linkedin_url;
-          if (d.location) updates.location = d.location;
+
+          // Profile fields
+          const pos = d.profile?.positions?.[0];
+          if (d.headline || d.profile?.headline) updates.headline = d.headline || d.profile.headline;
+          if (d.current_title || pos?.title) updates.current_title = d.current_title || pos.title;
+          if (d.current_company || pos?.company?.name || pos?.company) {
+            updates.current_company_name = d.current_company || pos.company?.name || pos.company;
+          }
+          if (d.email || d.emails?.[0]?.address) updates.email = d.email || d.emails[0].address;
+          if (d.phone || d.phones?.[0]?.number) updates.phone = d.phone || d.phones[0].number;
+          if (d.linkedin_url || d.linkedinUrl) updates.linkedin_url = d.linkedin_url || d.linkedinUrl;
+          if (d.location || d.address?.city) updates.location = d.location || [d.address?.city, d.address?.country].filter(Boolean).join(', ');
+
+          // Career history from positions
+          if (d.profile?.positions?.length > 0) {
+            const career = d.profile.positions.map(p => ({
+              title: p.title,
+              company: p.company?.name || p.company,
+              start_date: p.startDate,
+              end_date: p.endDate,
+              current: p.current || !p.endDate
+            }));
+            updates.career_history = JSON.stringify(career);
+          }
+
+          // Education
+          if (d.profile?.education?.length > 0) {
+            updates.education = JSON.stringify(d.profile.education);
+          }
 
           if (Object.keys(updates).length > 0) {
             const setClauses = Object.entries(updates).map(([k, v], i) => `${k} = $${i + 2}`);
-            await pool.query(`UPDATE people SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = $1`, [req.params.id, ...Object.values(updates)]);
-            enrichResults.ezekia = { updated_fields: Object.keys(updates) };
+            await pool.query(`UPDATE people SET ${setClauses.join(', ')}, synced_at = NOW(), updated_at = NOW() WHERE id = $1`,
+              [req.params.id, ...Object.values(updates)]);
+            enrichResults.ezekia_profile = { updated_fields: Object.keys(updates) };
           } else {
-            enrichResults.ezekia = { message: 'No new data' };
+            enrichResults.ezekia_profile = { message: 'No new profile data' };
           }
         }
       } catch (e) {
-        enrichResults.ezekia = { error: e.message };
+        enrichResults.ezekia_profile = { error: e.message };
       }
     } else {
-      enrichResults.ezekia = { message: !person.source_id ? 'No CRM ID linked' : !process.env.EZEKIA_API_KEY ? 'API key not configured' : 'Not an Ezekia contact' };
+      enrichResults.ezekia_profile = { message: !person.source_id ? 'No CRM ID linked' : 'API key not configured' };
     }
 
-    // 2. Gmail — search for recent email interactions
+    // 1b. Ezekia Projects API — find which projects/searches this person is in
+    if (person.source_id && process.env.EZEKIA_API_TOKEN) {
+      try {
+        const ezekia = require('./lib/ezekia');
+        // Search across projects for this candidate
+        let projectsFound = 0;
+        let searchesLinked = 0;
+
+        // Get projects and check for this person as a candidate
+        const projRes = await ezekia.getProjects({ page: 1, per_page: 100 });
+        const projects = projRes?.data || [];
+
+        for (const proj of projects.slice(0, 50)) {
+          try {
+            const candRes = await ezekia.getProjectCandidates(proj.id, { per_page: 200 });
+            const candidates = candRes?.data || [];
+            const isCandidate = candidates.some(c =>
+              String(c.id) === String(person.source_id) ||
+              c.candidate?.id === parseInt(person.source_id)
+            );
+
+            if (isCandidate) {
+              projectsFound++;
+              // Try to link to our searches table
+              const { rows: [existingSearch] } = await pool.query(
+                `SELECT id FROM searches WHERE code = $1 OR title ILIKE $2 LIMIT 1`,
+                [`ezekia_${proj.id}`, `%${proj.name}%`]
+              );
+              if (existingSearch) {
+                // Link person as search candidate
+                await pool.query(`
+                  INSERT INTO search_candidates (search_id, person_id, status, source, added_at)
+                  VALUES ($1, $2, 'sourced', 'ezekia_enrich', NOW())
+                  ON CONFLICT DO NOTHING
+                `, [existingSearch.id, req.params.id]);
+                searchesLinked++;
+              }
+            }
+          } catch (e) { /* skip individual project errors */ }
+        }
+
+        enrichResults.ezekia_projects = {
+          projects_scanned: Math.min(projects.length, 50),
+          found_in: projectsFound,
+          searches_linked: searchesLinked,
+          message: `Found in ${projectsFound} project${projectsFound !== 1 ? 's' : ''}, linked to ${searchesLinked} search${searchesLinked !== 1 ? 'es' : ''}`
+        };
+      } catch (e) {
+        enrichResults.ezekia_projects = { error: e.message };
+      }
+    } else {
+      enrichResults.ezekia_projects = { message: 'No CRM ID or API key' };
+    }
+
+    // 2. Gmail — search via user_google_accounts with proper token refresh
     if (person.email) {
       try {
-        // Find all gmail accounts configured
         const { rows: gmailAccounts } = await pool.query(
-          `SELECT user_id, gmail_access_token, gmail_refresh_token, gmail_token_expiry
-           FROM users WHERE gmail_access_token IS NOT NULL LIMIT 5`
+          `SELECT id, user_id, google_email, access_token, refresh_token, token_expires_at
+           FROM user_google_accounts WHERE sync_enabled = true LIMIT 5`
         ).catch(() => ({ rows: [] }));
 
         let totalEmails = 0;
@@ -788,55 +982,62 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 
         for (const acct of gmailAccounts) {
           try {
-            const token = acct.gmail_access_token;
-            const searchQuery = encodeURIComponent(`from:${person.email} OR to:${person.email} newer_than:90d`);
-            const gmailRes = await new Promise((resolve, reject) => {
-              const r = https.request({
-                hostname: 'gmail.googleapis.com',
-                path: `/gmail/v1/users/me/messages?q=${searchQuery}&maxResults=10`,
-                method: 'GET',
-                headers: { 'Authorization': `Bearer ${token}` },
-                timeout: 10000,
-              }, (res) => {
-                const chunks = [];
-                res.on('data', c => chunks.push(c));
-                res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch (e) { reject(e); } });
-              });
-              r.on('error', reject);
-              r.on('timeout', () => { r.destroy(); reject(new Error('Timeout')); });
-              r.end();
-            });
+            // Refresh token if expired
+            let token = acct.access_token;
+            const expires = new Date(acct.token_expires_at);
+            if (expires <= new Date(Date.now() + 5 * 60 * 1000)) {
+              // Token expired or expiring — refresh it
+              if (acct.refresh_token && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+                try {
+                  const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                      refresh_token: acct.refresh_token,
+                      client_id: process.env.GOOGLE_CLIENT_ID,
+                      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+                      grant_type: 'refresh_token'
+                    })
+                  });
+                  if (refreshRes.ok) {
+                    const tokens = await refreshRes.json();
+                    token = tokens.access_token;
+                    await pool.query(
+                      `UPDATE user_google_accounts SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3`,
+                      [token, new Date(Date.now() + tokens.expires_in * 1000), acct.id]
+                    );
+                  }
+                } catch (e) { /* use existing token */ }
+              }
+            }
 
-            totalEmails += gmailRes.resultSizeEstimate || 0;
+            // Search Gmail
+            const searchQuery = encodeURIComponent(`from:${person.email} OR to:${person.email} newer_than:90d`);
+            const gmailRes = await fetch(
+              `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${searchQuery}&maxResults=10`,
+              { headers: { 'Authorization': `Bearer ${token}` } }
+            );
+
+            if (!gmailRes.ok) continue;
+            const gmailData = await gmailRes.json();
+            totalEmails += gmailData.resultSizeEstimate || 0;
 
             // Fetch and store new messages as interactions
-            if (gmailRes.messages && gmailRes.messages.length > 0) {
-              for (const msg of gmailRes.messages.slice(0, 5)) {
-                // Check if already stored
+            if (gmailData.messages && gmailData.messages.length > 0) {
+              for (const msg of gmailData.messages.slice(0, 5)) {
                 const { rows: existing } = await pool.query(
                   `SELECT id FROM interactions WHERE person_id = $1 AND external_id = $2`,
                   [req.params.id, msg.id]
                 );
                 if (existing.length > 0) continue;
 
-                // Fetch message detail
                 try {
-                  const msgDetail = await new Promise((resolve, reject) => {
-                    const r = https.request({
-                      hostname: 'gmail.googleapis.com',
-                      path: `/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date`,
-                      method: 'GET',
-                      headers: { 'Authorization': `Bearer ${token}` },
-                      timeout: 10000,
-                    }, (res) => {
-                      const chunks = [];
-                      res.on('data', c => chunks.push(c));
-                      res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch (e) { reject(e); } });
-                    });
-                    r.on('error', reject);
-                    r.on('timeout', () => { r.destroy(); reject(new Error('Timeout')); });
-                    r.end();
-                  });
+                  const msgRes = await fetch(
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date`,
+                    { headers: { 'Authorization': `Bearer ${token}` } }
+                  );
+                  if (!msgRes.ok) continue;
+                  const msgDetail = await msgRes.json();
 
                   const headers = msgDetail.payload?.headers || [];
                   const subject = headers.find(h => h.name === 'Subject')?.value || '';
@@ -846,10 +1047,11 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 
                   await pool.query(`
                     INSERT INTO interactions (person_id, user_id, interaction_type, direction, subject, email_snippet,
-                                              source, external_id, channel, interaction_at, created_at)
-                    VALUES ($1, $2, 'email', $3, $4, $5, 'enrich_gmail', $6, 'email', $7, NOW())
+                                              email_from, email_to, source, external_id, channel, interaction_at, created_at)
+                    VALUES ($1, $2, 'email', $3, $4, $5, $6, $7, 'enrich_gmail', $8, 'email', $9, NOW())
                     ON CONFLICT DO NOTHING
-                  `, [req.params.id, acct.user_id, direction, subject, msgDetail.snippet || '', msg.id,
+                  `, [req.params.id, acct.user_id, direction, subject, msgDetail.snippet || '',
+                      from, person.email, msg.id,
                       dateStr ? new Date(dateStr).toISOString() : new Date().toISOString()]);
                   newEmails++;
                 } catch (e) { /* skip individual message errors */ }
@@ -858,7 +1060,14 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           } catch (e) { /* skip account errors */ }
         }
 
-        enrichResults.gmail = { messages_found: totalEmails, new_stored: newEmails, message: `${totalEmails} emails found, ${newEmails} new stored` };
+        enrichResults.gmail = {
+          messages_found: totalEmails,
+          new_stored: newEmails,
+          accounts_checked: gmailAccounts.length,
+          message: gmailAccounts.length === 0
+            ? 'No Gmail accounts connected'
+            : `${totalEmails} emails found, ${newEmails} new stored (${gmailAccounts.length} account${gmailAccounts.length > 1 ? 's' : ''} checked)`
+        };
       } catch (e) {
         enrichResults.gmail = { error: e.message };
       }
@@ -1561,6 +1770,132 @@ app.get('/api/health', (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// NETWORK TOPOLOGY — RANKED OPPORTUNITIES & DENSITY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Ranked opportunities — triangulated scores
+app.get('/api/opportunities', authenticateToken, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const offset = parseInt(req.query.offset) || 0;
+    const region = req.query.region;
+    const minScore = parseFloat(req.query.min_score) || 0;
+    const status = req.query.status || 'active';
+
+    let where = 'WHERE ro.status = $1';
+    const params = [status];
+    let idx = 1;
+
+    if (region && region !== 'all') {
+      idx++; where += ` AND ro.region_code = $${idx}`; params.push(region);
+    }
+    if (minScore > 0) {
+      idx++; where += ` AND ro.composite_score >= $${idx}`; params.push(minScore);
+    }
+
+    idx++; params.push(limit);
+    idx++; params.push(offset);
+
+    const [result, countResult] = await Promise.all([
+      pool.query(`
+        SELECT ro.*,
+               cas.contact_count, cas.senior_contact_count, cas.active_contact_count,
+               cas.adjacency_score,
+               gp.region_name, gp.weight_boost, gp.is_home_market
+        FROM ranked_opportunities ro
+        LEFT JOIN company_adjacency_scores cas ON LOWER(TRIM(cas.company_name)) = LOWER(TRIM(ro.company_name))
+        LEFT JOIN geo_priorities gp ON gp.region_code = ro.region_code
+        ${where}
+        ORDER BY ro.composite_score DESC
+        LIMIT $${idx - 1} OFFSET $${idx}
+      `, params),
+      pool.query(`SELECT COUNT(*) AS cnt FROM ranked_opportunities ro ${where}`, params.slice(0, -2))
+    ]);
+
+    res.json({
+      opportunities: result.rows,
+      total: parseInt(countResult.rows[0].cnt),
+      limit, offset
+    });
+  } catch (err) {
+    console.error('Opportunities error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch opportunities' });
+  }
+});
+
+// Top opportunities by region
+app.get('/api/opportunities/by-region', authenticateToken, async (req, res) => {
+  try {
+    const perRegion = Math.min(parseInt(req.query.per_region) || 5, 20);
+
+    const { rows } = await pool.query(`
+      SELECT ro.*,
+             cas.contact_count, cas.senior_contact_count, cas.active_contact_count,
+             gp.region_name, gp.weight_boost, gp.is_home_market
+      FROM ranked_opportunities ro
+      LEFT JOIN company_adjacency_scores cas ON LOWER(TRIM(cas.company_name)) = LOWER(TRIM(ro.company_name))
+      LEFT JOIN geo_priorities gp ON gp.region_code = ro.region_code
+      WHERE ro.status = 'active' AND ro.rank_in_region <= $1
+        AND ro.region_code IS NOT NULL AND ro.region_code != 'UNKNOWN'
+      ORDER BY gp.weight_boost DESC NULLS LAST, ro.rank_in_region ASC
+    `, [perRegion]);
+
+    // Group by region
+    const grouped = {};
+    for (const row of rows) {
+      const rc = row.region_code;
+      if (!grouped[rc]) {
+        grouped[rc] = {
+          region_code: rc,
+          region_name: row.region_name,
+          weight_boost: row.weight_boost,
+          is_home_market: row.is_home_market,
+          opportunities: []
+        };
+      }
+      grouped[rc].opportunities.push(row);
+    }
+
+    res.json(grouped);
+  } catch (err) {
+    console.error('Opportunities by-region error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch opportunities by region' });
+  }
+});
+
+// Network density scores
+app.get('/api/network/density', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT nds.*, gp.region_name, gp.weight_boost, gp.is_home_market
+      FROM network_density_scores nds
+      LEFT JOIN geo_priorities gp ON gp.region_code = nds.region_code
+      WHERE nds.sector IS NULL
+      ORDER BY nds.density_score DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error('Network density error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch density scores' });
+  }
+});
+
+// Manual trigger for topology recompute
+app.post('/api/network/recompute', authenticateToken, async (req, res) => {
+  try {
+    const { computeNetworkTopology } = require('./scripts/compute_network_topology');
+    const { computeTriangulation } = require('./scripts/compute_triangulation');
+    res.json({ status: 'started', message: 'Network topology + triangulation recompute triggered' });
+    computeNetworkTopology()
+      .then(() => computeTriangulation())
+      .then(r => console.log('Network recompute complete:', r))
+      .catch(e => console.error('Network recompute failed:', e.message));
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to trigger recompute: ' + err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SIGNAL DISPATCHES
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1572,6 +1907,57 @@ app.post('/api/dispatches/generate', authenticateToken, async (req, res) => {
     generateDispatches().then(r => console.log('Dispatch generation complete:', r)).catch(e => console.error('Dispatch generation failed:', e.message));
   } catch (err) {
     res.status(500).json({ error: 'Failed to trigger dispatch generation: ' + err.message });
+  }
+});
+
+// Claim a dispatch
+app.post('/api/dispatches/:id/claim', authenticateToken, async (req, res) => {
+  try {
+    // Check if already claimed
+    const { rows: [dispatch] } = await pool.query(
+      'SELECT id, claimed_by, status FROM signal_dispatches WHERE id = $1', [req.params.id]
+    );
+    if (!dispatch) return res.status(404).json({ error: 'Dispatch not found' });
+
+    if (dispatch.claimed_by && dispatch.claimed_by !== req.user?.user_id) {
+      // Already claimed by someone else
+      const { rows: [claimer] } = await pool.query('SELECT name FROM users WHERE id = $1', [dispatch.claimed_by]);
+      return res.status(409).json({
+        error: 'Already claimed',
+        claimed_by: claimer?.name || 'another user',
+        message: `This dispatch has been claimed by ${claimer?.name || 'another team member'}`
+      });
+    }
+
+    const { rows: [updated] } = await pool.query(`
+      UPDATE signal_dispatches
+      SET claimed_by = $2, claimed_at = NOW(), status = CASE WHEN status = 'draft' THEN 'claimed' ELSE status END, updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `, [req.params.id, req.user?.user_id]);
+
+    res.json({ dispatch: updated, claimed_by: req.user?.name });
+  } catch (err) {
+    console.error('Claim error:', err.message);
+    res.status(500).json({ error: 'Failed to claim dispatch' });
+  }
+});
+
+// Unclaim a dispatch
+app.post('/api/dispatches/:id/unclaim', authenticateToken, async (req, res) => {
+  try {
+    const { rows: [updated] } = await pool.query(`
+      UPDATE signal_dispatches
+      SET claimed_by = NULL, claimed_at = NULL, status = 'draft', updated_at = NOW()
+      WHERE id = $1 AND (claimed_by = $2 OR claimed_by IS NULL)
+      RETURNING *
+    `, [req.params.id, req.user?.user_id]);
+
+    if (!updated) return res.status(403).json({ error: 'Can only unclaim your own dispatches' });
+    res.json({ dispatch: updated });
+  } catch (err) {
+    console.error('Unclaim error:', err.message);
+    res.status(500).json({ error: 'Failed to unclaim dispatch' });
   }
 });
 
@@ -1611,6 +1997,7 @@ app.get('/api/dispatches', authenticateToken, async (req, res) => {
                sd.opportunity_angle, sd.blog_title, sd.blog_theme,
                sd.status, sd.generated_at, sd.reviewed_at, sd.sent_at,
                sd.best_entry_point, sd.proximity_map, sd.approach_rationale,
+               sd.claimed_by, sd.claimed_at, u_claim.name AS claimed_by_name,
                jsonb_array_length(COALESCE(sd.proximity_map, '[]'::jsonb)) AS connection_count,
                jsonb_array_length(COALESCE(sd.send_to, '[]'::jsonb)) AS recipient_count,
                c.sector, c.geography, c.is_client,
@@ -1619,6 +2006,7 @@ app.get('/api/dispatches', authenticateToken, async (req, res) => {
                 WHERE cl.company_id = sd.company_id) AS placement_count
         FROM signal_dispatches sd
         LEFT JOIN companies c ON c.id = sd.company_id
+        LEFT JOIN users u_claim ON u_claim.id = sd.claimed_by
         ${where}
         ORDER BY
           CASE WHEN c.is_client = true THEN 0 ELSE 1 END,
@@ -1648,10 +2036,12 @@ app.get('/api/dispatches/:id', authenticateToken, async (req, res) => {
              c.sector, c.geography, c.is_client, c.employee_count_band, c.domain,
              se.confidence_score AS signal_confidence,
              se.evidence_snippets, se.hiring_implications,
-             se.detected_at AS signal_detected_at, se.signal_date
+             se.detected_at AS signal_detected_at, se.signal_date,
+             u_claim.name AS claimed_by_name
       FROM signal_dispatches sd
       LEFT JOIN companies c ON c.id = sd.company_id
       LEFT JOIN signal_events se ON se.id = sd.signal_event_id
+      LEFT JOIN users u_claim ON u_claim.id = sd.claimed_by
       WHERE sd.id = $1
     `, [req.params.id]);
 
@@ -2563,7 +2953,17 @@ app.listen(PORT, async () => {
     `);
   } catch (e) { /* columns may already exist */ }
 
-  // Ensure signal_dispatches table exists
+  // Ensure network topology tables exist
+  try {
+    const fs = require('fs');
+    const topoMigration = require('path').join(__dirname, 'sql', 'migration_network_topology.sql');
+    if (fs.existsSync(topoMigration)) {
+      await pool.query(fs.readFileSync(topoMigration, 'utf8'));
+      console.log('  ✅ Network topology tables ready');
+    }
+  } catch (e) { /* tables may already exist */ }
+
+  // Ensure signal_dispatches table exists with claim columns
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS signal_dispatches (
@@ -2579,9 +2979,13 @@ app.listen(PORT, async () => {
         generated_at TIMESTAMPTZ DEFAULT NOW(),
         reviewed_at TIMESTAMPTZ, reviewed_by UUID,
         sent_at TIMESTAMPTZ, created_by UUID,
+        claimed_by UUID, claimed_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    // Add claim columns if table already existed
+    await pool.query(`ALTER TABLE signal_dispatches ADD COLUMN IF NOT EXISTS claimed_by UUID`);
+    await pool.query(`ALTER TABLE signal_dispatches ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ`);
   } catch (e) { /* table may already exist */ }
 
   // Backfill: mark companies as clients if they have placements

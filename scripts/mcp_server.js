@@ -303,7 +303,7 @@ Args:
       // Interactions
       if (include_interactions) {
         const intR = await dbQuery(`
-          SELECT interaction_type, direction, subject, summary, interaction_at, u.full_name as user_name
+          SELECT interaction_type, direction, subject, summary, interaction_at, u.name as user_name
           FROM interactions i
           LEFT JOIN users u ON i.user_id = u.id
           WHERE i.person_id = $1
@@ -322,7 +322,7 @@ Args:
       // Team proximity
       if (include_proximity) {
         const proxR = await dbQuery(`
-          SELECT tp.relationship_type, tp.relationship_strength, tp.connected_date, u.full_name as team_member
+          SELECT tp.relationship_type, tp.relationship_strength, tp.connected_date, u.name as team_member
           FROM team_proximity tp
           LEFT JOIN users u ON tp.team_member_id = u.id
           WHERE tp.person_id = $1
@@ -339,16 +339,16 @@ Args:
 
       // Active search matches
       const matchR = await dbQuery(`
-        SELECT s.title, sc.match_score, sc.stage
+        SELECT s.title, sc.overall_fit_score, sc.status
         FROM search_candidates sc
         JOIN searches s ON sc.search_id = s.id
         WHERE sc.person_id = $1
-        ORDER BY sc.match_score DESC NULLS LAST LIMIT 5
+        ORDER BY sc.overall_fit_score DESC NULLS LAST LIMIT 5
       `, [personRow.id]);
       if (matchR.rows.length > 0) {
         sections.push(`\n## Active Search Matches`);
         for (const m of matchR.rows) {
-          sections.push(`- ${m.title} — Stage: ${m.stage || 'identified'} (Match: ${formatScore(m.match_score)})`);
+          sections.push(`- ${m.title} — Stage: ${m.status || 'identified'} (Match: ${formatScore(m.overall_fit_score)})`);
         }
       }
 
@@ -713,14 +713,14 @@ Args:
       ].filter(Boolean);
 
       const candR = await dbQuery(`
-        SELECT sc.stage, sc.match_score, sc.notes,
+        SELECT sc.status, sc.overall_fit_score, sc.assessment_notes,
                p.full_name, p.current_title, p.current_company_name, p.location,
                ps.engagement_score, ps.receptivity_score, ps.timing_score
         FROM search_candidates sc
         JOIN people p ON sc.person_id = p.id
         LEFT JOIN person_scores ps ON p.id = ps.person_id
         WHERE sc.search_id = $1
-        ORDER BY sc.match_score DESC NULLS LAST, sc.stage
+        ORDER BY sc.overall_fit_score DESC NULLS LAST, sc.status
       `, [search_id]);
 
       if (candR.rows.length === 0) {
@@ -731,7 +731,7 @@ Args:
         // Group by stage
         const byStage = {};
         for (const c of candR.rows) {
-          const stage = c.stage || 'identified';
+          const stage = c.status || 'identified';
           if (!byStage[stage]) byStage[stage] = [];
           byStage[stage].push(c);
         }
@@ -741,7 +741,7 @@ Args:
           if (!byStage[stage]) continue;
           sections.push(`\n### ${stage.toUpperCase()} (${byStage[stage].length})`);
           for (const c of byStage[stage]) {
-            sections.push(`- **${c.full_name}** — ${c.current_title || '?'} @ ${c.current_company_name || '?'} (Match: ${formatScore(c.match_score)}, Timing: ${formatScore(c.timing_score)})`);
+            sections.push(`- **${c.full_name}** — ${c.current_title || '?'} @ ${c.current_company_name || '?'} (Match: ${formatScore(c.overall_fit_score)}, Timing: ${formatScore(c.timing_score)})`);
           }
         }
       }
@@ -927,7 +927,7 @@ Args:
       const proxR = await dbQuery(`
         SELECT tp.relationship_type, tp.relationship_strength, tp.connected_date,
                tp.interaction_count, tp.last_interaction_date, tp.notes,
-               u.full_name as team_member, u.email as team_email
+               u.name as team_member, u.email as team_email
         FROM team_proximity tp
         LEFT JOIN users u ON tp.team_member_id = u.id
         WHERE tp.person_id = $1

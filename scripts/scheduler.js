@@ -1018,6 +1018,26 @@ const PIPELINES = {
     },
     schedule: '0 */2 * * *',
     description: 'Generate intelligence briefs with proximity maps, approach angles, and thought leadership content'
+  },
+  compute_network_topology: {
+    name: 'Compute Network Topology',
+    icon: '🌐',
+    fn: async () => {
+      const { computeNetworkTopology } = require('./compute_network_topology');
+      return computeNetworkTopology();
+    },
+    schedule: '0 2 * * *',
+    description: 'Compute network density, company adjacency scores, and geo mapping'
+  },
+  compute_triangulation: {
+    name: 'Compute Triangulation',
+    icon: '🔺',
+    fn: async () => {
+      const { computeTriangulation } = require('./compute_triangulation');
+      return computeTriangulation();
+    },
+    schedule: '30 */2 * * *',
+    description: 'Triangulate signals × network × geo into ranked opportunities with explainable scores'
   }
 };
 

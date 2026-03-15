@@ -624,7 +624,10 @@ body {
   border-color: var(--rule-bold);
 }
 
-.deal-card.triaged { opacity: 0.5; }
+.deal-card.triaged-qualified { border-left: 3px solid var(--emerald); }
+.deal-card.triaged-irrelevant { opacity: 0.4; }
+.deal-card.triaged-investigating { border-left: 3px solid var(--blue); }
+.deal-card.triaged-contacted { border-left: 3px solid var(--violet); }
 
 .deal-top {
   display: flex;
@@ -1342,7 +1345,37 @@ body {
   .search-overlay { padding: 0 20px; }
 }
 
+/* Region cards */
+.region-card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 18px 22px; cursor: pointer; transition: all 0.2s; }
+.region-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.06); border-color: var(--rule-bold); }
+.region-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.region-flag { font-size: 24px; }
+.region-name { font-family: var(--serif); font-size: 18px; font-weight: 600; }
+.region-count { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--blue); }
+.region-stats { display: flex; gap: 12px; font-size: 11px; color: var(--ink-3); margin-bottom: 8px; }
+.region-stat { display: flex; align-items: center; gap: 3px; }
+.region-signals { display: flex; flex-direction: column; gap: 4px; }
+.region-signal-row { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 2px; border-bottom: 1px solid var(--rule); border-radius: 3px; transition: background 0.1s; }
+.region-signal-row:last-child { border-bottom: none; }
+.region-signal-row:hover { background: var(--surface-warm); }
+.region-signal-company { font-weight: 600; color: var(--ink); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color 0.1s; }
+.region-signal-company:hover { color: var(--blue); }
+.region-signal-type { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; background: var(--surface-warm); color: var(--ink-3); }
+.region-signal-type.client { background: var(--amber-soft); color: var(--amber); }
+.region-signal-type.network { background: var(--blue-soft); color: var(--blue); }
+
+/* Network signal cards — compact */
+.network-card { background: var(--surface); border: 1px solid var(--rule); border-left: 3px solid var(--blue); border-radius: var(--radius); padding: 14px 18px; cursor: pointer; transition: all 0.15s; }
+.network-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+.network-card.client { border-left-color: var(--amber); }
+.network-top { display: flex; justify-content: space-between; align-items: flex-start; }
+.network-company { font-family: var(--serif); font-size: 16px; font-weight: 600; }
+.network-contacts { font-size: 11px; color: var(--blue); font-weight: 600; white-space: nowrap; }
+.network-summary { font-size: 13px; color: var(--ink-2); margin-top: 4px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.network-badges { display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
+
 @media (max-width: 640px) {
+  .region-grid { grid-template-columns: 1fr !important; }
   .metrics-grid { grid-template-columns: repeat(2, 1fr); }
   .zone-title { font-size: 22px; }
   .deal-card { padding: 18px 20px; }
@@ -1470,7 +1503,7 @@ body {
   <!-- ─── LEFT COLUMN ─── -->
   <div class="main-column">
 
-    <!-- DEAL INTELLIGENCE (wired to signal_events) -->
+    <!-- DEAL INTELLIGENCE — Network Signals + Regional Streams -->
     <div class="zone" id="dealSection">
       <div class="zone-header">
         <div class="zone-rule"></div>
@@ -1478,7 +1511,7 @@ body {
           <div class="zone-title">Deal Intelligence</div>
           <div class="zone-count" id="dealCount">— SIGNALS</div>
         </div>
-        <div class="zone-subtitle">Companies showing hiring signals matched to MitchelLake capabilities</div>
+        <div class="zone-subtitle">Ranked: client signals → network contacts → expansion → growth. Grouped by region.</div>
         <div class="zone-filters" id="signalFilters">
           <button class="filter-btn active" onclick="filterSignals('all', this)">All</button>
           <button class="filter-btn" onclick="filterSignals('capital_raising', this)">Funding</button>
@@ -1488,24 +1521,48 @@ body {
           <button class="filter-btn" onclick="filterSignals('leadership_change', this)">Leadership</button>
           <button class="filter-btn" onclick="filterSignals('product_launch', this)">Product</button>
         </div>
-        <div class="zone-filters" id="categoryFilters" style="margin-top:8px">
-          <span style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-4);font-weight:600;padding:5px 4px">Category:</span>
-          <button class="filter-btn" onclick="filterCategory('thematic', this)">Thematic</button>
-          <button class="filter-btn" onclick="filterCategory('geographic', this)">Geographic</button>
-          <button class="filter-btn" onclick="filterCategory('motion', this)">Motion</button>
-          <button class="filter-btn" onclick="filterCategory('growth', this)">Growth</button>
-          <button class="filter-btn" onclick="filterCategory('hiring', this)">Hiring</button>
-          <button class="filter-btn" onclick="filterCategory('change', this)">Change</button>
-          <button class="filter-btn" onclick="filterCategory('innovation', this)">Innovation</button>
-          <button class="filter-btn" onclick="filterCategory('trend', this)">Trend</button>
-          <button class="filter-btn" onclick="filterCategory('gap', this)">Gap</button>
+      </div>
+
+      <!-- Regional Grid (TOP) -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-family:var(--serif);font-size:18px;font-weight:600">🌐 Regional Deal Intelligence</span>
+        </div>
+        <span style="font-size:11px;color:var(--ink-4);font-family:var(--mono)" id="regionTotalCount"></span>
+      </div>
+      <div style="font-size:12px;color:var(--ink-3);margin-bottom:14px">Signals ranked by network density, client relationships, and strategic priority</div>
+      <div class="region-grid" id="regionGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:28px">
+        <!-- Region cards injected by JS -->
+      </div>
+
+      <!-- Network Signals Stream -->
+      <div class="signal-stream" id="networkStream" style="margin-bottom:28px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:var(--serif);font-size:18px;font-weight:600">🔗 Network Signals</span>
+            <span style="font-size:11px;color:var(--ink-4);font-family:var(--mono)" id="networkCount"></span>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--ink-3);margin-bottom:12px">Companies where we have contacts, placements, or client relationships</div>
+        <div id="networkFeed" style="display:flex;flex-direction:column;gap:10px">
+          <div style="text-align:center;padding:20px;color:var(--ink-4);font-size:13px">Loading network signals...</div>
+        </div>
+      </div>
+
+      <!-- Full feed (below network) -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;margin-top:8px">
+        <span style="font-family:var(--serif);font-size:18px;font-weight:600">All Signals</span>
+        <div class="zone-filters" id="regionFilterBtns" style="margin:0">
+          <button class="filter-btn active" onclick="filterRegion('all', this)">All</button>
+          <button class="filter-btn" onclick="filterRegion('AU', this)">🇦🇺 AU</button>
+          <button class="filter-btn" onclick="filterRegion('SG', this)">🇸🇬 SG</button>
+          <button class="filter-btn" onclick="filterRegion('UK', this)">🇬🇧 UK</button>
+          <button class="filter-btn" onclick="filterRegion('US', this)">🇺🇸 US</button>
         </div>
       </div>
 
       <div id="dealFeed">
-        <!-- Skeleton -->
         <div class="deal-card"><div class="skeleton-line" style="width:60%"></div><div class="skeleton-line" style="width:100%"></div><div class="skeleton-line" style="width:80%"></div></div>
-        <div class="deal-card"><div class="skeleton-line" style="width:50%"></div><div class="skeleton-line" style="width:90%"></div><div class="skeleton-line" style="width:70%"></div></div>
       </div>
 
       <button class="load-more-btn" id="loadMoreBtn" onclick="loadMoreSignals()">Load more signals</button>
@@ -1853,7 +1910,7 @@ const SIGNAL_BADGE_CLASS = {
 };
 
 let currentFilter = 'all';
-let currentCategory = null;
+let currentRegion = 'all';
 let signalOffset = 0;
 
 function filterSignals(type, btn) {
@@ -1862,28 +1919,151 @@ function filterSignals(type, btn) {
   currentFilter = type;
   signalOffset = 0;
   loadSignals();
+  loadNetworkSignals();
+  loadRegionCards();
 }
 
-function filterCategory(cat, btn) {
-  const wasActive = btn.classList.contains('active');
-  document.querySelectorAll('#categoryFilters .filter-btn').forEach(b => b.classList.remove('active'));
-  if (!wasActive) {
-    btn.classList.add('active');
-    currentCategory = cat;
-  } else {
-    currentCategory = null; // toggle off
-  }
+function filterRegion(region, btn) {
+  document.querySelectorAll('#regionFilterBtns .filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  currentRegion = region;
   signalOffset = 0;
   loadSignals();
 }
 
+// ── Network Signals Stream ──
+async function loadNetworkSignals() {
+  try {
+    const params = new URLSearchParams({ limit: 10, network: 'true' });
+    if (currentFilter !== 'all') params.set('type', currentFilter);
+
+    const data = await api('/api/signals/brief?' + params);
+    const feed = document.getElementById('networkFeed');
+    document.getElementById('networkCount').textContent = data.total + ' signals';
+
+    if (data.signals.length === 0) {
+      feed.innerHTML = '<div style="text-align:center;padding:20px;color:var(--ink-4);font-size:13px">No network signals found</div>';
+      return;
+    }
+
+    feed.innerHTML = data.signals.map(s => {
+      const icon = SIGNAL_ICONS[s.signal_type] || '\ud83d\udce1';
+      const label = (s.signal_type || '').replace(/_/g, ' ');
+      const contacts = parseInt(s.contact_count) || 0;
+      const placements = parseInt(s.placement_count) || 0;
+      const conf = Math.round((s.confidence_score || 0) * 100);
+
+      const companyHref = s.company_id
+        ? '/company.html?id=' + s.company_id
+        : '/companies.html?q=' + encodeURIComponent(s.company_name || '');
+      const peopleHref = '/people.html?q=' + encodeURIComponent(s.company_name || '');
+
+      return '<div class="network-card' + (s.is_client ? ' client' : '') + '" style="cursor:pointer" onclick="if(!event.target.closest(\'a\')){location.href=\'' + companyHref + '\'}">' +
+        '<div class="network-top">' +
+          '<a href="' + companyHref + '" class="network-company" style="text-decoration:none;color:inherit">' + icon + ' ' + esc(s.company_name) + '</a>' +
+          '<div class="network-contacts">' +
+            (contacts > 0 ? '<a href="' + peopleHref + '" style="text-decoration:none;color:var(--blue);font-weight:600;font-size:11px">\ud83d\udc65 ' + contacts + ' contacts</a>' : '') +
+            (placements > 0 ? '<span style="font-size:11px;color:var(--emerald);font-weight:600;margin-left:6px">\ud83c\udfc6 ' + placements + ' placed</span>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="network-summary">' + esc(s.evidence_summary || s.doc_title || label) + '</div>' +
+        '<div class="network-badges">' +
+          '<span class="badge ' + (SIGNAL_BADGE_CLASS[s.signal_type] || 'deal') + '">' + label.toUpperCase() + '</span>' +
+          (s.is_client ? '<span class="badge client">CLIENT</span>' : '') +
+          (s.geography ? '<span class="badge time">' + esc(s.geography) + '</span>' : '') +
+          '<span class="badge time">' + conf + '% \u00b7 ' + ago(s.detected_at) + '</span>' +
+          (s.source_url ? '<a href="' + esc(s.source_url) + '" target="_blank" onclick="event.stopPropagation()" class="badge" style="background:var(--surface-warm);color:var(--blue);text-decoration:none">\u2197 Source</a>' : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch (e) {
+    document.getElementById('networkFeed').innerHTML = '<div style="padding:20px;color:var(--ink-4);font-size:13px">Failed to load</div>';
+  }
+}
+
+// ── Region Cards ──
+async function loadRegionCards() {
+  const regions = [
+    { code: 'AU', flag: '\ud83c\udde6\ud83c\uddfa', name: 'Australia', color: '#0D7A50' },
+    { code: 'SG', flag: '\ud83c\uddf8\ud83c\uddec', name: 'Singapore & SEA', color: '#6D28D9' },
+    { code: 'UK', flag: '\ud83c\uddec\ud83c\udde7', name: 'United Kingdom', color: '#2563EB' },
+    { code: 'US', flag: '\ud83c\uddfa\ud83c\uddf8', name: 'United States', color: '#B45309' },
+  ];
+
+  const grid = document.getElementById('regionGrid');
+  grid.innerHTML = '';
+
+  for (const r of regions) {
+    try {
+      const params = new URLSearchParams({ limit: 5, region: r.code });
+      if (currentFilter !== 'all') params.set('type', currentFilter);
+      const data = await api('/api/signals/brief?' + params);
+
+      const clientCount = data.signals.filter(s => s.is_client).length;
+      const networkCount = data.signals.filter(s => parseInt(s.contact_count) > 0).length;
+
+      let signalRows = '';
+      data.signals.slice(0, 4).forEach(s => {
+        const isClient = s.is_client;
+        const hasContacts = parseInt(s.contact_count) > 0;
+        const contacts = parseInt(s.contact_count) || 0;
+        const icon = SIGNAL_ICONS[s.signal_type] || '\ud83d\udce1';
+        const companyLink = s.company_id
+          ? '/company.html?id=' + s.company_id
+          : '/companies.html?q=' + encodeURIComponent(s.company_name || '');
+        const peopleLink = '/people.html?q=' + encodeURIComponent(s.company_name || '');
+        const sourceLink = s.source_url || '';
+        signalRows += '<div class="region-signal-row">' +
+          '<span style="font-size:12px">' + icon + '</span>' +
+          '<a href="' + companyLink + '" class="region-signal-company" onclick="event.stopPropagation()" style="text-decoration:none;color:var(--ink)">' + esc(s.company_name) + '</a>' +
+          (isClient ? '<span class="region-signal-type client">CLIENT</span>' : '') +
+          (hasContacts ? '<a href="' + peopleLink + '" class="region-signal-type network" onclick="event.stopPropagation()" style="text-decoration:none">' + contacts + ' contacts</a>' : '') +
+          '<span class="region-signal-type">' + esc((s.signal_type || '').replace(/_/g, ' ')) + '</span>' +
+          (sourceLink ? '<a href="' + esc(sourceLink) + '" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:var(--blue);text-decoration:none">\u2197</a>' : '') +
+        '</div>';
+      });
+
+      if (data.signals.length === 0) {
+        signalRows = '<div style="font-size:12px;color:var(--ink-4);padding:8px 0">No signals in this region</div>';
+      }
+
+      const regionIdx = regions.indexOf(r) + 2;
+      const filterClick = "if(!event.target.closest('a')){filterRegion('" + r.code + "', document.querySelector('#regionFilterBtns .filter-btn:nth-child(" + regionIdx + ")'));document.getElementById('dealFeed').scrollIntoView({behavior:'smooth'})}";
+      grid.insertAdjacentHTML('beforeend',
+        '<div class="region-card" style="border-top:3px solid ' + r.color + ';cursor:pointer" onclick="' + filterClick + '">' +
+          '<div class="region-card-header">' +
+            '<div style="display:flex;align-items:center;gap:8px"><span class="region-flag">' + r.flag + '</span><span class="region-name">' + r.name + '</span></div>' +
+            '<div class="region-count">' + data.total + '</div>' +
+          '</div>' +
+          '<div class="region-stats">' +
+            (clientCount > 0 ? '<span class="region-stat">\u2b50 ' + clientCount + ' client</span>' : '') +
+            (networkCount > 0 ? '<span class="region-stat">\ud83d\udd17 ' + networkCount + ' w/ contacts</span>' : '') +
+          '</div>' +
+          '<div class="region-signals">' + signalRows + '</div>' +
+          '<div style="text-align:center;margin-top:8px;font-size:11px;color:var(--blue);font-weight:600">View all ' + data.total + ' ' + r.name + ' signals \u2192</div>' +
+        '</div>'
+      );
+    } catch (e) {
+      grid.insertAdjacentHTML('beforeend',
+        '<div class="region-card" style="border-top:3px solid ' + r.color + '">' +
+          '<div class="region-card-header">' +
+            '<div style="display:flex;align-items:center;gap:8px"><span class="region-flag">' + r.flag + '</span><span class="region-name">' + r.name + '</span></div>' +
+            '<div class="region-count">—</div>' +
+          '</div>' +
+        '</div>'
+      );
+    }
+  }
+}
+
+// ── All Signals Feed ──
 async function loadSignals() {
   try {
     const params = new URLSearchParams({ limit: 10, offset: signalOffset });
     if (currentFilter !== 'all') params.set('type', currentFilter);
-    if (currentCategory) params.set('category', currentCategory);
+    if (currentRegion !== 'all') params.set('region', currentRegion);
 
-    const data = await api(`/api/signals/brief?${params}`);
+    const data = await api('/api/signals/brief?' + params);
     const feed = document.getElementById('dealFeed');
 
     if (signalOffset === 0) feed.innerHTML = '';
@@ -1896,6 +2076,13 @@ async function loadSignals() {
     }
 
     document.getElementById('dealCount').textContent = data.total.toLocaleString() + ' SIGNALS';
+    if (data.region_stats) {
+      document.getElementById('regionTotalCount').textContent =
+        'AU:' + (data.region_stats.au||0) + ' SG:' + (data.region_stats.sg||0) +
+        ' UK:' + (data.region_stats.uk||0) + ' US:' + (data.region_stats.us||0) +
+        ' | ' + (data.region_stats.network_signals||0) + ' w/ contacts | ' +
+        (data.region_stats.client_signals||0) + ' client (7d)';
+    }
 
     data.signals.forEach(s => {
       feed.insertAdjacentHTML('beforeend', renderDealCard(s));
@@ -1925,9 +2112,13 @@ function renderDealCard(s) {
   // Headline hierarchy: company name > doc title > source
   const hasCompany = s.company_name && s.company_name !== 'Unknown' && s.company_name !== 'Unknown Company';
   const cardTitle = hasCompany ? s.company_name : (s.doc_title || s.source_name || 'Signal');
-  
+  const companyLink = s.company_id ? '/company.html?id=' + s.company_id : '';
+  const contactsLink = hasCompany ? '/people.html?q=' + encodeURIComponent(s.company_name) : '';
+  const contacts = parseInt(s.contact_count) || 0;
+  const placements = parseInt(s.placement_count) || 0;
+
   // Sub-headline: if we have a company, show the doc title. Otherwise show evidence.
-  const subline = hasCompany 
+  const subline = hasCompany
     ? (s.doc_title || s.evidence_summary || s.evidence_snippet || '')
     : (s.evidence_summary || s.evidence_snippet || s.doc_summary || '');
   
@@ -1941,13 +2132,15 @@ function renderDealCard(s) {
   // Category badge
   const catBadge = s.signal_category ? `<span class="badge time" style="font-style:italic">${esc(s.signal_category)}</span>` : '';
 
+  const dealClickLink = companyLink || (hasCompany ? '/companies.html?q=' + encodeURIComponent(s.company_name) : '');
+
   return `
-    <div class="deal-card${triaged ? ' triaged' : ''}" id="signal-${s.id}">
+    <div class="deal-card${triaged ? ' triaged-' + s.triage_status : ''}" id="signal-${s.id}" ${dealClickLink ? `style="cursor:pointer" onclick="if(!event.target.closest('a,button')){location.href='${dealClickLink}'}"` : ''}>
       <div class="deal-top">
         <div class="deal-company">
           <div class="deal-logo">${icon}</div>
           <div>
-            <div class="deal-name">${esc(cardTitle)}</div>
+            <a href="${companyLink || '/companies.html?q=' + encodeURIComponent(s.company_name || '')}" class="deal-name" style="text-decoration:none;color:inherit">${esc(cardTitle)}</a>
             <div class="deal-headline">${esc(subline).slice(0, 220)}${subline.length > 220 ? '…' : ''}</div>
           </div>
         </div>
@@ -1959,6 +2152,8 @@ function renderDealCard(s) {
       <div class="deal-badges">
         <span class="badge ${badgeClass}">${label.toUpperCase()}</span>
         ${s.is_client ? '<span class="badge client">CLIENT</span>' : ''}
+        ${contacts > 0 ? `<a href="${contactsLink}" class="badge" style="background:var(--blue-soft);color:var(--blue);text-decoration:none">👥 ${contacts} contacts</a>` : ''}
+        ${placements > 0 ? `<span class="badge" style="background:var(--emerald-soft);color:var(--emerald)">🏆 ${placements} placed</span>` : ''}
         ${s.sector ? `<span class="badge time">${esc(s.sector)}</span>` : ''}
         ${s.geography ? `<span class="badge time">${esc(s.geography)}</span>` : ''}
         ${catBadge}
@@ -1974,9 +2169,15 @@ function renderDealCard(s) {
           <button class="deal-action-btn qualify" onclick="triageSignal('${s.id}','qualified')">✓ Qualify</button>
           <button class="deal-action-btn ignore" onclick="triageSignal('${s.id}','irrelevant')">✕ Ignore</button>
         ` : `
-          <span class="deal-action-btn" style="cursor:default;opacity:0.6">${s.triage_status}</span>
+          <span class="deal-action-btn" style="cursor:default;opacity:0.6">${esc(s.triage_status)}</span>
         `}
-        ${s.source_url ? `<a href="${s.source_url}" target="_blank" class="deal-action-btn source">↗ Source</a>` : ''}
+        ${s.dispatch_id ? `
+          <a href="/dispatches.html" onclick="event.stopPropagation();localStorage.setItem('open_dispatch','${s.dispatch_id}')" class="deal-action-btn" style="background:var(--blue-soft);color:var(--blue);text-decoration:none">
+            🎯 Dispatch${s.dispatch_status === 'claimed' ? ' (claimed' + (s.claimed_by_name ? ': ' + esc(s.claimed_by_name) : '') + ')' : ''}
+          </a>
+          ${!s.claimed_by ? `<button class="deal-action-btn qualify" onclick="event.stopPropagation();claimDispatch('${s.dispatch_id}',this)">🙋 Claim</button>` : `<span class="deal-action-btn" style="cursor:default;font-size:10px;opacity:0.7">🔒 ${esc(s.claimed_by_name || 'Claimed')}</span>`}
+        ` : ''}
+        ${s.source_url ? `<a href="${s.source_url}" target="_blank" class="deal-action-btn source" onclick="event.stopPropagation()">↗ Source</a>` : ''}
       </div>
     </div>`;
 }
@@ -1999,6 +2200,28 @@ async function triageSignal(id, status) {
   } catch (e) {
     if (card) card.style.opacity = '';
     console.error('Triage error:', e);
+  }
+}
+
+async function claimDispatch(dispatchId, btn) {
+  try {
+    btn.textContent = '⏳ Claiming...';
+    btn.disabled = true;
+    const result = await api('/api/dispatches/' + dispatchId + '/claim', { method: 'POST', body: {} });
+    btn.textContent = '🔒 ' + (result.claimed_by || 'Claimed');
+    btn.className = 'deal-action-btn';
+    btn.style.cssText = 'cursor:default;font-size:10px;opacity:0.7';
+    btn.onclick = null;
+  } catch (e) {
+    const err = e.message || '';
+    if (err.includes('Already claimed')) {
+      btn.textContent = '🔒 Already claimed';
+      btn.disabled = true;
+    } else {
+      btn.textContent = '🙋 Claim';
+      btn.disabled = false;
+      alert('Claim failed: ' + err);
+    }
   }
 }
 
@@ -2179,6 +2402,8 @@ async function init() {
   }
 
   loadStats();
+  loadNetworkSignals();
+  loadRegionCards();
   loadSignals();
   loadContentQueue();
 }

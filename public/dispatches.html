@@ -69,6 +69,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .badge.signal { background: var(--amber-soft); color: var(--amber); }
 .badge.connections { background: var(--blue-soft); color: var(--blue); }
 .badge.status-draft { background: var(--surface-warm); color: var(--ink-3); }
+.badge.status-claimed { background: var(--violet-soft); color: var(--violet); }
 .badge.status-reviewed { background: var(--blue-soft); color: var(--blue); }
 .badge.status-sent { background: var(--emerald-soft); color: var(--emerald); }
 .badge.client { background: var(--violet-soft); color: var(--violet); }
@@ -208,6 +209,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
   <div class="filter-chips">
     <div class="chip active" onclick="setFilter(this, '')">All</div>
     <div class="chip" onclick="setFilter(this, 'draft')">Draft</div>
+    <div class="chip" onclick="setFilter(this, 'claimed')">Claimed</div>
     <div class="chip" onclick="setFilter(this, 'reviewed')">Reviewed</div>
     <div class="chip" onclick="setFilter(this, 'sent')">Sent</div>
   </div>
@@ -307,14 +309,15 @@ async function loadDispatches() {
         prox.slice(0, 3).forEach(p => {
           const ini = (p.name || '').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
           const relType = (p.relationship_type || '').replace(/_/g, ' ');
-          contactsHtml += '<div class="dc-contact">' +
+          const personLink = p.person_id ? '/person.html?id=' + p.person_id : '#';
+          contactsHtml += '<a href="' + personLink + '" class="dc-contact" onclick="event.stopPropagation()" style="text-decoration:none;color:inherit">' +
             '<div class="dc-contact-av">' + ini + '</div>' +
             '<div class="dc-contact-info">' +
               '<span class="dc-contact-name">' + esc(p.name) + '</span>' +
               '<span class="dc-contact-role">' + esc(p.title || relType) + '</span>' +
             '</div>' +
             '<span class="dc-contact-type">' + esc(relType) + '</span>' +
-          '</div>';
+          '</a>';
         });
         if (prox.length > 3) contactsHtml += '<div style="font-size:11px;color:var(--ink-4);padding:2px 0">+' + (prox.length - 3) + ' more</div>';
         contactsHtml += '</div>';
@@ -323,8 +326,8 @@ async function loadDispatches() {
       list.insertAdjacentHTML('beforeend', `
         <div class="dispatch-card status-${d.status}" onclick="openDispatch('${d.id}')">
           <div class="dc-top">
-            <div class="dc-company">${esc(d.company_name)}${d.is_client ? ' <span class="badge client" style="vertical-align:middle;margin-left:6px">CLIENT</span>' : ''}</div>
-            <div class="dc-time">${ago(d.generated_at)}</div>
+            <div class="dc-company"><a href="${d.company_id ? '/company.html?id=' + d.company_id : '/companies.html?q=' + encodeURIComponent(d.company_name || '')}" onclick="event.stopPropagation()" style="text-decoration:none;color:inherit">${esc(d.company_name)}</a>${d.is_client ? ' <span class="badge client" style="vertical-align:middle;margin-left:6px">CLIENT</span>' : ''}</div>
+            <div class="dc-time">${d.claimed_by ? '<span style="color:var(--violet);font-weight:600">\ud83d\udd12 Claimed</span> \u00b7 ' : ''}${ago(d.generated_at)}</div>
           </div>
           <div class="dc-meta">
             ${d.sector ? esc(d.sector) : ''}${d.geography ? ' \u00b7 ' + esc(d.geography) : ''}
@@ -476,7 +479,15 @@ function renderDetail(d) {
 
   // Bottom actions
   let actions = '';
-  if (d.status === 'draft') {
+
+  // Claim button
+  if (!d.claimed_by) {
+    actions += '<button class="btn-sm" style="background:var(--violet);color:white;border-color:var(--violet)" onclick="claimThisDispatch()">🙋 Claim This</button>';
+  } else {
+    actions += '<span class="btn-sm" style="cursor:default;opacity:0.7">🔒 Claimed by ' + esc(d.claimed_by_name || 'team member') + '</span>';
+  }
+
+  if (d.status === 'draft' || d.status === 'claimed') {
     actions += '<button class="btn-sm primary" onclick="updateStatus(\'reviewed\')">Mark Reviewed</button>';
   }
   if (d.status === 'reviewed') {
@@ -485,6 +496,12 @@ function renderDetail(d) {
   if (d.status !== 'archived') {
     actions += '<button class="btn-sm" onclick="updateStatus(\'archived\')">Archive</button>';
   }
+
+  // Company link
+  if (d.company_id) {
+    actions += '<a href="/company.html?id=' + d.company_id + '" class="btn-sm" style="text-decoration:none;text-align:center">🏢 Company</a>';
+  }
+
   document.getElementById('panelActions').innerHTML = actions;
 
   // Store data for copy/regen
@@ -603,8 +620,30 @@ async function triggerRescan() {
   }
 }
 
+// ── Claim ──
+async function claimThisDispatch() {
+  if (!currentDispatchId) return;
+  try {
+    const result = await api('/api/dispatches/' + currentDispatchId + '/claim', { method: 'POST', body: {} });
+    // Refresh panel
+    const d = await api('/api/dispatches/' + currentDispatchId);
+    if (d) renderDetail(d);
+  } catch (err) {
+    alert(err.message || 'Claim failed');
+  }
+}
+
 // ── Init ──
 loadDispatches();
+
+// Auto-open dispatch if navigated from signal card
+(function checkAutoOpen() {
+  const autoId = localStorage.getItem('open_dispatch');
+  if (autoId) {
+    localStorage.removeItem('open_dispatch');
+    setTimeout(() => openDispatch(autoId), 500);
+  }
+})();
 </script>
 <script src="/chat.js"></script>
 </body>
