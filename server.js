@@ -518,7 +518,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
           se.detected_at DESC NULLS LAST
         LIMIT $${limitParam} OFFSET $${offsetParam}
       `, params),
-      pool.query(`SELECT COUNT(*) AS cnt FROM signal_events se LEFT JOIN companies c ON se.company_id = c.id ${where}`, params.slice(0, -2)),
+      pool.query(`SELECT COUNT(*) AS cnt FROM signal_events se LEFT JOIN companies c ON se.company_id = c.id LEFT JOIN external_documents ed ON se.source_document_id = ed.id ${where}`, params.slice(0, -2)),
     ]);
 
     // Compute region stats for the header — search across company geo, evidence, doc title
