@@ -967,10 +967,30 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
     const enrichResults = { ezekia_profile: null, ezekia_projects: null, gmail: null, signals: null, web: null, embedding: null };
 
     // 1a. Ezekia People API — pull latest profile data
-    if (person.source_id && process.env.EZEKIA_API_TOKEN) {
+    if (process.env.EZEKIA_API_TOKEN) {
       try {
         const ezekia = require('./lib/ezekia');
-        const ezRes = await ezekia.getPerson(person.source_id, 'profile.positions,profile.education,profile.headline,relationships.billings,relationships.assignments');
+
+        // If no source_id, try to find them in Ezekia by name or email
+        let ezekiaId = person.source_id;
+        if (!ezekiaId && (person.full_name || person.email)) {
+          const searchCriteria = {};
+          if (person.email) searchCriteria.email = person.email;
+          else if (person.full_name) searchCriteria.name = person.full_name;
+          const searchRes = await ezekia.searchPeople(searchCriteria);
+          const match = searchRes?.data?.[0];
+          if (match) {
+            ezekiaId = String(match.id);
+            // Link this person to Ezekia for future enrichments
+            await pool.query('UPDATE people SET source_id = $1, source = $2 WHERE id = $3 AND source_id IS NULL',
+              [ezekiaId, 'ezekia', req.params.id]);
+          }
+        }
+
+        if (!ezekiaId) {
+          enrichResults.ezekia_profile = { message: 'Not found in Ezekia CRM' };
+        } else {
+        const ezRes = await ezekia.getPerson(ezekiaId, 'profile.positions,profile.education,profile.headline,relationships.billings,relationships.assignments');
 
         if (ezRes && ezRes.data) {
           const d = ezRes.data;
@@ -1014,15 +1034,19 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
             enrichResults.ezekia_profile = { message: 'No new profile data' };
           }
         }
+        } // end if (ezekiaId)
       } catch (e) {
         enrichResults.ezekia_profile = { error: e.message };
       }
     } else {
-      enrichResults.ezekia_profile = { message: !person.source_id ? 'No CRM ID linked' : 'API key not configured' };
+      enrichResults.ezekia_profile = { message: 'EZEKIA_API_TOKEN not configured' };
     }
 
+    // Resolve ezekiaId for projects step (may have been linked above)
+    const ezekiaId = person.source_id || (await pool.query('SELECT source_id FROM people WHERE id = $1', [req.params.id]).then(r => r.rows[0]?.source_id));
+
     // 1b. Ezekia Projects API — find which projects/searches this person is in
-    if (person.source_id && process.env.EZEKIA_API_TOKEN) {
+    if (ezekiaId && process.env.EZEKIA_API_TOKEN) {
       try {
         const ezekia = require('./lib/ezekia');
         // Search across projects for this candidate
@@ -1038,8 +1062,8 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
             const candRes = await ezekia.getProjectCandidates(proj.id, { per_page: 200 });
             const candidates = candRes?.data || [];
             const isCandidate = candidates.some(c =>
-              String(c.id) === String(person.source_id) ||
-              c.candidate?.id === parseInt(person.source_id)
+              String(c.id) === String(ezekiaId) ||
+              c.candidate?.id === parseInt(ezekiaId)
             );
 
             if (isCandidate) {
