@@ -48,14 +48,15 @@ async function getSignalClusters() {
       MAX(se.detected_at) AS latest_signal,
       COUNT(*) AS signal_count,
       MAX(se.evidence_summary) AS latest_summary,
-      c.sector, c.geography, c.country_code, c.is_client
+      c.sector, c.geography, c.country_code, c.is_client, c.company_tier,
+      bool_or(COALESCE(se.is_megacap, false)) AS is_megacap
     FROM signal_events se
     LEFT JOIN companies c ON c.id = se.company_id
     WHERE se.detected_at > NOW() - INTERVAL '90 days'
       AND (se.triage_status IS NULL OR se.triage_status NOT IN ('ignore','irrelevant'))
       AND se.company_name IS NOT NULL
     GROUP BY COALESCE(se.company_name, c.name, 'Unknown'), se.company_id,
-             c.sector, c.geography, c.country_code, c.is_client
+             c.sector, c.geography, c.country_code, c.is_client, c.company_tier
     ORDER BY MAX(se.confidence_score) DESC
     LIMIT 1000
   `);
@@ -143,7 +144,12 @@ async function scoreCluster(cluster, densityMap, geoMapper) {
   // Recency decay: 14-day half-life
   const daysOld = (Date.now() - new Date(cluster.latest_signal)) / (1000 * 60 * 60 * 24);
   const decay = Math.pow(0.5, daysOld / 14);
-  const composite = Math.round(raw * decay * 100) / 100;
+
+  // Megacap penalty: these are market weather, not direct opportunities
+  // Still tracked for talent sourcing and upstream M&A context
+  const isMegacap = cluster.is_megacap || adj?.company_tier === 'megacap_indicator';
+  const megacapPenalty = isMegacap ? 0.3 : 1.0; // 70% reduction
+  const composite = Math.round(raw * decay * megacapPenalty * 100) / 100;
 
   // Build recommended action
   let action = '';

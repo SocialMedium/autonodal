@@ -2140,6 +2140,7 @@ function renderDealCard(s) {
       </div>
       <div class="deal-badges">
         <span class="badge ${badgeClass}">${label.toUpperCase()}</span>
+        ${s.is_megacap ? '<span class="badge" style="background:#f0f0f0;color:#888;font-style:italic">🌤️ MARKET WEATHER</span>' : ''}
         ${s.is_client ? '<span class="badge client">CLIENT</span>' : ''}
         ${contacts > 0 ? `<a href="${contactsLink}" class="badge" style="background:var(--blue-soft);color:var(--blue);text-decoration:none">👥 ${contacts} contacts</a>` : ''}
         ${placements > 0 ? `<span class="badge" style="background:var(--emerald-soft);color:var(--emerald)">🏆 ${placements} placed</span>` : ''}

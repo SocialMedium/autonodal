@@ -554,6 +554,8 @@ async function generateDispatches() {
     LEFT JOIN companies c ON c.id = se.company_id
     WHERE se.confidence_score >= $1
       AND se.detected_at > NOW() - INTERVAL '${MAX_SIGNAL_AGE_HOURS} hours'
+      AND COALESCE(se.is_megacap, false) = false
+      AND COALESCE(c.company_tier, '') != 'megacap_indicator'
       AND NOT EXISTS (
         SELECT 1 FROM signal_dispatches sd WHERE sd.signal_event_id = se.id
       )

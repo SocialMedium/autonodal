@@ -762,8 +762,8 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
         SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
                se.evidence_summary, se.evidence_snippet, se.triage_status,
                se.detected_at, se.signal_date, se.source_url, se.signal_category,
-               se.hiring_implications,
-               c.sector, c.geography, c.is_client, c.country_code,
+               se.hiring_implications, se.is_megacap,
+               c.sector, c.geography, c.is_client, c.country_code, c.company_tier,
                ed.source_name, ed.source_type AS doc_source_type,
                ed.title AS doc_title, ed.summary AS doc_summary,
                (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id) AS contact_count,
@@ -784,6 +784,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
         ) sd ON true
         ${where}
         ORDER BY
+          CASE WHEN se.is_megacap = true THEN 1 ELSE 0 END,
           CASE WHEN c.is_client = true THEN 0 ELSE 1 END,
           CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id) > 0 THEN 0 ELSE 1 END,
           CASE WHEN se.signal_type = 'geographic_expansion' THEN 0 ELSE 1 END,
@@ -2607,6 +2608,7 @@ app.get('/api/dispatches', authenticateToken, async (req, res) => {
         LEFT JOIN users u_claim ON u_claim.id = sd.claimed_by
         ${where}
         ORDER BY
+          CASE WHEN c.company_tier = 'megacap_indicator' THEN 1 ELSE 0 END,
           CASE WHEN c.is_client = true THEN 0 ELSE 1 END,
           CASE WHEN jsonb_array_length(COALESCE(sd.proximity_map, '[]'::jsonb)) > 0 THEN 0 ELSE 1 END,
           sd.generated_at DESC

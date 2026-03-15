@@ -29,41 +29,45 @@ async function computeCompanyAdjacency() {
 
   // Single query: aggregate people per company_name with interaction/seniority data
   const { rows: companies } = await pool.query(`
-    SELECT
-      LOWER(TRIM(p.current_company_name)) AS co_key,
-      MIN(p.current_company_name) AS co_name,
-      COUNT(DISTINCT p.id) AS contact_count,
-      COUNT(DISTINCT p.id) FILTER (
-        WHERE p.seniority_level IN ('C-Suite','VP','Director','Partner','Managing Director','SVP','EVP')
-      ) AS senior_count,
-      COUNT(DISTINCT p.id) FILTER (
-        WHERE EXISTS (
-          SELECT 1 FROM interactions i
-          WHERE i.person_id = p.id AND i.interaction_at > NOW() - INTERVAL '180 days'
-        )
-      ) AS active_count,
+    WITH company_groups AS (
+      SELECT
+        LOWER(TRIM(p.current_company_name)) AS co_key,
+        MIN(p.current_company_name) AS co_name,
+        COUNT(DISTINCT p.id) AS contact_count,
+        COUNT(DISTINCT p.id) FILTER (
+          WHERE p.seniority_level IN ('c_suite','vp','director')
+        ) AS senior_count,
+        COUNT(DISTINCT p.id) FILTER (
+          WHERE EXISTS (
+            SELECT 1 FROM interactions i
+            WHERE i.person_id = p.id AND i.interaction_at > NOW() - INTERVAL '180 days'
+          )
+        ) AS active_count
+      FROM people p
+      WHERE p.current_company_name IS NOT NULL
+        AND TRIM(p.current_company_name) != ''
+      GROUP BY LOWER(TRIM(p.current_company_name))
+      HAVING COUNT(DISTINCT p.id) >= 1
+    )
+    SELECT cg.*,
       -- Warmest contact: most recent interaction
       (SELECT p2.id FROM people p2
        JOIN interactions i2 ON i2.person_id = p2.id
-       WHERE LOWER(TRIM(p2.current_company_name)) = LOWER(TRIM(p.current_company_name))
+       WHERE LOWER(TRIM(p2.current_company_name)) = cg.co_key
        ORDER BY i2.interaction_at DESC LIMIT 1
       ) AS warmest_id,
       (SELECT p2.full_name FROM people p2
        JOIN interactions i2 ON i2.person_id = p2.id
-       WHERE LOWER(TRIM(p2.current_company_name)) = LOWER(TRIM(p.current_company_name))
+       WHERE LOWER(TRIM(p2.current_company_name)) = cg.co_key
        ORDER BY i2.interaction_at DESC LIMIT 1
       ) AS warmest_name,
       -- Best connection user (most interactions)
       (SELECT i3.user_id FROM interactions i3
        JOIN people p3 ON p3.id = i3.person_id
-       WHERE LOWER(TRIM(p3.current_company_name)) = LOWER(TRIM(p.current_company_name))
+       WHERE LOWER(TRIM(p3.current_company_name)) = cg.co_key
        GROUP BY i3.user_id ORDER BY COUNT(*) DESC LIMIT 1
       ) AS best_user_id
-    FROM people p
-    WHERE p.current_company_name IS NOT NULL
-      AND TRIM(p.current_company_name) != ''
-    GROUP BY LOWER(TRIM(p.current_company_name))
-    HAVING COUNT(DISTINCT p.id) >= 1
+    FROM company_groups cg
   `);
 
   LOG('📊', `  Found ${companies.length} companies with contacts`);
