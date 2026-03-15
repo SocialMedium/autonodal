@@ -24,6 +24,26 @@ const pool = new Pool({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SHARED CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const REGION_MAP = {
+  'AU': ['Australia', 'Australian', 'Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'ASX', 'Canberra', 'CSIRO'],
+  'SG': ['Singapore', 'Southeast Asia', 'ASEAN', 'Jakarta', 'Kuala Lumpur', 'Bangkok', 'Vietnam', 'Philippines', 'Indonesia', 'Malaysia', 'Thailand'],
+  'UK': ['United Kingdom', 'London', 'England', 'Britain', 'British', 'Manchester', 'Edinburgh', 'FTSE', 'LSE'],
+  'US': ['United States', 'Silicon Valley', 'New York', 'San Francisco', 'California', 'Texas', 'Boston', 'Seattle', 'NASDAQ', 'NYSE', 'SEC', 'Federal'],
+  'APAC': ['Australia', 'Australian', 'Singapore', 'Asia', 'APAC', 'Japan', 'Japanese', 'Korea', 'Korean', 'India', 'Indian', 'Hong Kong', 'Southeast Asia', 'ASEAN', 'Sydney', 'Melbourne', 'China', 'Chinese', 'Taiwan', 'New Zealand'],
+  'EMEA': ['United Kingdom', 'Europe', 'European', 'EMEA', 'London', 'Germany', 'German', 'France', 'French', 'Netherlands', 'Ireland', 'Middle East', 'Africa', 'Nordics', 'Sweden', 'Denmark', 'EU'],
+  'AMER': ['United States', 'North America', 'Canada', 'Canadian', 'Latin America', 'Brazil', 'Brazilian', 'Mexico', 'Silicon Valley', 'New York', 'NASDAQ', 'NYSE'],
+};
+const REGION_CODES = {
+  'AU': ['AU','NZ'], 'SG': ['SG','MY','ID','TH','VN','PH'], 'UK': ['UK','GB','IE'],
+  'US': ['US','CA'], 'APAC': ['AU','NZ','SG','MY','ID','TH','VN','PH','JP','KR','IN','HK','CN','TW'],
+  'EMEA': ['UK','GB','IE','DE','FR','NL','SE','DK','NO','FI','ES','IT','PT','AT','CH','BE'],
+  'AMER': ['US','CA','BR','MX','AR','CL','CO'],
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MIDDLEWARE
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -247,79 +267,76 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
     const { rows: [userRow] } = await pool.query('SELECT region FROM users WHERE id = $1', [userId]);
     const userRegion = userRow?.region || 'APAC';
 
-    // 1. My contacts in recent signals — people I've interacted with at companies with signals
-    const { rows: contactSignals } = await pool.query(`
-      SELECT DISTINCT ON (p.id)
-        p.id as person_id, p.full_name, p.current_title, p.current_company_name,
-        se.signal_type, se.company_name as signal_company, se.confidence_score,
-        se.evidence_summary, se.detected_at,
-        tp.proximity_strength, tp.proximity_type,
-        i.interaction_at as last_contact
-      FROM team_proximity tp
-      JOIN people p ON p.id = tp.person_id
-      JOIN companies c ON c.id = p.current_company_id
-      JOIN signal_events se ON se.company_id = c.id AND se.detected_at > NOW() - INTERVAL '7 days'
-      LEFT JOIN LATERAL (
-        SELECT interaction_at FROM interactions
-        WHERE person_id = p.id AND user_id = $1
-        ORDER BY interaction_at DESC LIMIT 1
-      ) i ON true
-      WHERE tp.user_id = $1
-      ORDER BY p.id, se.confidence_score DESC, se.detected_at DESC
-      LIMIT 5
-    `, [userId]);
-
-    // 2. Client signals — signals at companies where we have client relationships
-    const { rows: clientSignals } = await pool.query(`
-      SELECT DISTINCT ON (se.company_id)
-        se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
-        se.evidence_summary, se.detected_at,
-        cl.relationship_status, cl.relationship_tier,
-        (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id) as contact_count
-      FROM signal_events se
-      JOIN companies c ON c.id = se.company_id AND c.is_client = true
-      JOIN clients cl ON cl.company_id = c.id
-      WHERE se.detected_at > NOW() - INTERVAL '7 days'
-      ORDER BY se.company_id, se.confidence_score DESC
-      LIMIT 5
-    `);
-
-    // 3. Top dispatches for user's region
-    const REGION_GEOS = {
-      'AU': ['Australia','Sydney','Melbourne','Brisbane','Perth'],
-      'SG': ['Singapore','Southeast Asia','ASEAN','Jakarta','Bangkok','Vietnam','Malaysia'],
-      'UK': ['United Kingdom','London','England','Britain'],
-      'US': ['United States','Silicon Valley','New York','San Francisco'],
-      'APAC': ['Australia','Singapore','Asia','Japan','Korea','India','Hong Kong','China','New Zealand'],
-      'EMEA': ['United Kingdom','Europe','London','Germany','France','Middle East','Africa'],
-    };
-    const geos = REGION_GEOS[userRegion] || REGION_GEOS['APAC'];
+    // Run all 4 queries in parallel
+    const geos = REGION_MAP[userRegion] || REGION_MAP['APAC'];
     const geoConditions = geos.map((_, i) => `c.geography ILIKE $${i + 1} OR sd.signal_summary ILIKE $${i + 1}`).join(' OR ');
     const geoParams = geos.map(g => `%${g}%`);
 
-    const { rows: regionDispatches } = await pool.query(`
-      SELECT sd.id, sd.company_name, sd.signal_type, sd.signal_summary,
-             sd.opportunity_angle, sd.blog_title, sd.status, sd.claimed_by,
-             c.geography, c.is_client,
-             jsonb_array_length(COALESCE(sd.proximity_map, '[]'::jsonb)) as connection_count
-      FROM signal_dispatches sd
-      LEFT JOIN companies c ON c.id = sd.company_id
-      WHERE sd.status = 'draft' AND sd.claimed_by IS NULL
-        AND (${geoConditions})
-      ORDER BY
-        CASE WHEN c.is_client = true THEN 0 ELSE 1 END,
-        jsonb_array_length(COALESCE(sd.proximity_map, '[]'::jsonb)) DESC,
-        sd.generated_at DESC
-      LIMIT 3
-    `, geoParams);
+    const [contactResult, clientResult, dispatchResult, statsResult] = await Promise.all([
+      // 1. My contacts in recent signals
+      pool.query(`
+        SELECT DISTINCT ON (p.id)
+          p.id as person_id, p.full_name, p.current_title, p.current_company_name,
+          se.signal_type, se.company_name as signal_company, se.confidence_score,
+          se.evidence_summary, se.detected_at,
+          tp.proximity_strength, tp.proximity_type,
+          i.interaction_at as last_contact
+        FROM team_proximity tp
+        JOIN people p ON p.id = tp.person_id
+        JOIN companies c ON c.id = p.current_company_id
+        JOIN signal_events se ON se.company_id = c.id AND se.detected_at > NOW() - INTERVAL '7 days'
+        LEFT JOIN LATERAL (
+          SELECT interaction_at FROM interactions
+          WHERE person_id = p.id AND user_id = $1
+          ORDER BY interaction_at DESC LIMIT 1
+        ) i ON true
+        WHERE tp.user_id = $1
+        ORDER BY p.id, se.confidence_score DESC, se.detected_at DESC
+        LIMIT 5
+      `, [userId]),
+      // 2. Client signals
+      pool.query(`
+        SELECT DISTINCT ON (se.company_id)
+          se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
+          se.evidence_summary, se.detected_at,
+          cl.relationship_status, cl.relationship_tier,
+          (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id) as contact_count
+        FROM signal_events se
+        JOIN companies c ON c.id = se.company_id AND c.is_client = true
+        JOIN clients cl ON cl.company_id = c.id
+        WHERE se.detected_at > NOW() - INTERVAL '7 days'
+        ORDER BY se.company_id, se.confidence_score DESC
+        LIMIT 5
+      `),
+      // 3. Top dispatches for user's region
+      pool.query(`
+        SELECT sd.id, sd.company_name, sd.signal_type, sd.signal_summary,
+               sd.opportunity_angle, sd.blog_title, sd.status, sd.claimed_by,
+               c.geography, c.is_client,
+               jsonb_array_length(COALESCE(sd.proximity_map, '[]'::jsonb)) as connection_count
+        FROM signal_dispatches sd
+        LEFT JOIN companies c ON c.id = sd.company_id
+        WHERE sd.status = 'draft' AND sd.claimed_by IS NULL
+          AND (${geoConditions})
+        ORDER BY
+          CASE WHEN c.is_client = true THEN 0 ELSE 1 END,
+          jsonb_array_length(COALESCE(sd.proximity_map, '[]'::jsonb)) DESC,
+          sd.generated_at DESC
+        LIMIT 3
+      `, geoParams),
+      // 4. Quick stats
+      pool.query(`
+        SELECT
+          (SELECT COUNT(*) FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours') as signals_24h,
+          (SELECT COUNT(*) FROM signal_dispatches WHERE status = 'draft' AND claimed_by IS NULL) as unclaimed_dispatches,
+          (SELECT COUNT(*) FROM signal_events se JOIN companies c ON c.id = se.company_id AND c.is_client = true WHERE se.detected_at > NOW() - INTERVAL '7 days') as client_signals_7d
+      `)
+    ]);
 
-    // 4. Quick stats for greeting
-    const { rows: [briefStats] } = await pool.query(`
-      SELECT
-        (SELECT COUNT(*) FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours') as signals_24h,
-        (SELECT COUNT(*) FROM signal_dispatches WHERE status = 'draft' AND claimed_by IS NULL) as unclaimed_dispatches,
-        (SELECT COUNT(*) FROM signal_events se JOIN companies c ON c.id = se.company_id AND c.is_client = true WHERE se.detected_at > NOW() - INTERVAL '7 days') as client_signals_7d
-    `);
+    const contactSignals = contactResult.rows;
+    const clientSignals = clientResult.rows;
+    const regionDispatches = dispatchResult.rows;
+    const briefStats = statsResult.rows[0];
 
     res.json({
       region: userRegion,
@@ -640,24 +657,29 @@ app.get('/api/converging-themes', authenticateToken, async (req, res) => {
   try {
     // Find signal_type clusters with high activity, cross-reference with clients and candidates
     const { rows: themes } = await pool.query(`
+      WITH candidate_counts AS (
+        SELECT se2.signal_type, COUNT(DISTINCT p.id) as cnt
+        FROM people p
+        JOIN companies c2 ON c2.id = p.current_company_id
+        JOIN signal_events se2 ON se2.company_id = c2.id AND se2.detected_at > NOW() - INTERVAL '30 days'
+        WHERE p.current_title IS NOT NULL
+        GROUP BY se2.signal_type
+      )
       SELECT
         se.signal_type,
         COUNT(DISTINCT se.company_id) as company_count,
         COUNT(DISTINCT CASE WHEN c.is_client = true THEN se.company_id END) as client_count,
         COUNT(*) as signal_count,
         ROUND(AVG(se.confidence_score)::numeric, 2) as avg_confidence,
-        (SELECT COUNT(DISTINCT p.id) FROM people p
-         JOIN companies c2 ON c2.id = p.current_company_id
-         JOIN signal_events se2 ON se2.company_id = c2.id AND se2.signal_type = se.signal_type
-           AND se2.detected_at > NOW() - INTERVAL '30 days'
-         WHERE p.current_title IS NOT NULL) as candidate_count,
+        COALESCE(cc.cnt, 0) as candidate_count,
         array_agg(DISTINCT c.name ORDER BY c.name) FILTER (WHERE c.is_client = true) as client_names,
         array_agg(DISTINCT se.company_name ORDER BY se.company_name) FILTER (WHERE se.company_name IS NOT NULL) as company_names
       FROM signal_events se
       LEFT JOIN companies c ON c.id = se.company_id
+      LEFT JOIN candidate_counts cc ON cc.signal_type = se.signal_type
       WHERE se.detected_at > NOW() - INTERVAL '30 days'
         AND se.signal_type IS NOT NULL
-      GROUP BY se.signal_type
+      GROUP BY se.signal_type, cc.cnt
       HAVING COUNT(DISTINCT se.company_id) >= 3
       ORDER BY COUNT(DISTINCT CASE WHEN c.is_client = true THEN se.company_id END) DESC,
                COUNT(DISTINCT se.company_id) DESC
@@ -751,26 +773,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
       params.push(minConf);
     }
 
-    // Region filter — map regions to geography/country patterns
-    // Searches company geography, company name, evidence text, and source document
-    const REGION_MAP = {
-      'AU': ['Australia', 'Australian', 'Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'ASX', 'Canberra', 'CSIRO'],
-      'SG': ['Singapore', 'Southeast Asia', 'ASEAN', 'Jakarta', 'Kuala Lumpur', 'Bangkok', 'Vietnam', 'Philippines', 'Indonesia', 'Malaysia', 'Thailand'],
-      'UK': ['United Kingdom', 'London', 'England', 'Britain', 'British', 'Manchester', 'Edinburgh', 'FTSE', 'LSE'],
-      'US': ['United States', 'Silicon Valley', 'New York', 'San Francisco', 'California', 'Texas', 'Boston', 'Seattle', 'NASDAQ', 'NYSE', 'SEC', 'Federal'],
-      'APAC': ['Australia', 'Australian', 'Singapore', 'Asia', 'APAC', 'Japan', 'Japanese', 'Korea', 'Korean', 'India', 'Indian', 'Hong Kong', 'Southeast Asia', 'ASEAN', 'Sydney', 'Melbourne', 'China', 'Chinese', 'Taiwan', 'New Zealand'],
-      'EMEA': ['United Kingdom', 'Europe', 'European', 'EMEA', 'London', 'Germany', 'German', 'France', 'French', 'Netherlands', 'Ireland', 'Middle East', 'Africa', 'Nordics', 'Sweden', 'Denmark', 'EU'],
-      'AMER': ['United States', 'North America', 'Canada', 'Canadian', 'Latin America', 'Brazil', 'Brazilian', 'Mexico', 'Silicon Valley', 'New York', 'NASDAQ', 'NYSE'],
-    };
-    const REGION_CODES = {
-      'AU': ['AU','NZ'],
-      'SG': ['SG','MY','ID','TH','VN','PH'],
-      'UK': ['UK','GB','IE'],
-      'US': ['US','CA'],
-      'APAC': ['AU','NZ','SG','MY','ID','TH','VN','PH','JP','KR','IN','HK','CN','TW'],
-      'EMEA': ['UK','GB','IE','DE','FR','NL','SE','DK','NO','FI','ES','IT','PT','AT','CH','BE'],
-      'AMER': ['US','CA','BR','MX','AR','CL','CO'],
-    };
+    // Region filter — uses shared REGION_MAP/REGION_CODES constants
     if (region && region !== 'all' && REGION_MAP[region]) {
       const geos = REGION_MAP[region];
       const codes = REGION_CODES[region] || [];
@@ -2639,15 +2642,7 @@ app.get('/api/dispatches', authenticateToken, async (req, res) => {
       idx++; where += ` AND sd.status = $${idx}`; params.push(status);
     }
 
-    // Region filter — reuse the same mapping as signals/brief
-    const REGION_MAP = {
-      'AU': ['Australia', 'Australian', 'Sydney', 'Melbourne', 'Brisbane', 'Perth'],
-      'SG': ['Singapore', 'Southeast Asia', 'ASEAN', 'Jakarta', 'Kuala Lumpur', 'Bangkok', 'Vietnam', 'Philippines', 'Indonesia', 'Malaysia', 'Thailand'],
-      'UK': ['United Kingdom', 'London', 'England', 'Britain', 'British', 'Manchester', 'Edinburgh'],
-      'US': ['United States', 'Silicon Valley', 'New York', 'San Francisco', 'California', 'Texas', 'Boston', 'Seattle'],
-      'APAC': ['Australia', 'Singapore', 'Asia', 'APAC', 'Japan', 'Korea', 'India', 'Hong Kong', 'Southeast Asia', 'Sydney', 'Melbourne', 'China', 'Taiwan', 'New Zealand'],
-      'EMEA': ['United Kingdom', 'Europe', 'EMEA', 'London', 'Germany', 'France', 'Netherlands', 'Ireland', 'Middle East', 'Africa', 'Nordics', 'Sweden', 'Denmark'],
-    };
+    // Region filter — uses shared REGION_MAP constant
     if (region && region !== 'all' && REGION_MAP[region]) {
       const geos = REGION_MAP[region];
       const orParts = [];
@@ -3668,6 +3663,17 @@ app.listen(PORT, async () => {
     await pool.query(`ALTER TABLE signal_dispatches ADD COLUMN IF NOT EXISTS claimed_by UUID`);
     await pool.query(`ALTER TABLE signal_dispatches ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ`);
   } catch (e) { /* table may already exist */ }
+
+  // Ensure indexes for new query patterns
+  try {
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_signal_events_detected ON signal_events(detected_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_signal_events_company_type_date ON signal_events(company_id, signal_type, detected_at);
+      CREATE INDEX IF NOT EXISTS idx_signal_events_megacap ON signal_events(is_megacap) WHERE is_megacap = true;
+      CREATE INDEX IF NOT EXISTS idx_dispatches_status_unclaimed ON signal_dispatches(status, claimed_by) WHERE status = 'draft' AND claimed_by IS NULL;
+      CREATE INDEX IF NOT EXISTS idx_companies_is_client ON companies(is_client) WHERE is_client = true;
+    `);
+  } catch (e) { /* indexes may already exist */ }
 
   // Backfill: mark companies as clients if they have placements
   try {
