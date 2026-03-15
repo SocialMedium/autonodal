@@ -1340,6 +1340,95 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── Reconcile Client → Company (create companies record for unlinked clients) ───
+app.post('/api/clients/:id/reconcile', authenticateToken, async (req, res) => {
+  try {
+    const { rows: [client] } = await pool.query('SELECT * FROM clients WHERE id = $1', [req.params.id]);
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+
+    // Already linked?
+    if (client.company_id) {
+      const { rows: [co] } = await pool.query('SELECT id, name FROM companies WHERE id = $1', [client.company_id]);
+      if (co) return res.json({ company_id: co.id, message: 'Already linked', company_name: co.name });
+    }
+
+    // Check if a companies record already exists by name
+    let { rows: [existing] } = await pool.query(
+      'SELECT id FROM companies WHERE name ILIKE $1 LIMIT 1', [client.name]
+    );
+
+    let companyId;
+    if (existing) {
+      companyId = existing.id;
+    } else {
+      // Create a new companies record from the client
+      const { rows: [newCo] } = await pool.query(`
+        INSERT INTO companies (name, is_client, created_at, updated_at)
+        VALUES ($1, true, NOW(), NOW())
+        RETURNING id
+      `, [client.name]);
+      companyId = newCo.id;
+    }
+
+    // Link client to company
+    await pool.query('UPDATE clients SET company_id = $1, updated_at = NOW() WHERE id = $2', [companyId, client.id]);
+
+    // Also link any people whose current_company_name matches
+    const { rowCount: linkedPeople } = await pool.query(`
+      UPDATE people SET current_company_id = $1, updated_at = NOW()
+      WHERE current_company_name ILIKE $2 AND (current_company_id IS NULL OR current_company_id != $1)
+    `, [companyId, client.name]);
+
+    res.json({ company_id: companyId, client_id: client.id, people_linked: linkedPeople, message: existing ? 'Linked to existing company' : 'Created new company record' });
+  } catch (err) {
+    console.error('Reconcile error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Bulk reconcile all unlinked clients ───
+app.post('/api/clients/reconcile-all', authenticateToken, async (req, res) => {
+  try {
+    const { rows: unlinked } = await pool.query(`
+      SELECT cl.id, cl.name FROM clients cl
+      WHERE cl.company_id IS NULL
+      ORDER BY cl.name
+    `);
+
+    let created = 0, linked = 0, errors = 0;
+    for (const client of unlinked) {
+      try {
+        let { rows: [existing] } = await pool.query(
+          'SELECT id FROM companies WHERE name ILIKE $1 LIMIT 1', [client.name]
+        );
+
+        let companyId;
+        if (existing) {
+          companyId = existing.id;
+          linked++;
+        } else {
+          const { rows: [newCo] } = await pool.query(
+            `INSERT INTO companies (name, is_client, created_at, updated_at) VALUES ($1, true, NOW(), NOW()) RETURNING id`,
+            [client.name]
+          );
+          companyId = newCo.id;
+          created++;
+        }
+
+        await pool.query('UPDATE clients SET company_id = $1, updated_at = NOW() WHERE id = $2', [companyId, client.id]);
+        await pool.query(`
+          UPDATE people SET current_company_id = $1, updated_at = NOW()
+          WHERE current_company_name ILIKE $2 AND (current_company_id IS NULL OR current_company_id != $1)
+        `, [companyId, client.name]);
+      } catch (e) { errors++; }
+    }
+
+    res.json({ total_unlinked: unlinked.length, companies_created: created, companies_linked: linked, errors });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Company Enrichment ───
 app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
   try {
@@ -1348,9 +1437,94 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
 
     const enrichResults = {};
 
-    // Re-embed with latest data
+    // 1. Ezekia company data
+    if (process.env.EZEKIA_API_TOKEN) {
+      try {
+        const ezekia = require('./lib/ezekia');
+        // Search Ezekia companies by name (paginate through to find match)
+        let ezekiaCompany = null;
+        let page = 1;
+        while (page <= 5 && !ezekiaCompany) {
+          const compRes = await ezekia.getCompanies({ page, per_page: 100 });
+          const companies = compRes?.data || [];
+          if (companies.length === 0) break;
+          ezekiaCompany = companies.find(c =>
+            c.name?.toLowerCase() === company.name.toLowerCase() ||
+            c.name?.toLowerCase().includes(company.name.toLowerCase()) ||
+            company.name.toLowerCase().includes(c.name?.toLowerCase())
+          );
+          page++;
+        }
+
+        if (ezekiaCompany) {
+          const updates = {};
+          if (ezekiaCompany.industry && !company.sector) updates.sector = ezekiaCompany.industry;
+          if (ezekiaCompany.website && !company.domain) updates.domain = ezekiaCompany.website;
+          if (ezekiaCompany.address && !company.geography) {
+            updates.geography = [ezekiaCompany.address.city, ezekiaCompany.address.country].filter(Boolean).join(', ');
+          }
+          if (ezekiaCompany.description && !company.description) updates.description = ezekiaCompany.description;
+
+          if (Object.keys(updates).length > 0) {
+            const setClauses = Object.entries(updates).map(([k, v], i) => `${k} = $${i + 2}`);
+            await pool.query(`UPDATE companies SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = $1`,
+              [req.params.id, ...Object.values(updates)]);
+            enrichResults.ezekia = { updated_fields: Object.keys(updates), ezekia_id: ezekiaCompany.id };
+          } else {
+            enrichResults.ezekia = { message: 'No new data from Ezekia', ezekia_id: ezekiaCompany.id };
+          }
+        } else {
+          enrichResults.ezekia = { message: 'Not found in Ezekia CRM' };
+        }
+      } catch (e) {
+        enrichResults.ezekia = { error: e.message };
+      }
+    }
+
+    // 2. Placement history from client record
     try {
-      const parts = [company.name, company.sector, company.geography, company.description, company.domain].filter(Boolean);
+      const { rows: [clientRecord] } = await pool.query(
+        'SELECT cl.id, cl.relationship_status, cl.relationship_tier FROM clients cl WHERE cl.company_id = $1 LIMIT 1',
+        [req.params.id]
+      );
+      if (clientRecord) {
+        const { rows: placements } = await pool.query(
+          `SELECT p.role_title, p.start_date, p.placement_fee, p.currency, pe.full_name
+           FROM placements p
+           LEFT JOIN people pe ON pe.id = p.person_id
+           WHERE p.client_id = $1 ORDER BY p.start_date DESC LIMIT 10`,
+          [clientRecord.id]
+        );
+        // Mark as client in companies table
+        await pool.query('UPDATE companies SET is_client = true, updated_at = NOW() WHERE id = $1 AND (is_client IS NULL OR is_client = false)', [req.params.id]);
+        enrichResults.client = {
+          status: clientRecord.relationship_status,
+          tier: clientRecord.relationship_tier,
+          recent_placements: placements.length,
+          placements: placements.map(p => ({ role: p.role_title, candidate: p.full_name, date: p.start_date, fee: p.placement_fee }))
+        };
+      } else {
+        enrichResults.client = { message: 'No client record linked' };
+      }
+    } catch (e) {
+      enrichResults.client = { error: e.message };
+    }
+
+    // 3. People at this company
+    try {
+      const { rows: people } = await pool.query(
+        `SELECT full_name, current_title, email FROM people WHERE current_company_id = $1 ORDER BY current_title LIMIT 20`,
+        [req.params.id]
+      );
+      enrichResults.people = { count: people.length, sample: people.slice(0, 5).map(p => `${p.full_name} — ${p.current_title}`) };
+    } catch (e) {
+      enrichResults.people = { error: e.message };
+    }
+
+    // 4. Re-embed with all enriched data
+    try {
+      const { rows: [latest] } = await pool.query('SELECT * FROM companies WHERE id = $1', [req.params.id]);
+      const parts = [latest.name, latest.sector, latest.geography, latest.description, latest.domain].filter(Boolean);
 
       const { rows: signals } = await pool.query(`SELECT evidence_summary FROM signal_events WHERE company_id = $1 AND evidence_summary IS NOT NULL ORDER BY detected_at DESC LIMIT 5`, [req.params.id]);
       signals.forEach(s => parts.push(s.evidence_summary));
@@ -1358,11 +1532,11 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
       const { rows: people } = await pool.query(`SELECT full_name, current_title FROM people WHERE current_company_id = $1 AND current_title IS NOT NULL LIMIT 10`, [req.params.id]);
       if (people.length) parts.push('Key people: ' + people.map(p => `${p.full_name} — ${p.current_title}`).join(', '));
 
-      if (parts.join(' ').length > 10) {
+      if (parts.join(' ').length > 10 && process.env.QDRANT_URL) {
         const embedding = await generateQueryEmbedding(parts.join('\n'));
         const url = new URL('/collections/companies/points', process.env.QDRANT_URL);
         await new Promise((resolve, reject) => {
-          const body = JSON.stringify({ points: [{ id: req.params.id, vector: embedding, payload: { name: company.name, sector: company.sector, is_client: company.is_client } }] });
+          const body = JSON.stringify({ points: [{ id: req.params.id, vector: embedding, payload: { name: latest.name, sector: latest.sector, is_client: latest.is_client } }] });
           const qReq = https.request({ hostname: url.hostname, port: url.port || 443, path: url.pathname + '?wait=true', method: 'PUT', headers: { 'Content-Type': 'application/json', 'api-key': process.env.QDRANT_API_KEY }, timeout: 10000 },
             (res) => { const c = []; res.on('data', d => c.push(d)); res.on('end', () => resolve()); });
           qReq.on('error', reject);

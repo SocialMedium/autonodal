@@ -401,23 +401,49 @@ Args:
       const result = await dbQuery(`
         SELECT c.*,
           (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) as employee_count,
-          (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.detected_at > NOW() - INTERVAL '90 days') as recent_signals
+          (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.detected_at > NOW() - INTERVAL '90 days') as recent_signals,
+          EXISTS (SELECT 1 FROM clients cl WHERE cl.company_id = c.id) as is_client
         FROM companies c
         WHERE ${conditions.join(' AND ')}
         ORDER BY c.name
         LIMIT $${pi}
       `, [...params, limit]);
 
-      if (result.rows.length === 0) return okText(`No companies found matching "${query}"`);
+      // Also search clients table for unlinked clients (no company_id)
+      const clientResult = await dbQuery(`
+        SELECT cl.id as client_id, cl.name, cl.relationship_status, cl.relationship_tier, cl.company_id,
+          COALESCE(cf.total_placements, 0) as total_placements,
+          COALESCE(cf.total_invoiced, 0) as total_revenue
+        FROM clients cl
+        LEFT JOIN client_financials cf ON cf.client_id = cl.id
+        WHERE cl.name ILIKE $1
+          AND (cl.company_id IS NULL OR NOT EXISTS (SELECT 1 FROM companies co WHERE co.id = cl.company_id AND co.name ILIKE $1))
+        LIMIT $2
+      `, [`%${query}%`, limit]);
 
-      const lines = [`**${result.rows.length} companies found**\n`];
-      for (const co of result.rows) {
-        lines.push(`**${co.name}** (ID: ${co.id})`);
-        if (co.industry) lines.push(`  Industry: ${co.industry}`);
-        if (co.location) lines.push(`  Location: ${co.location}`);
-        if (co.employee_count > 0) lines.push(`  People tracked: ${co.employee_count}`);
-        if (co.recent_signals > 0) lines.push(`  Recent signals (90d): ${co.recent_signals}`);
-        lines.push('');
+      if (result.rows.length === 0 && clientResult.rows.length === 0) return okText(`No companies found matching "${query}"`);
+
+      const lines = [];
+      if (result.rows.length > 0) {
+        lines.push(`**${result.rows.length} companies found**\n`);
+        for (const co of result.rows) {
+          lines.push(`**${co.name}** (ID: ${co.id})${co.is_client ? ' ⭐ CLIENT' : ''}`);
+          if (co.industry) lines.push(`  Industry: ${co.industry}`);
+          if (co.location) lines.push(`  Location: ${co.location}`);
+          if (co.employee_count > 0) lines.push(`  People tracked: ${co.employee_count}`);
+          if (co.recent_signals > 0) lines.push(`  Recent signals (90d): ${co.recent_signals}`);
+          lines.push('');
+        }
+      }
+
+      if (clientResult.rows.length > 0) {
+        lines.push(`**${clientResult.rows.length} client record(s) (not yet in companies table)**\n`);
+        for (const cl of clientResult.rows) {
+          lines.push(`**${cl.name}** (Client ID: ${cl.client_id})${cl.company_id ? ' → linked to company ' + cl.company_id : ' ⚠️ No company record'}`);
+          if (cl.relationship_status) lines.push(`  Status: ${cl.relationship_status} | Tier: ${cl.relationship_tier || 'n/a'}`);
+          if (cl.total_placements > 0) lines.push(`  Placements: ${cl.total_placements} | Revenue: $${Number(cl.total_revenue).toLocaleString()}`);
+          lines.push('');
+        }
       }
 
       return okText(lines.join('\n'));
