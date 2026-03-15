@@ -2280,6 +2280,7 @@ app.post('/api/dispatches/rescan', authenticateToken, async (req, res) => {
 app.get('/api/dispatches', authenticateToken, async (req, res) => {
   try {
     const status = req.query.status;
+    const region = req.query.region;
     const limit = Math.min(parseInt(req.query.limit) || 50, 100);
     const offset = parseInt(req.query.offset) || 0;
 
@@ -2289,6 +2290,24 @@ app.get('/api/dispatches', authenticateToken, async (req, res) => {
 
     if (status) {
       idx++; where += ` AND sd.status = $${idx}`; params.push(status);
+    }
+
+    // Region filter — reuse the same mapping as signals/brief
+    const REGION_MAP = {
+      'AU': ['Australia', 'Australian', 'Sydney', 'Melbourne', 'Brisbane', 'Perth'],
+      'SG': ['Singapore', 'Southeast Asia', 'ASEAN', 'Jakarta', 'Kuala Lumpur', 'Bangkok', 'Vietnam', 'Philippines', 'Indonesia', 'Malaysia', 'Thailand'],
+      'UK': ['United Kingdom', 'London', 'England', 'Britain', 'British', 'Manchester', 'Edinburgh'],
+      'US': ['United States', 'Silicon Valley', 'New York', 'San Francisco', 'California', 'Texas', 'Boston', 'Seattle'],
+      'APAC': ['Australia', 'Singapore', 'Asia', 'APAC', 'Japan', 'Korea', 'India', 'Hong Kong', 'Southeast Asia', 'Sydney', 'Melbourne', 'China', 'Taiwan', 'New Zealand'],
+      'EMEA': ['United Kingdom', 'Europe', 'EMEA', 'London', 'Germany', 'France', 'Netherlands', 'Ireland', 'Middle East', 'Africa', 'Nordics', 'Sweden', 'Denmark'],
+    };
+    if (region && region !== 'all' && REGION_MAP[region]) {
+      const geos = REGION_MAP[region];
+      const orParts = [];
+      geos.forEach(g => { idx++; orParts.push(`c.geography ILIKE $${idx}`); params.push(`%${g}%`); });
+      geos.forEach(g => { idx++; orParts.push(`sd.company_name ILIKE $${idx}`); params.push(`%${g}%`); });
+      geos.forEach(g => { idx++; orParts.push(`sd.signal_summary ILIKE $${idx}`); params.push(`%${g}%`); });
+      where += ` AND (${orParts.join(' OR ')})`;
     }
 
     idx++; params.push(limit);
@@ -2318,7 +2337,7 @@ app.get('/api/dispatches', authenticateToken, async (req, res) => {
           sd.generated_at DESC
         LIMIT $${idx - 1} OFFSET $${idx}
       `, params),
-      pool.query(`SELECT COUNT(*) AS cnt FROM signal_dispatches sd ${where}`, status ? [status] : [])
+      pool.query(`SELECT COUNT(*) AS cnt FROM signal_dispatches sd LEFT JOIN companies c ON c.id = sd.company_id ${where}`, params.slice(0, -2))
     ]);
 
     res.json({

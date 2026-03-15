@@ -212,6 +212,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
     <div class="chip" onclick="setFilter(this, 'claimed')">Claimed</div>
     <div class="chip" onclick="setFilter(this, 'reviewed')">Reviewed</div>
     <div class="chip" onclick="setFilter(this, 'sent')">Sent</div>
+    <span style="width:1px;height:20px;background:var(--rule);margin:0 6px"></span>
+    <div class="chip" onclick="setRegion(this, '')">All Regions</div>
+    <div class="chip" onclick="setRegion(this, 'AU')">🇦🇺 AU</div>
+    <div class="chip" onclick="setRegion(this, 'SG')">🇸🇬 SEA</div>
+    <div class="chip" onclick="setRegion(this, 'UK')">🇬🇧 UK</div>
+    <div class="chip" onclick="setRegion(this, 'US')">🇺🇸 US</div>
+    <div class="chip" onclick="setRegion(this, 'APAC')">APAC</div>
+    <div class="chip" onclick="setRegion(this, 'EMEA')">EMEA</div>
   </div>
 
   <div class="dispatch-list" id="dispatchList">
@@ -267,12 +275,23 @@ const SIG_ICONS = {
 };
 
 // ── Feed ──
-let offset = 0, currentFilter = '';
+let offset = 0, currentFilter = '', currentRegion = '';
 
 function setFilter(el, filter) {
-  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  // Only deactivate status chips (first 5)
+  el.parentElement.querySelectorAll('.chip:nth-child(-n+5)').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
   currentFilter = filter;
+  offset = 0;
+  document.getElementById('dispatchList').innerHTML = '';
+  loadDispatches();
+}
+
+function setRegion(el, region) {
+  // Only deactivate region chips (after the separator)
+  el.parentElement.querySelectorAll('.chip:nth-child(n+7)').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  currentRegion = region;
   offset = 0;
   document.getElementById('dispatchList').innerHTML = '';
   loadDispatches();
@@ -281,6 +300,7 @@ function setFilter(el, filter) {
 async function loadDispatches() {
   const params = new URLSearchParams({ limit: 20, offset });
   if (currentFilter) params.set('status', currentFilter);
+  if (currentRegion) params.set('region', currentRegion);
 
   try {
     const data = await api('/api/dispatches?' + params);
