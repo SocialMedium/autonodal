@@ -493,6 +493,78 @@ app.get('/api/stats', authenticateToken, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// MARKET TEMPERATURE — macro summary from megacap/public company signals
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/market-temperature', authenticateToken, async (req, res) => {
+  try {
+    // Aggregate megacap signals by type for the last 7 days
+    const { rows: byType } = await pool.query(`
+      SELECT se.signal_type, COUNT(*) as cnt,
+             array_agg(DISTINCT se.company_name ORDER BY se.company_name) FILTER (WHERE se.company_name IS NOT NULL) as companies
+      FROM signal_events se
+      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days'
+      GROUP BY se.signal_type ORDER BY cnt DESC
+    `);
+
+    // Headline signals — the most notable recent megacap moves
+    const { rows: headlines } = await pool.query(`
+      SELECT se.company_name, se.signal_type, se.evidence_summary, se.detected_at, se.confidence_score
+      FROM signal_events se
+      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days'
+      ORDER BY se.confidence_score DESC, se.detected_at DESC
+      LIMIT 8
+    `);
+
+    // Sentiment indicators
+    const growth = byType.filter(t => ['capital_raising', 'product_launch', 'strategic_hiring', 'geographic_expansion', 'partnership'].includes(t.signal_type)).reduce((sum, t) => sum + parseInt(t.cnt), 0);
+    const contraction = byType.filter(t => ['restructuring', 'layoffs', 'ma_activity'].includes(t.signal_type)).reduce((sum, t) => sum + parseInt(t.cnt), 0);
+    const total = growth + contraction;
+
+    let temperature = 'neutral';
+    let emoji = '🌤️';
+    if (total > 0) {
+      const ratio = growth / total;
+      if (ratio > 0.7) { temperature = 'hot'; emoji = '🔥'; }
+      else if (ratio > 0.55) { temperature = 'warm'; emoji = '☀️'; }
+      else if (ratio < 0.3) { temperature = 'cold'; emoji = '❄️'; }
+      else if (ratio < 0.45) { temperature = 'cooling'; emoji = '🌧️'; }
+    }
+
+    // Build narrative summary via simple template
+    const typeLabels = { capital_raising: 'raising capital', product_launch: 'launching products', strategic_hiring: 'hiring aggressively', restructuring: 'restructuring', layoffs: 'cutting headcount', ma_activity: 'doing deals', geographic_expansion: 'expanding geographically', partnership: 'forming partnerships', leadership_change: 'changing leadership' };
+    const topMoves = byType.slice(0, 3).map(t => {
+      const cos = (t.companies || []).slice(0, 3).join(', ');
+      return `${t.cnt} ${typeLabels[t.signal_type] || t.signal_type.replace(/_/g, ' ')} signals (${cos})`;
+    });
+
+    const summary = total === 0
+      ? 'No significant macro signals this week.'
+      : `${emoji} Market is ${temperature}. ${total} signals from major public companies this week: ${topMoves.join('; ')}.${contraction > 0 ? ' ' + contraction + ' contraction signals may release senior talent downstream.' : ''}`;
+
+    res.json({
+      temperature,
+      emoji,
+      growth_signals: growth,
+      contraction_signals: contraction,
+      total_signals: total,
+      summary,
+      by_type: byType,
+      headlines: headlines.map(h => ({
+        company: h.company_name,
+        type: h.signal_type,
+        summary: (h.evidence_summary || '').slice(0, 150),
+        date: h.detected_at,
+        confidence: h.confidence_score
+      }))
+    });
+  } catch (err) {
+    console.error('Market temperature error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // TALENT IN MOTION — flight risk, activity spikes, re-engagement windows
 // ═══════════════════════════════════════════════════════════════════════════════
 

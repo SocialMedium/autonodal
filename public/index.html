@@ -1504,6 +1504,12 @@ body {
   <div class="main-column">
 
     <!-- DEAL INTELLIGENCE — Network Signals + Regional Streams -->
+    <!-- Market Temperature Byline -->
+    <div id="marketTempBar" style="display:none;background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:12px 18px;margin-bottom:20px;font-size:13px;color:var(--ink-2);line-height:1.55;cursor:pointer" onclick="this.querySelector('.mt-detail')&&(this.querySelector('.mt-detail').style.display=this.querySelector('.mt-detail').style.display==='none'?'block':'none')">
+      <div id="marketTempSummary" style="font-weight:500"></div>
+      <div class="mt-detail" id="marketTempDetail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--rule);font-size:12px;color:var(--ink-3)"></div>
+    </div>
+
     <div class="zone" id="dealSection">
       <div class="zone-header">
         <div class="zone-rule"></div>
@@ -2377,6 +2383,34 @@ function esc(str) {
 
 // ── Init ──
 // ── Talent in Motion ──
+// ── Market Temperature ──
+async function loadMarketTemperature() {
+  try {
+    const data = await api('/api/market-temperature');
+    if (!data || data.total_signals === 0) return;
+
+    const bar = document.getElementById('marketTempBar');
+    const summary = document.getElementById('marketTempSummary');
+    const detail = document.getElementById('marketTempDetail');
+
+    summary.innerHTML = esc(data.summary);
+    bar.style.display = 'block';
+
+    if (data.headlines && data.headlines.length > 0) {
+      detail.innerHTML = '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ink-4);margin-bottom:6px">Macro Headlines (click to expand)</div>' +
+        data.headlines.slice(0, 5).map(h =>
+          '<div style="padding:4px 0;border-bottom:1px solid var(--rule)">' +
+          '<strong>' + esc(h.company) + '</strong> · ' +
+          '<span style="color:var(--ink-4)">' + esc((h.type || '').replace(/_/g, ' ')) + '</span>' +
+          (h.summary ? '<br><span style="font-size:11px">' + esc(h.summary) + '</span>' : '') +
+          '</div>'
+        ).join('');
+    }
+  } catch (e) {
+    console.error('Market temperature error:', e);
+  }
+}
+
 async function loadTalentInMotion() {
   const container = document.getElementById('talentCards');
   const countEl = document.getElementById('talentCount');
@@ -2576,6 +2610,7 @@ async function init() {
   }
 
   loadStats();
+  loadMarketTemperature();
   loadNetworkSignals();
   loadRegionCards();
   loadSignals();
