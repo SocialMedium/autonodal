@@ -512,6 +512,118 @@ app.get('/api/config/terminology', authenticateToken, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// FEED MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Tenant's active feeds
+app.get('/api/feeds', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT fi.*, tf.active, tf.local_signal_yield, tf.tenant_rating, tf.selection_method, tf.activated_at
+      FROM feed_inventory fi
+      JOIN tenant_feeds tf ON tf.feed_id = fi.id
+      WHERE tf.tenant_id = $1
+      ORDER BY fi.quality_score DESC
+    `, [req.tenant_id]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Full platform feed inventory (for feed selection UI)
+app.get('/api/feeds/inventory', authenticateToken, async (req, res) => {
+  try {
+    const vertical = req.user.vertical || 'talent';
+    const { rows } = await pool.query(`
+      SELECT fi.*,
+        EXISTS(
+          SELECT 1 FROM tenant_feeds tf
+          WHERE tf.feed_id = fi.id AND tf.tenant_id = $1 AND tf.active = TRUE
+        ) AS is_active
+      FROM feed_inventory fi
+      WHERE fi.status = 'active'
+        AND ($2 = ANY(fi.verticals) OR 'all' = ANY(fi.verticals) OR fi.verticals = '{}')
+      ORDER BY fi.quality_score DESC, fi.avg_signals_per_week DESC NULLS LAST
+    `, [req.tenant_id, vertical]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Activate a feed for tenant
+app.post('/api/feeds/:id/activate', authenticateToken, async (req, res) => {
+  try {
+    await pool.query(`
+      INSERT INTO tenant_feeds (tenant_id, feed_id, selection_method)
+      VALUES ($1, $2, 'manual')
+      ON CONFLICT (tenant_id, feed_id) DO UPDATE SET active = TRUE, activated_at = NOW()
+    `, [req.tenant_id, req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Deactivate a feed for tenant
+app.delete('/api/feeds/:id/deactivate', authenticateToken, async (req, res) => {
+  try {
+    await pool.query(
+      'UPDATE tenant_feeds SET active = FALSE WHERE tenant_id = $1 AND feed_id = $2',
+      [req.tenant_id, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Rate a feed
+app.post('/api/feeds/:id/rate', authenticateToken, async (req, res) => {
+  try {
+    const { rating } = req.body;
+    if (!rating || rating < 1 || rating > 5) return res.status(400).json({ error: 'Rating must be 1-5' });
+
+    await pool.query(
+      'UPDATE tenant_feeds SET tenant_rating = $1, last_rated_at = NOW() WHERE tenant_id = $2 AND feed_id = $3',
+      [rating, req.tenant_id, req.params.id]
+    );
+    // Update platform aggregate
+    await pool.query(`
+      UPDATE feed_inventory SET
+        total_ratings = total_ratings + 1,
+        avg_rating = (SELECT AVG(tenant_rating)::NUMERIC(3,2) FROM tenant_feeds WHERE feed_id = $1 AND tenant_rating IS NOT NULL)
+      WHERE id = $1
+    `, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Propose a new feed
+app.post('/api/feeds/propose', authenticateToken, async (req, res) => {
+  try {
+    const { proposed_url, proposed_name, proposed_geographies, proposed_sectors, proposed_signal_types, rationale } = req.body;
+    if (!proposed_url) return res.status(400).json({ error: 'URL required' });
+
+    // Check for duplicate
+    const { rows: existing } = await pool.query('SELECT id FROM feed_inventory WHERE url = $1', [proposed_url]);
+    if (existing.length) return res.status(409).json({ error: 'Feed already exists', feed_id: existing[0].id });
+
+    const { rows } = await pool.query(`
+      INSERT INTO feed_proposals (tenant_id, proposed_url, proposed_name, proposed_geographies, proposed_sectors, proposed_signal_types, rationale)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id
+    `, [req.tenant_id, proposed_url, proposed_name, proposed_geographies, proposed_sectors, proposed_signal_types, rationale]);
+    res.json({ success: true, proposal_id: rows[0].id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD STATS
 // ═══════════════════════════════════════════════════════════════════════════════
 
