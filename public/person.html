@@ -185,7 +185,9 @@ function ago(t){if(!t)return'';const m=Math.floor((Date.now()-new Date(t))/6e4);
 const SI={capital_raising:'💰',ma_activity:'🔗',product_launch:'🚀',partnership:'🤝',geographic_expansion:'🌐',restructuring:'⚙️',leadership_change:'👤',layoffs:'📉',strategic_hiring:'👥'};
 const II={email:'✉️',call:'📞',meeting:'🤝',linkedin_message:'💼',whatsapp:'💬',sms:'📱'};
 // Override with Lucide if loaded
-if(typeof signalIcon==='function'){Object.keys(SI).forEach(k=>{SI[k]='<span style="display:inline-flex;color:var(--ink-3)">'+signalIcon(k)+'</span>'});Object.keys(II).forEach(k=>{II[k]='<span style="display:inline-flex;color:var(--ink-3)">'+interactionIcon(k)+'</span>'})}
+const SIC={capital_raising:'#EF9F27',ma_activity:'#AFA9EC',product_launch:'#97C459',partnership:'#85B7EB',geographic_expansion:'#378ADD',restructuring:'#E24B4A',leadership_change:'#D4537E',layoffs:'#E24B4A',strategic_hiring:'#5DCAA5'};
+const IIC={email:'#378ADD',call:'#5DCAA5',meeting:'#AFA9EC',linkedin_message:'#0A66C2',whatsapp:'#25D366',sms:'#888'};
+if(typeof signalIcon==='function'){Object.keys(SI).forEach(k=>{SI[k]='<span style="display:inline-flex;color:'+(SIC[k]||'#888')+'">'+signalIcon(k,18)+'</span>'});Object.keys(II).forEach(k=>{II[k]='<span style="display:inline-flex;color:'+(IIC[k]||'#888')+'">'+interactionIcon(k,18)+'</span>'})}
 const id=new URLSearchParams(location.search).get('id');if(!id)location.href='/people.html';
 
 (async()=>{
