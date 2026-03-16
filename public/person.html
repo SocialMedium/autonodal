@@ -328,7 +328,7 @@ async function enrichPerson() {
     if (r2.web?.company_signals > 0) msgs.push(r2.web.company_signals + ' co signals');
     if (r2.embedding?.message) msgs.push('Embedded');
     btn.textContent = '✅ ' + (msgs.length ? msgs.join(' · ') : 'Up to date');
-    setTimeout(() => location.reload(), 2500);
+    setTimeout(() => { window.scrollTo(0, 0); location.reload(); }, 3000);
   } catch (e) {
     btn.className = 'enrich-btn';
     btn.textContent = '❌ ' + e.message;

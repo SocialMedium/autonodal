@@ -1972,17 +1972,26 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
       try {
         const ezekia = require('./lib/ezekia');
 
-        // If no source_id, try to find them in Ezekia by name or email
+        // If no source_id, try to find them in Ezekia by email (most reliable) or exact name
         let ezekiaId = person.source_id;
-        if (!ezekiaId && (person.full_name || person.email)) {
-          const searchCriteria = {};
-          if (person.email) searchCriteria.email = person.email;
-          else if (person.full_name) searchCriteria.name = person.full_name;
-          const searchRes = await ezekia.searchPeople(searchCriteria);
+        if (!ezekiaId && person.email) {
+          const searchRes = await ezekia.searchPeople({ email: person.email });
           const match = searchRes?.data?.[0];
           if (match) {
             ezekiaId = String(match.id);
-            // Link this person to Ezekia for future enrichments
+            await pool.query('UPDATE people SET source_id = $1, source = $2 WHERE id = $3 AND source_id IS NULL AND tenant_id = $4',
+              [ezekiaId, 'ezekia', req.params.id, req.tenant_id]);
+          }
+        }
+        if (!ezekiaId && person.full_name) {
+          const searchRes = await ezekia.searchPeople({ name: person.full_name });
+          // Only match if name is exact (not fuzzy)
+          const match = searchRes?.data?.find(m => {
+            const ezName = (m.fullName || `${m.firstName || ''} ${m.lastName || ''}`).trim().toLowerCase();
+            return ezName === person.full_name.toLowerCase();
+          });
+          if (match) {
+            ezekiaId = String(match.id);
             await pool.query('UPDATE people SET source_id = $1, source = $2 WHERE id = $3 AND source_id IS NULL AND tenant_id = $4',
               [ezekiaId, 'ezekia', req.params.id, req.tenant_id]);
           }
@@ -1997,12 +2006,18 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           const d = ezRes.data;
           const updates = {};
 
-          // Profile fields
-          const pos = d.profile?.positions?.[0];
+          // Profile fields — find the CURRENT position (primary, or most recent by start date)
+          const positions = d.profile?.positions || [];
+          const pos = positions.find(p => p.primary || p.tense || p.current)
+            || positions.sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''))[0];
+
           if (d.headline || d.profile?.headline) updates.headline = d.headline || d.profile.headline;
-          if (d.current_title || pos?.title) updates.current_title = d.current_title || pos.title;
-          if (d.current_company || pos?.company?.name || pos?.company) {
-            updates.current_company_name = d.current_company || pos.company?.name || pos.company;
+          // Only update title/company if the Ezekia data is more recent or person has none
+          if (pos?.title && (!person.current_title || pos.primary || pos.current)) {
+            updates.current_title = pos.title;
+          }
+          if (pos?.company?.name && (!person.current_company_name || pos.primary || pos.current)) {
+            updates.current_company_name = pos.company?.name || pos.company;
           }
           if (d.email || d.emails?.[0]?.address) updates.email = d.email || d.emails[0].address;
           if (d.phone || d.phones?.[0]?.number) updates.phone = d.phone || d.phones[0].number;
