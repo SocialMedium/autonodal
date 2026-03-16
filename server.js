@@ -4059,42 +4059,51 @@ async function callClaude(messages, tools, systemPrompt) {
 
 const CHAT_SYSTEM = `You are Lorac — the AI intelligence agent for the Signal Intelligence Platform, currently serving MitchelLake.
 
-CAPABILITIES:
-1. **Interrogate data**: Search people, companies, signals, placements, research notes. Query the live database.
-2. **Ingest intelligence**: When consultants share gossip, meeting notes, or insights, extract structured data and save as research notes.
-3. **Process files**: Parse uploaded CSVs and PDFs — import candidates, companies, contacts.
-4. **LinkedIn imports**: Auto-detect LinkedIn Connections, Contacts, and Messages CSVs. Match against existing people, create team proximity links, store message history as interactions.
-5. **Advanced analysis**: Run SQL queries for complex cross-referencing and aggregations.
-6. **Modify records**: Update people profiles, merge duplicates, fix data, add notes. You can run UPDATE, INSERT, and DELETE queries when the user requests changes.
+CRITICAL BEHAVIOUR:
+- DO NOT explain what you are going to do. Just DO it.
+- DO NOT narrate your tool calls. Execute tools silently and present the results.
+- When asked a cross-referencing question like "who do we know at X" — use run_sql_query immediately with a JOIN query. Do NOT chain multiple search tools.
+- For ANY question involving cross-referencing two entity types (signals + people, companies + contacts, placements + clients) — use run_sql_query with a single JOIN query. This is ALWAYS faster and more accurate than chaining separate search tools.
+- Present results as a clean formatted table or list. Not a wall of text.
+
+QUERY PATTERNS (use these SQL patterns directly):
+1. "Who do we know at companies with X signals?"
+   → run_sql_query: SELECT DISTINCT p.full_name, p.current_title, p.current_company_name, se.signal_type, se.evidence_summary, se.detected_at, p.id FROM people p JOIN companies c ON c.id = p.current_company_id JOIN signal_events se ON se.company_id = c.id WHERE se.signal_type = 'capital_raising' AND se.detected_at > NOW() - INTERVAL '90 days' AND p.tenant_id = '<TENANT>' ORDER BY se.detected_at DESC
+
+2. "What signals do we have for X company?"
+   → run_sql_query: SELECT se.signal_type, se.evidence_summary, se.confidence_score, se.detected_at FROM signal_events se JOIN companies c ON c.id = se.company_id WHERE c.name ILIKE '%X%' AND se.tenant_id = '<TENANT>' ORDER BY se.detected_at DESC
+
+3. "Who moved recently / flight risk?"
+   → run_sql_query: SELECT p.full_name, p.current_title, p.current_company_name, ps.flight_risk_score, ps.timing_score FROM people p JOIN person_scores ps ON ps.person_id = p.id WHERE ps.flight_risk_score > 0.5 AND p.tenant_id = '<TENANT>' ORDER BY ps.flight_risk_score DESC LIMIT 20
+
+4. "What placements have we done in X sector?"
+   → run_sql_query: SELECT p.full_name, cv.role_title, a.name as client, cv.placement_fee, cv.start_date FROM conversions cv JOIN people p ON p.id = cv.person_id JOIN accounts a ON a.id = cv.client_id LEFT JOIN companies c ON c.id = a.company_id WHERE (c.sector ILIKE '%X%' OR cv.role_title ILIKE '%X%') AND cv.tenant_id = '<TENANT>' ORDER BY cv.start_date DESC
+
+IMPORTANT: Replace <TENANT> with the actual tenant_id from context. The user's tenant_id is always provided in the conversation context.
 
 CONTEXT:
 - MitchelLake is a retained executive search firm (APAC, UK, global)
 - Database: ~77K people, ~11K companies, ~22K documents, ~9K signals, ~500 placements
-- Research notes are goldmine intel: timing, comp expectations, preferences, warm intros
-- Signals: capital_raising, ma_activity, geographic_expansion, strategic_hiring, leadership_change, partnership, product_launch, layoffs
-- Table names: people, companies, accounts (was clients), opportunities (was searches), conversions (was placements), engagements (was projects), pipeline_contacts (was search_candidates), signal_events, interactions, team_proximity, external_documents, signal_dispatches
+- Table names: people, companies, accounts, opportunities, conversions, engagements, pipeline_contacts, signal_events, interactions, team_proximity, external_documents, signal_dispatches, person_scores, person_signals
+- Signal types: capital_raising, ma_activity, geographic_expansion, strategic_hiring, leadership_change, partnership, product_launch, layoffs, restructuring
+- Key columns: people.current_company_id → companies.id, signal_events.company_id → companies.id, conversions.client_id → accounts.id, accounts.company_id → companies.id
+- team_proximity links people to users (team members) via team_member_id with relationship_strength (0-1)
 
 STYLE:
-- Concise and actionable — consultants are busy
-- Format results with names, titles, companies in clear lists
-- Link to pages: [Name](/person.html?id=X), [Company](/company.html?id=X)
+- Concise. No preamble. Execute then present results.
+- Format: [Name](/person.html?id=X) | Title | Company | Signal/Score
 - Australian English
 - When saving intel, confirm what was extracted
 - For file imports, preview before committing
-- When a LinkedIn CSV is uploaded, auto-detect the type (connections/contacts/messages) from the [LinkedIn Export Type] tag and use the appropriate import action (import_linkedin_connections or import_linkedin_messages). Always tell the user what was detected and confirm before importing.
-- For LinkedIn Connections: use import_linkedin_connections — this matches against existing people by LinkedIn URL, email, and name, creates team_proximity records, and adds new people for unmatched connections.
-- For LinkedIn Messages: use import_linkedin_messages — this groups messages by conversation and stores them as interaction records linked to matched people.
+- LinkedIn CSV: auto-detect type from [LinkedIn Export Type] tag, use import_linkedin_connections or import_linkedin_messages
 
 RULES:
-- Always search before saying "I don't know"
-- Extract ALL entities from intelligence (people, companies, roles, comp, timing)
-- Never fabricate data — only return what the database contains
-- For UPDATE/DELETE operations, always confirm with the user before executing and show the affected records first
-- For SQL queries: SELECT, UPDATE, INSERT, and DELETE are allowed. DROP/ALTER/TRUNCATE are blocked. Always confirm destructive operations with the user first.
-- ALWAYS prioritise recency — sort results by most recent interaction/note date first
-- When showing candidates, include when they were last contacted and how recent the intelligence is
-- Flag stale intel: notes older than 6 months should be marked as potentially outdated
-- "Open to roles" intelligence from 2+ years ago is likely stale — note this to the user`;
+- NEVER say "let me search" then show empty results then say "let me try another approach". Use SQL with JOINs from the start.
+- Never fabricate data
+- For UPDATE/DELETE, confirm with user first
+- SQL: SELECT, UPDATE, INSERT, DELETE allowed. DROP/ALTER/TRUNCATE blocked.
+- Prioritise recency — sort by most recent first
+- Flag stale intel (>6 months)`;
 
 const CHAT_TOOLS = [
   { name: 'search_people', description: 'Semantic + SQL search for people/candidates by name, title, company, location, skills.', input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Search query' }, filters: { type: 'object', properties: { seniority: { type: 'string' }, has_notes: { type: 'boolean' }, company: { type: 'string' } } }, limit: { type: 'integer', default: 10 } }, required: ['query'] } },
@@ -4107,7 +4116,7 @@ const CHAT_TOOLS = [
   { name: 'log_intelligence', description: 'Save intelligence as a research note. Extracts structured data.', input_schema: { type: 'object', properties: { person_name: { type: 'string' }, company_name: { type: 'string' }, intelligence: { type: 'string' }, subject: { type: 'string' }, extracted: { type: 'object', properties: { timing: { type: 'string' }, compensation: { type: 'string' }, location_preference: { type: 'string' }, role_interests: { type: 'string' }, constraints: { type: 'string' }, warm_intros: { type: 'string' }, sentiment: { type: 'string' } } } }, required: ['person_name', 'intelligence', 'subject'] } },
   { name: 'create_person', description: 'Create a new person record.', input_schema: { type: 'object', properties: { full_name: { type: 'string' }, current_title: { type: 'string' }, current_company_name: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' }, location: { type: 'string' }, linkedin_url: { type: 'string' }, seniority_level: { type: 'string' } }, required: ['full_name'] } },
   { name: 'process_uploaded_file', description: 'Process uploaded CSV/PDF. Actions: preview, import_people, import_companies, extract_text, import_linkedin_connections (match LinkedIn connections against DB, create team_proximity records), import_linkedin_messages (store LinkedIn message history as interactions/intel).', input_schema: { type: 'object', properties: { file_id: { type: 'string' }, action: { type: 'string', enum: ['preview', 'import_people', 'import_companies', 'extract_text', 'import_linkedin_connections', 'import_linkedin_messages'] }, column_mapping: { type: 'object' } }, required: ['file_id', 'action'] } },
-  { name: 'run_sql_query', description: 'Run read-only SQL SELECT for advanced analysis.', input_schema: { type: 'object', properties: { query: { type: 'string' }, explanation: { type: 'string' } }, required: ['query', 'explanation'] } },
+  { name: 'run_sql_query', description: 'PRIMARY TOOL — Run SQL (SELECT, UPDATE, INSERT, DELETE) against the database. Use this FIRST for any cross-referencing query. JOINs are fast. Always include tenant_id filter. Key tables: people, companies, signal_events, interactions, conversions, accounts, opportunities, team_proximity, person_scores.', input_schema: { type: 'object', properties: { query: { type: 'string', description: 'SQL query. Must include AND tenant_id = \'<tenant_id>\' for data tables.' }, explanation: { type: 'string', description: 'Brief one-line explanation of what this query does' } }, required: ['query', 'explanation'] } },
   { name: 'get_platform_stats', description: 'Current platform statistics.', input_schema: { type: 'object', properties: {} } },
 ];
 
@@ -4495,7 +4504,10 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
     history.push({ role: 'user', content: userContent });
     while (history.length > MAX_HISTORY) history.shift();
 
-    let response = await callClaude(history, CHAT_TOOLS, CHAT_SYSTEM);
+    // Inject tenant context into system prompt so SQL queries can use the right tenant_id
+    const systemWithContext = CHAT_SYSTEM + `\n\nSESSION CONTEXT:\n- tenant_id: '${req.tenant_id}'\n- user: ${req.user.name} (${req.user.email})\n- user_id: '${req.user.user_id}'`;
+
+    let response = await callClaude(history, CHAT_TOOLS, systemWithContext);
     let finalText = '';
     let toolsUsed = [];
     let rounds = 0;
@@ -4515,7 +4527,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         toolsUsed.push(tc.name);
       }
       history.push({ role: 'user', content: toolResultContent });
-      response = await callClaude(history, CHAT_TOOLS, CHAT_SYSTEM);
+      response = await callClaude(history, CHAT_TOOLS, systemWithContext);
     }
 
     finalText += response.content.filter(c => c.type === 'text').map(c => c.text).join('');
