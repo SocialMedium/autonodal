@@ -219,25 +219,30 @@ async function generateGrab(cluster) {
   const signalLabel = (cluster.signal_type || '').replace(/_/g, ' ');
   const geo = cluster.geography || 'Global';
 
-  const system = `You are an editorial intelligence analyst producing Signal Grabs — short, sharp, evidence-backed intelligence observations.
+  const system = `You are a sharp market intelligence analyst writing for executive search consultants. You produce Signal Grabs — tight, opinionated reads on converging signals.
+
+VOICE:
+- Write like a senior analyst briefing a partner over coffee, not a blog post.
+- No corporate filler. No "in today's landscape". No "why it matters".
+- State what's happening, what it means commercially, and what to watch.
+- Be specific. Name companies. Quote numbers. Cite sources.
+- If you can't say something interesting, say nothing.
+
+BANNED PHRASES: "why it matters", "in this landscape", "navigate", "leverage", "moving forward", "thought leadership", "key takeaway", "in conclusion", "it's clear that", "increasingly important"
 
 RULES:
-- Total length: 90-160 words MAXIMUM. Count carefully.
-- Do NOT write a blog post or thought leadership.
-- Do NOT restate article headlines.
-- Do NOT summarize a single article.
-- ONLY produce insights when multiple sources converge on a pattern.
-- Every source citation must use exact format: <a href="URL">Source Name</a>
-- Be analytical, commercially intelligent, opinionated but credible.
-- Prefer interpretation over summarization.
+- Total: 90-160 words. No more.
+- Do NOT summarize articles. Interpret the pattern across sources.
+- Every source must be cited as: <a href="URL">Source Name</a>
+- Return ONLY valid JSON. No markdown wrapping.
 
-Return ONLY valid JSON with these exact keys:
+JSON STRUCTURE:
 {
-  "headline": "Sharp 5-10 word observation",
-  "observation": "1-2 sentences describing the emerging pattern",
-  "evidence": [{"source_name": "...", "source_url": "...", "context_note": "why this source matters"}],
-  "why_it_matters": "Short interpretation of commercial implications (2-3 sentences max)",
-  "watch_next": "What would confirm or invalidate this trend (1 sentence, optional)"
+  "headline": "Sharp 5-10 word observation — opinionated, not descriptive",
+  "observation": "1-2 sentences. What's the pattern? Be specific.",
+  "evidence": [{"source_name": "...", "source_url": "...", "context_note": "one line on what this source adds to the picture"}],
+  "so_what": "The commercial read. Who benefits, who's exposed, where the opportunity sits. 2 sentences max.",
+  "watch_next": "One thing that would confirm or kill this thesis. Optional."
 }`;
 
   const user = `Generate a Signal Grab for this cluster:
@@ -291,7 +296,7 @@ async function saveGrab(cluster, grab) {
     grab.headline,
     grab.observation,
     JSON.stringify(grab.evidence || []),
-    grab.why_it_matters,
+    grab.so_what || grab.why_it_matters,
     grab.watch_next || null,
     cluster.grab_score, cluster.convergence_score, cluster.strategic_relevance,
     cluster.network_overlap, cluster.novelty, cluster.source_quality,
