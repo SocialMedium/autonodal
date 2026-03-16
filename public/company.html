@@ -67,20 +67,22 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .enrich-btn.loading { opacity: 0.6; pointer-events: none; }
 .enrich-btn.done { background: #E6F5EC; border-color: #0D7A50; color: #0D7A50; }
 
-/* Grid */
-.grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 0; }
-.main { padding-right: 32px; border-right: 1px solid var(--rule); min-width: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; align-content: start; }
-.main > .sec { break-inside: avoid; }
-.main > .sec.full-width { grid-column: 1 / -1; }
-.side { padding-left: 28px; min-width: 0; }
+/* Card-based grid */
+.grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow-card); overflow: hidden; min-width: 0; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
+.card-title { font-family: var(--serif); font-size: 17px; font-weight: 600; }
+.card-count { font-family: var(--mono); font-size: 11px; color: var(--ink-4); }
+.card-sub { font-size: 12px; color: var(--ink-3); margin-bottom: 12px; }
 
-.sec { margin-bottom: 32px; }
+.sec { margin-bottom: 0; }
 .sec-rule { height: 3px; background: var(--ink); margin-bottom: 8px; }
 .sec-rule.thin { height: 1px; background: var(--rule); margin-bottom: 8px; }
 .sec-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
-.sec-title { font-family: var(--serif); font-size: 19px; font-weight: 600; }
+.sec-title { font-family: var(--serif); font-size: 17px; font-weight: 600; }
 .sec-count { font-family: var(--mono); font-size: 11px; color: var(--ink-4); }
-.sec-sub { font-size: 13px; color: var(--ink-3); margin-bottom: 12px; }
+.sec-sub { font-size: 12px; color: var(--ink-3); margin-bottom: 12px; }
 
 /* Signal cards */
 .sigcard { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 10px; box-shadow: var(--shadow-card); overflow: hidden; }
@@ -133,8 +135,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .loading { text-align: center; padding: 60px; color: var(--ink-3); }
 
 @media (max-width: 1024px) {
-  .grid { grid-template-columns: 1fr; }
-  .main { padding-right: 0; border-right: none; grid-template-columns: 1fr; }
+  .card-grid { grid-template-columns: 1fr; }
   .side { padding-left: 0; margin-top: 32px; padding-top: 24px; border-top: 2px solid var(--ink); }
   .co-stats { max-width: 100%; }
 }
@@ -205,10 +206,10 @@ h+='<div class="co-stats"><div class="co-st"><div class="co-st-v">'+ppl.length+'
 h+='<button class="enrich-btn" id="enrichBtn" onclick="enrichCompany()">🔄 Refresh &amp; Enrich</button>';
 h+='</div>';
 
-h+='<div class="grid"><div class="main">';
+h+='<div class="card-grid">';
 
 // ── SIGNALS ──
-h+='<div class="sec full-width"><div class="sec-rule"></div><div class="sec-head"><div class="sec-title">Signals</div><div class="sec-count">'+sigs.length+'</div></div><div class="sec-sub">Market intelligence and events</div>';
+h+='<div class="card" style="grid-column:1/-1"><div class="card-head"><div class="card-title">Signals</div><div class="card-count">'+sigs.length+'</div></div><div class="card-sub">Market intelligence and events</div>';
 if(!sigs.length)h+='<div class="empty">No signals detected</div>';
 else sigs.forEach(s=>{
   const icon=SI[s.signal_type]||'📡';
@@ -235,10 +236,10 @@ else sigs.forEach(s=>{
   h+='<div class="sigcard-src">'+(s.doc_source?'<span>'+esc(s.doc_source)+'</span>':'')+'<span>'+ago(s.detected_at)+'</span>'+(s.source_url?'<a href="'+esc(s.source_url)+'" target="_blank">↗ Source</a>':'')+'</div>';
   h+='</div>';
 });
-h+='</div>';
+h+='</div>'; // close signals card
 
 // ── PEOPLE ──
-h+='<div class="sec"><div class="sec-rule"></div><div class="sec-head"><div class="sec-title">People</div><div class="sec-count">'+ppl.length+' IN NETWORK</div></div><div class="sec-sub">Candidates and contacts at '+esc(c.name)+'</div>';
+h+='<div class="card"><div class="card-head"><div class="card-title">People</div><div class="card-count">'+ppl.length+' IN NETWORK</div></div><div class="card-sub">Candidates and contacts at '+esc(c.name)+'</div>';
 if(!ppl.length)h+='<div class="empty">No people linked</div>';
 else ppl.forEach(p=>{
   const pi=(p.full_name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
@@ -247,16 +248,13 @@ else ppl.forEach(p=>{
   h+='<div class="pmeta2">'+(p.seniority_level?'<span class="tag" style="background:var(--amber-soft);color:var(--amber)">'+esc(p.seniority_level)+'</span>':'')+'</div>';
   h+='<div>'+(nc?'<span class="pnb">'+nc+' notes</span>':'')+'</div></div>';
 });
-h+='</div>';
+h+='</div>'; // close people card
 
-h+='</div>'; // end main
-
-// ── SIDEBAR ──
-h+='<div class="side">';
+// ── SIDEBAR CARDS ──
 
 // Placements
 if(pls.length||c.is_client){
-  h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">Placements</div>';
+  h+='<div class="card"><div class="card-head"><div class="card-title">Placements</div></div>';
   if(totalFees)h+='<div style="font-family:var(--mono);font-size:18px;font-weight:600;color:var(--emerald);margin-bottom:10px">'+money(totalFees)+' total</div>';
   if(!pls.length)h+='<div class="empty">No placements recorded</div>';
   else pls.forEach(pl=>{
@@ -267,7 +265,7 @@ if(pls.length||c.is_client){
 
 // Documents
 if(docs.length){
-  h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">Coverage & Documents</div>';
+  h+='<div class="card"><div class="card-head"><div class="card-title">Coverage & Documents</div></div>';
   docs.forEach(d=>{
     h+='<div class="drow">'+(d.source_url?'<a href="'+esc(d.source_url)+'" target="_blank">'+esc(d.title||'Untitled')+'</a>':'<span style="font-size:13px;font-weight:500">'+esc(d.title||'Untitled')+'</span>')+'<div class="dm">'+esc(d.source_name||d.source_type||'')+' · '+fmtD(d.published_at)+'</div></div>';
   });
@@ -275,7 +273,7 @@ if(docs.length){
 }
 
 // Details
-h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">Details</div><div style="font-size:13px;color:var(--ink-2);line-height:2.2">';
+h+='<div class="card"><div class="card-head"><div class="card-title">Details</div></div><div style="font-size:13px;color:var(--ink-2);line-height:2.2">';
 if(c.sector)h+='<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Sector</span><br>'+esc(c.sector)+(c.sub_sector?' / '+esc(c.sub_sector):'')+'</div>';
 if(c.geography)h+='<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Geography</span><br>'+esc(c.geography)+'</div>';
 if(c.employee_count_band)h+='<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Size</span><br>'+esc(c.employee_count_band)+'</div>';
@@ -283,7 +281,7 @@ if(c.domain)h+='<div><span style="font-size:10px;text-transform:uppercase;letter
 if(c.aliases&&c.aliases.length)h+='<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Also known as</span><br>'+c.aliases.map(a=>esc(a)).join(', ')+'</div>';
 h+='</div></div>';
 
-h+='</div></div>'; // end side + grid
+h+='</div>'; // close card-grid
 document.getElementById('app').innerHTML=h;
 })();
 

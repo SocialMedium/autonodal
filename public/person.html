@@ -64,63 +64,67 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .ci a { color: var(--blue); text-decoration: none; word-break: break-all; }
 .ci a:hover { text-decoration: underline; }
 
-/* Grid */
-.grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 0; }
-.main { padding-right: 32px; border-right: 1px solid var(--rule); min-width: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; align-content: start; }
-.main > .sec { break-inside: avoid; }
-.main > .sec.full-width { grid-column: 1 / -1; }
-.side { padding-left: 28px; min-width: 0; }
+/* Card-based grid layout */
+.grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow-card); overflow: hidden; min-width: 0; }
+.card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
+.card-title { font-family: var(--serif); font-size: 17px; font-weight: 600; }
+.card-count { font-family: var(--mono); font-size: 11px; color: var(--ink-4); }
+.card-sub { font-size: 12px; color: var(--ink-3); margin-bottom: 12px; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
 
-/* Sections */
-.sec { margin-bottom: 32px; }
+/* Section cards — backwards compat with .sec */
+.sec { margin-bottom: 0; }
 .sec-rule { height: 3px; background: var(--ink); margin-bottom: 8px; }
 .sec-rule.thin { height: 1px; background: var(--rule); margin-bottom: 8px; }
 .sec-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
-.sec-title { font-family: var(--serif); font-size: 19px; font-weight: 600; }
+.sec-title { font-family: var(--serif); font-size: 17px; font-weight: 600; }
 .sec-count { font-family: var(--mono); font-size: 11px; color: var(--ink-4); }
-.sec-sub { font-size: 13px; color: var(--ink-3); margin-bottom: 12px; }
+.sec-sub { font-size: 12px; color: var(--ink-3); margin-bottom: 12px; }
 
 /* Notes */
-.note { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 10px; box-shadow: var(--shadow-card); overflow: hidden; }
-.note-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
-.note-subj { font-family: var(--serif); font-size: 15px; font-weight: 600; min-width: 0; overflow-wrap: break-word; }
+.note { background: var(--surface-warm); border: 1px solid var(--rule); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 8px; overflow: hidden; }
+.note-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.note-subj { font-family: var(--serif); font-size: 14px; font-weight: 600; min-width: 0; overflow-wrap: break-word; }
 .note-date { font-size: 10px; color: var(--ink-4); font-family: var(--mono); white-space: nowrap; }
-.note-body { font-size: 13px; color: var(--ink-2); line-height: 1.65; white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word; max-height: 280px; overflow-y: auto; }
+.note-body { font-size: 12px; color: var(--ink-2); line-height: 1.6; white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word; max-height: 180px; overflow-y: auto; }
 .note-q { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; white-space: nowrap; }
 .note-q.high { background: var(--emerald-soft); color: var(--emerald); }
 .note-q.medium { background: var(--amber-soft); color: var(--amber); }
-.note-intel { margin-top: 10px; padding: 10px 12px; background: var(--surface-cool); border-radius: 6px; border-left: 3px solid var(--blue); font-size: 12px; color: var(--ink-2); line-height: 1.55; word-break: break-word; }
+.note-intel { margin-top: 8px; padding: 8px 10px; background: var(--surface-cool); border-radius: 6px; border-left: 3px solid var(--blue); font-size: 11px; color: var(--ink-2); line-height: 1.5; word-break: break-word; }
 .note-intel b { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--blue); display: block; margin-bottom: 3px; }
 
-/* Signal rows */
-.sig { padding: 9px 0; border-bottom: 1px solid var(--rule); display: flex; gap: 10px; align-items: flex-start; transition: background 0.15s; border-radius: 4px; padding-left: 4px; padding-right: 4px; }
-.sig:hover { background: var(--surface-warm); }
+/* Signal cards */
+.sig { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 6px; display: flex; gap: 10px; align-items: flex-start; transition: border-color 0.15s; overflow: hidden; }
+.sig:hover { border-color: var(--blue); }
 .sig-icon { font-size: 15px; flex-shrink: 0; }
 .sig-info { flex: 1; min-width: 0; }
-.sig-hl { font-size: 13px; font-weight: 500; overflow-wrap: break-word; }
-.sig-det { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
-.sig-conf { font-family: var(--mono); font-size: 12px; color: var(--ink-4); flex-shrink: 0; }
+.sig-hl { font-size: 13px; font-weight: 500; overflow-wrap: break-word; word-break: break-word; }
+.sig-det { font-size: 11px; color: var(--ink-3); margin-top: 2px; overflow-wrap: break-word; word-break: break-word; }
+.sig-conf { font-family: var(--mono); font-size: 11px; color: var(--ink-4); flex-shrink: 0; }
 
-/* Interaction rows */
-.ix { padding: 9px 0; border-bottom: 1px solid var(--rule); display: flex; gap: 10px; align-items: flex-start; transition: background 0.15s; border-radius: 4px; padding-left: 4px; padding-right: 4px; }
-.ix:hover { background: var(--surface-warm); }
+/* Interaction cards */
+.ix { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 6px; display: flex; gap: 10px; align-items: flex-start; transition: border-color 0.15s; overflow: hidden; cursor: pointer; }
+.ix:hover { border-color: var(--blue); }
 .ix-icon { font-size: 14px; flex-shrink: 0; }
-.ix-info { flex: 1; min-width: 0; }
-.ix-title { font-size: 13px; font-weight: 500; overflow-wrap: break-word; }
-.ix-det { font-size: 12px; color: var(--ink-3); margin-top: 1px; overflow-wrap: break-word; word-break: break-word; }
-.ix-preview { max-height: 40px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ix-info { flex: 1; min-width: 0; overflow: hidden; }
+.ix-title { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ix-title:hover { white-space: normal; overflow-wrap: break-word; }
+.ix-det { font-size: 11px; color: var(--ink-3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; word-break: break-word; }
+.ix-preview { max-height: 36px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ix-full { word-break: break-word; overflow-wrap: break-word; max-height: 300px; overflow-y: auto; }
 .ix-date { font-size: 10px; color: var(--ink-4); font-family: var(--mono); flex-shrink: 0; white-space: nowrap; }
 
-/* Side */
-.ss { margin-bottom: 24px; }
+/* Sidebar cards */
+.ss { margin-bottom: 0; }
 .ss-rule { height: 3px; background: var(--ink); margin-bottom: 8px; }
-.ss-title { font-family: var(--serif); font-size: 16px; font-weight: 600; margin-bottom: 10px; }
+.ss-title { font-family: var(--serif); font-size: 15px; font-weight: 600; margin-bottom: 10px; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; }
-.st { padding: 11px; text-align: center; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); transition: background 0.15s; }
+.st { padding: 10px; text-align: center; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); transition: background 0.15s; }
 .st:hover { background: var(--surface-warm); }
 .st:nth-child(2n) { border-right: none; }
 .st:nth-last-child(-n+2) { border-bottom: none; }
-.st-v { font-family: var(--serif); font-size: 20px; font-weight: 600; }
+.st-v { font-family: var(--serif); font-size: 18px; font-weight: 600; }
 .st-l { font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--ink-4); font-weight: 600; }
 
 .coll { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--rule); cursor: pointer; }
@@ -143,10 +147,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .save-indicator { display: inline-block; font-size: 11px; color: var(--emerald); margin-left: 6px; opacity: 0; transition: opacity 0.3s; }
 .save-indicator.show { opacity: 1; }
 
-@media (max-width: 1024px) {
-  .grid { grid-template-columns: 1fr; }
-  .main { padding-right: 0; border-right: none; grid-template-columns: 1fr; }
-  .side { padding-left: 0; margin-top: 32px; padding-top: 24px; border-top: 2px solid var(--ink); }
+@media (min-width: 1024px) {
+  .card-grid { grid-template-columns: 1fr 1fr 300px; }
+  .card-grid > .card:first-child { grid-column: 1 / 3; }
 }
 @media (max-width: 768px) {
   .profile { flex-direction: column; gap: 14px; }
@@ -225,10 +228,10 @@ const isPrivate = p.visibility === 'private';
 h+='<button class="enrich-btn'+(isPrivate?' done':'')+'" id="privacyBtn" onclick="togglePrivacy()" style="margin-top:6px">'+(isPrivate?'🔒 Private':'🌐 Visible to team')+'</button>';
 h+='</div>';
 
-h+='<div class="grid"><div class="main">';
+h+='<div class="card-grid">';
 
 // Research Notes
-h+='<div class="sec full-width"><div class="sec-rule"></div><div class="sec-head"><div class="sec-title">Research Notes</div><div class="sec-count">'+notes.length+' NOTES</div></div><div class="sec-sub">Internal intelligence</div>';
+h+='<div class="card"><div class="sec"><div class="card-head"><div class="card-title">Research Notes</div><div class="card-count">'+notes.length+' NOTES</div></div><div class="card-sub">Internal intelligence</div>';
 if(!notes.length)h+='<div class="empty">No research notes yet</div>';
 else notes.forEach(n=>{
   const qb=n.note_quality?'<span class="note-q '+(n.note_quality==='high'?'high':'medium')+'">'+n.note_quality+'</span>':'';
@@ -239,20 +242,20 @@ else notes.forEach(n=>{
   }
   h+='<div class="note"><div class="note-top"><div class="note-subj">'+esc(n.subject||'Research Note')+qb+'</div><div class="note-date">'+fmtD(n.interaction_at||n.created_at)+'</div></div><div class="note-body">'+esc(n.summary||'')+'</div>'+intel+'</div>';
 });
-h+='</div>';
+h+='</div></div>'; // close sec + card
 
 // Company Signals
 if(csig.length){
-  h+='<div class="sec"><div class="sec-rule thin"></div><div class="sec-head"><div class="sec-title">Company Signals</div><div class="sec-count">'+csig.length+'</div></div><div class="sec-sub">Signals about '+esc(p.current_company_name||'employer')+'</div>';
+  h+='<div class="card"><div class="sec"><div class="card-head"><div class="card-title">Company Signals</div><div class="card-count">'+csig.length+'</div></div><div class="card-sub">Signals about '+esc(p.current_company_name||'employer')+'</div>';
   csig.forEach(x=>{
     h+='<div class="sig" style="cursor:pointer" onclick="location.href=\'/company.html?id='+coId+'\'"><div class="sig-icon">'+(SI[x.signal_type]||'📡')+'</div><div class="sig-info"><div class="sig-hl">'+esc(x.evidence_summary||x.signal_type.replace(/_/g,' '))+'</div><div class="sig-det">'+esc(x.signal_type.replace(/_/g,' '))+' · '+ago(x.detected_at)+' · '+(x.triage_status||'new')+'</div></div><div class="sig-conf">'+Math.round((x.confidence_score||0)*100)+'%</div></div>';
   });
-  h+='</div>';
+  h+='</div></div>'; // close sec + card
 }
 
 // Interactions
 if(ixs.length){
-  h+='<div class="sec"><div class="sec-rule thin"></div><div class="sec-head"><div class="sec-title">Interactions</div><div class="sec-count">'+ixs.length+'</div></div><div class="sec-sub">Emails, calls, meetings</div>';
+  h+='<div class="card"><div class="sec"><div class="card-head"><div class="card-title">Interactions</div><div class="card-count">'+ixs.length+'</div></div><div class="card-sub">Emails, calls, meetings</div>';
   const ixLimit = 8;
   const ixVisible = ixs.slice(0, ixLimit);
   const ixHidden = ixs.slice(ixLimit);
@@ -270,45 +273,39 @@ if(ixs.length){
     h+='</div>';
     h+='<button onclick="document.getElementById(\'ixMore\').style.display=\'block\';this.style.display=\'none\'" style="width:100%;padding:8px;margin-top:6px;font-size:12px;color:var(--blue);background:var(--surface-cool);border:1px solid var(--rule);border-radius:6px;cursor:pointer;font-family:var(--sans)">Show '+ixHidden.length+' more interactions</button>';
   }
-  h+='</div>';
+  h+='</div></div>'; // close sec + card
 }
 
-h+='</div>'; // end main
-
-// SIDEBAR
-h+='<div class="side">';
+// SIDEBAR — Activity card
 const totalIx=parseInt(s.total||0);
 const nNotes=parseInt(s.notes||0),nEmails=parseInt(s.emails||0),nLinkedin=parseInt(s.linkedin||0),nCalls=parseInt(s.calls||0)+parseInt(s.meetings||0),nOther=parseInt(s.other||0);
-h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">Activity <span style="font-size:12px;color:var(--ink-4);font-weight:400">'+totalIx+' total</span></div><div class="stats"><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Research Notes\')"><div class="st-v">'+nNotes+'</div><div class="st-l">Notes</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+nEmails+'</div><div class="st-l">Emails</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+nLinkedin+'</div><div class="st-l">LinkedIn</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+(nCalls+nOther)+'</div><div class="st-l">'+(nOther>0?'Other':'Calls/Mtgs')+'</div></div></div>';
+h+='<div class="card"><div class="ss"><div class="ss-title">Activity <span style="font-size:12px;color:var(--ink-4);font-weight:400">'+totalIx+' total</span></div><div class="stats"><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Research Notes\')"><div class="st-v">'+nNotes+'</div><div class="st-l">Notes</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+nEmails+'</div><div class="st-l">Emails</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+nLinkedin+'</div><div class="st-l">LinkedIn</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+(nCalls+nOther)+'</div><div class="st-l">'+(nOther>0?'Other':'Calls/Mtgs')+'</div></div></div>';
 if(s.type_breakdown&&s.type_breakdown.length){h+='<div style="margin-top:8px;font-size:11px;color:var(--ink-4)">'+s.type_breakdown.map(t=>esc(t.interaction_type)+': '+t.cnt).join(' · ')+'</div>';}
 if(s.last_interaction)h+='<div style="font-size:11px;color:var(--ink-4);margin-top:6px">Last: '+fmtD(s.last_interaction)+'</div>';
 if(s.first_interaction)h+='<div style="font-size:11px;color:var(--ink-4)">First: '+fmtD(s.first_interaction)+'</div>';
-h+='</div>';
-
-if(p.bio){
-  h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">Bio</div><div style="font-size:13px;color:var(--ink-2);line-height:1.6;overflow-wrap:break-word">'+esc(p.bio)+'</div></div>';
-}
+if(p.bio){h+='<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--rule)"><div style="font-size:11px;font-weight:600;color:var(--ink-3);margin-bottom:4px">BIO</div><div style="font-size:12px;color:var(--ink-2);line-height:1.55;overflow-wrap:break-word">'+esc(p.bio)+'</div></div>';}
+h+='</div></div>'; // close ss + card
 
 if(colls.length){
-  h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">At '+esc(p.current_company_name||'Company')+'</div>';
+  h+='<div class="card"><div class="ss"><div class="ss-title">At '+esc(p.current_company_name||'Company')+'</div>';
   colls.slice(0,12).forEach(c=>{
     const ci=(c.full_name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
     h+='<div class="coll" onclick="location.href=\'/person.html?id='+c.id+'\'"><div class="coll-av">'+ci+'</div><div class="coll-info"><div class="coll-name">'+esc(c.full_name)+'</div><div class="coll-title">'+esc(c.current_title||'')+'</div></div></div>';
   });
   if(colls.length>12)h+='<div style="font-size:11px;color:var(--ink-4);padding:6px 0">+'+String(colls.length-12)+' more</div>';
-  h+='</div>';
+  h+='</div></div>'; // close ss + card
 }
 
 if(psig.length){
-  h+='<div class="ss"><div class="ss-rule"></div><div class="ss-title">Career Signals</div>';
+  h+='<div class="card"><div class="ss"><div class="ss-title">Career Signals</div>';
   psig.slice(0,8).forEach(x=>{
     const clickable=x.source_url?'cursor:pointer" onclick="window.open(\''+esc(x.source_url)+'\',\'_blank\')':'';
-    h+='<div style="padding:6px 0;border-bottom:1px solid var(--rule);font-size:13px;'+clickable+'"><div style="font-weight:500">'+esc(x.title||x.signal_type.replace(/_/g,' '))+(x.source_url?' <span style="font-size:10px;color:var(--blue)">↗</span>':'')+'</div>'+(x.description?'<div style="color:var(--ink-3);font-size:12px;margin-top:1px;overflow-wrap:break-word">'+esc(String(x.description).slice(0,120))+'</div>':'')+'<div style="font-size:10px;color:var(--ink-4);margin-top:2px">'+esc(x.signal_type.replace(/_/g,' '))+(x.signal_date?' · '+fmtD(x.signal_date):'')+'</div></div>';
+    h+='<div style="padding:6px 0;border-bottom:1px solid var(--rule);font-size:12px;'+clickable+'"><div style="font-weight:500">'+esc(x.title||x.signal_type.replace(/_/g,' '))+(x.source_url?' <span style="font-size:10px;color:var(--blue)">↗</span>':'')+'</div>'+(x.description?'<div style="color:var(--ink-3);font-size:11px;margin-top:1px;overflow-wrap:break-word">'+esc(String(x.description).slice(0,120))+'</div>':'')+'<div style="font-size:10px;color:var(--ink-4);margin-top:2px">'+esc(x.signal_type.replace(/_/g,' '))+(x.signal_date?' · '+fmtD(x.signal_date):'')+'</div></div>';
   });
-  h+='</div>';
+  h+='</div></div>'; // close ss + card
 }
 
-h+='</div></div>'; // end side + grid
+h+='</div>'; // close card-grid
 document.getElementById('app').innerHTML=h;
 })();
 
