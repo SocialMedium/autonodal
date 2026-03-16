@@ -697,15 +697,18 @@ app.post('/api/drive/ingest/:fileId', authenticateToken, async (req, res) => {
         [title, content, meta.webViewLink, docId]
       );
     } else {
+      // Auto-classify: docs older than 3 months are context (searchable but don't generate signals)
+      const isOld = meta.modifiedTime && new Date(meta.modifiedTime) < new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
       const { rows: [newDoc] } = await pool.query(
-        `INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash, tenant_id, uploaded_by_user_id, published_at, created_at)
-         VALUES ($1, $2, 'Google Drive', $3, $4, $5, $6, $7, $8, NOW())
+        `INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash, tenant_id, uploaded_by_user_id, published_at, processing_status, created_at)
+         VALUES ($1, $2, 'Google Drive', $3, $4, $5, $6, $7, $8, $9, NOW())
          RETURNING id`,
         [title, content,
          meta.mimeType.includes('document') ? 'google_doc' :
          meta.mimeType.includes('spreadsheet') ? 'google_sheet' :
          meta.mimeType.includes('presentation') ? 'google_slides' : 'pdf',
-         meta.webViewLink, sourceUrlHash, tenantId, req.user.user_id, meta.modifiedTime]
+         meta.webViewLink, sourceUrlHash, tenantId, req.user.user_id, meta.modifiedTime,
+         isOld ? 'context_only' : 'pending']
       );
       docId = newDoc.id;
     }

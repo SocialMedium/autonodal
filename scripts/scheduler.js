@@ -299,8 +299,10 @@ async function pipelineIngestSignals() {
 
   const unprocessed = await pool.query(`
     SELECT id, title, content, source_name, published_at
-    FROM external_documents 
+    FROM external_documents
     WHERE signals_computed_at IS NULL AND embedded_at IS NOT NULL
+      AND COALESCE(processing_status, 'pending') != 'context_only'
+      AND published_at > NOW() - INTERVAL '3 months'
     ORDER BY published_at DESC LIMIT 200
   `);
 
