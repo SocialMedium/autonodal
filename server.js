@@ -1248,6 +1248,9 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
     where += ` AND (se.visibility IS NULL OR se.visibility != 'private' OR se.owner_user_id = $${paramIdx})`;
     params.push(req.user.user_id);
 
+    // Exclude megacaps and tenant company from signal feed — they appear in Market Temperature only
+    where += ` AND COALESCE(se.is_megacap, false) = false AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')`;
+
     if (type) {
       paramIdx++;
       where += ` AND se.signal_type = $${paramIdx}::signal_type`;
