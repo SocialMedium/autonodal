@@ -2518,18 +2518,20 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
     if (process.env.EZEKIA_API_TOKEN) {
       try {
         const ezekia = require('./lib/ezekia');
-        // Search Ezekia companies by name (paginate through to find match)
+        // Search Ezekia companies by name — use exact match for short names to avoid PAM/EPAM confusion
         let ezekiaCompany = null;
         let page = 1;
+        const companyNameLower = company.name.toLowerCase().trim();
+        const isShortName = companyNameLower.length <= 5;
         while (page <= 5 && !ezekiaCompany) {
           const compRes = await ezekia.getCompanies({ page, per_page: 100 });
           const companies = compRes?.data || [];
           if (companies.length === 0) break;
-          ezekiaCompany = companies.find(c =>
-            c.name?.toLowerCase() === company.name.toLowerCase() ||
-            c.name?.toLowerCase().includes(company.name.toLowerCase()) ||
-            company.name.toLowerCase().includes(c.name?.toLowerCase())
-          );
+          ezekiaCompany = companies.find(c => {
+            const ezName = (c.name || '').toLowerCase().trim();
+            if (isShortName) return ezName === companyNameLower; // Exact match for short names
+            return ezName === companyNameLower || (ezName.length > 5 && companyNameLower.length > 5 && (ezName.includes(companyNameLower) || companyNameLower.includes(ezName)));
+          });
           page++;
         }
 
@@ -2588,7 +2590,37 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
       enrichResults.client = { error: e.message };
     }
 
-    // 3. People at this company
+    // 3. Link unlinked people to this company (exact name match only)
+    try {
+      const { rowCount: linked } = await pool.query(
+        `UPDATE people SET current_company_id = $1, updated_at = NOW()
+         WHERE LOWER(TRIM(current_company_name)) = LOWER(TRIM($2))
+           AND (current_company_id IS NULL OR current_company_id != $1)
+           AND tenant_id = $3`,
+        [req.params.id, company.name, req.tenant_id]
+      );
+      // Also try account names
+      const { rows: accountNames } = await pool.query(
+        'SELECT DISTINCT name FROM accounts WHERE company_id = $1 AND tenant_id = $2',
+        [req.params.id, req.tenant_id]
+      );
+      let extraLinked = 0;
+      for (const an of accountNames) {
+        if (an.name.toLowerCase() !== company.name.toLowerCase()) {
+          const { rowCount } = await pool.query(
+            `UPDATE people SET current_company_id = $1, updated_at = NOW()
+             WHERE LOWER(TRIM(current_company_name)) = LOWER(TRIM($2))
+               AND (current_company_id IS NULL OR current_company_id != $1)
+               AND tenant_id = $3`,
+            [req.params.id, an.name, req.tenant_id]
+          );
+          extraLinked += rowCount;
+        }
+      }
+      if (linked + extraLinked > 0) enrichResults.people_linked = linked + extraLinked;
+    } catch (e) { /* ignore linking errors */ }
+
+    // 4. People at this company
     try {
       const { rows: people } = await pool.query(
         `SELECT full_name, current_title, email FROM people WHERE current_company_id = $1 AND tenant_id = $2 ORDER BY current_title LIMIT 20`,
