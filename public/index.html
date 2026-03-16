@@ -1898,11 +1898,14 @@ async function loadPersonalBrief() {
 }
 
 // ── Signals ──
-const SIGNAL_ICONS = typeof signalIcon === 'function' ? new Proxy({}, { get: (_, k) => '<span style="display:inline-flex;color:var(--ink-3)">' + signalIcon(k) + '</span>' || '📡' }) : {
-  capital_raising: '💰', ma_activity: '🔗', product_launch: '🚀',
-  partnership: '🤝', geographic_expansion: '🌐', restructuring: '⚙️',
-  leadership_change: '👤', layoffs: '📉', strategic_hiring: '👥',
-};
+const SIGNAL_ICONS = {};
+if (typeof signalIcon === 'function') {
+  ['capital_raising','ma_activity','product_launch','partnership','geographic_expansion','restructuring','leadership_change','layoffs','strategic_hiring'].forEach(function(k) {
+    SIGNAL_ICONS[k] = '<span style="display:inline-flex;vertical-align:middle;color:var(--ink-3)">' + signalIcon(k) + '</span>';
+  });
+} else {
+  Object.assign(SIGNAL_ICONS, { capital_raising:'💰', ma_activity:'🔗', product_launch:'🚀', partnership:'🤝', geographic_expansion:'🌐', restructuring:'⚙️', leadership_change:'👤', layoffs:'📉', strategic_hiring:'👥' });
+}
 
 const SIGNAL_BADGE_CLASS = {
   capital_raising: 'funding', ma_activity: 'ma', product_launch: 'product',
