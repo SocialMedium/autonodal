@@ -187,6 +187,8 @@ document.title=(p.full_name||'Person')+' — MitchelLake';
 const ini=(p.full_name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
 const notes=p.research_notes||[];const ixs=p.interactions||[];const csig=p.company_signals||[];const psig=p.person_signals||[];const colls=p.colleagues||[];const s=p.interaction_stats||{};
 
+const coId=p.company_id_linked||p.current_company_id||'';
+
 const tags=[];
 if(p.seniority_level)tags.push('<a class="tag seniority" href="/people.html?seniority='+encodeURIComponent(p.seniority_level)+'" style="text-decoration:none">'+esc(p.seniority_level)+'</a>');
 if(p.source)tags.push('<span class="tag source">'+esc(p.source)+'</span>');
@@ -198,8 +200,6 @@ const ct=[];
 if(p.email)ct.push('<div class="ci">✉️ <a href="mailto:'+esc(p.email)+'">'+esc(p.email)+'</a></div>');
 if(p.linkedin_url)ct.push('<div class="ci">🔗 <a href="'+esc(p.linkedin_url)+'" target="_blank">LinkedIn</a></div>');
 if(p.phone)ct.push('<div class="ci">📞 '+esc(p.phone)+'</div>');
-
-const coId=p.company_id_linked||p.current_company_id||'';
 let h='<div class="profile">';
 h+='<div class="avatar'+(notes.length?' noted':'')+'">'+ini+'</div>';
 h+='<div class="pinfo">';
