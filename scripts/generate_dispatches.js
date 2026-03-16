@@ -597,6 +597,13 @@ async function generateDispatches() {
     try {
       LOG('🔍', `Processing: ${signal.signal_type} at ${signal.company_name} (${(signal.confidence_score * 100).toFixed(0)}% confidence)`);
 
+      // GATE: Must have a company name
+      if (!signal.company_name || signal.company_name === 'Unknown') {
+        LOG('⏭️', `  No company name — SKIPPING`);
+        skipped++;
+        continue;
+      }
+
       // STEP 1: Build proximity map
       const rawConnections = await buildProximityMap(signal);
       LOG('📊', `  Found ${rawConnections.length} raw connections`);
@@ -606,10 +613,11 @@ async function generateDispatches() {
       const bestEntry = selectBestEntryPoint(ranked);
 
       if (ranked.length === 0) {
-        LOG('⏭️', `  No connections found — generating dispatch anyway`);
-      } else {
-        LOG('🎯', `  Best entry: ${bestEntry.name} (${bestEntry.reason})`);
+        LOG('⏭️', `  No connections found — SKIPPING (dispatches require at least 1 contact)`);
+        skipped++;
+        continue;
       }
+      LOG('🎯', `  Best entry: ${bestEntry.name} (${bestEntry.reason})`);
 
       // STEP 3: Approach angle
       const approach = getApproachAngle(signal.signal_type);
