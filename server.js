@@ -1415,6 +1415,8 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
         LEFT JOIN companies c ON se.company_id = c.id
         LEFT JOIN external_documents ed ON se.source_document_id = ed.id
         WHERE se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1
+          AND COALESCE(se.is_megacap, false) = false
+          AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')
       `, [req.tenant_id]);
       regionStats = rStats[0];
     } catch (e) { /* ignore */ }
