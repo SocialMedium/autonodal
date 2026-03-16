@@ -1897,7 +1897,7 @@ async function loadPersonalBrief() {
 }
 
 // ── Signals ──
-const SIGNAL_ICONS = {
+const SIGNAL_ICONS = typeof signalIcon === 'function' ? new Proxy({}, { get: (_, k) => '<span style="display:inline-flex;color:var(--ink-3)">' + signalIcon(k) + '</span>' || '📡' }) : {
   capital_raising: '💰', ma_activity: '🔗', product_launch: '🚀',
   partnership: '🤝', geographic_expansion: '🌐', restructuring: '⚙️',
   leadership_change: '👤', layoffs: '📉', strategic_hiring: '👥',
@@ -2825,6 +2825,7 @@ setInterval(() => { if (getToken()) loadStats(); }, 5 * 60 * 1000);
   </div>
 </div>
 
+<script src="/icons.js"></script>
 <script src="/components/proximity-popup.js"></script>
 <script src="/terminology.js"></script>
 <script src="/chat.js"></script>

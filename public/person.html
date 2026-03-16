@@ -183,6 +183,8 @@ function ago(t){if(!t)return'';const m=Math.floor((Date.now()-new Date(t))/6e4);
 
 const SI={capital_raising:'💰',ma_activity:'🔗',product_launch:'🚀',partnership:'🤝',geographic_expansion:'🌐',restructuring:'⚙️',leadership_change:'👤',layoffs:'📉',strategic_hiring:'👥'};
 const II={email:'✉️',call:'📞',meeting:'🤝',linkedin_message:'💼',whatsapp:'💬',sms:'📱'};
+// Override with Lucide if loaded
+if(typeof signalIcon==='function'){Object.keys(SI).forEach(k=>{SI[k]='<span style="display:inline-flex;color:var(--ink-3)">'+signalIcon(k)+'</span>'});Object.keys(II).forEach(k=>{II[k]='<span style="display:inline-flex;color:var(--ink-3)">'+interactionIcon(k)+'</span>'})}
 const id=new URLSearchParams(location.search).get('id');if(!id)location.href='/people.html';
 
 (async()=>{
@@ -449,6 +451,7 @@ function toggleIx(el) {
   }
 }
 </script>
+<script src="/icons.js"></script>
 <script src="/terminology.js"></script>
 <script src="/chat.js"></script>
 </body>
