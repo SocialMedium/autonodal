@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Revenue & Placements — MitchelLake Signal</title>
+<title>Revenue & Placements — MLX Autonode</title>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;600;700&family=DM+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -108,9 +108,9 @@ body { font-family: var(--sans); background: var(--surface-warm); color: var(--i
 
 <div class="masthead">
   <div class="masthead-inner">
-    <a class="mast-title" href="/">MitchelLake Signal</a>
+    <a class="mast-title" href="/index.html">MLX Autonode</a>
     <nav class="mast-nav">
-      <a href="/">Dashboard</a>
+      <a href="/index.html">Dashboard</a>
       <a href="/people.html">People</a>
       <a href="/companies.html">Companies</a>
       <a href="/dispatches.html">Dispatch</a>
@@ -256,7 +256,7 @@ async function loadPlacements(reset) {
 
 function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
 
-if (!getToken()) location.href = '/';
+if (!getToken()) location.href = '/index.html';
 else loadPlacements(true);
 </script>
 <script src="/terminology.js"></script>
