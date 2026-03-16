@@ -201,7 +201,42 @@ async function callClaude(system, user) {
   });
 }
 
-async function generateGrab(cluster) {
+// Rotating editorial styles — keeps content fresh, avoids sameness
+const EDITORIAL_STYLES = [
+  {
+    id: 'analyst',
+    voice: 'Write like a senior analyst briefing a partner over coffee. Dry, precise, commercially sharp.',
+    tone: 'analytical'
+  },
+  {
+    id: 'insider',
+    voice: 'Write like a well-connected industry insider sharing what they heard this week. Conversational but credible. Use "we\'re seeing" and "word is".',
+    tone: 'conversational'
+  },
+  {
+    id: 'contrarian',
+    voice: 'Write like a sceptical strategist who questions the consensus. Challenge the obvious read. Ask what everyone is missing.',
+    tone: 'provocative'
+  },
+  {
+    id: 'data',
+    voice: 'Write like a quant analyst. Lead with numbers. Let the data tell the story. Minimal editorialising — the figures speak.',
+    tone: 'data-driven'
+  },
+  {
+    id: 'operator',
+    voice: 'Write like a former COO who\'s been through this before. Practical, experience-based. "Last time we saw this pattern..."',
+    tone: 'experienced'
+  }
+];
+
+function pickStyle(clusterIndex) {
+  return EDITORIAL_STYLES[clusterIndex % EDITORIAL_STYLES.length];
+}
+
+async function generateGrab(cluster, styleIndex) {
+  const style = pickStyle(styleIndex || 0);
+
   // Build source evidence for the prompt
   const sources = [];
   const srcNames = cluster.sources || [];
@@ -221,8 +256,8 @@ async function generateGrab(cluster) {
 
   const system = `You are a sharp market intelligence analyst writing for executive search consultants. You produce Signal Grabs — tight, opinionated reads on converging signals.
 
-VOICE:
-- Write like a senior analyst briefing a partner over coffee, not a blog post.
+VOICE FOR THIS GRAB:
+- ${style.voice}
 - No corporate filler. No "in today's landscape". No "why it matters".
 - State what's happening, what it means commercially, and what to watch.
 - Be specific. Name companies. Quote numbers. Cite sources.
@@ -279,15 +314,41 @@ Generate the Signal Grab JSON. Stay under 160 words total.`;
 // STEP 4: SAVE & ORCHESTRATE
 // ═══════════════════════════════════════════════════════════════════════════════
 
+async function routeToUsers(cluster) {
+  // Find team members whose region matches this cluster's geography
+  try {
+    const { rows: users } = await pool.query(
+      'SELECT id, name, region FROM users WHERE tenant_id = $1 AND region IS NOT NULL',
+      [ML_TENANT]
+    );
+    const REGION_GEO_MAP = {
+      'AU': ['australia', 'new zealand', 'anz'],
+      'SG': ['singapore', 'southeast asia', 'sea', 'asean'],
+      'UK': ['united kingdom', 'london', 'britain', 'europe'],
+      'US': ['united states', 'america', 'silicon valley'],
+      'APAC': ['australia', 'singapore', 'asia', 'japan', 'korea', 'india', 'hong kong', 'china'],
+      'EMEA': ['united kingdom', 'europe', 'london', 'germany', 'france', 'middle east']
+    };
+    const geoLower = (cluster.geography || '').toLowerCase();
+    return users.filter(u => {
+      const regionGeos = REGION_GEO_MAP[u.region] || [];
+      return regionGeos.some(g => geoLower.includes(g)) || geoLower === 'global';
+    }).map(u => ({ user_id: u.id, name: u.name, region: u.region }));
+  } catch (e) { return []; }
+}
+
 async function saveGrab(cluster, grab) {
+  // Route to matching team members
+  const routed = await routeToUsers(cluster);
+
   const { rows: [saved] } = await pool.query(`
     INSERT INTO signal_grabs (
       tenant_id, storyline, cluster_type,
-      headline, observation, evidence, why_it_matters, watch_next,
+      headline, observation, evidence, why_it_matters, so_what, watch_next,
       grab_score, convergence_score, strategic_relevance, network_overlap, novelty, source_quality,
       signal_ids, document_ids, company_ids, geographies, themes, signal_types,
       status
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'draft')
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 'draft')
     RETURNING id
   `, [
     ML_TENANT,
@@ -296,6 +357,7 @@ async function saveGrab(cluster, grab) {
     grab.headline,
     grab.observation,
     JSON.stringify(grab.evidence || []),
+    grab.so_what || grab.why_it_matters,
     grab.so_what || grab.why_it_matters,
     grab.watch_next || null,
     cluster.grab_score, cluster.convergence_score, cluster.strategic_relevance,
@@ -307,6 +369,11 @@ async function saveGrab(cluster, grab) {
     [(cluster.signal_type || '').replace(/_/g, ' ')],
     [cluster.signal_type]
   ]);
+
+  if (routed.length) {
+    LOG('👥', `    Routed to: ${routed.map(r => r.name + ' (' + r.region + ')').join(', ')}`);
+  }
+
   return saved.id;
 }
 
@@ -332,15 +399,18 @@ async function run() {
   LOG('✅', `${qualifying.length} clusters qualify (score >= ${MIN_SCORE})`);
 
   let generated = 0;
-  for (const cluster of qualifying.slice(0, TARGET_GRABS)) {
+  for (let idx = 0; idx < Math.min(qualifying.length, TARGET_GRABS); idx++) {
+    const cluster = qualifying[idx];
     try {
-      LOG('✍️', `  Generating: ${cluster.signal_type} in ${cluster.geography} (${cluster.company_count} companies, ${cluster.source_count} sources, score: ${cluster.grab_score})`);
+      const style = pickStyle(idx);
+      LOG('✍️', `  Generating [${style.id}]: ${cluster.signal_type} in ${cluster.geography} (${cluster.company_count} cos, ${cluster.source_count} sources, score: ${cluster.grab_score})`);
 
-      const grab = await generateGrab(cluster);
+      const grab = await generateGrab(cluster, idx);
       if (!grab || !grab.headline) {
         LOG('⚠️', `  Generation failed — skipping`);
         continue;
       }
+      grab._style = style.id;
 
       const id = await saveGrab(cluster, grab);
       generated++;
