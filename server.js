@@ -2559,6 +2559,30 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
       } catch (e) {
         enrichResults.ezekia = { error: e.message };
       }
+
+      // Also search Ezekia projects for this company
+      try {
+        const ezekia = require('./lib/ezekia');
+        let projectsFound = [];
+        for (let pg = 1; pg <= 3; pg++) {
+          const projRes = await ezekia.getProjects({ page: pg, per_page: 100 });
+          const projs = projRes?.data || [];
+          if (!projs.length) break;
+          const matches = projs.filter(p => {
+            const pName = (p.companyName || p.company?.name || p.name || '').toLowerCase();
+            return company.name.length <= 5
+              ? pName === company.name.toLowerCase()
+              : pName.includes(company.name.toLowerCase()) || company.name.toLowerCase().includes(pName);
+          });
+          projectsFound.push(...matches);
+        }
+        if (projectsFound.length) {
+          enrichResults.ezekia_projects = {
+            found: projectsFound.length,
+            projects: projectsFound.slice(0, 10).map(p => ({ name: p.name, status: p.status, id: p.id }))
+          };
+        }
+      } catch (e) { /* ignore project search errors */ }
     }
 
     // 2. Conversion history from account record
@@ -2886,18 +2910,26 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
       placements = rows;
     } catch (e) { /* table may not exist */ }
 
-    // Documents mentioning this company (may not exist yet)
+    // Documents mentioning this company — by document_companies link OR title/content match
     let documents = [];
     try {
+      // Use word-boundary regex for short names to avoid PAM matching EPAM
+      const namePattern = company.name.length <= 5
+        ? '(^|[^a-zA-Z])' + company.name + '([^a-zA-Z]|$)'
+        : company.name;
+      const isRegex = company.name.length <= 5;
       const { rows } = await pool.query(`
-        SELECT ed.id, ed.title, ed.source_name, ed.source_type, ed.source_url,
+        SELECT DISTINCT ed.id, ed.title, ed.source_name, ed.source_type, ed.source_url,
                ed.published_at
         FROM external_documents ed
-        JOIN document_companies dc ON dc.document_id = ed.id
-        WHERE dc.company_id = $1 AND ed.tenant_id = $2
+        LEFT JOIN document_companies dc ON dc.document_id = ed.id
+        WHERE ed.tenant_id = $2 AND (
+          dc.company_id = $1
+          ${isRegex ? "OR ed.title ~* $3" : "OR ed.title ILIKE $3"}
+        )
         ORDER BY ed.published_at DESC NULLS LAST
         LIMIT 20
-      `, [companyId, req.tenant_id]);
+      `, [companyId, req.tenant_id, isRegex ? namePattern : '%' + company.name + '%']);
       documents = rows;
     } catch (e) { /* table may not exist */ }
 
