@@ -2000,7 +2000,11 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
         if (!ezekiaId) {
           enrichResults.ezekia_profile = { message: 'Not found in Ezekia CRM' };
         } else {
-        const ezRes = await ezekia.getPerson(ezekiaId, 'profile.positions,profile.education,profile.headline,relationships.billings,relationships.assignments');
+        // Pull full profile with all relationships + notes in parallel
+        const [ezRes, notesRes] = await Promise.all([
+          ezekia.getPersonFull(ezekiaId),
+          ezekia.getPersonNotes(ezekiaId).catch(() => null)
+        ]);
 
         if (ezRes && ezRes.data) {
           const d = ezRes.data;
@@ -2051,6 +2055,55 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
             enrichResults.ezekia_profile = { message: 'No new profile data' };
           }
         }
+
+        // Import Ezekia notes as research notes (interactions)
+        if (notesRes?.data) {
+          const researchNotes = notesRes.data.researchNotes || [];
+          const systemNotes = notesRes.data.systemNotes || [];
+          let notesImported = 0;
+
+          for (const note of [...researchNotes, ...systemNotes].slice(0, 50)) {
+            const noteText = note.textStripped || note.text || '';
+            if (!noteText || noteText.length < 5) continue;
+
+            // Check if already imported (by external_id)
+            const { rows: existing } = await pool.query(
+              `SELECT id FROM interactions WHERE person_id = $1 AND external_id = $2 AND tenant_id = $3`,
+              [req.params.id, 'ezekia_note_' + note.id, req.tenant_id]
+            );
+            if (existing.length > 0) continue;
+
+            await pool.query(`
+              INSERT INTO interactions (person_id, user_id, interaction_type, direction, subject, summary,
+                source, external_id, channel, interaction_at, tenant_id, created_at)
+              VALUES ($1, $2, 'research_note', 'inbound', $3, $4, 'ezekia_enrich', $5, 'crm', $6, $7, NOW())
+              ON CONFLICT DO NOTHING
+            `, [
+              req.params.id, req.user.user_id,
+              (note.type === 'system' ? 'Ezekia: ' : '') + (note.author || 'Note').slice(0, 100),
+              noteText.slice(0, 5000),
+              'ezekia_note_' + note.id,
+              note.date ? new Date(note.date) : new Date(),
+              req.tenant_id
+            ]);
+            notesImported++;
+          }
+          enrichResults.ezekia_notes = { research: researchNotes.length, system: systemNotes.length, imported: notesImported };
+        }
+
+        // Import Ezekia assignments (projects this person was considered for)
+        if (d.relationships?.assignments?.length > 0) {
+          const assignments = d.relationships.assignments;
+          enrichResults.ezekia_assignments = {
+            total: assignments.length,
+            projects: assignments.slice(0, 10).map(a => ({
+              project: a.projectName || a.name,
+              status: a.status,
+              stage: a.stage
+            }))
+          };
+        }
+
         } // end if (ezekiaId)
       } catch (e) {
         enrichResults.ezekia_profile = { error: e.message };
