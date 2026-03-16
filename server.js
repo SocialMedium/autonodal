@@ -3424,6 +3424,83 @@ app.patch('/api/documents/:id', authenticateToken, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SIGNAL GRABS — Editorial Intelligence
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/grabs', authenticateToken, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const type = req.query.type; // macro, regional, sector, talent, contrarian
+    const status = req.query.status || 'draft';
+
+    let where = 'WHERE sg.tenant_id = $1';
+    const params = [req.tenant_id];
+    let idx = 1;
+
+    if (status !== 'all') { idx++; where += ` AND sg.status = $${idx}`; params.push(status); }
+    if (type) { idx++; where += ` AND sg.cluster_type = $${idx}`; params.push(type); }
+
+    idx++; params.push(limit);
+
+    const { rows } = await pool.query(`
+      SELECT sg.* FROM signal_grabs sg ${where}
+      ORDER BY sg.created_at DESC LIMIT $${idx}
+    `, params);
+
+    res.json({ grabs: rows, total: rows.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/grabs/:id', authenticateToken, async (req, res) => {
+  try {
+    const { rows: [grab] } = await pool.query(
+      'SELECT * FROM signal_grabs WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, req.tenant_id]
+    );
+    if (!grab) return res.status(404).json({ error: 'Grab not found' });
+    res.json(grab);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/grabs/generate', authenticateToken, async (req, res) => {
+  try {
+    const { execSync } = require('child_process');
+    execSync('node scripts/compute_signal_grabs.js', { timeout: 120000, stdio: 'pipe' });
+    const { rows } = await pool.query(
+      "SELECT * FROM signal_grabs WHERE tenant_id = $1 AND created_at > NOW() - INTERVAL '5 minutes' ORDER BY created_at DESC",
+      [req.tenant_id]
+    );
+    res.json({ generated: rows.length, grabs: rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/grabs/:id', authenticateToken, async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (status) {
+      await pool.query(
+        'UPDATE signal_grabs SET status = $1, published_at = CASE WHEN $1 = \'published\' THEN NOW() ELSE published_at END WHERE id = $2 AND tenant_id = $3',
+        [status, req.params.id, req.tenant_id]
+      );
+    }
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/grabs/weekly', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT * FROM signal_grabs
+      WHERE tenant_id = $1 AND created_at > NOW() - INTERVAL '7 days'
+      ORDER BY grab_score DESC LIMIT 5
+    `, [req.tenant_id]);
+    res.json({ week_of: new Date().toISOString().slice(0, 10), grabs: rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // HEALTH
 // ═══════════════════════════════════════════════════════════════════════════════
 

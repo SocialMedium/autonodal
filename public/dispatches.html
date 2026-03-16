@@ -222,6 +222,18 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
     <div class="chip" onclick="setRegion(this, 'EMEA')">EMEA</div>
   </div>
 
+  <!-- Signal Grabs -->
+  <div id="grabsSection" style="margin-bottom:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-family:var(--serif);font-size:18px;font-weight:600">Signal Grabs</div>
+      <button class="btn-sm" onclick="generateGrabs()" id="genGrabsBtn" style="padding:5px 12px;font-size:11px;border:1px solid var(--rule);border-radius:6px;cursor:pointer;background:var(--surface);color:var(--ink-2);font-family:var(--sans)">Generate Now</button>
+    </div>
+    <div id="grabsList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px">
+      <div style="text-align:center;padding:20px;color:var(--ink-4);font-size:13px;grid-column:1/-1">Loading signal grabs...</div>
+    </div>
+  </div>
+
+  <div style="font-family:var(--serif);font-size:18px;font-weight:600;margin-bottom:10px">Dispatches</div>
   <div class="dispatch-list" id="dispatchList">
     <div style="text-align:center;padding:40px;color:var(--ink-4)">Loading dispatches...</div>
   </div>
@@ -685,8 +697,60 @@ async function claimThisDispatch() {
   }
 }
 
+// ── Signal Grabs ──
+async function loadGrabs() {
+  try {
+    const data = await api('/api/grabs?status=all&limit=10');
+    const list = document.getElementById('grabsList');
+    if (!data.grabs || !data.grabs.length) {
+      list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--ink-4);font-size:13px;grid-column:1/-1">No signal grabs yet. Click "Generate Now" to create editorial intelligence from recent signals.</div>';
+      return;
+    }
+    list.innerHTML = data.grabs.map(function(g) {
+      var evidence = (typeof g.evidence === 'string' ? JSON.parse(g.evidence) : g.evidence) || [];
+      var evBullets = evidence.map(function(e) {
+        return '<li style="margin-bottom:4px"><a href="' + esc(e.source_url || '#') + '" target="_blank" style="color:var(--blue);text-decoration:underline">' + esc(e.source_name) + '</a> — <span style="color:var(--ink-3)">' + esc(e.context_note || '') + '</span></li>';
+      }).join('');
+      var typeColors = { macro:'#378ADD', regional:'#5DCAA5', sector:'#EF9F27', talent:'#D4537E', contrarian:'#AFA9EC' };
+      var tc = typeColors[g.cluster_type] || '#888';
+      return '<div style="background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:16px 18px;border-top:3px solid ' + tc + '">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">' +
+          '<span style="font-size:9px;padding:2px 8px;border-radius:10px;background:' + tc + '18;color:' + tc + ';font-weight:600;text-transform:uppercase;letter-spacing:.5px">' + esc(g.cluster_type) + '</span>' +
+          '<span style="font-size:9px;color:var(--ink-4);font-family:var(--mono)">' + (g.grab_score ? (g.grab_score * 100).toFixed(0) + '%' : '') + '</span>' +
+        '</div>' +
+        '<div style="font-family:var(--serif);font-size:16px;font-weight:600;line-height:1.3;margin-bottom:8px">' + esc(g.headline) + '</div>' +
+        '<div style="font-size:13px;color:var(--ink-2);line-height:1.55;margin-bottom:10px">' + esc(g.observation) + '</div>' +
+        (evBullets ? '<ul style="font-size:12px;padding-left:16px;margin-bottom:10px;list-style:none">' + evBullets + '</ul>' : '') +
+        '<div style="font-size:12px;color:var(--ink-2);line-height:1.5;padding:8px 10px;background:var(--surface-warm);border-radius:6px;margin-bottom:8px"><strong style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3)">Why it matters</strong><br>' + esc(g.why_it_matters) + '</div>' +
+        (g.watch_next ? '<div style="font-size:11px;color:var(--ink-3);font-style:italic">Watch: ' + esc(g.watch_next) + '</div>' : '') +
+        '<div style="display:flex;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid var(--rule)">' +
+          '<button onclick="navigator.clipboard.writeText(this.closest(\'div[style]\').textContent.trim())" style="font-size:10px;padding:3px 10px;border-radius:16px;border:1px solid var(--rule);background:transparent;color:var(--ink-3);cursor:pointer;font-family:var(--sans)">Copy</button>' +
+          '<button onclick="window.open(\'https://www.linkedin.com/shareArticle?mini=true&summary=\'+encodeURIComponent(this.closest(\'div[style]\').textContent.trim().slice(0,256)),\'_blank\')" style="font-size:10px;padding:3px 10px;border-radius:16px;border:1px solid var(--rule);background:transparent;color:var(--blue);cursor:pointer;font-family:var(--sans)">LinkedIn</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch (e) {
+    document.getElementById('grabsList').innerHTML = '<div style="color:var(--ink-4);font-size:13px;grid-column:1/-1">Failed to load grabs</div>';
+  }
+}
+
+async function generateGrabs() {
+  var btn = document.getElementById('genGrabsBtn');
+  btn.textContent = 'Generating...'; btn.disabled = true;
+  try {
+    await api('/api/grabs/generate', { method: 'POST', body: {} });
+    await loadGrabs();
+    btn.textContent = 'Done!';
+    setTimeout(function() { btn.textContent = 'Generate Now'; btn.disabled = false; }, 2000);
+  } catch(e) {
+    btn.textContent = 'Failed'; btn.disabled = false;
+    setTimeout(function() { btn.textContent = 'Generate Now'; }, 2000);
+  }
+}
+
 // ── Init ──
 loadDispatches();
+loadGrabs();
 
 // Auto-open dispatch if navigated from signal card
 (function checkAutoOpen() {

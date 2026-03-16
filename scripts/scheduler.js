@@ -1041,6 +1041,17 @@ const PIPELINES = {
     },
     schedule: '30 */2 * * *',
     description: 'Triangulate signals × network × geo into ranked opportunities with explainable scores'
+  },
+
+  compute_signal_grabs: {
+    name: 'Signal Grabs',
+    icon: '📰',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'compute_signal_grabs.js'), { timeout: 120000, stdio: 'inherit' });
+    },
+    schedule: '0 5 * * *',
+    description: 'Generate daily editorial intelligence grabs from signal clusters'
   }
 };
 
