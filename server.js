@@ -477,7 +477,7 @@ app.get('/api/auth/gmail/callback', async (req, res) => {
 app.get('/api/auth/gmail/status', authenticateToken, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT google_email, sync_enabled, token_expires_at, updated_at
+      `SELECT google_email, sync_enabled, token_expires_at, scopes, updated_at
        FROM user_google_accounts WHERE user_id = $1`,
       [req.user.user_id]
     );

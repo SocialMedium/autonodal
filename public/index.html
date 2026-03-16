@@ -1881,7 +1881,11 @@ async function loadPersonalBrief() {
     actions.innerHTML =
       '<div class="action-row" onclick="window.location=\'/dispatches.html\'"><span class="action-icon">🎯</span> View all dispatches</div>' +
       '<div class="action-row" onclick="document.getElementById(\'searchInput\').focus()"><span class="action-icon">🔍</span> Search your network</div>' +
-      '<div class="action-row" onclick="window.location=\'/people.html\'"><span class="action-icon">👥</span> Browse contacts</div>';
+      '<div class="action-row" onclick="window.location=\'/people.html\'"><span class="action-icon">👥</span> Browse contacts</div>' +
+      '<div id="google-connect-row"></div>';
+
+    // Check Google connection status and show connect button if needed
+    checkGoogleConnection();
   } catch (e) {
     console.error('Personal brief error:', e);
     // Fallback to basic brief
@@ -2386,6 +2390,32 @@ function esc(str) {
 // ── Init ──
 // ── Talent in Motion ──
 // ── Market Temperature ──
+// ── Google Connection Status ──
+async function checkGoogleConnection() {
+  const row = document.getElementById('google-connect-row');
+  if (!row) return;
+  try {
+    const data = await api('/api/auth/gmail/status');
+    const hasScopes = data.connected && data.accounts.some(function(a) {
+      return a.scopes && (Array.isArray(a.scopes) ? a.scopes.join(' ') : String(a.scopes)).includes('drive');
+    });
+
+    if (!data.connected) {
+      row.innerHTML = '<div class="action-row" style="background:var(--amber-soft);border-radius:6px;margin-top:4px" onclick="window.location=\'/api/auth/gmail/connect?return_to=\' + encodeURIComponent(location.pathname)">' +
+        '<span class="action-icon">🔗</span> <span style="color:var(--amber);font-weight:600">Connect Google</span> <span style="font-size:11px;color:var(--ink-3);margin-left:4px">Gmail + Drive + Docs</span></div>';
+    } else if (!hasScopes) {
+      row.innerHTML = '<div class="action-row" style="background:var(--blue-soft);border-radius:6px;margin-top:4px" onclick="window.location=\'/api/auth/gmail/connect?return_to=\' + encodeURIComponent(location.pathname)">' +
+        '<span class="action-icon">📁</span> <span style="color:var(--blue);font-weight:600">Connect Google Drive</span> <span style="font-size:11px;color:var(--ink-3);margin-left:4px">Docs, Sheets, Slides</span></div>';
+    } else {
+      row.innerHTML = '<div class="action-row" style="opacity:0.6;cursor:default">' +
+        '<span class="action-icon">✅</span> Google connected <span style="font-size:11px;color:var(--ink-4);margin-left:4px">' + data.accounts[0].google_email + '</span></div>';
+    }
+  } catch (e) {
+    row.innerHTML = '<div class="action-row" style="background:var(--amber-soft);border-radius:6px;margin-top:4px" onclick="window.location=\'/api/auth/gmail/connect?return_to=\' + encodeURIComponent(location.pathname)">' +
+      '<span class="action-icon">🔗</span> <span style="color:var(--amber);font-weight:600">Connect Google</span></div>';
+  }
+}
+
 async function loadMarketTemperature() {
   try {
     const data = await api('/api/market-temperature');
