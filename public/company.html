@@ -69,7 +69,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 
 /* Grid */
 .grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 0; }
-.main { padding-right: 32px; border-right: 1px solid var(--rule); min-width: 0; }
+.main { padding-right: 32px; border-right: 1px solid var(--rule); min-width: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; align-content: start; }
+.main > .sec { break-inside: avoid; }
+.main > .sec.full-width { grid-column: 1 / -1; }
 .side { padding-left: 28px; min-width: 0; }
 
 .sec { margin-bottom: 32px; }
@@ -132,7 +134,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 
 @media (max-width: 1024px) {
   .grid { grid-template-columns: 1fr; }
-  .main { padding-right: 0; border-right: none; }
+  .main { padding-right: 0; border-right: none; grid-template-columns: 1fr; }
   .side { padding-left: 0; margin-top: 32px; padding-top: 24px; border-top: 2px solid var(--ink); }
   .co-stats { max-width: 100%; }
 }
@@ -206,7 +208,7 @@ h+='</div>';
 h+='<div class="grid"><div class="main">';
 
 // ── SIGNALS ──
-h+='<div class="sec"><div class="sec-rule"></div><div class="sec-head"><div class="sec-title">Signals</div><div class="sec-count">'+sigs.length+'</div></div><div class="sec-sub">Market intelligence and events</div>';
+h+='<div class="sec full-width"><div class="sec-rule"></div><div class="sec-head"><div class="sec-title">Signals</div><div class="sec-count">'+sigs.length+'</div></div><div class="sec-sub">Market intelligence and events</div>';
 if(!sigs.length)h+='<div class="empty">No signals detected</div>';
 else sigs.forEach(s=>{
   const icon=SI[s.signal_type]||'📡';

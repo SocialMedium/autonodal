@@ -66,7 +66,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 
 /* Grid */
 .grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 0; }
-.main { padding-right: 32px; border-right: 1px solid var(--rule); min-width: 0; }
+.main { padding-right: 32px; border-right: 1px solid var(--rule); min-width: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; align-content: start; }
+.main > .sec { break-inside: avoid; }
+.main > .sec.full-width { grid-column: 1 / -1; }
 .side { padding-left: 28px; min-width: 0; }
 
 /* Sections */
@@ -142,7 +144,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 
 @media (max-width: 1024px) {
   .grid { grid-template-columns: 1fr; }
-  .main { padding-right: 0; border-right: none; }
+  .main { padding-right: 0; border-right: none; grid-template-columns: 1fr; }
   .side { padding-left: 0; margin-top: 32px; padding-top: 24px; border-top: 2px solid var(--ink); }
 }
 @media (max-width: 768px) {
@@ -225,7 +227,7 @@ h+='</div>';
 h+='<div class="grid"><div class="main">';
 
 // Research Notes
-h+='<div class="sec"><div class="sec-rule"></div><div class="sec-head"><div class="sec-title">Research Notes</div><div class="sec-count">'+notes.length+' NOTES</div></div><div class="sec-sub">Internal MitchelLake intelligence</div>';
+h+='<div class="sec full-width"><div class="sec-rule"></div><div class="sec-head"><div class="sec-title">Research Notes</div><div class="sec-count">'+notes.length+' NOTES</div></div><div class="sec-sub">Internal MitchelLake intelligence</div>';
 if(!notes.length)h+='<div class="empty">No research notes yet</div>';
 else notes.forEach(n=>{
   const qb=n.note_quality?'<span class="note-q '+(n.note_quality==='high'?'high':'medium')+'">'+n.note_quality+'</span>':'';
