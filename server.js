@@ -580,14 +580,14 @@ app.get('/api/drive/files', authenticateToken, async (req, res) => {
     const data = await driveRes.json();
 
     // Tag which files are already ingested
-    const fileIds = (data.files || []).map(f => f.id);
-    const { rows: ingested } = fileIds.length > 0
+    const fileHashes = (data.files || []).map(f => require('crypto').createHash('md5').update('gdrive:' + f.id).digest('hex'));
+    const { rows: ingested } = fileHashes.length > 0
       ? await pool.query(
-          `SELECT source_id FROM external_documents WHERE source = 'google_drive' AND source_id = ANY($1) AND tenant_id = $2`,
-          [fileIds, req.tenant_id]
+          `SELECT source_url_hash FROM external_documents WHERE source_url_hash = ANY($1) AND tenant_id = $2`,
+          [fileHashes, req.tenant_id]
         )
       : { rows: [] };
-    const ingestedSet = new Set(ingested.map(r => r.source_id));
+    const ingestedSet = new Set(ingested.map(r => r.source_url_hash));
 
     res.json({
       files: (data.files || []).map(f => ({
@@ -601,7 +601,7 @@ app.get('/api/drive/files', authenticateToken, async (req, res) => {
         modifiedTime: f.modifiedTime,
         size: f.size,
         webViewLink: f.webViewLink,
-        ingested: ingestedSet.has(f.id),
+        ingested: ingestedSet.has(require('crypto').createHash('md5').update('gdrive:' + f.id).digest('hex')),
       })),
       nextPageToken: data.nextPageToken || null,
     });
@@ -619,11 +619,12 @@ app.post('/api/drive/ingest/:fileId', authenticateToken, async (req, res) => {
 
     const fileId = req.params.fileId;
     const tenantId = req.tenant_id;
+    const sourceUrlHash = require('crypto').createHash('md5').update('gdrive:' + fileId).digest('hex');
 
     // Check if already ingested
     const { rows: existing } = await pool.query(
-      `SELECT id FROM external_documents WHERE source = 'google_drive' AND source_id = $1 AND tenant_id = $2`,
-      [fileId, tenantId]
+      `SELECT id FROM external_documents WHERE source_url_hash = $1 AND tenant_id = $2`,
+      [sourceUrlHash, tenantId]
     );
 
     // Get file metadata
@@ -688,7 +689,6 @@ app.post('/api/drive/ingest/:fileId', authenticateToken, async (req, res) => {
     if (content.length > maxLen) content = content.substring(0, maxLen) + '\n\n[... truncated at ' + maxLen + ' chars]';
 
     // Store in external_documents
-    const sourceUrlHash = require('crypto').createHash('md5').update('gdrive:' + fileId).digest('hex');
     let docId;
     if (existing.length > 0) {
       docId = existing[0].id;
@@ -698,14 +698,14 @@ app.post('/api/drive/ingest/:fileId', authenticateToken, async (req, res) => {
       );
     } else {
       const { rows: [newDoc] } = await pool.query(
-        `INSERT INTO external_documents (title, content, source, source_id, source_type, source_url, source_url_hash, tenant_id, published_at, created_at)
-         VALUES ($1, $2, 'google_drive', $3, $4, $5, $6, $7, $8, NOW())
+        `INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash, tenant_id, uploaded_by_user_id, published_at, created_at)
+         VALUES ($1, $2, 'Google Drive', $3, $4, $5, $6, $7, $8, NOW())
          RETURNING id`,
-        [title, content, fileId,
+        [title, content,
          meta.mimeType.includes('document') ? 'google_doc' :
          meta.mimeType.includes('spreadsheet') ? 'google_sheet' :
          meta.mimeType.includes('presentation') ? 'google_slides' : 'pdf',
-         meta.webViewLink, sourceUrlHash, tenantId, meta.modifiedTime]
+         meta.webViewLink, sourceUrlHash, tenantId, req.user.user_id, meta.modifiedTime]
       );
       docId = newDoc.id;
     }
@@ -3003,6 +3003,15 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
     const params = [req.tenant_id];
     let paramIdx = 1;
 
+    // Privacy filter — hide private docs from non-owners
+    if (req.user) {
+      paramIdx++;
+      where += ` AND (visibility IS NULL OR visibility != 'private' OR owner_user_id = $${paramIdx})`;
+      params.push(req.user.user_id);
+    } else {
+      where += ` AND (visibility IS NULL OR visibility != 'private')`;
+    }
+
     if (sourceType) {
       paramIdx++;
       where += ` AND source_type = $${paramIdx}`;
@@ -3016,16 +3025,18 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
 
     const { rows } = await pool.query(`
       SELECT id, title, source_type, source_name, source_url, author,
-             published_at, processing_status, embedded_at IS NOT NULL AS is_embedded
+             published_at, processing_status, embedded_at IS NOT NULL AS is_embedded,
+             visibility, owner_user_id, uploaded_by_user_id
       FROM external_documents
       ${where}
       ORDER BY published_at DESC NULLS LAST
       LIMIT $${paramIdx - 1} OFFSET $${paramIdx}
     `, params);
 
+    const countParams = params.slice(0, -2); // everything except limit/offset
     const { rows: [{ cnt }] } = await pool.query(
       `SELECT COUNT(*) AS cnt FROM external_documents ${where}`,
-      params.slice(0, sourceType ? 2 : 1)
+      countParams
     );
 
     res.json({ documents: rows, total: parseInt(cnt), limit, offset });
@@ -3048,6 +3059,64 @@ app.get('/api/documents/sources', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Sources error:', err.message);
     res.status(500).json({ error: 'Failed to fetch sources' });
+  }
+});
+
+// Document privacy toggle
+app.patch('/api/documents/:id/visibility', authenticateToken, async (req, res) => {
+  try {
+    const { visibility } = req.body; // 'company' or 'private'
+    if (!visibility || !['company', 'private'].includes(visibility)) {
+      return res.status(400).json({ error: 'visibility must be "company" or "private"' });
+    }
+
+    const { rows: [doc] } = await pool.query(
+      'SELECT id, visibility, owner_user_id FROM external_documents WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, req.tenant_id]
+    );
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    // Only owner or admin can change private docs back to company
+    if (doc.visibility === 'private' && doc.owner_user_id && doc.owner_user_id !== req.user.user_id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only the owner can change visibility of private documents' });
+    }
+
+    await pool.query(`
+      UPDATE external_documents
+      SET visibility = $1,
+          owner_user_id = CASE WHEN $1 = 'private' THEN $2 ELSE owner_user_id END
+      WHERE id = $3 AND tenant_id = $4
+    `, [visibility, req.user.user_id, req.params.id, req.tenant_id]);
+
+    res.json({ id: req.params.id, visibility });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Also update Drive ingest to set uploaded_by
+app.patch('/api/documents/:id', authenticateToken, async (req, res) => {
+  try {
+    const allowed = ['title', 'visibility', 'summary'];
+    const updates = [];
+    const params = [req.params.id, req.tenant_id];
+    let idx = 2;
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) {
+        idx++;
+        updates.push(`${key} = $${idx}`);
+        params.push(req.body[key]);
+      }
+    }
+    if (req.body.visibility === 'private') {
+      updates.push(`owner_user_id = $${++idx}`);
+      params.push(req.user.user_id);
+    }
+    if (updates.length === 0) return res.json({ ok: true });
+    await pool.query(`UPDATE external_documents SET ${updates.join(', ')} WHERE id = $1 AND tenant_id = $2`, params);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -4268,6 +4337,15 @@ app.listen(PORT, async () => {
       ALTER TABLE people ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) DEFAULT 'company';
       ALTER TABLE people ADD COLUMN IF NOT EXISTS owner_user_id UUID;
       ALTER TABLE people ADD COLUMN IF NOT EXISTS marked_private_at TIMESTAMPTZ;
+    `);
+  } catch (e) { /* columns may already exist */ }
+
+  // Ensure document privacy columns exist
+  try {
+    await pool.query(`
+      ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) DEFAULT 'company';
+      ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS owner_user_id UUID;
+      ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS uploaded_by_user_id UUID;
     `);
   } catch (e) { /* columns may already exist */ }
 
