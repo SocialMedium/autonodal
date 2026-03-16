@@ -1,4 +1,4 @@
-// MitchelLake Signal Concierge — self-injecting chat widget
+// MitchelLake Lorac — self-injecting chat widget
 // Usage: <script src="/chat.js"></script>
 (function() {
   'use strict';
@@ -7,13 +7,13 @@
   const container = document.createElement('div');
   container.id = 'mlChat';
   container.innerHTML = `
-  <button id="chatFab" title="AI Concierge (⌘J)">
+  <button id="chatFab" title="Lorac (⌘J)">
     <svg id="chatFabIcon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
     <svg id="chatFabClose" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
   </button>
   <div id="chatDrawer" class="chat-drawer">
     <div class="ch-hdr">
-      <div class="ch-hdr-l"><div class="ch-av">ML</div><div><div class="ch-title">Signal Concierge</div><div class="ch-sub">Ask anything · Drop intel · Upload files</div></div></div>
+      <div class="ch-hdr-l"><div class="ch-av">ML</div><div><div class="ch-title">Lorac</div><div class="ch-sub">Ask anything · Drop intel · Upload files</div></div></div>
       <button class="ch-clear" id="chatClearBtn" title="Clear"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M5 6v14a2 2 0 002 2h10a2 2 0 002-2V6"/></svg></button>
     </div>
     <div class="ch-msgs" id="chatMessages">

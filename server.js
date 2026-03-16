@@ -4042,7 +4042,7 @@ async function callClaude(messages, tools, systemPrompt) {
   });
 }
 
-const CHAT_SYSTEM = `You are the MitchelLake Signal Intelligence concierge — an AI assistant embedded in an executive search intelligence platform.
+const CHAT_SYSTEM = `You are Lorac — the AI intelligence agent for the Signal Intelligence Platform, currently serving MitchelLake.
 
 CAPABILITIES:
 1. **Interrogate data**: Search people, companies, signals, placements, research notes. Query the live database.
@@ -4050,12 +4050,14 @@ CAPABILITIES:
 3. **Process files**: Parse uploaded CSVs and PDFs — import candidates, companies, contacts.
 4. **LinkedIn imports**: Auto-detect LinkedIn Connections, Contacts, and Messages CSVs. Match against existing people, create team proximity links, store message history as interactions.
 5. **Advanced analysis**: Run SQL queries for complex cross-referencing and aggregations.
+6. **Modify records**: Update people profiles, merge duplicates, fix data, add notes. You can run UPDATE, INSERT, and DELETE queries when the user requests changes.
 
 CONTEXT:
 - MitchelLake is a retained executive search firm (APAC, UK, global)
-- Database: ~30K people, ~1K companies, ~12K documents, ~2K signals, ~500 placements
+- Database: ~77K people, ~11K companies, ~22K documents, ~9K signals, ~500 placements
 - Research notes are goldmine intel: timing, comp expectations, preferences, warm intros
 - Signals: capital_raising, ma_activity, geographic_expansion, strategic_hiring, leadership_change, partnership, product_launch, layoffs
+- Table names: people, companies, accounts (was clients), opportunities (was searches), conversions (was placements), engagements (was projects), pipeline_contacts (was search_candidates), signal_events, interactions, team_proximity, external_documents, signal_dispatches
 
 STYLE:
 - Concise and actionable — consultants are busy
@@ -4072,7 +4074,8 @@ RULES:
 - Always search before saying "I don't know"
 - Extract ALL entities from intelligence (people, companies, roles, comp, timing)
 - Never fabricate data — only return what the database contains
-- For SQL queries, only SELECT is allowed
+- For UPDATE/DELETE operations, always confirm with the user before executing and show the affected records first
+- For SQL queries: SELECT, UPDATE, INSERT, and DELETE are allowed. DROP/ALTER/TRUNCATE are blocked. Always confirm destructive operations with the user first.
 - ALWAYS prioritise recency — sort results by most recent interaction/note date first
 - When showing candidates, include when they were last contacted and how recent the intelligence is
 - Flag stale intel: notes older than 6 months should be marked as potentially outdated
@@ -4344,8 +4347,15 @@ async function executeTool(name, input, userId, tenantId) {
       }
       case 'run_sql_query': {
         const sql = input.query.trim();
-        if (!sql.toUpperCase().startsWith('SELECT')) return JSON.stringify({ error: 'Only SELECT allowed' });
-        if (/DROP|DELETE|UPDATE|INSERT|ALTER|TRUNCATE/i.test(sql)) return JSON.stringify({ error: 'Modification not allowed' });
+        const isWrite = /^(UPDATE|INSERT|DELETE)/i.test(sql);
+        const isDangerous = /DROP|ALTER|TRUNCATE|CREATE/i.test(sql);
+        if (isDangerous) return JSON.stringify({ error: 'DROP/ALTER/TRUNCATE/CREATE not allowed via chat. Use migrations.' });
+        if (isWrite) {
+          // Write operations allowed — execute and return affected rows
+          const result = await pool.query(sql + (sql.toUpperCase().includes('RETURNING') ? '' : ' RETURNING *'));
+          return JSON.stringify({ explanation: input.explanation, operation: sql.split(' ')[0].toUpperCase(), rows_affected: result.rowCount, results: result.rows?.slice(0, 20) });
+        }
+        // SELECT queries
         const { rows } = await pool.query(sql + (sql.includes('LIMIT') ? '' : ' LIMIT 50'));
         return JSON.stringify({ explanation: input.explanation, row_count: rows.length, results: rows });
       }
