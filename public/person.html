@@ -179,6 +179,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 const TK=localStorage.getItem('ml_token');if(!TK)location.href='/index.html';
 async function api(u){try{const r=await fetch(u,{headers:{Authorization:'Bearer '+TK}});if(r.status===401){location.href='/index.html';return null}if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error||r.statusText)}return r.json()}catch(e){document.getElementById('app').innerHTML='<div style="padding:40px;text-align:center;color:var(--ink-3)"><h3>Could not load dossier</h3><p>'+e.message+'</p><a href="/people.html" style="color:var(--blue)">Back to people</a></div>';throw e}}
 function esc(s){return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''}
+function stripHtml(s){return s?String(s).replace(/<br\s*\/?>/gi,'\n').replace(/<[^>]+>/g,'').trim():''}
 function fmtD(t){return t?new Date(t).toLocaleDateString('en-AU',{year:'numeric',month:'short',day:'numeric'}):'—'}
 function ago(t){if(!t)return'';const m=Math.floor((Date.now()-new Date(t))/6e4);if(m<60)return m+'m';const h=Math.floor(m/60);if(h<24)return h+'h';const d=Math.floor(h/24);return d<30?d+'d':fmtD(t)}
 
@@ -286,12 +287,23 @@ if(notes.length){
     const qb=n.note_quality?'<span class="note-q '+(n.note_quality==='high'?'high':'medium')+'">'+n.note_quality+'</span>':'';
     let intel='';
     if(n.extracted_intelligence&&typeof n.extracted_intelligence==='object'){
-      const e=Object.entries(n.extracted_intelligence).filter(([k,v])=>v&&String(v).length).map(([k,v])=>'<strong>'+esc(k.replace(/_/g,' '))+':</strong> '+esc(typeof v==='object'?JSON.stringify(v):String(v)));
-      if(e.length)intel='<div class="note-intel"><b>Extracted Intelligence</b>'+e.join(' · ')+'</div>';
+      const entries=Object.entries(n.extracted_intelligence).filter(([k,v])=>v&&String(v).length>1);
+      const readable=[];
+      entries.forEach(([k,v])=>{
+        const label=k.replace(/_/g,' ');
+        if(typeof v==='string') { readable.push('<strong>'+esc(label)+':</strong> '+esc(v)); }
+        else if(Array.isArray(v)) { if(v.length) readable.push('<strong>'+esc(label)+':</strong> '+v.map(i=>typeof i==='object'?(i.type||i.note||i.evidence||JSON.stringify(i)):String(i)).map(esc).join(', ')); }
+        else if(typeof v==='object') {
+          const val=v.note||v.current||v.type||v.amount||v.evidence||null;
+          if(val) readable.push('<strong>'+esc(label)+':</strong> '+esc(String(val)));
+        }
+      });
+      if(readable.length)intel='<div class="note-intel"><b>Extracted Intelligence</b>'+readable.join(' · ')+'</div>';
     }
-    h+='<div class="note"><div class="note-top"><div class="note-subj">'+esc(n.subject||'Note')+qb+'</div><div class="note-date">'+fmtD(n.interaction_at||n.created_at)+'</div></div><div class="note-body">'+esc((n.summary||'').slice(0,300))+(n.summary&&n.summary.length>300?'…':'')+'</div>'+intel+'</div>';
+    const noteBody=stripHtml(n.summary||'').slice(0,300);
+    h+='<div class="note"><div class="note-top"><div class="note-subj">'+esc(n.subject||'Note')+qb+'</div><div class="note-date">'+fmtD(n.interaction_at||n.created_at)+'</div></div><div class="note-body">'+esc(noteBody)+(noteBody.length>=300?'…':'')+'</div>'+intel+'</div>';
   });
-  if(notes.length>4)h+='<div style="font-size:11px;color:var(--blue);padding:4px 0;cursor:pointer" onclick="document.getElementById(\'allNotes\').style.display=\'block\';this.style.display=\'none\'">Show '+(notes.length-4)+' more notes →</div><div id="allNotes" style="display:none">'+notes.slice(4).map(n=>'<div class="note"><div class="note-top"><div class="note-subj">'+esc(n.subject||'Note')+'</div><div class="note-date">'+fmtD(n.interaction_at||n.created_at)+'</div></div><div class="note-body">'+esc((n.summary||'').slice(0,300))+'</div></div>').join('')+'</div>';
+  if(notes.length>4)h+='<div style="font-size:11px;color:var(--blue);padding:4px 0;cursor:pointer" onclick="document.getElementById(\'allNotes\').style.display=\'block\';this.style.display=\'none\'">Show '+(notes.length-4)+' more notes →</div><div id="allNotes" style="display:none">'+notes.slice(4).map(function(n){return '<div class="note"><div class="note-top"><div class="note-subj">'+esc(n.subject||'Note')+'</div><div class="note-date">'+fmtD(n.interaction_at||n.created_at)+'</div></div><div class="note-body">'+esc(stripHtml(n.summary||'').slice(0,300))+'</div></div>'}).join('')+'</div>';
   h+='</div>';
 }
 
