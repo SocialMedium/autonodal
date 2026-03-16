@@ -231,34 +231,32 @@ const isPrivate = p.visibility === 'private';
 h+='<button class="enrich-btn'+(isPrivate?' done':'')+'" id="privacyBtn" onclick="togglePrivacy()" style="margin-top:6px">'+(isPrivate?'🔒 Private':'🌐 Visible to team')+'</button>';
 h+='</div>';
 
+const totalIx=parseInt(s.total||0);
+const nNotes=parseInt(s.notes||0),nEmails=parseInt(s.emails||0),nLinkedin=parseInt(s.linkedin||0),nCalls=parseInt(s.calls||0)+parseInt(s.meetings||0),nOther=parseInt(s.other||0);
+
 h+='<div class="card-grid">';
 
-// Research Notes
-h+='<div class="card"><div class="sec"><div class="card-head"><div class="card-title">Research Notes</div><div class="card-count">'+notes.length+' NOTES</div></div><div class="card-sub">Internal intelligence</div>';
-if(!notes.length)h+='<div class="empty">No research notes yet</div>';
-else notes.forEach(n=>{
-  const qb=n.note_quality?'<span class="note-q '+(n.note_quality==='high'?'high':'medium')+'">'+n.note_quality+'</span>':'';
-  let intel='';
-  if(n.extracted_intelligence&&typeof n.extracted_intelligence==='object'){
-    const e=Object.entries(n.extracted_intelligence).filter(([k,v])=>v&&String(v).length).map(([k,v])=>'<strong>'+esc(k.replace(/_/g,' '))+':</strong> '+esc(typeof v==='object'?JSON.stringify(v):String(v)));
-    if(e.length)intel='<div class="note-intel"><b>Extracted Intelligence</b>'+e.join(' · ')+'</div>';
-  }
-  h+='<div class="note"><div class="note-top"><div class="note-subj">'+esc(n.subject||'Research Note')+qb+'</div><div class="note-date">'+fmtD(n.interaction_at||n.created_at)+'</div></div><div class="note-body">'+esc(n.summary||'')+'</div>'+intel+'</div>';
-});
-h+='</div></div>'; // close sec + card
+// Activity summary card — always first, compact
+h+='<div class="card">';
+h+='<div class="card-head"><div class="card-title">Activity</div><div class="card-count">'+totalIx+' total</div></div>';
+h+='<div class="stats"><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Research Notes\')"><div class="st-v">'+nNotes+'</div><div class="st-l">Notes</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+nEmails+'</div><div class="st-l">Emails</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+nLinkedin+'</div><div class="st-l">LinkedIn</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+(nCalls+nOther)+'</div><div class="st-l">'+(nOther>0?'Other':'Calls')+'</div></div></div>';
+if(s.last_interaction)h+='<div style="font-size:11px;color:var(--ink-4);margin-top:8px">Last contact: '+fmtD(s.last_interaction)+(s.first_interaction?' · First: '+fmtD(s.first_interaction):'')+'</div>';
+if(p.bio)h+='<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--rule);font-size:12px;color:var(--ink-2);line-height:1.5;overflow-wrap:break-word;max-height:80px;overflow:hidden">'+esc(p.bio)+'</div>';
+h+='</div>';
 
-// Company Signals
+// Company Signals — compact, shows before notes if present
 if(csig.length){
-  h+='<div class="card"><div class="sec"><div class="card-head"><div class="card-title">Company Signals</div><div class="card-count">'+csig.length+'</div></div><div class="card-sub">Signals about '+esc(p.current_company_name||'employer')+'</div>';
-  csig.forEach(x=>{
-    h+='<div class="sig" style="cursor:pointer" onclick="location.href=\'/company.html?id='+coId+'\'"><div class="sig-icon">'+(SI[x.signal_type]||'📡')+'</div><div class="sig-info"><div class="sig-hl">'+esc(x.evidence_summary||x.signal_type.replace(/_/g,' '))+'</div><div class="sig-det">'+esc(x.signal_type.replace(/_/g,' '))+' · '+ago(x.detected_at)+' · '+(x.triage_status||'new')+'</div></div><div class="sig-conf">'+Math.round((x.confidence_score||0)*100)+'%</div></div>';
+  h+='<div class="card"><div class="card-head"><div class="card-title">Signals · '+esc(p.current_company_name||'')+'</div><div class="card-count">'+csig.length+'</div></div>';
+  csig.slice(0,5).forEach(x=>{
+    h+='<div class="sig" style="cursor:pointer" onclick="location.href=\'/company.html?id='+coId+'\'"><div class="sig-icon">'+(SI[x.signal_type]||'📡')+'</div><div class="sig-info"><div class="sig-hl">'+esc((x.evidence_summary||x.signal_type.replace(/_/g,' ')).slice(0,100))+'</div><div class="sig-det">'+esc(x.signal_type.replace(/_/g,' '))+' · '+ago(x.detected_at)+'</div></div><div class="sig-conf">'+Math.round((x.confidence_score||0)*100)+'%</div></div>';
   });
-  h+='</div></div>'; // close sec + card
+  if(csig.length>5)h+='<div style="font-size:11px;color:var(--blue);padding:4px 0;cursor:pointer" onclick="location.href=\'/company.html?id='+coId+'\'">+'+(csig.length-5)+' more signals →</div>';
+  h+='</div>';
 }
 
-// Interactions
+// Interactions — compact card, cap at 6
 if(ixs.length){
-  h+='<div class="card"><div class="sec"><div class="card-head"><div class="card-title">Interactions</div><div class="card-count">'+ixs.length+'</div></div><div class="card-sub">Emails, calls, meetings</div>';
+  h+='<div class="card"><div class="card-head"><div class="card-title">Interactions</div><div class="card-count">'+ixs.length+'</div></div>';
   const ixLimit = 8;
   const ixVisible = ixs.slice(0, ixLimit);
   const ixHidden = ixs.slice(ixLimit);
@@ -279,15 +277,21 @@ if(ixs.length){
   h+='</div></div>'; // close sec + card
 }
 
-// SIDEBAR — Activity card
-const totalIx=parseInt(s.total||0);
-const nNotes=parseInt(s.notes||0),nEmails=parseInt(s.emails||0),nLinkedin=parseInt(s.linkedin||0),nCalls=parseInt(s.calls||0)+parseInt(s.meetings||0),nOther=parseInt(s.other||0);
-h+='<div class="card"><div class="ss"><div class="ss-title">Activity <span style="font-size:12px;color:var(--ink-4);font-weight:400">'+totalIx+' total</span></div><div class="stats"><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Research Notes\')"><div class="st-v">'+nNotes+'</div><div class="st-l">Notes</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+nEmails+'</div><div class="st-l">Emails</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+nLinkedin+'</div><div class="st-l">LinkedIn</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+(nCalls+nOther)+'</div><div class="st-l">'+(nOther>0?'Other':'Calls/Mtgs')+'</div></div></div>';
-if(s.type_breakdown&&s.type_breakdown.length){h+='<div style="margin-top:8px;font-size:11px;color:var(--ink-4)">'+s.type_breakdown.map(t=>esc(t.interaction_type)+': '+t.cnt).join(' · ')+'</div>';}
-if(s.last_interaction)h+='<div style="font-size:11px;color:var(--ink-4);margin-top:6px">Last: '+fmtD(s.last_interaction)+'</div>';
-if(s.first_interaction)h+='<div style="font-size:11px;color:var(--ink-4)">First: '+fmtD(s.first_interaction)+'</div>';
-if(p.bio){h+='<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--rule)"><div style="font-size:11px;font-weight:600;color:var(--ink-3);margin-bottom:4px">BIO</div><div style="font-size:12px;color:var(--ink-2);line-height:1.55;overflow-wrap:break-word">'+esc(p.bio)+'</div></div>';}
-h+='</div></div>'; // close ss + card
+// Research Notes — compact, only if populated with real content
+if(notes.length){
+  h+='<div class="card"><div class="card-head"><div class="card-title">Research Notes</div><div class="card-count">'+notes.length+'</div></div>';
+  notes.slice(0,4).forEach(n=>{
+    const qb=n.note_quality?'<span class="note-q '+(n.note_quality==='high'?'high':'medium')+'">'+n.note_quality+'</span>':'';
+    let intel='';
+    if(n.extracted_intelligence&&typeof n.extracted_intelligence==='object'){
+      const e=Object.entries(n.extracted_intelligence).filter(([k,v])=>v&&String(v).length).map(([k,v])=>'<strong>'+esc(k.replace(/_/g,' '))+':</strong> '+esc(typeof v==='object'?JSON.stringify(v):String(v)));
+      if(e.length)intel='<div class="note-intel"><b>Extracted Intelligence</b>'+e.join(' · ')+'</div>';
+    }
+    h+='<div class="note"><div class="note-top"><div class="note-subj">'+esc(n.subject||'Note')+qb+'</div><div class="note-date">'+fmtD(n.interaction_at||n.created_at)+'</div></div><div class="note-body">'+esc((n.summary||'').slice(0,300))+(n.summary&&n.summary.length>300?'…':'')+'</div>'+intel+'</div>';
+  });
+  if(notes.length>4)h+='<div style="font-size:11px;color:var(--blue);padding:4px 0;cursor:pointer" onclick="document.getElementById(\'allNotes\').style.display=\'block\';this.style.display=\'none\'">Show '+(notes.length-4)+' more notes →</div><div id="allNotes" style="display:none">'+notes.slice(4).map(n=>'<div class="note"><div class="note-top"><div class="note-subj">'+esc(n.subject||'Note')+'</div><div class="note-date">'+fmtD(n.interaction_at||n.created_at)+'</div></div><div class="note-body">'+esc((n.summary||'').slice(0,300))+'</div></div>').join('')+'</div>';
+  h+='</div>';
+}
 
 if(colls.length){
   h+='<div class="card"><div class="ss"><div class="ss-title">At '+esc(p.current_company_name||'Company')+'</div>';
