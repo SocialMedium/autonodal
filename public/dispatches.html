@@ -361,7 +361,7 @@ async function loadDispatches() {
           </div>
           ${d.signal_summary ? '<div class="dc-summary">' + esc(String(d.signal_summary).slice(0, 180)) + '</div>' : ''}
           ${contactsHtml}
-          ${d.blog_title ? '<div class="dc-blog-title">\u201c' + esc(d.blog_title) + '\u201d</div>' : ''}
+          ${d.blog_title ? '<div class="dc-blog-title" style="font-size:12px;color:var(--ink-2);font-weight:500">' + esc(d.blog_title) + '</div>' : ''}
           ${entry ? '<div class="dc-entry">\u2b50 Best entry: <strong>' + esc(entry.name) + '</strong>' + (entry.title ? ' \u00b7 ' + esc(entry.title) : '') + (entry.approach_via ? ' \u00b7 via ' + esc(entry.approach_via) : '') + '</div>' : ''}
           ${d.opportunity_angle ? '<div class="dc-angle">\ud83c\udfaf ' + esc(d.opportunity_angle) + '</div>' : ''}
         </div>
@@ -460,23 +460,51 @@ function renderDetail(d) {
   html += '<div class="approach-rationale">' + esc(d.approach_rationale) + '</div>';
   html += '</div>';
 
-  // Section 4: The Article
-  html += '<div class="psec"><div class="psec-label">Thought Leadership Article</div>';
-  html += '<div class="blog-header">';
-  html += '<div class="blog-title-display">' + esc(d.blog_title) + '</div>';
-  html += '<div class="blog-actions">';
-  html += '<button class="btn-sm" onclick="copyBlog()">Copy</button>';
-  html += '<button class="btn-sm" onclick="toggleRegenerate()">Regenerate</button>';
-  html += '</div></div>';
-  html += '<div class="regen-row" id="regenRow" style="display:none">';
-  html += '<input class="regen-input" id="regenTheme" placeholder="New theme (optional — leave empty for random)">';
-  html += '<button class="btn-sm primary" onclick="regenerateBlog()">Generate</button>';
-  html += '</div>';
-  html += '<div class="blog-body" id="blogBody">' + esc(d.blog_body) + '</div>';
-  if (d.blog_keywords && d.blog_keywords.length > 0) {
-    html += '<div class="blog-keywords">' + d.blog_keywords.map(k => '<span class="keyword">' + esc(k) + '</span>').join('') + '</div>';
+  // Section 4: Signal Brief (LinkedIn post + Email brief + Data points)
+  let briefData = null;
+  try { briefData = typeof d.blog_body === 'string' ? JSON.parse(d.blog_body) : d.blog_body; } catch(e) {}
+
+  if (briefData && briefData.linkedin_post) {
+    // New format — structured signal brief
+    html += '<div class="psec"><div class="psec-label">LinkedIn Post</div>';
+    html += '<div style="background:var(--surface-warm);border:1px solid var(--rule);border-radius:8px;padding:14px 16px;font-size:13px;line-height:1.6;white-space:pre-line;color:var(--ink-2)" id="linkedinPost">' + esc(briefData.linkedin_post) + '</div>';
+    html += '<div style="display:flex;gap:6px;margin-top:8px"><button class="btn-sm" onclick="navigator.clipboard.writeText(document.getElementById(\'linkedinPost\').textContent)">Copy Post</button><button class="btn-sm" onclick="window.open(\'https://www.linkedin.com/shareArticle?mini=true&summary=\'+encodeURIComponent(document.getElementById(\'linkedinPost\').textContent.slice(0,256)),\'_blank\')">Share on LinkedIn ↗</button></div>';
+    html += '</div>';
+
+    if (briefData.data_points && briefData.data_points.length) {
+      html += '<div class="psec"><div class="psec-label">Key Data Points</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">';
+      briefData.data_points.forEach(dp => {
+        html += '<div style="background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:12px">';
+        html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--ink-4);font-weight:600">' + esc(dp.metric) + '</div>';
+        html += '<div style="font-family:var(--serif);font-size:20px;font-weight:700;color:var(--ink);margin:4px 0">' + esc(dp.value) + '</div>';
+        html += '<div style="font-size:11px;color:var(--ink-3)">' + esc(dp.context) + '</div>';
+        html += '</div>';
+      });
+      html += '</div></div>';
+    }
+
+    if (briefData.trend_summary) {
+      html += '<div class="psec"><div class="psec-label">Trend</div>';
+      html += '<div style="font-size:13px;color:var(--ink-2);font-style:italic;padding:8px 0">' + esc(briefData.trend_summary) + '</div></div>';
+    }
+
+    html += '<div class="psec"><div class="psec-label">Email Brief</div>';
+    html += '<div style="background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:14px 16px;font-size:13px;line-height:1.6;white-space:pre-line;color:var(--ink-2)" id="emailBrief">' + esc(briefData.email_brief) + '</div>';
+    html += '<div style="display:flex;gap:6px;margin-top:8px"><button class="btn-sm" onclick="navigator.clipboard.writeText(document.getElementById(\'emailBrief\').textContent)">Copy Email</button></div>';
+    html += '</div>';
+  } else {
+    // Legacy format — old blog post
+    html += '<div class="psec"><div class="psec-label">Content</div>';
+    html += '<div class="blog-header"><div class="blog-title-display">' + esc(d.blog_title) + '</div>';
+    html += '<div class="blog-actions"><button class="btn-sm" onclick="copyBlog()">Copy</button><button class="btn-sm" onclick="toggleRegenerate()">Regenerate</button></div></div>';
+    html += '<div class="regen-row" id="regenRow" style="display:none"><input class="regen-input" id="regenTheme" placeholder="New theme"><button class="btn-sm primary" onclick="regenerateBlog()">Generate</button></div>';
+    html += '<div class="blog-body" id="blogBody">' + esc(d.blog_body) + '</div>';
+    if (d.blog_keywords && d.blog_keywords.length > 0) {
+      html += '<div class="blog-keywords">' + d.blog_keywords.map(k => '<span class="keyword">' + esc(k) + '</span>').join('') + '</div>';
+    }
+    html += '</div>';
   }
-  html += '</div>';
 
   // Section 5: Send To
   html += '<div class="psec"><div class="psec-label">Distribution Plan (' + sendTo.length + ' recipients)</div>';
@@ -530,11 +558,15 @@ function renderDetail(d) {
 
 function copyBlog() {
   const d = window._currentDispatch;
-  const text = d.blog_title + '\n\n' + d.blog_body;
+  let text = d.blog_title + '\n\n';
+  try {
+    const brief = JSON.parse(d.blog_body);
+    text += (brief.linkedin_post || '') + '\n\n---\n\n' + (brief.email_brief || '');
+    if (brief.data_points) text += '\n\nData:\n' + brief.data_points.map(p => '- ' + p.metric + ': ' + p.value).join('\n');
+  } catch(e) { text += d.blog_body; }
   navigator.clipboard.writeText(text).then(() => {
     const btn = document.querySelector('.blog-actions .btn-sm');
-    btn.textContent = 'Copied!';
-    setTimeout(() => btn.textContent = 'Copy', 1500);
+    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 1500); }
   });
 }
 

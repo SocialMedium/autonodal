@@ -415,60 +415,76 @@ function getApproachAngle(signalType) {
 
 async function generateBlogPost(signal, company, approach) {
   const theme = approach.themes[Math.floor(Math.random() * approach.themes.length)];
-
-  const systemPrompt = `You are a senior executive search consultant writing a thought leadership piece for an executive audience.
-Write with authority and insight, not sales language.
-The piece should be genuinely useful to a senior leader at a company that has just experienced a ${signal.signal_type.replace(/_/g, ' ')} event.
-It should feel like advice from a trusted advisor, not a pitch from a recruiter.
-
-Length: 550-700 words.
-Format: Return ONLY valid JSON with keys: "title", "body", "keywords"
-  - title: Compelling headline (no quotes in the title itself)
-  - body: 4-5 paragraphs of flowing prose. No subheadings, no bullet points. Use \\n\\n between paragraphs.
-  - keywords: Array of 4-6 relevant keywords/phrases
-Tone: Warm, direct, intelligent. First person plural ("we've seen", "in our experience").
-Do not mention the company by name or the specific event.
-Do not use the word "landscape" or "navigate".`;
-
   const sector = company?.sector || 'technology';
   const geography = company?.geography || 'global';
   const size = company?.employee_count_band || 'growth-stage';
 
-  const userPrompt = `Write a thought leadership article for a senior leader at a ${sector} company (${size}, ${geography} market) that has just experienced a ${signal.signal_type.replace(/_/g, ' ')} event.
+  // Get related signals for trend data
+  let trendContext = '';
+  try {
+    const { rows: related } = await pool.query(`
+      SELECT signal_type, company_name, confidence_score, detected_at, evidence_summary
+      FROM signal_events
+      WHERE signal_type = $1 AND detected_at > NOW() - INTERVAL '30 days'
+        AND company_name IS NOT NULL
+      ORDER BY confidence_score DESC LIMIT 10
+    `, [signal.signal_type]);
+    if (related.length > 1) {
+      trendContext = `\n\nTREND DATA (${related.length} similar signals in 30 days):\n` +
+        related.map(r => `- ${r.company_name}: ${(r.evidence_summary || '').slice(0, 100)}`).join('\n');
+    }
+  } catch (e) { /* ignore */ }
 
-The article should explore the theme: "${theme}"
+  const systemPrompt = `You are a market intelligence analyst producing a data-driven signal brief for executive search consultants.
 
-Signal context (do not state directly, let it inform the piece):
-${signal.evidence_summary || signal.signal_type.replace(/_/g, ' ')}
+Output TWO formats in a single JSON response:
 
-Approach angle (do not state directly, let it inform the piece):
-${approach.rationale}
+1. "linkedin_post" — A punchy LinkedIn post (120-180 words max). Data-first, insight-driven. Include 1-2 specific data points or stats. End with a question or observation that invites engagement. Use line breaks for readability. No hashtags.
 
-The article should leave the reader thinking about talent, leadership, and organisational design — and create a natural reason for us to follow up about how we can help.
+2. "email_brief" — A direct email body (200-300 words) to send to a specific contact at or near the signalling company. Reference the signal event specifically. Include what the data shows about the trend. End with a soft ask ("Would be good to catch up on how this is landing for your team" style, not salesy).
 
-Return valid JSON only.`;
+3. "data_points" — Array of 3-5 hard data points extracted from the signal and trend context. Each: { "metric": "what", "value": "number or fact", "context": "why it matters" }
+
+4. "trend_summary" — One sentence summary of the broader trend this signal is part of.
+
+5. "title" — Short headline (max 10 words) for the dispatch card.
+
+6. "keywords" — Array of 3-5 keywords.
+
+Format: Return ONLY valid JSON. No markdown wrapping.
+Tone: Direct, data-driven, no jargon. Australian English. Not salesy.`;
+
+  const userPrompt = `Signal: ${signal.signal_type.replace(/_/g, ' ')} at ${signal.company_name || 'a company'}
+Sector: ${sector} | Geography: ${geography} | Size: ${size}
+
+Evidence: ${signal.evidence_summary || signal.signal_type.replace(/_/g, ' ')}
+
+Approach angle: ${approach.rationale}
+Theme: ${theme}
+${trendContext}
+
+Generate the signal brief JSON.`;
 
   const raw = await callClaude(systemPrompt, userPrompt, 2048);
 
-  // Parse JSON from response
   try {
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON found in response');
+    if (!jsonMatch) throw new Error('No JSON found');
     const parsed = JSON.parse(jsonMatch[0]);
     return {
       theme,
-      title: parsed.title || 'Untitled',
-      body: parsed.body || '',
+      title: parsed.title || theme,
+      body: JSON.stringify({
+        linkedin_post: parsed.linkedin_post || '',
+        email_brief: parsed.email_brief || '',
+        data_points: parsed.data_points || [],
+        trend_summary: parsed.trend_summary || ''
+      }),
       keywords: parsed.keywords || []
     };
   } catch (e) {
-    LOG('⚠️', `Blog JSON parse failed, using raw text`);
-    return {
-      theme,
-      title: theme,
-      body: raw,
-      keywords: []
-    };
+    LOG('⚠️', `Brief JSON parse failed, using raw text`);
+    return { theme, title: theme, body: raw, keywords: [] };
   }
 }
 
