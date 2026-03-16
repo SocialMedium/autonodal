@@ -2977,15 +2977,124 @@ app.get('/api/search', authenticateToken, async (req, res) => {
       }
     }
 
+    // Search signals (direct)
+    if (collection === 'signals' || collection === 'all') {
+      try {
+        const sigLimit = collection === 'all' ? Math.min(limit, 8) : limit;
+        const qdrantResults = await qdrantSearch('signal_events', vector, sigLimit);
+        if (qdrantResults.length > 0) {
+          const sigIds = qdrantResults.map(r => r.payload?.signal_id).filter(Boolean);
+          if (sigIds.length > 0) {
+            const { rows: signals } = await pool.query(`
+              SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
+                     se.evidence_summary, se.detected_at, c.sector, c.geography, c.is_client
+              FROM signal_events se LEFT JOIN companies c ON c.id = se.company_id
+              WHERE se.id = ANY($1::uuid[]) AND se.tenant_id = $2
+            `, [sigIds, req.tenant_id]);
+            const sigMap = new Map(signals.map(s => [s.id, s]));
+            results.signals = qdrantResults.map(r => {
+              const sig = sigMap.get(r.payload?.signal_id);
+              if (!sig) return null;
+              return { ...sig, match_score: Math.round(r.score * 100), score: r.score };
+            }).filter(Boolean);
+          }
+        }
+      } catch (e) { /* collection may not exist yet */ }
+    }
+
+    // Search conversions (placements)
+    if (collection === 'placements' || collection === 'all') {
+      try {
+        const cvLimit = collection === 'all' ? Math.min(limit, 6) : limit;
+        const qdrantResults = await qdrantSearch('conversions', vector, cvLimit);
+        if (qdrantResults.length > 0) {
+          const cvIds = qdrantResults.map(r => r.payload?.conversion_id).filter(Boolean);
+          if (cvIds.length > 0) {
+            const { rows: conversions } = await pool.query(`
+              SELECT cv.id, cv.role_title, cv.placement_fee, cv.currency, cv.start_date,
+                     p.full_name as person_name, a.name as account_name
+              FROM conversions cv
+              LEFT JOIN people p ON p.id = cv.person_id
+              LEFT JOIN accounts a ON a.id = cv.client_id
+              WHERE cv.id = ANY($1::uuid[]) AND cv.tenant_id = $2
+            `, [cvIds, req.tenant_id]);
+            const cvMap = new Map(conversions.map(c => [c.id, c]));
+            results.placements = qdrantResults.map(r => {
+              const cv = cvMap.get(r.payload?.conversion_id);
+              if (!cv) return null;
+              return { ...cv, match_score: Math.round(r.score * 100), score: r.score };
+            }).filter(Boolean);
+          }
+        }
+      } catch (e) { /* collection may not exist yet */ }
+    }
+
+    // Search interactions
+    if (collection === 'interactions' || collection === 'all') {
+      try {
+        const intLimit = collection === 'all' ? Math.min(limit, 6) : limit;
+        const qdrantResults = await qdrantSearch('interactions', vector, intLimit);
+        if (qdrantResults.length > 0) {
+          const intIds = qdrantResults.map(r => r.payload?.interaction_id).filter(Boolean);
+          if (intIds.length > 0) {
+            const { rows: interactions } = await pool.query(`
+              SELECT i.id, i.interaction_type, i.subject, i.summary, i.interaction_at, i.direction,
+                     p.full_name as person_name, p.current_title
+              FROM interactions i
+              LEFT JOIN people p ON p.id = i.person_id
+              WHERE i.id = ANY($1::uuid[]) AND i.tenant_id = $2
+            `, [intIds, req.tenant_id]);
+            const intMap = new Map(interactions.map(i => [i.id, i]));
+            results.interactions = qdrantResults.map(r => {
+              const int = intMap.get(r.payload?.interaction_id);
+              if (!int) return null;
+              return { ...int, match_score: Math.round(r.score * 100), score: r.score };
+            }).filter(Boolean);
+          }
+        }
+      } catch (e) { /* collection may not exist yet */ }
+    }
+
+    // Add score field to existing results
+    results.people = (results.people || []).map(p => ({ ...p, score: (p.match_score || 50) / 100 }));
+    results.companies = (results.companies || []).map(c => ({ ...c, score: (c.match_score || 50) / 100 }));
+    results.documents = (results.documents || []).map(d => ({ ...d, score: (d.match_score || 50) / 100 }));
+
     res.json({
       query: q,
       collection,
       results,
-      total: results.people.length + results.companies.length + results.documents.length,
+      total: (results.people?.length || 0) + (results.companies?.length || 0) +
+             (results.documents?.length || 0) + (results.signals?.length || 0) +
+             (results.placements?.length || 0) + (results.interactions?.length || 0),
     });
   } catch (err) {
     console.error('Search error:', err.message);
     res.status(500).json({ error: 'Search failed: ' + err.message });
+  }
+});
+
+// Search index status
+app.get('/api/search/index-status', authenticateToken, async (req, res) => {
+  try {
+    const { rows: [counts] } = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM people WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS people,
+        (SELECT COUNT(*) FROM companies WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS companies,
+        (SELECT COUNT(*) FROM external_documents WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS documents,
+        (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND signals_embedded_at IS NOT NULL) AS signals,
+        (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS conversions,
+        (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS interactions
+    `, [req.tenant_id]);
+    res.json({
+      people: Number(counts.people), companies: Number(counts.companies),
+      documents: Number(counts.documents), signals: Number(counts.signals),
+      conversions: Number(counts.conversions), interactions: Number(counts.interactions),
+      total: Number(counts.people) + Number(counts.companies) + Number(counts.documents) +
+             Number(counts.signals) + Number(counts.conversions) + Number(counts.interactions)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

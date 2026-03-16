@@ -2229,6 +2229,19 @@ async function claimDispatch(dispatchId, btn) {
 }
 
 // ── Search ──
+function scoreBadge(score) {
+  var pct = Math.round(Math.min((score || 0.5) * 100, 99));
+  var bg = pct >= 85 ? '#E1F5EE' : pct >= 70 ? '#E6F1FB' : pct >= 55 ? '#FAEEDA' : '#F1EFE8';
+  var tc = pct >= 85 ? '#085041' : pct >= 70 ? '#0C447C' : pct >= 55 ? '#633806' : '#444441';
+  return '<span style="display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:600;padding:2px 7px;border-radius:8px;background:' + bg + ';color:' + tc + ';flex-shrink:0">' + pct + '%</span>';
+}
+function scoreBar(score) {
+  var pct = Math.round(Math.min((score || 0.5) * 100, 99));
+  var tc = pct >= 85 ? '#085041' : pct >= 70 ? '#0C447C' : pct >= 55 ? '#633806' : '#AAA';
+  return '<div style="display:flex;align-items:center;gap:6px;margin-top:6px"><div style="flex:1;height:2px;border-radius:2px;background:var(--rule);overflow:hidden"><div style="width:' + pct + '%;height:100%;border-radius:2px;background:' + tc + '"></div></div><span style="font-size:9px;color:var(--ink-4);min-width:28px;text-align:right">' + pct + '%</span></div>';
+}
+function srInitials(name) { return (name || '').split(' ').map(function(w){return w[0]}).filter(Boolean).slice(0,2).join('').toUpperCase(); }
+
 async function doSearch() {
   const q = document.getElementById('searchInput').value.trim();
   if (!q || q.length < 2) return;
@@ -2239,75 +2252,93 @@ async function doSearch() {
 
   overlay.classList.add('active');
   document.getElementById('commandBar').classList.add('searching');
-  body.innerHTML = '<div class="search-loading"><div class="spinner"></div><div>Searching vectors...</div></div>';
+  body.innerHTML = '<div class="search-loading"><div class="spinner"></div><div>Searching across people, signals, documents, placements...</div></div>';
 
   try {
-    const data = await api(`/api/search?q=${encodeURIComponent(q)}&collection=all&limit=15`);
+    const data = await api(`/api/search?q=${encodeURIComponent(q)}&collection=all&limit=20`);
+    const r = data.results;
     title.textContent = `"${q}" — ${data.total} results`;
+
+    const SIG_C = { capital_raising:'#EF9F27', strategic_hiring:'#5DCAA5', geographic_expansion:'#378ADD', leadership_change:'#D4537E', ma_activity:'#AFA9EC', product_launch:'#97C459', layoffs:'#E24B4A', restructuring:'#E24B4A', partnership:'#85B7EB' };
+
+    function mkGroup(key, label, items, cols, renderFn) {
+      if (!items || !items.length) return '';
+      return '<div data-group="' + key + '"><div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px 5px"><span style="font-size:9px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)">' + label + '</span><span style="font-size:9px;color:var(--ink-4)">' + items.length + ' results</span></div>' +
+        '<div style="display:grid;grid-template-columns:repeat(' + cols + ',minmax(0,1fr));gap:8px;padding:0 16px 14px">' + items.map(renderFn).join('') + '</div></div>';
+    }
+
+    function card(inner, url, ext) {
+      return '<div style="background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:11px 13px;cursor:pointer;transition:all .14s" onclick="' + (ext ? "window.open('" + esc(url) + "','_blank')" : "window.location='" + esc(url) + "'") + '" onmouseenter="this.style.borderColor=\'var(--blue)\'" onmouseleave="this.style.borderColor=\'var(--rule)\'">' + inner + '</div>';
+    }
 
     let html = '';
 
-    if (data.results.people.length > 0) {
-      html += '<div class="search-section-label">People</div>';
-      data.results.people.forEach(p => {
-        const scoreClass = p.match_score >= 70 ? 'high' : p.match_score >= 50 ? 'mid' : 'low';
-        html += `
-          <div class="search-person-card" onclick="window.location='/person.html?id=${p.id}'">
-            <div>
-              <div class="search-person-name">${esc(p.full_name || '')}</div>
-              <div class="search-person-role">${esc(p.current_title || '')}${p.current_company_name ? ' · ' + esc(p.current_company_name) : ''}</div>
-              ${p.location ? `<div class="search-person-meta">📍 ${esc(p.location)}</div>` : ''}
-              <div class="search-person-tags">
-                ${p.has_research_notes ? '<span class="search-tag notes">📝 Notes</span>' : ''}
-                ${(p.expertise_tags || []).slice(0, 3).map(t => `<span class="search-tag">${esc(t)}</span>`).join('')}
-              </div>
-            </div>
-            <div class="search-match-score ${scoreClass}">${p.match_score}</div>
-          </div>`;
-      });
-    }
+    // People
+    html += mkGroup('people', 'People', r.people, 3, function(p) {
+      return card('<div style="display:flex;justify-content:space-between;margin-bottom:5px"><div style="display:flex;gap:8px;align-items:center;min-width:0"><div style="width:28px;height:28px;border-radius:50%;background:var(--blue-soft);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:var(--blue);flex-shrink:0">' + srInitials(p.full_name) + '</div><div style="min-width:0"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(p.full_name) + '</div><div style="font-size:10px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(p.current_title || '') + (p.current_company_name ? ' · ' + esc(p.current_company_name) : '') + '</div></div></div>' + scoreBadge(p.score) + '</div>' +
+        (p.location ? '<div style="font-size:9px;color:var(--ink-4)">📍 ' + esc(p.location) + '</div>' : '') + scoreBar(p.score), '/person.html?id=' + p.id);
+    });
 
-    if (data.results.companies && data.results.companies.length > 0) {
-      html += '<div class="search-section-label" style="margin-top:20px">Companies</div>';
-      data.results.companies.forEach(c => {
-        const scoreClass = c.match_score >= 70 ? 'high' : c.match_score >= 50 ? 'mid' : 'low';
-        html += `
-          <div class="search-person-card" onclick="window.location='/company.html?id=${c.id}'">
-            <div>
-              <div class="search-person-name">🏢 ${esc(c.name || '')}${c.is_client ? ' · <span style="color:var(--amber);font-size:11px;font-weight:600">CLIENT</span>' : ''}</div>
-              <div class="search-person-role">${[c.sector, c.geography, c.employee_count_band].filter(Boolean).join(' · ')}</div>
-              <div class="search-person-tags">
-                ${parseInt(c.signal_count) > 0 ? `<span class="search-tag notes">📡 ${c.signal_count} signals</span>` : ''}
-                ${parseInt(c.people_count) > 0 ? `<span class="search-tag">👥 ${c.people_count} people</span>` : ''}
-              </div>
-            </div>
-            <div class="search-match-score ${scoreClass}">${c.match_score}</div>
-          </div>`;
-      });
-    }
+    // Signals
+    html += mkGroup('signals', 'Signals', r.signals, 3, function(s) {
+      var sc = SIG_C[s.signal_type] || '#888';
+      return card('<div style="display:flex;justify-content:space-between;margin-bottom:5px"><div style="display:flex;gap:8px;align-items:center;min-width:0"><div style="width:28px;height:28px;border-radius:50%;background:' + sc + '18;display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="width:8px;height:8px;border-radius:50%;background:' + sc + ';display:inline-block"></span></div><div style="min-width:0"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(s.company_name || 'Unknown') + '</div><div style="font-size:9px;padding:1px 5px;border-radius:6px;background:' + sc + '18;color:' + sc + ';display:inline-block">' + esc((s.signal_type||'').replace(/_/g,' ')) + '</div></div></div>' + scoreBadge(s.score) + '</div>' +
+        '<div style="font-size:10px;color:var(--ink-3);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin-bottom:4px">' + esc((s.evidence_summary||'').slice(0,120)) + '</div>' + scoreBar(s.score), s.company_id ? '/company.html?id=' + s.company_id : '#');
+    });
 
-    if (data.results.documents.length > 0) {
-      html += '<div class="search-section-label" style="margin-top:20px">Documents</div>';
-      data.results.documents.forEach(d => {
-        html += `
-          <a href="${d.source_url || '#'}" target="_blank" class="search-doc-item" style="text-decoration:none;display:flex">
-            <div>
-              <div class="search-doc-title">${esc(d.title || 'Untitled')}</div>
-              <div class="search-doc-meta">${d.source_type?.replace(/_/g, ' ') || ''} · ${esc(d.source_name || '')} · ${d.published_at ? new Date(d.published_at).toLocaleDateString() : ''}</div>
-            </div>
-            <div class="search-match-score ${d.match_score >= 70 ? 'high' : d.match_score >= 50 ? 'mid' : 'low'}" style="margin-left:auto">${d.match_score}</div>
-          </a>`;
-      });
-    }
+    // Documents
+    html += mkGroup('documents', 'Documents', r.documents, 3, function(d) {
+      return card('<div style="display:flex;justify-content:space-between;margin-bottom:5px"><div style="min-width:0"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(d.title || 'Untitled') + '</div><div style="font-size:10px;color:var(--ink-3)">' + esc((d.source_type||'').replace(/_/g,' ')) + ' · ' + esc(d.source_name || '') + '</div></div>' + scoreBadge(d.score) + '</div>' +
+        '<div style="font-size:9px;color:var(--ink-4)">' + (d.published_at ? new Date(d.published_at).toLocaleDateString() : '') + (d.author ? ' · ' + esc(d.author) : '') + '</div>' + scoreBar(d.score), d.source_url || '#', !!d.source_url);
+    });
+
+    // Companies
+    html += mkGroup('companies', 'Companies', r.companies, 2, function(c) {
+      return card('<div style="display:flex;justify-content:space-between;margin-bottom:5px"><div style="display:flex;gap:8px;align-items:center"><div style="width:28px;height:28px;border-radius:7px;background:var(--surface-warm);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:var(--ink-3);flex-shrink:0">' + srInitials(c.name) + '</div><div><div style="font-size:12px;font-weight:500">' + esc(c.name) + (c.is_client ? ' <span style="font-size:9px;color:var(--amber);font-weight:600">CLIENT</span>' : '') + '</div><div style="font-size:10px;color:var(--ink-3)">' + [c.sector, c.geography].filter(Boolean).join(' · ') + '</div></div></div>' + scoreBadge(c.score) + '</div>' +
+        '<div style="font-size:9px;color:var(--ink-4)">' + (parseInt(c.signal_count) > 0 ? '📡 ' + c.signal_count + ' signals · ' : '') + (parseInt(c.people_count) > 0 ? '👥 ' + c.people_count + ' people' : '') + '</div>' + scoreBar(c.score), '/company.html?id=' + c.id);
+    });
+
+    // Placements
+    html += mkGroup('placements', 'Placements', r.placements, 2, function(p) {
+      return card('<div style="display:flex;justify-content:space-between;margin-bottom:5px"><div style="display:flex;gap:8px;align-items:center"><div style="width:28px;height:28px;border-radius:50%;background:var(--emerald-soft);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">✓</div><div><div style="font-size:12px;font-weight:500">' + esc(p.person_name || 'Unknown') + '</div><div style="font-size:10px;color:var(--ink-3)">' + esc(p.role_title || '') + ' · ' + esc(p.account_name || '') + '</div></div></div>' + scoreBadge(p.score) + '</div>' +
+        '<div style="font-size:9px;color:var(--ink-4)">' + (p.start_date ? new Date(p.start_date).toLocaleDateString() : '') + (p.placement_fee ? ' · ' + (p.currency || 'AUD') + ' ' + Number(p.placement_fee).toLocaleString() : '') + '</div>' + scoreBar(p.score), '#');
+    });
+
+    // Interactions
+    html += mkGroup('interactions', 'Interactions', r.interactions, 3, function(i) {
+      return card('<div style="display:flex;justify-content:space-between;margin-bottom:5px"><div style="min-width:0"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(i.subject || (i.interaction_type||'').replace(/_/g,' ')) + '</div><div style="font-size:10px;color:var(--ink-3)">' + esc(i.person_name || '') + (i.current_title ? ' · ' + esc(i.current_title) : '') + '</div></div>' + scoreBadge(i.score) + '</div>' +
+        '<div style="font-size:9px;color:var(--ink-4)">' + esc((i.interaction_type||'').replace(/_/g,' ')) + ' · ' + (i.interaction_at ? ago(i.interaction_at) : '') + '</div>' + scoreBar(i.score), i.person_id ? '/person.html?id=' + i.person_id : '#');
+    });
 
     if (data.total === 0) {
       html = '<div class="search-loading" style="color:var(--ink-3)">No matches found. Try different keywords.</div>';
     }
 
-    body.innerHTML = html;
+    // Filter tabs
+    var tabs = [{ k: 'all', l: 'All', c: data.total }];
+    if (r.people?.length) tabs.push({ k: 'people', l: 'People', c: r.people.length });
+    if (r.signals?.length) tabs.push({ k: 'signals', l: 'Signals', c: r.signals.length });
+    if (r.documents?.length) tabs.push({ k: 'documents', l: 'Documents', c: r.documents.length });
+    if (r.companies?.length) tabs.push({ k: 'companies', l: 'Companies', c: r.companies.length });
+    if (r.placements?.length) tabs.push({ k: 'placements', l: 'Placements', c: r.placements.length });
+    if (r.interactions?.length) tabs.push({ k: 'interactions', l: 'Interactions', c: r.interactions.length });
+
+    var tabHtml = '<div style="display:flex;gap:4px;padding:8px 16px;border-bottom:1px solid var(--rule);flex-wrap:wrap">';
+    tabs.forEach(function(t, i) {
+      tabHtml += '<button onclick="filterSearchTab(this,\'' + t.k + '\')" style="font-size:10px;padding:3px 10px;border-radius:20px;border:1px solid var(--rule);cursor:pointer;font-family:var(--sans);' + (i === 0 ? 'background:var(--surface-warm);color:var(--ink);font-weight:600' : 'background:transparent;color:var(--ink-3)') + '">' + t.l + ' <span style="opacity:.5">' + t.c + '</span></button>';
+    });
+    tabHtml += '</div>';
+
+    body.innerHTML = tabHtml + html;
   } catch (e) {
     body.innerHTML = `<div class="search-loading" style="color:var(--rose)">Search failed: ${esc(e.message)}</div>`;
   }
+}
+
+function filterSearchTab(btn, key) {
+  btn.parentElement.querySelectorAll('button').forEach(function(b) { b.style.background = 'transparent'; b.style.color = 'var(--ink-3)'; b.style.fontWeight = '400'; });
+  btn.style.background = 'var(--surface-warm)'; btn.style.color = 'var(--ink)'; btn.style.fontWeight = '600';
+  document.querySelectorAll('[data-group]').forEach(function(g) { g.style.display = (key === 'all' || g.dataset.group === key) ? '' : 'none'; });
 }
 
 function closeSearch() {
