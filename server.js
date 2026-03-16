@@ -4094,23 +4094,48 @@ function getChatHistory(userId) {
   return chatHistories.get(userId);
 }
 
-async function callClaude(messages, tools, systemPrompt) {
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 4096, system: systemPrompt, messages, tools });
-    const req = https.request({
-      hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) },
-      timeout: 60000,
-    }, (res) => {
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => { try { const d = JSON.parse(Buffer.concat(chunks).toString()); if (d.error) return reject(new Error(d.error.message)); resolve(d); } catch (e) { reject(e); } });
-    });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Claude timeout')); });
-    req.write(body);
-    req.end();
-  });
+async function callClaude(messages, tools, systemPrompt, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const result = await new Promise((resolve, reject) => {
+        const body = JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 4096, system: systemPrompt, messages, tools });
+        const req = https.request({
+          hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) },
+          timeout: 90000,
+        }, (res) => {
+          const chunks = [];
+          res.on('data', c => chunks.push(c));
+          res.on('end', () => {
+            try {
+              const raw = Buffer.concat(chunks).toString();
+              const d = JSON.parse(raw);
+              if (d.error) {
+                // Retry on overloaded (529)
+                if (d.error.type === 'overloaded_error' || d.error.message?.includes('overloaded')) {
+                  return reject(new Error('RETRY:overloaded'));
+                }
+                return reject(new Error(d.error.message));
+              }
+              resolve(d);
+            } catch (e) { reject(e); }
+          });
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Claude timeout')); });
+        req.write(body);
+        req.end();
+      });
+      return result;
+    } catch (e) {
+      if (e.message.startsWith('RETRY:') && attempt < retries) {
+        console.log(`Claude overloaded, retrying in ${(attempt + 1) * 3}s...`);
+        await new Promise(r => setTimeout(r, (attempt + 1) * 3000));
+        continue;
+      }
+      throw new Error(e.message.replace('RETRY:', ''));
+    }
+  }
 }
 
 const CHAT_SYSTEM = `You are Lorac — the AI intelligence agent for the Signal Intelligence Platform, currently serving MitchelLake.
