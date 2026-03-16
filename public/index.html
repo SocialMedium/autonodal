@@ -1626,6 +1626,7 @@ body {
           <div class="assistant-greeting" id="assistantGreeting">Loading your brief...</div>
         </div>
         <div class="assistant-actions" id="assistantActions"></div>
+        <div id="google-connect-static" style="padding:0 18px 14px"></div>
       </div>
     </div>
 
@@ -2392,7 +2393,7 @@ function esc(str) {
 // ── Market Temperature ──
 // ── Google Connection Status ──
 async function checkGoogleConnection() {
-  const row = document.getElementById('google-connect-row');
+  const row = document.getElementById('google-connect-static') || document.getElementById('google-connect-row');
   if (!row) return;
   try {
     const data = await api('/api/auth/gmail/status');
@@ -2649,6 +2650,7 @@ async function init() {
   loadContentQueue();
   loadTalentInMotion();
   loadConvergingThemes();
+  checkGoogleConnection();
 }
 
 // ── Onboarding ──
