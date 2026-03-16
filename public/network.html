@@ -19,7 +19,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); overf
 .topbar-btn:hover { border-color:var(--ink3); color:var(--ink); }
 .topbar-btn.active { background:var(--blue); border-color:var(--blue); color:#fff; }
 
-#graph-canvas { position:fixed; top:48px; left:0; right:0; bottom:0; }
+#graph-canvas { position:fixed; top:84px; left:0; right:0; bottom:0; transition:top .2s; }
+#graph-canvas.no-filters { top:48px; }
+.filt-btn { font-size:10px; padding:3px 10px; border-radius:16px; border:0.5px solid var(--rule); background:transparent; color:var(--ink4); cursor:pointer; font-family:var(--sans); transition:all .12s; white-space:nowrap; }
+.filt-btn:hover { border-color:var(--ink3); color:var(--ink3); }
+.filt-btn.active { background:rgba(255,255,255,0.08); border-color:var(--ink3); color:var(--ink2); }
 
 .legend { position:fixed; bottom:16px; left:16px; background:var(--surface); border:0.5px solid var(--rule); border-radius:10px; padding:12px 16px; font-size:10px; color:var(--ink3); display:flex; flex-direction:column; gap:6px; z-index:50; }
 .legend-item { display:flex; align-items:center; gap:8px; }
@@ -42,7 +46,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); overf
 
 <div class="topbar">
   <div style="display:flex;align-items:center">
-    <a href="/index.html" style="color:var(--ink3);text-decoration:none;margin-right:16px;font-size:12px">← Dashboard</a>
+    <a href="/index.html" style="color:var(--ink3);text-decoration:none;margin-right:16px;font-size:12px">&larr; Dashboard</a>
     <span class="topbar-title">Network Graph</span>
     <span class="topbar-sub" id="graphSubtitle">Loading...</span>
   </div>
@@ -51,6 +55,19 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); overf
     <button class="topbar-btn" id="btnSignal" onclick="loadGraph('signal')">Signal Focus</button>
     <a href="/index.html" class="topbar-btn">Close</a>
   </div>
+</div>
+
+<!-- Filter toggles -->
+<div id="filterBar" style="position:fixed;top:48px;left:0;right:0;height:36px;background:var(--surface);border-bottom:0.5px solid var(--rule);display:flex;align-items:center;gap:6px;padding:0 16px;z-index:90;overflow-x:auto">
+  <span style="font-size:9px;color:var(--ink4);margin-right:4px;white-space:nowrap">SHOW:</span>
+  <button class="filt-btn active" data-filter="team" onclick="toggleFilter(this)">Team</button>
+  <button class="filt-btn active" data-filter="client" onclick="toggleFilter(this)">Clients</button>
+  <button class="filt-btn active" data-filter="contact" onclick="toggleFilter(this)">Contacts</button>
+  <button class="filt-btn active" data-filter="sector" onclick="toggleFilter(this)">Sectors</button>
+  <button class="filt-btn" data-filter="signals" onclick="toggleFilter(this)">Signal Pulses</button>
+  <span style="width:1px;height:16px;background:var(--rule);margin:0 4px"></span>
+  <button class="filt-btn" data-filter="high_prox" onclick="toggleFilter(this)">High Proximity Only</button>
+  <button class="filt-btn" data-filter="with_signals" onclick="toggleFilter(this)">Companies w/ Signals</button>
 </div>
 
 <svg id="graph-canvas"></svg>
@@ -78,11 +95,56 @@ const svg = d3.select('#graph-canvas');
 const tooltip = document.getElementById('tooltip');
 let W, H;
 
+let activeFilters = new Set(['team', 'client', 'contact', 'sector']);
+let fullGraphData = null;
+
 function resize() {
-  W = window.innerWidth; H = window.innerHeight - 48;
+  W = window.innerWidth;
+  var filterVisible = document.getElementById('filterBar').style.display !== 'none';
+  H = window.innerHeight - (filterVisible ? 84 : 48);
   svg.attr('width', W).attr('height', H);
 }
 resize();
+
+function toggleFilter(btn) {
+  const f = btn.dataset.filter;
+  if (activeFilters.has(f)) { activeFilters.delete(f); btn.classList.remove('active'); }
+  else { activeFilters.add(f); btn.classList.add('active'); }
+  if (fullGraphData) applyFilters();
+}
+
+function applyFilters() {
+  if (!fullGraphData) return;
+  const data = fullGraphData;
+  const filtered = { nodes: [], links: [], signalPulses: data.signalPulses || [] };
+  const visibleIds = new Set();
+
+  data.nodes.forEach(n => {
+    let show = false;
+    if (n.type === 'team' && activeFilters.has('team')) show = true;
+    if (n.type === 'client' && activeFilters.has('client')) show = true;
+    if (n.type === 'contact' && activeFilters.has('contact')) show = true;
+    if (n.type === 'sector' && activeFilters.has('sector')) show = true;
+    if (n.type === 'company') show = true; // always show focal company in signal mode
+
+    // High proximity filter
+    if (activeFilters.has('high_prox') && n.type === 'contact' && (n.bestStrength || 0) < 0.5) show = false;
+    // Companies with signals filter
+    if (activeFilters.has('with_signals') && n.type === 'client' && !(n.signalCount > 0)) show = false;
+
+    if (show) { filtered.nodes.push(n); visibleIds.add(n.id); }
+  });
+
+  filtered.links = data.links.filter(l => {
+    const src = typeof l.source === 'object' ? l.source.id : l.source;
+    const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+    return visibleIds.has(src) && visibleIds.has(tgt);
+  });
+
+  if (!activeFilters.has('signals')) filtered.signalPulses = [];
+
+  renderGraph(filtered, { signalPulses: filtered.signalPulses, stats: data.stats });
+}
 window.addEventListener('resize', resize);
 
 async function api(url) {
@@ -103,17 +165,35 @@ function hideTooltip() { tooltip.classList.remove('show'); }
 async function loadGraph(mode) {
   document.getElementById('btnFirm').classList.toggle('active', mode === 'firm');
   document.getElementById('btnSignal').classList.toggle('active', mode === 'signal');
+  document.getElementById('filterBar').style.display = mode === 'firm' ? 'flex' : 'none';
+  document.getElementById('graph-canvas').classList.toggle('no-filters', mode !== 'firm');
+  resize();
 
-  const signalId = new URLSearchParams(location.search).get('signal');
+  const params = new URLSearchParams(location.search);
+  const signalId = params.get('signal');
+  const companyId = params.get('company');
+  const personId = params.get('person');
 
+  // Signal focus mode
   if (mode === 'signal' && signalId) {
     const data = await api('/api/signals/' + signalId + '/proximity-graph');
+    fullGraphData = data.graph;
+    fullGraphData.signalPulses = [];
+    fullGraphData.stats = { teamMembers: data.graph.nodes.filter(n => n.type === 'team').length, contacts: data.connectionCount, clients: data.account ? 1 : 0 };
     renderGraph(data.graph, data);
-    document.getElementById('graphSubtitle').textContent = data.signal.company + ' — ' + (data.signal.type || '').replace(/_/g, ' ');
+    document.getElementById('graphSubtitle').textContent = (data.signal.company || 'Signal') + ' — ' + (data.signal.type || '').replace(/_/g, ' ') + ' · ' + data.connectionCount + ' connections';
+    document.getElementById('statsPanel').innerHTML =
+      '<div class="stat-row"><span>Company</span><span class="stat-val">' + (data.signal.company || '?') + '</span></div>' +
+      '<div class="stat-row"><span>Signal</span><span class="stat-val">' + ((data.signal.type || '').replace(/_/g, ' ')) + '</span></div>' +
+      '<div class="stat-row"><span>Confidence</span><span class="stat-val">' + Math.round((data.signal.confidence || 0) * 100) + '%</span></div>' +
+      '<div class="stat-row"><span>Connections</span><span class="stat-val">' + data.connectionCount + '</span></div>' +
+      (data.account ? '<div class="stat-row"><span>Client</span><span class="stat-val" style="color:var(--amber)">' + data.account.tier + '</span></div>' : '');
     return;
   }
 
+  // Full firm network
   const data = await api('/api/network/graph?mode=firm');
+  fullGraphData = data;
   renderGraph(data, data);
   document.getElementById('graphSubtitle').textContent =
     data.stats.teamMembers + ' team · ' + data.stats.contacts + ' contacts · ' + data.stats.clients + ' clients';

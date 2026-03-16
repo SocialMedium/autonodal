@@ -148,8 +148,8 @@ const ProximityPopup = (() => {
       circle.setAttribute('stroke-width', n.type === 'team' ? '1.5' : '0.8');
       circle.style.cursor = 'pointer';
       circle.addEventListener('click', function() {
-        if (n.type === 'company' && n.companyId) window.location.href = '/company.html?id=' + n.companyId;
-        else if (n.personId) window.location.href = '/person.html?id=' + n.personId;
+        // Any click on the mini graph opens the full network page for this signal
+        window.location.href = '/network.html?signal=' + currentId;
       });
       nodeG.appendChild(circle); n._el = circle;
 
@@ -223,7 +223,7 @@ const ProximityPopup = (() => {
       btn.textContent = 'Approach via ' + best.label.split(' ')[0] + ' \u2197';
       btn.onmouseenter = function() { btn.style.color = '#fff'; btn.style.borderColor = 'rgba(255,255,255,0.45)'; };
       btn.onmouseleave = function() { btn.style.color = 'rgba(255,255,255,0.55)'; btn.style.borderColor = 'rgba(255,255,255,0.18)'; };
-      btn.onclick = function() { window.location.href = '/person.html?id=' + best.personId; };
+      btn.onclick = function() { window.location.href = '/network.html?signal=' + signalId + '&focus=' + best.personId; };
       ft.appendChild(btn);
     }
     var sp = document.createElement('div'); sp.style.flex = '1'; ft.appendChild(sp);
