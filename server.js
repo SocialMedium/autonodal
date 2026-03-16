@@ -1365,7 +1365,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
         ) sd ON true
         ${where}
         ORDER BY
-          CASE WHEN se.is_megacap = true THEN 1 ELSE 0 END,
+          CASE WHEN c.company_tier = 'tenant_company' THEN 2 WHEN se.is_megacap = true THEN 1 ELSE 0 END,
           CASE WHEN c.is_client = true THEN 0 ELSE 1 END,
           CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id) > 0 THEN 0 ELSE 1 END,
           CASE WHEN se.signal_type = 'geographic_expansion' THEN 0 ELSE 1 END,
@@ -2638,6 +2638,9 @@ app.get('/api/companies', authenticateToken, async (req, res) => {
     where += ` AND (c.visibility IS NULL OR c.visibility != 'private' OR c.owner_user_id = $${paramIdx})`;
     params.push(req.user.user_id);
 
+    // Exclude tenant company (that's us, not a client/target)
+    where += ` AND COALESCE(c.company_tier, '') != 'tenant_company'`;
+
     // Filter out junk companies: require at least one quality signal
     if (req.query.show_all !== 'true') {
       where += ` AND (
@@ -2890,7 +2893,7 @@ async function qdrantSearch(collection, vector, limit = 20, filter = null) {
 app.patch('/api/companies/:id/visibility', authenticateToken, async (req, res) => {
   try {
     const { visibility } = req.body;
-    if (!visibility || !['company', 'private'].includes(visibility)) return res.status(400).json({ error: 'visibility must be "company" or "private"' });
+    if (!visibility || !['company', 'private', 'internal'].includes(visibility)) return res.status(400).json({ error: 'visibility must be "company" or "private"' });
 
     const { rows: [co] } = await pool.query('SELECT id, visibility, owner_user_id FROM companies WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
     if (!co) return res.status(404).json({ error: 'Company not found' });
@@ -2910,7 +2913,7 @@ app.patch('/api/companies/:id/visibility', authenticateToken, async (req, res) =
 app.patch('/api/signals/:id/visibility', authenticateToken, async (req, res) => {
   try {
     const { visibility } = req.body;
-    if (!visibility || !['company', 'private'].includes(visibility)) return res.status(400).json({ error: 'visibility must be "company" or "private"' });
+    if (!visibility || !['company', 'private', 'internal'].includes(visibility)) return res.status(400).json({ error: 'visibility must be "company" or "private"' });
 
     const { rows: [sig] } = await pool.query('SELECT id, visibility, owner_user_id FROM signal_events WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
     if (!sig) return res.status(404).json({ error: 'Signal not found' });
@@ -3243,7 +3246,7 @@ app.get('/api/documents/sources', authenticateToken, async (req, res) => {
 app.patch('/api/documents/:id/visibility', authenticateToken, async (req, res) => {
   try {
     const { visibility } = req.body; // 'company' or 'private'
-    if (!visibility || !['company', 'private'].includes(visibility)) {
+    if (!visibility || !['company', 'private', 'internal'].includes(visibility)) {
       return res.status(400).json({ error: 'visibility must be "company" or "private"' });
     }
 

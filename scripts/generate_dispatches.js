@@ -555,7 +555,7 @@ async function generateDispatches() {
     WHERE se.confidence_score >= $1
       AND se.detected_at > NOW() - INTERVAL '${MAX_SIGNAL_AGE_HOURS} hours'
       AND COALESCE(se.is_megacap, false) = false
-      AND COALESCE(c.company_tier, '') != 'megacap_indicator'
+      AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')
       AND NOT EXISTS (
         SELECT 1 FROM signal_dispatches sd WHERE sd.signal_event_id = se.id
       )
