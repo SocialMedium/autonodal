@@ -202,12 +202,12 @@ app.get('/api/auth/google/callback', async (req, res) => {
         [userInfo.name, user.id]
       );
     } else {
-      // Auto-create MitchelLake team member
+      // Auto-create MitchelLake team member (password_hash set to placeholder — OAuth users don't use passwords)
       const { rows: [newUser] } = await pool.query(
-        `INSERT INTO users (id, email, name, role, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, 'consultant', NOW(), NOW())
+        `INSERT INTO users (id, email, name, role, password_hash, tenant_id, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, 'consultant', 'oauth_google', $3, NOW(), NOW())
          RETURNING id, email, name, role`,
-        [userInfo.email, userInfo.name || userInfo.email.split('@')[0]]
+        [userInfo.email, userInfo.name || userInfo.email.split('@')[0], process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001']
       );
       user = newUser;
       console.log(`✅ New team member created: ${user.name} (${user.email})`);
@@ -3932,6 +3932,7 @@ app.listen(PORT, async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS region VARCHAR(10);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarded BOOLEAN DEFAULT false;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
     `);
   } catch (e) { /* columns may already exist */ }
 
