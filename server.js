@@ -1243,6 +1243,11 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
     const params = [req.tenant_id];
     let paramIdx = 1;
 
+    // Privacy filter
+    paramIdx++;
+    where += ` AND (se.visibility IS NULL OR se.visibility != 'private' OR se.owner_user_id = $${paramIdx})`;
+    params.push(req.user.user_id);
+
     if (type) {
       paramIdx++;
       where += ` AND se.signal_type = $${paramIdx}::signal_type`;
@@ -2613,6 +2618,11 @@ app.get('/api/companies', authenticateToken, async (req, res) => {
     const params = [req.tenant_id];
     let paramIdx = 1;
 
+    // Privacy filter
+    paramIdx++;
+    where += ` AND (c.visibility IS NULL OR c.visibility != 'private' OR c.owner_user_id = $${paramIdx})`;
+    params.push(req.user.user_id);
+
     // Filter out junk companies: require at least one quality signal
     if (req.query.show_all !== 'true') {
       where += ` AND (
@@ -2860,6 +2870,46 @@ async function qdrantSearch(collection, vector, limit = 20, filter = null) {
     req.end();
   });
 }
+
+// Company visibility toggle
+app.patch('/api/companies/:id/visibility', authenticateToken, async (req, res) => {
+  try {
+    const { visibility } = req.body;
+    if (!visibility || !['company', 'private'].includes(visibility)) return res.status(400).json({ error: 'visibility must be "company" or "private"' });
+
+    const { rows: [co] } = await pool.query('SELECT id, visibility, owner_user_id FROM companies WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
+    if (!co) return res.status(404).json({ error: 'Company not found' });
+    if (co.visibility === 'private' && co.owner_user_id && co.owner_user_id !== req.user.user_id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only the owner can change private companies' });
+    }
+
+    await pool.query(
+      `UPDATE companies SET visibility = $1, owner_user_id = CASE WHEN $1 = 'private' THEN $2 ELSE owner_user_id END WHERE id = $3 AND tenant_id = $4`,
+      [visibility, req.user.user_id, req.params.id, req.tenant_id]
+    );
+    res.json({ id: req.params.id, visibility });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Signal visibility toggle
+app.patch('/api/signals/:id/visibility', authenticateToken, async (req, res) => {
+  try {
+    const { visibility } = req.body;
+    if (!visibility || !['company', 'private'].includes(visibility)) return res.status(400).json({ error: 'visibility must be "company" or "private"' });
+
+    const { rows: [sig] } = await pool.query('SELECT id, visibility, owner_user_id FROM signal_events WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
+    if (!sig) return res.status(404).json({ error: 'Signal not found' });
+    if (sig.visibility === 'private' && sig.owner_user_id && sig.owner_user_id !== req.user.user_id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only the owner can change private signals' });
+    }
+
+    await pool.query(
+      `UPDATE signal_events SET visibility = $1, owner_user_id = CASE WHEN $1 = 'private' THEN $2 ELSE owner_user_id END WHERE id = $3 AND tenant_id = $4`,
+      [visibility, req.user.user_id, req.params.id, req.tenant_id]
+    );
+    res.json({ id: req.params.id, visibility });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 app.get('/api/search', authenticateToken, async (req, res) => {
   try {
@@ -4634,6 +4684,16 @@ app.listen(PORT, async () => {
       ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) DEFAULT 'company';
       ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS owner_user_id UUID;
       ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS uploaded_by_user_id UUID;
+    `);
+  } catch (e) { /* columns may already exist */ }
+
+  // Ensure company + signal privacy columns exist
+  try {
+    await pool.query(`
+      ALTER TABLE companies ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) DEFAULT 'company';
+      ALTER TABLE companies ADD COLUMN IF NOT EXISTS owner_user_id UUID;
+      ALTER TABLE signal_events ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) DEFAULT 'company';
+      ALTER TABLE signal_events ADD COLUMN IF NOT EXISTS owner_user_id UUID;
     `);
   } catch (e) { /* columns may already exist */ }
 
