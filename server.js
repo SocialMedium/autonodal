@@ -385,12 +385,23 @@ const GOOGLE_CONNECT_SCOPES = [
   'https://www.googleapis.com/auth/presentations.readonly',
 ].join(' ');
 
-app.get('/api/auth/gmail/connect', authenticateToken, (req, res) => {
+app.get('/api/auth/gmail/connect', async (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' });
+
+  // Accept token from query param (browser navigation can't send headers) or auth header
+  const token = req.query.token || (req.headers.authorization && req.headers.authorization.replace('Bearer ', ''));
+  if (!token) return res.redirect('/index.html?auth_error=login_required');
+
+  // Validate token
+  const { rows } = await pool.query(
+    'SELECT s.user_id FROM sessions s WHERE s.token = $1 AND s.expires_at > NOW()', [token]
+  );
+  if (rows.length === 0) return res.redirect('/index.html?auth_error=session_expired');
+
   const redirectUri = process.env.GOOGLE_GMAIL_REDIRECT_URL || `${req.protocol}://${req.get('host')}/api/auth/gmail/callback`;
   const state = Buffer.from(JSON.stringify({
-    userId: req.user.user_id,
-    token: req.headers.authorization.replace('Bearer ', ''),
+    userId: rows[0].user_id,
+    token: token,
     returnTo: req.query.return_to || '/index.html'
   })).toString('base64');
 

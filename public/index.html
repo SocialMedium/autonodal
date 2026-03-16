@@ -2402,17 +2402,17 @@ async function checkGoogleConnection() {
     });
 
     if (!data.connected) {
-      row.innerHTML = '<div class="action-row" style="background:var(--amber-soft);border-radius:6px;margin-top:4px" onclick="window.location=\'/api/auth/gmail/connect?return_to=\' + encodeURIComponent(location.pathname)">' +
+      row.innerHTML = '<div class="action-row" style="background:var(--amber-soft);border-radius:6px;margin-top:4px" onclick="window.location=\'/api/auth/gmail/connect?token=\' + encodeURIComponent(localStorage.getItem(\'ml_token\')) + \'&return_to=\' + encodeURIComponent(location.pathname)">' +
         '<span class="action-icon">🔗</span> <span style="color:var(--amber);font-weight:600">Connect Google</span> <span style="font-size:11px;color:var(--ink-3);margin-left:4px">Gmail + Drive + Docs</span></div>';
     } else if (!hasScopes) {
-      row.innerHTML = '<div class="action-row" style="background:var(--blue-soft);border-radius:6px;margin-top:4px" onclick="window.location=\'/api/auth/gmail/connect?return_to=\' + encodeURIComponent(location.pathname)">' +
+      row.innerHTML = '<div class="action-row" style="background:var(--blue-soft);border-radius:6px;margin-top:4px" onclick="window.location=\'/api/auth/gmail/connect?token=\' + encodeURIComponent(localStorage.getItem(\'ml_token\')) + \'&return_to=\' + encodeURIComponent(location.pathname)">' +
         '<span class="action-icon">📁</span> <span style="color:var(--blue);font-weight:600">Connect Google Drive</span> <span style="font-size:11px;color:var(--ink-3);margin-left:4px">Docs, Sheets, Slides</span></div>';
     } else {
       row.innerHTML = '<div class="action-row" style="opacity:0.6;cursor:default">' +
         '<span class="action-icon">✅</span> Google connected <span style="font-size:11px;color:var(--ink-4);margin-left:4px">' + data.accounts[0].google_email + '</span></div>';
     }
   } catch (e) {
-    row.innerHTML = '<div class="action-row" style="background:var(--amber-soft);border-radius:6px;margin-top:4px" onclick="window.location=\'/api/auth/gmail/connect?return_to=\' + encodeURIComponent(location.pathname)">' +
+    row.innerHTML = '<div class="action-row" style="background:var(--amber-soft);border-radius:6px;margin-top:4px" onclick="window.location=\'/api/auth/gmail/connect?token=\' + encodeURIComponent(localStorage.getItem(\'ml_token\')) + \'&return_to=\' + encodeURIComponent(location.pathname)">' +
       '<span class="action-icon">🔗</span> <span style="color:var(--amber);font-weight:600">Connect Google</span></div>';
   }
 }
