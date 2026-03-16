@@ -3361,6 +3361,182 @@ app.get('/api/network/density', authenticateToken, async (req, res) => {
   }
 });
 
+// Full network graph — team nodes, top contacts, client companies, sector clusters
+app.get('/api/network/graph', authenticateToken, async (req, res) => {
+  try {
+    const tenantId = req.tenant_id;
+    const mode = req.query.mode || 'firm'; // 'firm' or 'signal'
+    const signalId = req.query.signal_id;
+
+    if (mode === 'signal' && signalId) {
+      // Delegate to proximity-graph endpoint logic
+      return res.redirect(`/api/signals/${signalId}/proximity-graph`);
+    }
+
+    // Firm-wide network graph
+    const [teamResult, contactsResult, clientsResult, sectorsResult, signalsResult] = await Promise.all([
+      // Team members
+      pool.query(`SELECT id, name, email, role FROM users WHERE tenant_id = $1 AND role != 'viewer' ORDER BY name`, [tenantId]),
+
+      // Top contacts by proximity strength (limit to strongest connections)
+      pool.query(`
+        SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.current_company_id,
+               p.seniority_level, p.location,
+               tp.team_member_id, tp.relationship_strength, tp.relationship_type,
+               u.name as connector_name,
+               ps.timing_score, ps.receptivity_score, ps.flight_risk_score
+        FROM team_proximity tp
+        JOIN people p ON p.id = tp.person_id AND p.tenant_id = $1
+        JOIN users u ON u.id = tp.team_member_id
+        LEFT JOIN person_scores ps ON ps.person_id = p.id AND ps.tenant_id = $1
+        WHERE tp.tenant_id = $1 AND tp.relationship_strength >= 0.3
+        ORDER BY tp.relationship_strength DESC
+        LIMIT 150
+      `, [tenantId]),
+
+      // Client companies with signal + people counts
+      pool.query(`
+        SELECT a.id as account_id, a.name, a.relationship_tier, a.company_id,
+               c.sector, c.geography,
+               (SELECT COUNT(*) FROM people p WHERE p.current_company_id = a.company_id AND p.tenant_id = $1) as people_count,
+               (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = a.company_id AND se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '30 days') as signal_count
+        FROM accounts a
+        LEFT JOIN companies c ON c.id = a.company_id
+        WHERE a.tenant_id = $1 AND a.relationship_status = 'active'
+        ORDER BY a.relationship_tier DESC NULLS LAST, a.name
+        LIMIT 50
+      `, [tenantId]),
+
+      // Sector clusters (from network density)
+      pool.query(`
+        SELECT region_code, sector, total_contacts, active_contacts, senior_contacts, density_score
+        FROM network_density_scores
+        WHERE sector IS NOT NULL AND density_score > 5
+        ORDER BY density_score DESC
+        LIMIT 20
+      `),
+
+      // Recent high-confidence signals at client companies
+      pool.query(`
+        SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score, se.detected_at
+        FROM signal_events se
+        JOIN companies c ON c.id = se.company_id AND c.is_client = true
+        WHERE se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '14 days'
+          AND se.confidence_score >= 0.7
+        ORDER BY se.confidence_score DESC
+        LIMIT 30
+      `, [tenantId])
+    ]);
+
+    const team = teamResult.rows;
+    const contacts = contactsResult.rows;
+    const clients = clientsResult.rows;
+    const sectors = sectorsResult.rows;
+    const signals = signalsResult.rows;
+
+    // Build graph
+    const nodes = [];
+    const links = [];
+    const addedNodes = new Set();
+
+    // Team nodes
+    team.forEach((u, i) => {
+      const initials = (u.name || '').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+      nodes.push({ id: 'user-' + u.id, type: 'team', label: initials, fullName: u.name, role: u.role, colorIndex: i });
+      addedNodes.add('user-' + u.id);
+    });
+
+    // Client company nodes
+    clients.forEach(cl => {
+      const nid = 'client-' + (cl.company_id || cl.account_id);
+      if (!addedNodes.has(nid)) {
+        nodes.push({
+          id: nid, type: 'client', label: cl.name,
+          tier: cl.relationship_tier, sector: cl.sector, geography: cl.geography,
+          peopleCount: parseInt(cl.people_count) || 0,
+          signalCount: parseInt(cl.signal_count) || 0,
+          companyId: cl.company_id, accountId: cl.account_id
+        });
+        addedNodes.add(nid);
+      }
+    });
+
+    // Contact nodes + links to team + links to companies
+    const contactsByPerson = new Map();
+    contacts.forEach(c => {
+      if (!contactsByPerson.has(c.id)) contactsByPerson.set(c.id, { ...c, teamLinks: [] });
+      contactsByPerson.get(c.id).teamLinks.push({
+        userId: c.team_member_id, strength: c.relationship_strength, type: c.relationship_type
+      });
+    });
+
+    contactsByPerson.forEach((c, personId) => {
+      const nid = 'contact-' + personId;
+      if (!addedNodes.has(nid)) {
+        nodes.push({
+          id: nid, type: 'contact', label: c.full_name, personId,
+          role: c.current_title, company: c.current_company_name,
+          companyId: c.current_company_id,
+          seniority: c.seniority_level,
+          bestStrength: Math.max(...c.teamLinks.map(l => l.strength)),
+          timingScore: c.timing_score, receptivityScore: c.receptivity_score
+        });
+        addedNodes.add(nid);
+      }
+
+      // Team → contact links
+      c.teamLinks.forEach(l => {
+        links.push({ source: 'user-' + l.userId, target: nid, strength: l.strength, type: l.type });
+      });
+
+      // Contact → client company links
+      if (c.current_company_id) {
+        const clientNid = 'client-' + c.current_company_id;
+        if (addedNodes.has(clientNid)) {
+          links.push({ source: nid, target: clientNid, strength: 0.4, type: 'works_at' });
+        }
+      }
+    });
+
+    // Sector cluster nodes
+    sectors.forEach(s => {
+      if (s.sector) {
+        const nid = 'sector-' + s.sector.toLowerCase().replace(/\W+/g, '_');
+        if (!addedNodes.has(nid)) {
+          nodes.push({
+            id: nid, type: 'sector', label: s.sector,
+            density: s.density_score, contacts: s.total_contacts,
+            region: s.region_code
+          });
+          addedNodes.add(nid);
+        }
+      }
+    });
+
+    // Signal pulse nodes on client companies
+    const signalPulses = signals.map(s => ({
+      companyNodeId: 'client-' + s.company_id,
+      signalType: s.signal_type, confidence: s.confidence_score
+    })).filter(s => addedNodes.has(s.companyNodeId));
+
+    res.json({
+      mode: 'firm',
+      nodes, links,
+      signalPulses,
+      stats: {
+        teamMembers: team.length,
+        contacts: contactsByPerson.size,
+        clients: clients.length,
+        sectors: sectors.length,
+        activeSignals: signals.length
+      }
+    });
+  } catch (err) {
+    console.error('Network graph error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Manual trigger for topology recompute
 app.post('/api/network/recompute', authenticateToken, async (req, res) => {
   try {

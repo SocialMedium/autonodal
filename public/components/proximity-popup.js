@@ -232,7 +232,7 @@ const ProximityPopup = (() => {
     link.textContent = 'Open full network \u2197';
     link.onmouseenter = function() { link.style.color = 'rgba(255,255,255,0.65)'; };
     link.onmouseleave = function() { link.style.color = 'rgba(255,255,255,0.28)'; };
-    link.onclick = function() { window.location.href = '/people.html?company=' + encodeURIComponent(data.signal.company); };
+    link.onclick = function() { window.location.href = '/network.html?signal=' + signalId; };
     ft.appendChild(link);
   }
 

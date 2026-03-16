@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Network Graph — MitchelLake Signal</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;600&family=DM+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root { --sans: 'DM Sans', system-ui, sans-serif; --serif: 'Source Serif 4', Georgia, serif; --mono: 'IBM Plex Mono', monospace; --bg: #06091a; --surface: #0d1029; --ink: #fff; --ink2: rgba(255,255,255,0.7); --ink3: rgba(255,255,255,0.4); --ink4: rgba(255,255,255,0.2); --rule: rgba(255,255,255,0.08); --blue: #378ADD; --emerald: #5DCAA5; --amber: #EF9F27; --rose: #D4537E; --purple: #AFA9EC; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: var(--sans); background: var(--bg); color: var(--ink); overflow: hidden; }
+
+.topbar { position:fixed; top:0; left:0; right:0; height:48px; background:var(--surface); border-bottom:0.5px solid var(--rule); display:flex; align-items:center; justify-content:space-between; padding:0 20px; z-index:100; }
+.topbar-title { font-family:var(--serif); font-size:16px; font-weight:600; }
+.topbar-sub { font-size:11px; color:var(--ink3); margin-left:12px; }
+.topbar-actions { display:flex; gap:8px; align-items:center; }
+.topbar-btn { font-size:11px; padding:5px 14px; border-radius:20px; border:0.5px solid var(--rule); background:transparent; color:var(--ink3); cursor:pointer; font-family:var(--sans); transition:all .14s; }
+.topbar-btn:hover { border-color:var(--ink3); color:var(--ink); }
+.topbar-btn.active { background:var(--blue); border-color:var(--blue); color:#fff; }
+
+#graph-canvas { position:fixed; top:48px; left:0; right:0; bottom:0; }
+
+.legend { position:fixed; bottom:16px; left:16px; background:var(--surface); border:0.5px solid var(--rule); border-radius:10px; padding:12px 16px; font-size:10px; color:var(--ink3); display:flex; flex-direction:column; gap:6px; z-index:50; }
+.legend-item { display:flex; align-items:center; gap:8px; }
+.legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
+.stats-panel { position:fixed; top:60px; right:16px; background:var(--surface); border:0.5px solid var(--rule); border-radius:10px; padding:12px 16px; font-size:10px; color:var(--ink3); z-index:50; min-width:140px; }
+.stat-row { display:flex; justify-content:space-between; padding:3px 0; }
+.stat-val { color:var(--ink2); font-weight:600; font-family:var(--mono); }
+
+.tooltip { position:fixed; background:var(--surface); border:0.5px solid var(--rule); border-radius:8px; padding:10px 14px; font-size:11px; color:var(--ink2); pointer-events:none; z-index:200; opacity:0; transition:opacity .12s; max-width:260px; box-shadow:0 8px 32px rgba(0,0,0,0.5); }
+.tooltip.show { opacity:1; }
+.tooltip-name { font-weight:600; color:var(--ink); margin-bottom:3px; }
+.tooltip-role { font-size:10px; color:var(--ink3); }
+.tooltip-meta { font-size:9px; color:var(--ink4); margin-top:4px; }
+
+@keyframes pulse { 0%,100%{opacity:.6} 50%{opacity:.15} }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div style="display:flex;align-items:center">
+    <a href="/index.html" style="color:var(--ink3);text-decoration:none;margin-right:16px;font-size:12px">← Dashboard</a>
+    <span class="topbar-title">Network Graph</span>
+    <span class="topbar-sub" id="graphSubtitle">Loading...</span>
+  </div>
+  <div class="topbar-actions">
+    <button class="topbar-btn active" id="btnFirm" onclick="loadGraph('firm')">Full Network</button>
+    <button class="topbar-btn" id="btnSignal" onclick="loadGraph('signal')">Signal Focus</button>
+    <a href="/index.html" class="topbar-btn">Close</a>
+  </div>
+</div>
+
+<svg id="graph-canvas"></svg>
+
+<div class="legend" id="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--emerald)"></div>Team member</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>Client company</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div>Contact</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--purple);opacity:.5"></div>Sector cluster</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--rose);border-radius:2px"></div>Signal pulse</div>
+</div>
+
+<div class="stats-panel" id="statsPanel"></div>
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const TK = localStorage.getItem('ml_token');
+if (!TK) location.href = '/index.html';
+
+const TC = ['#5DCAA5','#F0997B','#AFA9EC','#FAC775','#85B7EB','#7DD3A8','#E8856A','#9B93E0'];
+const SC = { capital_raising:'#EF9F27', strategic_hiring:'#5DCAA5', geographic_expansion:'#378ADD', leadership_change:'#D4537E', ma_activity:'#AFA9EC', product_launch:'#97C459', layoffs:'#E24B4A', restructuring:'#E24B4A' };
+
+let sim = null;
+const svg = d3.select('#graph-canvas');
+const tooltip = document.getElementById('tooltip');
+let W, H;
+
+function resize() {
+  W = window.innerWidth; H = window.innerHeight - 48;
+  svg.attr('width', W).attr('height', H);
+}
+resize();
+window.addEventListener('resize', resize);
+
+async function api(url) {
+  const r = await fetch(url, { headers: { Authorization: 'Bearer ' + TK } });
+  if (!r.ok) throw new Error('API error ' + r.status);
+  return r.json();
+}
+
+function showTooltip(evt, html) {
+  tooltip.innerHTML = html;
+  tooltip.classList.add('show');
+  const x = Math.min(evt.clientX + 12, W - 280);
+  const y = Math.min(evt.clientY + 12, H - 100);
+  tooltip.style.left = x + 'px'; tooltip.style.top = y + 'px';
+}
+function hideTooltip() { tooltip.classList.remove('show'); }
+
+async function loadGraph(mode) {
+  document.getElementById('btnFirm').classList.toggle('active', mode === 'firm');
+  document.getElementById('btnSignal').classList.toggle('active', mode === 'signal');
+
+  const signalId = new URLSearchParams(location.search).get('signal');
+
+  if (mode === 'signal' && signalId) {
+    const data = await api('/api/signals/' + signalId + '/proximity-graph');
+    renderGraph(data.graph, data);
+    document.getElementById('graphSubtitle').textContent = data.signal.company + ' — ' + (data.signal.type || '').replace(/_/g, ' ');
+    return;
+  }
+
+  const data = await api('/api/network/graph?mode=firm');
+  renderGraph(data, data);
+  document.getElementById('graphSubtitle').textContent =
+    data.stats.teamMembers + ' team · ' + data.stats.contacts + ' contacts · ' + data.stats.clients + ' clients';
+  document.getElementById('statsPanel').innerHTML =
+    '<div class="stat-row"><span>Team</span><span class="stat-val">' + data.stats.teamMembers + '</span></div>' +
+    '<div class="stat-row"><span>Contacts</span><span class="stat-val">' + data.stats.contacts + '</span></div>' +
+    '<div class="stat-row"><span>Clients</span><span class="stat-val">' + data.stats.clients + '</span></div>' +
+    '<div class="stat-row"><span>Sectors</span><span class="stat-val">' + data.stats.sectors + '</span></div>' +
+    '<div class="stat-row"><span>Active signals</span><span class="stat-val">' + data.stats.activeSignals + '</span></div>';
+}
+
+function renderGraph(data, fullData) {
+  svg.selectAll('*').remove();
+  if (sim) { sim.stop(); sim = null; }
+
+  const graphData = data.nodes ? data : data.graph;
+  const nodes = graphData.nodes;
+  const links = graphData.links.map(l => ({ ...l }));
+
+  // Dot grid background
+  const bgG = svg.append('g').attr('opacity', 0.04);
+  for (let x = 20; x < W; x += 40) for (let y = 10; y < H; y += 40) {
+    bgG.append('circle').attr('cx', x).attr('cy', y).attr('r', 0.7).attr('fill', '#3366aa');
+  }
+
+  function nodeR(d) {
+    if (d.type === 'team') return 22;
+    if (d.type === 'client') return 10 + Math.min((d.peopleCount || 0) * 0.5, 12);
+    if (d.type === 'sector') return 8 + Math.min((d.density || 0) * 0.3, 15);
+    if (d.type === 'company') return 16;
+    return 5 + (d.bestStrength || 0) * 8;
+  }
+  function nodeColor(d) {
+    if (d.type === 'team') return TC[d.colorIndex % TC.length];
+    if (d.type === 'client') return '#EF9F27';
+    if (d.type === 'sector') return '#AFA9EC';
+    if (d.type === 'company') return d.isClient ? '#EF9F27' : 'rgba(255,255,255,0.55)';
+    return '#378ADD';
+  }
+
+  // Initial positions
+  const cx = W / 2, cy = H / 2;
+  nodes.forEach((n, i) => {
+    if (n.type === 'team') { const a = (i / Math.max(1, nodes.filter(x => x.type === 'team').length)) * Math.PI * 2; n.x = cx + Math.cos(a) * 150; n.y = cy + Math.sin(a) * 120; }
+    else if (n.type === 'client') { const a = (i / nodes.length) * Math.PI * 2; n.x = cx + Math.cos(a) * 280; n.y = cy + Math.sin(a) * 220; }
+    else if (n.type === 'sector') { const a = (i / nodes.length) * Math.PI * 2; n.x = cx + Math.cos(a) * 350; n.y = cy + Math.sin(a) * 280; }
+    else { n.x = cx + (Math.random() - 0.5) * 400; n.y = cy + (Math.random() - 0.5) * 300; }
+  });
+
+  const linkG = svg.append('g');
+  const pulseG = svg.append('g');
+  const nodeG = svg.append('g');
+  const labelG = svg.append('g');
+
+  // Links
+  const linkEls = linkG.selectAll('line').data(links).join('line')
+    .attr('stroke', d => d.type === 'works_at' ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.12)')
+    .attr('stroke-width', d => 0.3 + (d.strength || 0.3) * 1.2);
+
+  // Signal pulses on clients
+  if (fullData.signalPulses) {
+    fullData.signalPulses.forEach(sp => {
+      const node = nodes.find(n => n.id === sp.companyNodeId);
+      if (node) {
+        const c = pulseG.append('circle').attr('r', nodeR(node) + 8)
+          .attr('fill', 'none').attr('stroke', SC[sp.signalType] || '#E24B4A')
+          .attr('stroke-width', 1.5).style('animation', 'pulse 2.4s ease-in-out infinite');
+        node._pulseEl = c;
+      }
+    });
+  }
+
+  // Nodes
+  const nodeEls = nodeG.selectAll('circle').data(nodes).join('circle')
+    .attr('r', nodeR).attr('fill', nodeColor)
+    .attr('fill-opacity', d => d.type === 'team' ? 0.9 : d.type === 'sector' ? 0.15 : d.type === 'client' ? 0.7 : 0.5)
+    .attr('stroke', nodeColor).attr('stroke-opacity', d => d.type === 'sector' ? 0.3 : 0.2)
+    .attr('stroke-width', d => d.type === 'team' ? 2 : d.type === 'sector' ? 1.5 : 0.8)
+    .style('cursor', 'pointer')
+    .on('click', (evt, d) => {
+      if (d.type === 'contact' && d.personId) location.href = '/person.html?id=' + d.personId;
+      else if (d.type === 'client' && d.companyId) location.href = '/company.html?id=' + d.companyId;
+      else if (d.type === 'company' && d.companyId) location.href = '/company.html?id=' + d.companyId;
+    })
+    .on('mouseenter', (evt, d) => {
+      let html = '<div class="tooltip-name">' + (d.fullName || d.label) + '</div>';
+      if (d.role) html += '<div class="tooltip-role">' + d.role + '</div>';
+      if (d.company) html += '<div class="tooltip-role">' + d.company + '</div>';
+      if (d.type === 'client') html += '<div class="tooltip-meta">' + (d.tier || 'client') + ' · ' + (d.peopleCount || 0) + ' contacts · ' + (d.signalCount || 0) + ' signals</div>';
+      if (d.type === 'sector') html += '<div class="tooltip-meta">Density: ' + (d.density || 0).toFixed(1) + ' · ' + (d.contacts || 0) + ' contacts</div>';
+      if (d.type === 'contact') html += '<div class="tooltip-meta">Strength: ' + ((d.bestStrength || 0) * 100).toFixed(0) + '%' + (d.timingScore ? ' · Timing: ' + (d.timingScore * 100).toFixed(0) + '%' : '') + '</div>';
+      showTooltip(evt, html);
+    })
+    .on('mouseleave', hideTooltip)
+    .call(d3.drag()
+      .on('start', (evt, d) => { if (!evt.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (evt, d) => { d.fx = evt.x; d.fy = evt.y; })
+      .on('end', (evt, d) => { if (!evt.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
+    );
+
+  // Labels
+  const labels = labelG.selectAll('text').data(nodes.filter(n => n.type === 'team' || n.type === 'client' || n.type === 'sector')).join('text')
+    .text(d => d.type === 'team' ? d.label : (d.label.length > 16 ? d.label.substring(0, 15) + '…' : d.label))
+    .attr('text-anchor', 'middle').attr('font-size', d => d.type === 'team' ? 10 : 9)
+    .attr('font-weight', d => d.type === 'team' ? 600 : 400)
+    .attr('fill', d => d.type === 'team' ? '#fff' : d.type === 'client' ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.3)')
+    .attr('dy', d => d.type === 'team' ? 3 : nodeR(d) + 12)
+    .style('pointer-events', 'none');
+
+  // Simulation
+  sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d => d.id)
+      .distance(d => d.type === 'works_at' ? 60 : 80 + (1 - (d.strength || 0.3)) * 80)
+      .strength(d => d.type === 'works_at' ? 0.3 : (d.strength || 0.3) * 0.4))
+    .force('charge', d3.forceManyBody().strength(d =>
+      d.type === 'team' ? -400 : d.type === 'client' ? -200 : d.type === 'sector' ? -100 : -30))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('collision', d3.forceCollide(d => nodeR(d) + 4))
+    .force('x', d3.forceX(W / 2).strength(0.02))
+    .force('y', d3.forceY(H / 2).strength(0.02))
+    .alphaDecay(0.015);
+
+  sim.on('tick', () => {
+    nodes.forEach(n => {
+      const r = nodeR(n);
+      n.x = Math.max(r + 10, Math.min(W - r - 10, n.x));
+      n.y = Math.max(r + 10, Math.min(H - r - 10, n.y));
+    });
+    linkEls.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    nodeEls.attr('cx', d => d.x).attr('cy', d => d.y);
+    labels.attr('x', d => d.x).attr('y', d => d.type === 'team' ? d.y : d.y);
+    // Pulse positions
+    nodes.forEach(n => { if (n._pulseEl) n._pulseEl.attr('cx', n.x).attr('cy', n.y); });
+  });
+
+  // Zoom
+  const zoom = d3.zoom().scaleExtent([0.3, 4]).on('zoom', evt => {
+    linkG.attr('transform', evt.transform);
+    pulseG.attr('transform', evt.transform);
+    nodeG.attr('transform', evt.transform);
+    labelG.attr('transform', evt.transform);
+  });
+  svg.call(zoom);
+}
+
+// Init — check URL params
+const urlSignal = new URLSearchParams(location.search).get('signal');
+if (urlSignal) {
+  loadGraph('signal');
+} else {
+  loadGraph('firm');
+}
+</script>
+<script src="/terminology.js"></script>
+</body>
+</html>
