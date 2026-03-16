@@ -1959,7 +1959,15 @@ async function loadNetworkSignals() {
         : '/companies.html?q=' + encodeURIComponent(s.company_name || '');
       const peopleHref = '/people.html?q=' + encodeURIComponent(s.company_name || '');
 
-      return '<div class="network-card' + (s.is_client ? ' client' : '') + '" style="cursor:pointer" onclick="if(!event.target.closest(\'a\')){location.href=\'' + companyHref + '\'}">' +
+      const proxCount = parseInt(s.prox_connection_count) || 0;
+      const proxBadge = proxCount > 0
+        ? '<button class="badge prox-trigger" data-signal-id="' + s.id + '" style="background:var(--blue-soft);color:var(--blue);border:1px solid var(--blue);cursor:pointer;font-family:var(--sans);font-size:10px;font-weight:600;padding:2px 8px;border-radius:3px" onmouseenter="this.style.background=\'var(--blue)\';this.style.color=\'#fff\';clearTimeout(this._ht);this._st=setTimeout(()=>ProximityPopup.show(this,\'' + s.id + '\'),120)" onmouseleave="this.style.background=\'var(--blue-soft)\';this.style.color=\'var(--blue)\';clearTimeout(this._st);ProximityPopup.scheduleHide()">\ud83d\udd17 ' + proxCount + ' proximity' + (s.best_connector_name ? ' \u00b7 via ' + esc(s.best_connector_name.split(' ')[0]) : '') + '</button>'
+        : '';
+      const dispatchBadge = s.dispatch_id
+        ? '<a href="/dispatches.html" onclick="event.stopPropagation();localStorage.setItem(\'open_dispatch\',\'' + s.dispatch_id + '\')" class="badge" style="background:var(--blue-soft);color:var(--blue);text-decoration:none;font-weight:600">\ud83c\udfaf Dispatch' + (s.dispatch_status === 'claimed' && s.claimed_by_name ? ' (' + esc(s.claimed_by_name) + ')' : '') + '</a>'
+        : '';
+
+      return '<div class="network-card' + (s.is_client ? ' client' : '') + '" style="cursor:pointer" onclick="if(!event.target.closest(\'a,button\')){location.href=\'' + companyHref + '\'}">' +
         '<div class="network-top">' +
           '<a href="' + companyHref + '" class="network-company" style="text-decoration:none;color:inherit">' + icon + ' ' + esc(s.company_name) + '</a>' +
           '<div class="network-contacts">' +
@@ -1970,7 +1978,10 @@ async function loadNetworkSignals() {
         '<div class="network-summary">' + esc(s.evidence_summary || s.doc_title || label) + '</div>' +
         '<div class="network-badges">' +
           '<span class="badge ' + (SIGNAL_BADGE_CLASS[s.signal_type] || 'deal') + '">' + label.toUpperCase() + '</span>' +
+          (s.is_megacap ? '<span class="badge" style="background:#f0f0f0;color:#888;font-style:italic">\ud83c\udf24\ufe0f MARKET WEATHER</span>' : '') +
           (s.is_client ? '<span class="badge client">CLIENT</span>' : '') +
+          proxBadge +
+          dispatchBadge +
           (s.geography ? '<span class="badge time">' + esc(s.geography) + '</span>' : '') +
           '<span class="badge time">' + conf + '% \u00b7 ' + ago(s.detected_at) + '</span>' +
           (s.source_url ? '<a href="' + esc(s.source_url) + '" target="_blank" onclick="event.stopPropagation()" class="badge" style="background:var(--surface-warm);color:var(--blue);text-decoration:none">\u2197 Source</a>' : '') +
