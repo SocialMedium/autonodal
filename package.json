@@ -32,7 +32,7 @@
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
     "openai": "^4.28.0",
-    "pdf-parse": "^2.4.5",
+    "pdf-parse": "^1.1.1",
     "pg": "^8.11.3",
     "rss-parser": "^3.13.0",
     "xml2js": "^0.6.2",

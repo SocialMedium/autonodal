@@ -4435,7 +4435,15 @@ app.post('/api/chat/upload', authenticateToken, chatUpload.single('file'), async
       }
     }
     if (file.originalname.endsWith('.pdf') || file.mimetype === 'application/pdf') {
-      try { const pdfParse = require('pdf-parse'); const buf = fsChat.readFileSync(file.path); const d = await pdfParse(buf); meta.text = d.text; meta.pages = d.numpages; } catch (e) { meta.text = '[Install pdf-parse: npm install pdf-parse]'; }
+      try {
+        const pdfParse = require('pdf-parse');
+        const buf = fsChat.readFileSync(file.path);
+        const d = await pdfParse(buf);
+        meta.text = d.text;
+        meta.pages = d.numpages;
+      } catch (e) {
+        meta.text = '[PDF parse error: ' + e.message + ']';
+      }
     }
     if (file.originalname.endsWith('.txt') || file.mimetype === 'text/plain') { meta.text = fsChat.readFileSync(file.path, 'utf8'); }
 
