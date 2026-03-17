@@ -45,7 +45,7 @@ async function detectClusters() {
     FROM signal_events se
     LEFT JOIN companies c ON c.id = se.company_id
     LEFT JOIN external_documents ed ON ed.id = se.source_document_id
-    WHERE se.detected_at > NOW() - INTERVAL '7 days'
+    WHERE se.detected_at > NOW() - INTERVAL '3 days'
       AND se.tenant_id = $1
       AND COALESCE(se.is_megacap, false) = false
       AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')
@@ -76,7 +76,7 @@ async function detectClusters() {
     FROM signal_events se
     LEFT JOIN companies c ON c.id = se.company_id
     LEFT JOIN external_documents ed ON ed.id = se.source_document_id
-    WHERE se.detected_at > NOW() - INTERVAL '7 days'
+    WHERE se.detected_at > NOW() - INTERVAL '3 days'
       AND se.tenant_id = $1
       AND COALESCE(se.is_megacap, false) = false
       AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')
