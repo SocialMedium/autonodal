@@ -308,22 +308,42 @@ if(notes.length){
 }
 
 if(colls.length){
-  h+='<div class="card"><div class="ss"><div class="ss-title">At '+esc(p.current_company_name||'Company')+'</div>';
-  colls.slice(0,12).forEach(c=>{
-    const ci=(c.full_name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-    h+='<div class="coll" onclick="location.href=\'/person.html?id='+c.id+'\'"><div class="coll-av">'+ci+'</div><div class="coll-info"><div class="coll-name">'+esc(c.full_name)+'</div><div class="coll-title">'+esc(c.current_title||'')+'</div></div></div>';
+  h+='<div class="card"><div class="card-head"><div class="card-title">At '+esc(p.current_company_name||'Company')+'</div><div class="card-count">'+colls.length+'</div></div>';
+  var collVis = colls.slice(0,6);
+  var collHid = colls.slice(6);
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">';
+  collVis.forEach(function(c){
+    var ci=(c.full_name||'').split(' ').map(function(w){return w[0]}).join('').slice(0,2).toUpperCase();
+    h+='<div class="coll" onclick="location.href=\'/person.html?id='+c.id+'\'" style="padding:4px 0;border-bottom:none"><div class="coll-av" style="width:24px;height:24px;font-size:9px">'+ci+'</div><div class="coll-info"><div class="coll-name" style="font-size:12px">'+esc(c.full_name)+'</div><div class="coll-title" style="font-size:10px">'+esc((c.current_title||'').slice(0,30))+'</div></div></div>';
   });
-  if(colls.length>12)h+='<div style="font-size:11px;color:var(--ink-4);padding:6px 0">+'+String(colls.length-12)+' more</div>';
-  h+='</div></div>'; // close ss + card
+  h+='</div>';
+  if(collHid.length){
+    h+='<div id="collMore" style="display:none;margin-top:4px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">';
+    collHid.forEach(function(c){
+      var ci=(c.full_name||'').split(' ').map(function(w){return w[0]}).join('').slice(0,2).toUpperCase();
+      h+='<div class="coll" onclick="location.href=\'/person.html?id='+c.id+'\'" style="padding:4px 0;border-bottom:none"><div class="coll-av" style="width:24px;height:24px;font-size:9px">'+ci+'</div><div class="coll-info"><div class="coll-name" style="font-size:12px">'+esc(c.full_name)+'</div><div class="coll-title" style="font-size:10px">'+esc((c.current_title||'').slice(0,30))+'</div></div></div>';
+    });
+    h+='</div></div>';
+    h+='<button onclick="document.getElementById(\'collMore\').style.display=\'block\';this.style.display=\'none\'" style="width:100%;padding:5px;margin-top:4px;font-size:11px;color:var(--blue);background:var(--surface-cool);border:1px solid var(--rule);border-radius:6px;cursor:pointer;font-family:var(--sans)">Show '+collHid.length+' more</button>';
+  }
+  h+='</div>';
 }
 
 if(psig.length){
-  h+='<div class="card"><div class="ss"><div class="ss-title">Career Signals</div>';
-  psig.slice(0,8).forEach(x=>{
+  h+='<div class="card"><div class="card-head"><div class="card-title">Career Signals</div><div class="card-count">'+psig.length+'</div></div>';
+  psig.slice(0,6).forEach(function(x){
     const clickable=x.source_url?'cursor:pointer" onclick="window.open(\''+esc(x.source_url)+'\',\'_blank\')':'';
     h+='<div style="padding:6px 0;border-bottom:1px solid var(--rule);font-size:12px;'+clickable+'"><div style="font-weight:500">'+esc(x.title||x.signal_type.replace(/_/g,' '))+(x.source_url?' <span style="font-size:10px;color:var(--blue)">↗</span>':'')+'</div>'+(x.description?'<div style="color:var(--ink-3);font-size:11px;margin-top:1px;overflow-wrap:break-word">'+esc(String(x.description).slice(0,120))+'</div>':'')+'<div style="font-size:10px;color:var(--ink-4);margin-top:2px">'+esc(x.signal_type.replace(/_/g,' '))+(x.signal_date?' · '+fmtD(x.signal_date):'')+'</div></div>';
   });
-  h+='</div></div>'; // close ss + card
+  if(psig.length>6){
+    h+='<div id="psigMore" style="display:none">';
+    psig.slice(6).forEach(function(x){
+      h+='<div style="padding:6px 0;border-bottom:1px solid var(--rule);font-size:12px"><div style="font-weight:500">'+esc(x.title||x.signal_type.replace(/_/g,' '))+'</div><div style="font-size:10px;color:var(--ink-4)">'+esc(x.signal_type.replace(/_/g,' '))+(x.signal_date?' · '+fmtD(x.signal_date):'')+'</div></div>';
+    });
+    h+='</div>';
+    h+='<button onclick="document.getElementById(\'psigMore\').style.display=\'block\';this.style.display=\'none\'" style="width:100%;padding:5px;margin-top:4px;font-size:11px;color:var(--blue);background:var(--surface-cool);border:1px solid var(--rule);border-radius:6px;cursor:pointer;font-family:var(--sans)">Show '+(psig.length-6)+' more</button>';
+  }
+  h+='</div>';
 }
 
 h+='</div>'; // close card-grid
