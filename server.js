@@ -1422,7 +1422,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
         SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
                se.evidence_summary, se.evidence_snippet, se.triage_status,
                se.detected_at, se.signal_date, se.source_url, se.signal_category,
-               se.hiring_implications, se.is_megacap,
+               se.hiring_implications, se.is_megacap, se.image_url,
                c.sector, c.geography, c.is_client, c.country_code, c.company_tier,
                ed.source_name, ed.source_type AS doc_source_type,
                ed.title AS doc_title, ed.summary AS doc_summary,

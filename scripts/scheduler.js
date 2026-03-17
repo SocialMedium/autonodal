@@ -184,13 +184,31 @@ async function pipelineIngestSignals() {
 
   // ─── Step 1: Fetch RSS feeds ───
   console.log('   📡 Step 1: Fetching RSS feeds...');
-  
+
   const sources = await pool.query(`
     SELECT * FROM rss_sources WHERE enabled = true
   `);
 
   const Parser = require('rss-parser');
-  const parser = new Parser({ timeout: 10000 });
+  const parser = new Parser({
+    timeout: 10000,
+    customFields: { item: [['media:content', 'mediaContent'], ['media:thumbnail', 'mediaThumbnail']] }
+  });
+
+  function extractImage(item) {
+    // Try multiple sources for an image URL
+    if (item.enclosure?.url && item.enclosure.type?.startsWith('image')) return item.enclosure.url;
+    if (item.mediaContent?.$?.url) return item.mediaContent.$.url;
+    if (item.mediaThumbnail?.$?.url) return item.mediaThumbnail.$.url;
+    // Try extracting from HTML content
+    const htmlContent = item.content || item['content:encoded'] || '';
+    const imgMatch = htmlContent.match(/<img[^>]+src=["']([^"']+)["']/i);
+    if (imgMatch) return imgMatch[1];
+    // Try og:image in description
+    const ogMatch = htmlContent.match(/og:image[^"]*content=["']([^"']+)["']/i);
+    if (ogMatch) return ogMatch[1];
+    return null;
+  }
 
   for (const source of sources.rows) {
     try {
@@ -209,12 +227,13 @@ async function pipelineIngestSignals() {
 
         const content = (item.contentSnippet || item.content || '')
           .replace(/<[^>]+>/g, ' ').slice(0, 10000);
+        const imageUrl = extractImage(item);
 
         await pool.query(`
           INSERT INTO external_documents (
-            source_id, source_url, source_url_hash, source_type, source_name, title, content, 
-            published_at, author
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            source_id, source_url, source_url_hash, source_type, source_name, title, content,
+            published_at, author, image_url
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
           ON CONFLICT (source_url_hash) DO NOTHING
         `, [
           source.id, url, urlHash,
@@ -223,7 +242,8 @@ async function pipelineIngestSignals() {
           (item.title || '').slice(0, 500),
           content,
           item.isoDate || item.pubDate || new Date().toISOString(),
-          (item.creator || item.author || '').slice(0, 200)
+          (item.creator || item.author || '').slice(0, 200),
+          imageUrl
         ]);
         stats.new_docs++;
       }
@@ -389,8 +409,8 @@ Return ONLY valid JSON array:
               INSERT INTO signal_events (
                 company_id, signal_type, signal_category,
                 confidence_score, evidence_summary, hiring_implications,
-                source_document_id, detected_at
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+                source_document_id, detected_at, image_url, source_url
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8, $9)
               ON CONFLICT DO NOTHING
             `, [
               companyId,
@@ -399,7 +419,9 @@ Return ONLY valid JSON array:
               signal.confidence || 0.5,
               signal.summary,
               JSON.stringify(signal.hiring_implications || ''),
-              batch[signal.document_index - 1]?.id || batch[0]?.id
+              batch[signal.document_index - 1]?.id || batch[0]?.id,
+              (batch[signal.document_index - 1] || batch[0])?.image_url || null,
+              (batch[signal.document_index - 1] || batch[0])?.source_url || null
             ]);
 
             stats.signals++;
