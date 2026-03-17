@@ -1081,6 +1081,47 @@ app.get('/api/stats', authenticateToken, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// HERO SIGNALS — top 3 signals ranked by client proximity + network + confidence
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/signals/hero', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
+             se.evidence_summary, se.detected_at, se.source_url, se.image_url,
+             c.sector, c.geography, c.is_client, c.domain,
+             ed.title AS doc_title, ed.source_name, ed.image_url AS doc_image_url,
+             (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) AS contact_count,
+             (SELECT COUNT(DISTINCT tp2.person_id) FROM team_proximity tp2
+              JOIN people p2 ON p2.id = tp2.person_id AND p2.current_company_id = se.company_id AND p2.tenant_id = $1
+              WHERE tp2.tenant_id = $1 AND tp2.relationship_strength >= 0.25
+             ) AS prox_count
+      FROM signal_events se
+      LEFT JOIN companies c ON c.id = se.company_id
+      LEFT JOIN external_documents ed ON ed.id = se.source_document_id
+      WHERE se.tenant_id = $1
+        AND se.detected_at > NOW() - INTERVAL '7 days'
+        AND COALESCE(se.is_megacap, false) = false
+        AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')
+        AND se.company_name IS NOT NULL
+      ORDER BY
+        CASE WHEN c.is_client = true THEN 100 ELSE 0 END +
+        CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id) > 0 THEN 50 ELSE 0 END +
+        (se.confidence_score * 30) +
+        CASE WHEN se.image_url IS NOT NULL OR ed.image_url IS NOT NULL THEN 20 ELSE 0 END
+        DESC
+      LIMIT 3
+    `, [req.tenant_id]);
+
+    // Use doc_image_url as fallback
+    rows.forEach(r => { if (!r.image_url && r.doc_image_url) r.image_url = r.doc_image_url; });
+
+    res.json({ heroes: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // MARKET TEMPERATURE — macro summary from megacap/public company signals
 // ═══════════════════════════════════════════════════════════════════════════════
 
