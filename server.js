@@ -1175,11 +1175,11 @@ app.get('/api/talent-in-motion', authenticateToken, async (req, res) => {
       FROM people p
       JOIN companies c ON c.id = p.current_company_id
       JOIN signal_events se ON se.company_id = c.id
-        AND se.signal_type IN ('restructuring', 'layoffs', 'ma_activity')
-        AND se.detected_at > NOW() - INTERVAL '14 days'
+        AND se.signal_type::text IN ('restructuring', 'layoffs', 'ma_activity', 'leadership_change', 'strategic_hiring')
+        AND se.detected_at > NOW() - INTERVAL '30 days'
+        AND COALESCE(se.is_megacap, false) = false
       LEFT JOIN person_scores ps ON ps.person_id = p.id
-      WHERE (p.seniority_level IN ('c_suite', 'vp', 'director', 'manager', 'senior_ic')
-        OR ps.flight_risk_score > 0.5)
+      WHERE p.current_title IS NOT NULL
         AND p.tenant_id = $2
       ORDER BY p.id, se.detected_at DESC
       LIMIT $1
@@ -1196,7 +1196,7 @@ app.get('/api/talent-in-motion', authenticateToken, async (req, res) => {
               WHERE sc.person_id = p.id) as active_search_matches
       FROM people p
       JOIN person_scores ps ON ps.person_id = p.id
-      WHERE (ps.timing_score > 0.6 OR ps.activity_score > 0.6 OR ps.receptivity_score > 0.7)
+      WHERE (ps.timing_score > 0.4 OR ps.activity_score > 0.4 OR ps.receptivity_score > 0.5 OR ps.flight_risk_score > 0.4)
         AND p.current_title IS NOT NULL
         AND p.tenant_id = $2
       ORDER BY (COALESCE(ps.timing_score,0) + COALESCE(ps.activity_score,0) + COALESCE(ps.receptivity_score,0)) DESC
