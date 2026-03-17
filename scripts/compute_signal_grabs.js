@@ -237,17 +237,33 @@ function pickStyle(clusterIndex) {
 async function generateGrab(cluster, styleIndex) {
   const style = pickStyle(styleIndex || 0);
 
-  // Build source evidence for the prompt
+  // Build VERIFIED source evidence — query DB for actual URLs per source document
   const sources = [];
-  const srcNames = cluster.sources || [];
-  const srcUrls = cluster.source_urls || [];
-  const srcTitles = cluster.source_titles || [];
-  for (let i = 0; i < Math.min(srcNames.length, 6); i++) {
-    sources.push({
-      name: srcNames[i] || 'Source',
-      url: srcUrls[i] || '',
-      title: srcTitles[i] || ''
-    });
+  const docIds = cluster.doc_ids || [];
+  if (docIds.length) {
+    try {
+      const { rows: docs } = await pool.query(
+        'SELECT source_name, source_url, title FROM external_documents WHERE id = ANY($1) AND source_url IS NOT NULL AND source_url != \'\'',
+        [docIds.filter(Boolean)]
+      );
+      const seen = new Set();
+      docs.forEach(d => {
+        const key = d.source_url;
+        if (!seen.has(key) && d.source_url) {
+          seen.add(key);
+          sources.push({ name: d.source_name || 'Source', url: d.source_url, title: d.title || '' });
+        }
+      });
+    } catch (e) {}
+  }
+  // Fallback to cluster arrays if no DB results
+  if (!sources.length) {
+    const srcNames = cluster.sources || [];
+    const srcUrls = cluster.source_urls || [];
+    const srcTitles = cluster.source_titles || [];
+    for (let i = 0; i < Math.min(srcNames.length, 6); i++) {
+      if (srcUrls[i]) sources.push({ name: srcNames[i] || 'Source', url: srcUrls[i], title: srcTitles[i] || '' });
+    }
   }
 
   const companies = (cluster.companies || []).filter(Boolean).slice(0, 8);
@@ -265,10 +281,18 @@ VOICE FOR THIS GRAB:
 
 BANNED PHRASES: "why it matters", "in this landscape", "navigate", "leverage", "moving forward", "thought leadership", "key takeaway", "in conclusion", "it's clear that", "increasingly important"
 
-RULES:
+CRITICAL SOURCE RULES:
+- You MUST ONLY cite sources from the SOURCES list provided below.
+- You MUST use the EXACT URLs provided. Do NOT invent or guess URLs.
+- You MUST use the EXACT source names provided. Do NOT rename sources.
+- If a source has no URL, do not cite it.
+- Do NOT fabricate any source, URL, or attribution.
+- The "evidence" array must ONLY contain entries from the SOURCES list.
+- Each evidence entry must copy source_name and source_url EXACTLY from the input.
+
+OTHER RULES:
 - Total: 90-160 words. No more.
 - Do NOT summarize articles. Interpret the pattern across sources.
-- Every source must be cited as: <a href="URL">Source Name</a>
 - Return ONLY valid JSON. No markdown wrapping.
 
 JSON STRUCTURE:
@@ -303,7 +327,27 @@ Generate the Signal Grab JSON. Stay under 160 words total.`;
   try {
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON');
-    return JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    // POST-VALIDATION: Strip any hallucinated sources
+    const validUrls = new Set(sources.map(s => s.url));
+    const validNames = new Set(sources.map(s => s.name.toLowerCase()));
+    if (parsed.evidence && Array.isArray(parsed.evidence)) {
+      parsed.evidence = parsed.evidence.filter(e => {
+        // Must match a real source URL or name
+        if (e.source_url && validUrls.has(e.source_url)) return true;
+        if (e.source_name && validNames.has(e.source_name.toLowerCase())) {
+          // Fix URL from our verified list
+          const match = sources.find(s => s.name.toLowerCase() === e.source_name.toLowerCase());
+          if (match) e.source_url = match.url;
+          return true;
+        }
+        LOG('🚫', `    Stripped hallucinated source: ${e.source_name} (${e.source_url})`);
+        return false;
+      });
+    }
+
+    return parsed;
   } catch (e) {
     LOG('⚠️', `  JSON parse failed: ${e.message}`);
     return null;
