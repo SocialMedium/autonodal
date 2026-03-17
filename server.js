@@ -3018,7 +3018,36 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
       documents = rows;
     } catch (e) { /* table may not exist */ }
 
-    res.json({ ...company, signals, people, placements, documents, financials });
+    // Pipeline — opportunities + candidate counts for this company
+    let opportunities = [];
+    try {
+      const { rows } = await pool.query(`
+        SELECT o.id, o.title, o.status, o.seniority_level,
+               (SELECT COUNT(*) FROM pipeline_contacts pc WHERE pc.search_id = o.id) as candidate_count
+        FROM opportunities o
+        JOIN engagements e ON e.id = o.project_id
+        JOIN accounts a ON a.id = e.client_id
+        WHERE a.company_id = $1 AND o.tenant_id = $2
+        ORDER BY o.created_at DESC
+      `, [companyId, req.tenant_id]);
+      opportunities = rows;
+    } catch (e) {}
+
+    // Total pipeline candidates across all opportunities
+    let pipelineTotal = 0;
+    try {
+      const { rows: [{ cnt }] } = await pool.query(`
+        SELECT COUNT(DISTINCT pc.person_id) as cnt
+        FROM pipeline_contacts pc
+        JOIN opportunities o ON o.id = pc.search_id
+        JOIN engagements e ON e.id = o.project_id
+        JOIN accounts a ON a.id = e.client_id
+        WHERE a.company_id = $1 AND pc.tenant_id = $2
+      `, [companyId, req.tenant_id]);
+      pipelineTotal = parseInt(cnt);
+    } catch (e) {}
+
+    res.json({ ...company, signals, people, placements, documents, financials, opportunities, pipeline_total: pipelineTotal });
   } catch (err) {
     console.error('Company detail error:', err.message);
     res.status(500).json({ error: 'Failed to fetch company' });

@@ -183,7 +183,7 @@ const c=await api('/api/companies/'+id);if(!c)return;
 document.title=(c.name||'Company')+' — MLX Autonode';
 
 const initial=(c.name||'?')[0].toUpperCase();
-const sigs=c.signals||[];const ppl=c.people||[];const pls=c.placements||[];const docs=c.documents||[];
+const sigs=c.signals||[];const ppl=c.people||[];const pls=c.placements||[];const docs=c.documents||[];const opps=c.opportunities||[];const pipelineTotal=c.pipeline_total||0;
 const totalFees=pls.reduce((s,p)=>s+(parseFloat(p.placement_fee)||0),0);
 
 const tags=[];
@@ -205,7 +205,7 @@ h+='</div>';
 if(tags.length)h+='<div class="co-tags">'+tags.join('')+'</div>';
 if(c.description)h+='<div class="co-desc">'+esc(c.description)+'</div>';
 h+='</div></div>';
-h+='<div class="co-stats"><div class="co-st"><div class="co-st-v">'+ppl.length+'</div><div class="co-st-l">People</div></div><div class="co-st"><div class="co-st-v">'+sigs.length+'</div><div class="co-st-l">Signals</div></div><div class="co-st"><div class="co-st-v">'+pls.length+'</div><div class="co-st-l">Placements</div></div><div class="co-st"><div class="co-st-v">'+docs.length+'</div><div class="co-st-l">Coverage</div></div></div>';
+h+='<div class="co-stats"><div class="co-st"><div class="co-st-v">'+ppl.length+'</div><div class="co-st-l">Contacts</div></div><div class="co-st"><div class="co-st-v">'+opps.length+'</div><div class="co-st-l">Searches</div></div><div class="co-st"><div class="co-st-v">'+pls.length+'</div><div class="co-st-l">Placements</div></div><div class="co-st"><div class="co-st-v">'+pipelineTotal+'</div><div class="co-st-l">Pipeline</div></div><div class="co-st"><div class="co-st-v">'+sigs.length+'</div><div class="co-st-l">Signals</div></div><div class="co-st"><div class="co-st-v">'+docs.length+'</div><div class="co-st-l">Docs</div></div></div>';
 h+='<button class="enrich-btn" id="enrichBtn" onclick="enrichCompany()">🔄 Refresh &amp; Enrich</button>';
 h+='</div>';
 
@@ -267,6 +267,16 @@ if(pls.length||c.is_client){
 }
 
 // Documents
+// Searches / Opportunities
+if(opps.length){
+  h+='<div class="card"><div class="card-head"><div class="card-title">Searches</div><div class="card-count">'+opps.length+' · '+pipelineTotal+' candidates</div></div>';
+  opps.forEach(function(o){
+    var statusColor = o.status==='placed'?'var(--emerald)':o.status==='interviewing'?'var(--blue)':o.status==='on_hold'?'var(--ink-4)':'var(--amber)';
+    h+='<div style="padding:6px 0;border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:13px;font-weight:500">'+esc(o.title)+'</div><div style="font-size:11px;color:var(--ink-3)">'+(o.seniority_level||'')+' · '+parseInt(o.candidate_count||0)+' candidates</div></div><span style="font-size:10px;padding:2px 8px;border-radius:10px;background:'+statusColor+'18;color:'+statusColor+';font-weight:600">'+esc(o.status)+'</span></div>';
+  });
+  h+='</div>';
+}
+
 if(docs.length){
   h+='<div class="card"><div class="card-head"><div class="card-title">Coverage & Documents</div></div>';
   docs.forEach(d=>{
