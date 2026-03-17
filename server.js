@@ -2670,6 +2670,50 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
       } catch (e) { /* ignore project search errors */ }
     }
 
+    // 1c. Gmail domain discovery — find contacts by email domain
+    if (company.domain || company.name) {
+      try {
+        const emailDomain = company.domain || company.name.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com';
+        const googleToken = await getGoogleToken(req.user.user_id);
+        if (googleToken) {
+          const q = encodeURIComponent(`from:*@${emailDomain} OR to:*@${emailDomain}`);
+          const gmailRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=50`, { headers: { Authorization: `Bearer ${googleToken}` } });
+          if (gmailRes.ok) {
+            const gmailData = await gmailRes.json();
+            const discoveredContacts = new Map();
+
+            for (const msg of (gmailData.messages || []).slice(0, 30)) {
+              try {
+                const mRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=To`, { headers: { Authorization: `Bearer ${googleToken}` } });
+                if (!mRes.ok) continue;
+                const mData = await mRes.json();
+                const hdrs = mData.payload?.headers || [];
+                const fromTo = (hdrs.find(h => h.name === 'From')?.value || '') + ',' + (hdrs.find(h => h.name === 'To')?.value || '');
+                const matches = fromTo.match(new RegExp(`([^<,]+)<([a-zA-Z0-9._%+-]+@${emailDomain.replace('.', '\\.')})>`, 'gi')) || [];
+                matches.forEach(m => {
+                  const parts = m.match(/(.+)<(.+)>/);
+                  if (parts) discoveredContacts.set(parts[2].toLowerCase().trim(), parts[1].trim().replace(/[\"']/g, ''));
+                });
+              } catch (e) { /* skip message errors */ }
+            }
+
+            let linked = 0;
+            for (const [email, name] of discoveredContacts) {
+              const { rows: exists } = await pool.query('SELECT id FROM people WHERE email = $1 AND tenant_id = $2', [email, req.tenant_id]);
+              if (exists.length) {
+                await pool.query('UPDATE people SET current_company_id = $1, current_company_name = $2, updated_at = NOW() WHERE id = $3 AND (current_company_id IS NULL OR current_company_id != $1)', [req.params.id, company.name, exists[0].id]);
+              } else {
+                await pool.query('INSERT INTO people (full_name, email, current_company_id, current_company_name, source, tenant_id, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())',
+                  [name, email, req.params.id, company.name, 'gmail_discovery', req.tenant_id]);
+              }
+              linked++;
+            }
+            if (linked) enrichResults.gmail_contacts = { discovered: discoveredContacts.size, linked };
+          }
+        }
+      } catch (e) { /* gmail discovery is best-effort */ }
+    }
+
     // 2. Conversion history from account record
     try {
       const { rows: [clientRecord] } = await pool.query(
