@@ -359,14 +359,22 @@ async function main() {
     LOG('🔍', `[${opp.status}] ${opp.client_name || '?'} — ${opp.title} (Ezekia #${ezekiaId})`);
 
     // Sync candidates
-    const candResult = await syncProjectCandidates(ezekiaId, opp.id);
-    totalCandidates += candResult.synced;
-    if (candResult.synced) LOG('👥', `    ${candResult.synced} candidates synced`);
+    try {
+      const candResult = await syncProjectCandidates(ezekiaId, opp.id);
+      totalCandidates += candResult.synced;
+      if (candResult.synced) LOG('👥', `    ${candResult.synced} candidates synced`);
+    } catch (e) {
+      LOG('⚠️', `    Candidates error: ${e.message.slice(0, 80)}`);
+    }
 
     // Sync notes
-    const notesImported = await syncProjectNotes(ezekiaId, opp.id);
-    totalNotes += notesImported;
-    if (notesImported) LOG('📝', `    ${notesImported} notes imported`);
+    try {
+      const notesImported = await syncProjectNotes(ezekiaId, opp.id);
+      totalNotes += notesImported;
+      if (notesImported) LOG('📝', `    ${notesImported} notes imported`);
+    } catch (e) {
+      LOG('⚠️', `    Notes error: ${e.message.slice(0, 80)}`);
+    }
 
     projectsSynced++;
     await new Promise(r => setTimeout(r, 300));
