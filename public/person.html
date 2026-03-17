@@ -239,12 +239,17 @@ const nNotes=parseInt(s.notes||0),nEmails=parseInt(s.emails||0),nLinkedin=parseI
 
 h+='<div class="card-grid">';
 
-// Activity summary card — always first, compact
-h+='<div class="card">';
-h+='<div class="card-head"><div class="card-title">Activity</div><div class="card-count">'+totalIx+' total</div></div>';
-h+='<div class="stats"><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Research Notes\')"><div class="st-v">'+nNotes+'</div><div class="st-l">Notes</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+nEmails+'</div><div class="st-l">Emails</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+nLinkedin+'</div><div class="st-l">LinkedIn</div></div><div class="st" style="cursor:pointer" onclick="scrollToSection(\'Interactions\')"><div class="st-v">'+(nCalls+nOther)+'</div><div class="st-l">'+(nOther>0?'Other':'Calls')+'</div></div></div>';
-if(s.last_interaction)h+='<div style="font-size:11px;color:var(--ink-4);margin-top:8px">Last contact: '+fmtD(s.last_interaction)+(s.first_interaction?' · First: '+fmtD(s.first_interaction):'')+'</div>';
-if(p.bio)h+='<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--rule);font-size:12px;color:var(--ink-2);line-height:1.5;overflow-wrap:break-word;max-height:80px;overflow:hidden">'+esc(p.bio)+'</div>';
+// Activity — micro inline stats
+h+='<div class="card" style="padding:10px 14px">';
+h+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
+h+='<span style="font-size:11px;font-weight:600;color:var(--ink-3)">Activity</span>';
+if(nNotes)h+='<a href="#" onclick="event.preventDefault();scrollToSection(\'Research Notes\')" style="font-size:11px;color:var(--blue);text-decoration:none;font-weight:500"><strong>'+nNotes+'</strong> notes</a>';
+if(nEmails)h+='<a href="#" onclick="event.preventDefault();scrollToSection(\'Interactions\')" style="font-size:11px;color:var(--blue);text-decoration:none;font-weight:500"><strong>'+nEmails+'</strong> emails</a>';
+if(nLinkedin)h+='<a href="#" onclick="event.preventDefault();scrollToSection(\'Interactions\')" style="font-size:11px;color:var(--blue);text-decoration:none;font-weight:500"><strong>'+nLinkedin+'</strong> LinkedIn</a>';
+if(nCalls+nOther)h+='<a href="#" onclick="event.preventDefault();scrollToSection(\'Interactions\')" style="font-size:11px;color:var(--blue);text-decoration:none;font-weight:500"><strong>'+(nCalls+nOther)+'</strong> '+(nOther>0?'other':'calls')+'</a>';
+if(s.last_interaction)h+='<span style="font-size:10px;color:var(--ink-4);margin-left:auto">Last: '+fmtD(s.last_interaction)+'</span>';
+h+='</div>';
+if(p.bio)h+='<div style="margin-top:6px;font-size:11px;color:var(--ink-3);line-height:1.45;overflow-wrap:break-word;max-height:40px;overflow:hidden">'+esc(p.bio)+'</div>';
 h+='</div>';
 
 // Company Signals — compact, shows before notes if present
