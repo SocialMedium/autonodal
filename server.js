@@ -3696,12 +3696,26 @@ app.patch('/api/grabs/:id', authenticateToken, async (req, res) => {
 
 app.get('/api/grabs/weekly', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    // Get the most recent weekly wrap
+    const { rows: [wrap] } = await pool.query(`
       SELECT * FROM signal_grabs
-      WHERE tenant_id = $1 AND created_at > NOW() - INTERVAL '7 days'
+      WHERE tenant_id = $1 AND cluster_type = 'weekly_wrap'
+      ORDER BY created_at DESC LIMIT 1
+    `, [req.tenant_id]);
+
+    // Also get the top 5 daily grabs from the week
+    const { rows: topGrabs } = await pool.query(`
+      SELECT * FROM signal_grabs
+      WHERE tenant_id = $1 AND cluster_type != 'weekly_wrap' AND created_at > NOW() - INTERVAL '7 days'
       ORDER BY grab_score DESC LIMIT 5
     `, [req.tenant_id]);
-    res.json({ week_of: new Date().toISOString().slice(0, 10), grabs: rows });
+
+    let wrapData = null;
+    if (wrap) {
+      try { wrapData = JSON.parse(wrap.observation); } catch(e) {}
+    }
+
+    res.json({ wrap: wrapData, wrap_id: wrap?.id, top_grabs: topGrabs, week_of: new Date().toISOString().slice(0, 10) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

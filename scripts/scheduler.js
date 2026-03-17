@@ -1074,6 +1074,17 @@ const PIPELINES = {
     },
     schedule: '0 5 * * *',
     description: 'Generate daily editorial intelligence grabs from signal clusters'
+  },
+
+  weekly_wrap: {
+    name: 'Weekly Wrap',
+    icon: '📰',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'generate_weekly_wrap.js'), { timeout: 180000, stdio: 'inherit' });
+    },
+    schedule: '0 6 * * 0',
+    description: 'Generate weekly regional intelligence wrap with key numbers and insights'
   }
 };
 

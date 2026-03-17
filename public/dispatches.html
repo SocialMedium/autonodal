@@ -222,6 +222,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
     <div class="chip" onclick="setRegion(this, 'EMEA')">EMEA</div>
   </div>
 
+  <!-- Weekly Wrap -->
+  <div id="weeklyWrapSection" style="margin-bottom:24px"></div>
+
   <!-- Signal Grabs -->
   <div id="grabsSection" style="margin-bottom:24px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -748,7 +751,70 @@ async function generateGrabs() {
   }
 }
 
+// ── Weekly Wrap ──
+async function loadWeeklyWrap() {
+  var section = document.getElementById('weeklyWrapSection');
+  try {
+    var data = await api('/api/grabs/weekly');
+    if (!data.wrap || !data.wrap.regions || !data.wrap.regions.length) { section.style.display = 'none'; return; }
+    var w = data.wrap;
+    var regionColors = { AU:'#0D7A50', SG:'#6D28D9', UK:'#2563EB', US:'#B45309' };
+    var regionFlags = { AU:'🇦🇺', SG:'🇸🇬', UK:'🇬🇧', US:'🇺🇸' };
+
+    var h = '<div style="font-family:var(--serif);font-size:18px;font-weight:600;margin-bottom:10px">Weekly Wrap <span style="font-size:13px;color:var(--ink-3);font-family:var(--mono);font-weight:400">' + esc(w.week_of) + '</span></div>';
+    h += '<div style="display:flex;gap:6px;margin-bottom:12px;font-size:11px;color:var(--ink-3)">';
+    h += '<span><strong>' + (w.global?.signals||0).toLocaleString() + '</strong> signals</span> · ';
+    h += '<span><strong>' + (w.global?.companies||0).toLocaleString() + '</strong> companies</span> · ';
+    h += '<span><strong>' + w.regions.length + '</strong> regions</span>';
+    h += '</div>';
+
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">';
+    w.regions.forEach(function(r) {
+      var rc = regionColors[r.code] || '#888';
+      var rf = regionFlags[r.code] || '🌐';
+      var numbers = (r.key_numbers || []).slice(0, 4).map(function(n) {
+        var arrow = n.change === 'up' ? '↑' : n.change === 'down' ? '↓' : '→';
+        var arrowColor = n.change === 'up' ? 'var(--emerald)' : n.change === 'down' ? 'var(--rose)' : 'var(--ink-4)';
+        return '<div style="text-align:center"><div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--ink)">' + esc(String(n.value)) + ' <span style="font-size:11px;color:' + arrowColor + '">' + arrow + '</span></div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.3px">' + esc(n.label) + '</div></div>';
+      }).join('');
+
+      var moves = (r.big_moves || []).slice(0, 3).map(function(m) {
+        return '<li style="font-size:12px;color:var(--ink-2);margin-bottom:3px">' + esc(m) + '</li>';
+      }).join('');
+
+      h += '<div style="background:var(--surface);border:1px solid var(--rule);border-radius:10px;border-top:3px solid ' + rc + ';padding:14px 16px">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+      h += '<span style="font-size:15px;font-weight:600">' + rf + ' ' + esc(r.name) + '</span>';
+      h += '<span style="font-family:var(--mono);font-size:13px;font-weight:700;color:' + rc + '">' + r.signals + '</span>';
+      h += '</div>';
+
+      if (r.headline) h += '<div style="font-size:13px;font-weight:500;color:var(--ink);margin-bottom:10px;line-height:1.35">' + esc(r.headline) + '</div>';
+
+      if (numbers) h += '<div style="display:grid;grid-template-columns:repeat(' + Math.min(r.key_numbers?.length || 2, 4) + ',1fr);gap:6px;margin-bottom:10px;padding:8px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)">' + numbers + '</div>';
+
+      if (moves) h += '<ul style="padding-left:14px;margin:0 0 8px">' + moves + '</ul>';
+
+      if (r.watch_list) h += '<div style="font-size:11px;color:var(--ink-3);font-style:italic">Watch: ' + esc(r.watch_list) + '</div>';
+
+      // Top companies
+      if (r.top_companies && r.top_companies.length) {
+        h += '<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--rule);font-size:10px;color:var(--ink-4)">';
+        h += r.top_companies.slice(0, 3).map(function(c) { return '<span style="font-weight:500;color:var(--ink-3)">' + esc(c.name) + '</span> (' + c.signals + ')'; }).join(' · ');
+        h += '</div>';
+      }
+
+      h += '</div>';
+    });
+    h += '</div>';
+
+    section.innerHTML = h;
+  } catch (e) {
+    section.style.display = 'none';
+  }
+}
+
 // ── Init ──
+loadWeeklyWrap();
 loadDispatches();
 loadGrabs();
 
