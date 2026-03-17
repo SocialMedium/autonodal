@@ -591,17 +591,21 @@ section {
 <!-- TICKER -->
 <div class="ticker">
   <div class="ticker-track" id="tickerTrack">
-    <span class="ticker-item"><span class="ticker-dot"></span>77,648 people tracked</span>
-    <span class="ticker-item"><span class="ticker-dot"></span>6,874 companies monitored</span>
-    <span class="ticker-item"><span class="ticker-dot"></span>302 active searches</span>
-    <span class="ticker-item"><span class="ticker-dot"></span>Signals every 30 min</span>
-    <span class="ticker-item"><span class="ticker-dot"></span>48 live intelligence sources</span>
+    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-people">—</span> people tracked</span>
+    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-companies">—</span> companies monitored</span>
+    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-signals7d">—</span> signals this week</span>
+    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-signals24h">—</span> signals last 24h</span>
+    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-sources">—</span> live intelligence sources</span>
+    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-docs">—</span> documents indexed</span>
+    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-searches">—</span> active searches</span>
     <span class="ticker-item"><span class="ticker-dot"></span>AU · SG · UK · US</span>
-    <span class="ticker-item"><span class="ticker-dot"></span>77,648 people tracked</span>
-    <span class="ticker-item"><span class="ticker-dot"></span>6,874 companies monitored</span>
-    <span class="ticker-item"><span class="ticker-dot"></span>302 active searches</span>
-    <span class="ticker-item"><span class="ticker-dot"></span>Signals every 30 min</span>
-    <span class="ticker-item"><span class="ticker-dot"></span>48 live intelligence sources</span>
+    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-people2">—</span> people tracked</span>
+    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-companies2">—</span> companies monitored</span>
+    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-signals7d2">—</span> signals this week</span>
+    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-signals24h2">—</span> signals last 24h</span>
+    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-sources2">—</span> live intelligence sources</span>
+    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-docs2">—</span> documents indexed</span>
+    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-searches2">—</span> active searches</span>
     <span class="ticker-item"><span class="ticker-dot"></span>AU · SG · UK · US</span>
   </div>
 </div>
@@ -871,6 +875,30 @@ function showLoggedIn(user) {
 }
 
 checkAuth();
+
+// Live ticker stats
+(async function() {
+  try {
+    var res = await fetch('/api/public/stats');
+    var s = await res.json();
+    function fmt(n) { return n >= 1000 ? (n/1000).toFixed(1).replace(/\.0$/, '') + 'K' : String(n); }
+    function set(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
+    set('t-people', fmt(s.people));
+    set('t-people2', fmt(s.people));
+    set('t-companies', fmt(s.companies));
+    set('t-companies2', fmt(s.companies));
+    set('t-signals7d', fmt(s.signals_7d));
+    set('t-signals7d2', fmt(s.signals_7d));
+    set('t-signals24h', fmt(s.signals_24h));
+    set('t-signals24h2', fmt(s.signals_24h));
+    set('t-sources', String(s.sources));
+    set('t-sources2', String(s.sources));
+    set('t-docs', fmt(s.documents));
+    set('t-docs2', fmt(s.documents));
+    set('t-searches', String(s.active_searches));
+    set('t-searches2', String(s.active_searches));
+  } catch(e) {}
+})();
 </script>
 </body>
 </html>

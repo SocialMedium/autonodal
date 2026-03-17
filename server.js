@@ -3720,6 +3720,64 @@ app.get('/api/grabs/weekly', authenticateToken, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PUBLIC PLATFORM STATS — no auth, for landing page ticker
+// Aggregate across all tenants (future-proof for multi-tenant SaaS)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let _platformStatsCache = null;
+let _platformStatsCacheTime = 0;
+
+app.get('/api/public/stats', async (req, res) => {
+  try {
+    // Cache for 5 minutes to avoid hammering DB on every page view
+    if (_platformStatsCache && Date.now() - _platformStatsCacheTime < 5 * 60 * 1000) {
+      return res.json(_platformStatsCache);
+    }
+
+    const { rows: [s] } = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM people) as people,
+        (SELECT COUNT(*) FROM companies WHERE sector IS NOT NULL OR is_client = true OR domain IS NOT NULL) as companies,
+        (SELECT COUNT(*) FROM signal_events WHERE detected_at > NOW() - INTERVAL '7 days') as signals_7d,
+        (SELECT COUNT(*) FROM signal_events) as signals_total,
+        (SELECT COUNT(*) FROM opportunities WHERE status IN ('interviewing','sourcing','offer')) as active_searches,
+        (SELECT COUNT(*) FROM conversions) as placements,
+        (SELECT COUNT(*) FROM external_documents) as documents,
+        (SELECT COUNT(*) FROM rss_sources WHERE enabled = true) as sources,
+        (SELECT COUNT(*) FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours') as signals_24h,
+        (SELECT COUNT(DISTINCT company_id) FROM signal_events WHERE detected_at > NOW() - INTERVAL '7 days') as companies_signalling,
+        (SELECT COUNT(*) FROM interactions) as interactions,
+        (SELECT COUNT(*) FROM signal_grabs WHERE created_at > NOW() - INTERVAL '7 days') as grabs_7d,
+        (SELECT COUNT(*) FROM tenants) as tenants
+    `);
+
+    const stats = {
+      people: parseInt(s.people),
+      companies: parseInt(s.companies),
+      signals_7d: parseInt(s.signals_7d),
+      signals_total: parseInt(s.signals_total),
+      signals_24h: parseInt(s.signals_24h),
+      active_searches: parseInt(s.active_searches),
+      placements: parseInt(s.placements),
+      documents: parseInt(s.documents),
+      sources: parseInt(s.sources),
+      companies_signalling: parseInt(s.companies_signalling),
+      interactions: parseInt(s.interactions),
+      grabs_7d: parseInt(s.grabs_7d),
+      tenants: parseInt(s.tenants),
+      regions: ['AU', 'SG', 'UK', 'US'],
+      updated_at: new Date().toISOString()
+    };
+
+    _platformStatsCache = stats;
+    _platformStatsCacheTime = Date.now();
+
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: 'Stats unavailable' });
+  }
+});
+
 // HEALTH
 // ═══════════════════════════════════════════════════════════════════════════════
 
