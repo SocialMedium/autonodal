@@ -212,86 +212,96 @@ h+='</div>';
 h+='<div class="card-grid">';
 
 // ── SIGNALS ──
-h+='<div class="card" style="grid-column:1/-1"><div class="card-head"><div class="card-title">Signals</div><div class="card-count">'+sigs.length+'</div></div><div class="card-sub">Market intelligence and events</div>';
-if(!sigs.length)h+='<div class="empty">No signals detected</div>';
-else sigs.forEach(s=>{
-  const icon=SI[s.signal_type]||'📡';
-  const conf=Math.round((s.confidence_score||0)*100);
-  const cc=conf>=80?'hi':conf>=50?'md':'lo';
-  const type=s.signal_type.replace(/_/g,' ');
+var sigTypes = {};
+sigs.forEach(function(s){ sigTypes[s.signal_type] = (sigTypes[s.signal_type]||0)+1; });
+var sigSummary = Object.entries(sigTypes).map(function(e){ return e[1]+' '+e[0].replace(/_/g,' '); }).join(' · ');
 
-  let hire='';
-  if(s.hiring_implications){
-    try{
-      const hi=typeof s.hiring_implications==='string'?JSON.parse(s.hiring_implications):s.hiring_implications;
-      const pts=[];
-      if(hi.implications)pts.push(hi.implications);
-      if(hi.geography)pts.push('Geo: '+hi.geography);
-      if(hi.people_mentioned&&hi.people_mentioned.length)pts.push('People: '+hi.people_mentioned.join(', '));
-      if(pts.length)hire='<div class="sigcard-hire"><b>Hiring Implications</b>'+esc(pts.join(' · '))+'</div>';
-    }catch(e){}
-  }
-
-  h+='<div class="sigcard"><div class="sigcard-top"><div class="sigcard-hl">'+icon+' '+esc(s.evidence_summary||s.doc_title||type)+'</div><div class="sigcard-conf '+cc+'">'+conf+'%</div></div>';
-  h+='<div class="sigcard-badges"><span class="sbadge">'+type.toUpperCase()+'</span>'+(s.signal_category?'<span class="sbadge">'+esc(s.signal_category)+'</span>':'')+'<span class="sbadge">'+(s.triage_status||'new')+'</span></div>';
-  if(s.evidence_snippet)h+='<div class="sigcard-ev">'+esc(s.evidence_snippet)+'</div>';
-  h+=hire;
-  h+='<div class="sigcard-src">'+(s.doc_source?'<span>'+esc(s.doc_source)+'</span>':'')+'<span>'+ago(s.detected_at)+'</span>'+(s.source_url?'<a href="'+esc(s.source_url)+'" target="_blank">↗ Source</a>':'')+'</div>';
-  h+='</div>';
-});
+h+='<div class="card" style="grid-column:1/-1"><div class="card-head"><div class="card-title">Signals</div><div class="card-count">'+sigs.length+'</div></div>';
+if(sigSummary)h+='<div style="font-size:11px;color:var(--ink-3);margin-bottom:8px">'+sigSummary+'</div>';
+if(!sigs.length)h+='<div style="font-size:12px;color:var(--ink-4);padding:8px 0">No signals detected</div>';
+else {
+  h+=cappedList(sigs, 6, function(s){
+    var icon=SI[s.signal_type]||'📡';
+    var conf=Math.round((s.confidence_score||0)*100);
+    var cc=conf>=80?'hi':conf>=50?'md':'lo';
+    var type=s.signal_type.replace(/_/g,' ');
+    return '<div class="sigcard"><div class="sigcard-top"><div class="sigcard-hl">'+icon+' '+esc((s.evidence_summary||s.doc_title||type).slice(0,120))+'</div><div class="sigcard-conf '+cc+'">'+conf+'%</div></div>'+
+      '<div class="sigcard-badges"><span class="sbadge">'+type.toUpperCase()+'</span><span class="sbadge">'+ago(s.detected_at)+'</span></div>'+
+      (s.source_url?'<div class="sigcard-src"><a href="'+esc(s.source_url)+'" target="_blank" style="font-size:10px;color:var(--blue);text-decoration:none">↗ Source</a></div>':'')+
+    '</div>';
+  });
+}
 h+='</div>'; // close signals card
 
-// ── PEOPLE ──
-h+='<div class="card"><div class="card-head"><div class="card-title">People</div><div class="card-count">'+ppl.length+' IN NETWORK</div></div><div class="card-sub">Candidates and contacts at '+esc(c.name)+'</div>';
-if(!ppl.length)h+='<div class="empty">No people linked</div>';
-else ppl.forEach(p=>{
-  const pi=(p.full_name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-  const nc=parseInt(p.note_count)||0;
-  h+='<div class="prow" onclick="location.href=\'/person.html?id='+p.id+'\'"><div class="pid"><div class="pav'+(nc?' noted':'')+'">'+pi+'</div><div style="min-width:0"><div class="pn">'+esc(p.full_name)+'</div><div class="pt">'+esc(p.current_title||'')+'</div></div></div>';
-  h+='<div class="pmeta2">'+(p.seniority_level?'<span class="tag" style="background:var(--amber-soft);color:var(--amber)">'+esc(p.seniority_level)+'</span>':'')+'</div>';
-  h+='<div>'+(nc?'<span class="pnb">'+nc+' notes</span>':'')+'</div></div>';
-});
+// ── PEOPLE (employees/contacts at this company) ──
+h+='<div class="card"><div class="card-head"><div class="card-title">Contacts</div><div class="card-count">'+ppl.length+'</div></div>';
+if(!ppl.length)h+='<div style="font-size:12px;color:var(--ink-4);padding:8px 0">No contacts linked — hit Enrich to find them</div>';
+else {
+  var seniorPpl = ppl.filter(function(p){return p.seniority_level&&['c_suite','vp','director'].includes(p.seniority_level)}).length;
+  var notedPpl = ppl.filter(function(p){return parseInt(p.note_count)>0}).length;
+  h+='<div style="font-size:11px;color:var(--ink-3);margin-bottom:8px">'+seniorPpl+' senior · '+notedPpl+' with notes</div>';
+  h+=cappedList(ppl, 6, function(p){
+    var pi=(p.full_name||'').split(' ').map(function(w){return w[0]}).join('').slice(0,2).toUpperCase();
+    var nc=parseInt(p.note_count)||0;
+    return '<div class="prow" onclick="location.href=\'/person.html?id='+p.id+'\'"><div class="pid"><div class="pav'+(nc?' noted':'')+'">'+pi+'</div><div style="min-width:0"><div class="pn">'+esc(p.full_name)+'</div><div class="pt">'+esc(p.current_title||'')+'</div></div></div><div>'+(nc?'<span class="pnb">'+nc+'</span>':'')+'</div></div>';
+  });
+}
 h+='</div>'; // close people card
 
-// ── SIDEBAR CARDS ──
-
-// Placements
-if(pls.length||c.is_client){
-  h+='<div class="card"><div class="card-head"><div class="card-title">Placements</div></div>';
-  if(totalFees)h+='<div style="font-family:var(--mono);font-size:18px;font-weight:600;color:var(--emerald);margin-bottom:10px">'+money(totalFees)+' total</div>';
-  if(!pls.length)h+='<div class="empty">No placements recorded</div>';
-  else pls.forEach(pl=>{
-    h+='<div class="plrow"><div class="plinfo"><div class="plrole">'+esc(pl.role_title||pl.candidate_name||'Placement')+'</div><div class="pldet">'+(pl.candidate_name?esc(pl.candidate_name)+' · ':'')+fmtD(pl.placement_date)+(pl.fee_type?' · '+esc(pl.fee_type):'')+'</div></div><div class="plfee">'+money(pl.placement_fee)+'</div></div>';
-  });
-  h+='</div>';
+// ── SIDEBAR CARDS (order: Searches, Documents, Placements/Revenue, Details) ──
+var expandId = 0;
+function cappedList(items, limit, renderFn) {
+  var vis = items.slice(0, limit);
+  var hid = items.slice(limit);
+  var out = vis.map(renderFn).join('');
+  if (hid.length) {
+    var eid = 'expand_' + (++expandId);
+    out += '<div id="' + eid + '" style="display:none">' + hid.map(renderFn).join('') + '</div>';
+    out += '<button onclick="document.getElementById(\'' + eid + '\').style.display=\'block\';this.style.display=\'none\'" style="width:100%;padding:6px;margin-top:6px;font-size:11px;color:var(--blue);background:var(--surface-cool);border:1px solid var(--rule);border-radius:6px;cursor:pointer;font-family:var(--sans)">Show ' + hid.length + ' more</button>';
+  }
+  return out;
 }
 
-// Documents
-// Searches / Opportunities
+// Searches
 if(opps.length){
-  h+='<div class="card"><div class="card-head"><div class="card-title">Searches</div><div class="card-count">'+opps.length+' · '+pipelineTotal+' candidates</div></div>';
-  opps.forEach(function(o){
-    var statusColor = o.status==='placed'?'var(--emerald)':o.status==='interviewing'?'var(--blue)':o.status==='on_hold'?'var(--ink-4)':'var(--amber)';
-    h+='<div style="padding:6px 0;border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:13px;font-weight:500">'+esc(o.title)+'</div><div style="font-size:11px;color:var(--ink-3)">'+(o.seniority_level||'')+' · '+parseInt(o.candidate_count||0)+' candidates</div></div><span style="font-size:10px;padding:2px 8px;border-radius:10px;background:'+statusColor+'18;color:'+statusColor+';font-weight:600">'+esc(o.status)+'</span></div>';
+  var activeOpps = opps.filter(function(o){return o.status==='interviewing'||o.status==='sourcing'||o.status==='offer'}).length;
+  var placedOpps = opps.filter(function(o){return o.status==='placed'}).length;
+  h+='<div class="card"><div class="card-head"><div class="card-title">Searches</div><div class="card-count">'+opps.length+'</div></div>';
+  h+='<div style="font-size:11px;color:var(--ink-3);margin-bottom:8px">'+activeOpps+' active · '+placedOpps+' placed · '+pipelineTotal+' candidates in pipeline</div>';
+  h+=cappedList(opps, 6, function(o){
+    var sc = o.status==='placed'?'var(--emerald)':o.status==='interviewing'?'var(--blue)':o.status==='on_hold'?'var(--ink-4)':'var(--amber)';
+    return '<div style="padding:5px 0;border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center"><div style="min-width:0"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(o.title)+'</div><div style="font-size:10px;color:var(--ink-4)">'+parseInt(o.candidate_count||0)+' candidates</div></div><span style="font-size:9px;padding:2px 7px;border-radius:10px;background:'+sc+'18;color:'+sc+';font-weight:600;flex-shrink:0;margin-left:6px">'+esc(o.status)+'</span></div>';
   });
   h+='</div>';
 }
 
+// Documents & Coverage
 if(docs.length){
-  h+='<div class="card"><div class="card-head"><div class="card-title">Coverage & Documents</div></div>';
-  docs.forEach(d=>{
-    h+='<div class="drow">'+(d.source_url?'<a href="'+esc(d.source_url)+'" target="_blank">'+esc(d.title||'Untitled')+'</a>':'<span style="font-size:13px;font-weight:500">'+esc(d.title||'Untitled')+'</span>')+'<div class="dm">'+esc(d.source_name||d.source_type||'')+' · '+fmtD(d.published_at)+'</div></div>';
+  h+='<div class="card"><div class="card-head"><div class="card-title">Documents</div><div class="card-count">'+docs.length+'</div></div>';
+  h+=cappedList(docs, 6, function(d){
+    return '<div class="drow">'+(d.source_url?'<a href="'+esc(d.source_url)+'" target="_blank" style="font-size:12px">'+esc((d.title||'Untitled').slice(0,60))+'</a>':'<span style="font-size:12px;font-weight:500">'+esc((d.title||'Untitled').slice(0,60))+'</span>')+'<div class="dm" style="font-size:10px">'+esc(d.source_name||d.source_type||'')+' · '+fmtD(d.published_at)+'</div></div>';
+  });
+  h+='</div>';
+}
+
+// Placements & Revenue (subordinate position)
+if(pls.length||c.is_client){
+  h+='<div class="card"><div class="card-head"><div class="card-title">Revenue</div><div class="card-count">'+pls.length+' placements</div></div>';
+  if(totalFees)h+='<div style="font-family:var(--mono);font-size:16px;font-weight:600;color:var(--emerald);margin-bottom:8px">'+money(totalFees)+' total revenue</div>';
+  if(!pls.length)h+='<div style="font-size:12px;color:var(--ink-4)">No placements recorded</div>';
+  else h+=cappedList(pls, 6, function(pl){
+    return '<div class="plrow"><div class="plinfo"><div class="plrole" style="font-size:12px">'+esc(pl.role_title||pl.candidate_name||'Placement')+'</div><div class="pldet" style="font-size:10px">'+(pl.candidate_name?esc(pl.candidate_name)+' · ':'')+fmtD(pl.placement_date)+'</div></div><div class="plfee">'+money(pl.placement_fee)+'</div></div>';
   });
   h+='</div>';
 }
 
 // Details
-h+='<div class="card"><div class="card-head"><div class="card-title">Details</div></div><div style="font-size:13px;color:var(--ink-2);line-height:2.2">';
-if(c.sector)h+='<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Sector</span><br>'+esc(c.sector)+(c.sub_sector?' / '+esc(c.sub_sector):'')+'</div>';
-if(c.geography)h+='<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Geography</span><br>'+esc(c.geography)+'</div>';
-if(c.employee_count_band)h+='<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Size</span><br>'+esc(c.employee_count_band)+'</div>';
-if(c.domain)h+='<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Website</span><br><a href="https://'+esc(c.domain)+'" target="_blank" style="color:var(--blue);text-decoration:none">'+esc(c.domain)+'</a></div>';
-if(c.aliases&&c.aliases.length)h+='<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Also known as</span><br>'+c.aliases.map(a=>esc(a)).join(', ')+'</div>';
+h+='<div class="card"><div class="card-head"><div class="card-title">Details</div></div><div style="font-size:12px;color:var(--ink-2);line-height:2">';
+if(c.sector)h+='<div><span style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Sector</span><br>'+esc(c.sector)+(c.sub_sector?' / '+esc(c.sub_sector):'')+'</div>';
+if(c.geography)h+='<div><span style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Geography</span><br>'+esc(c.geography)+'</div>';
+if(c.employee_count_band)h+='<div><span style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Size</span><br>'+esc(c.employee_count_band)+'</div>';
+if(c.domain)h+='<div><span style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Website</span><br><a href="https://'+esc(c.domain)+'" target="_blank" style="color:var(--blue);text-decoration:none">'+esc(c.domain)+'</a></div>';
+if(c.aliases&&c.aliases.length)h+='<div><span style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);font-weight:700">Also known as</span><br>'+c.aliases.map(function(a){return esc(a)}).join(', ')+'</div>';
 h+='</div></div>';
 
 h+='</div>'; // close card-grid
