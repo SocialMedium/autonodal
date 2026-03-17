@@ -69,13 +69,17 @@ async function mergePeople(keepId, removeId) {
     }
   }
 
-  // Delete the duplicate
-  await pool.query('DELETE FROM person_scores WHERE person_id = $1', [removeId]);
-  await pool.query('DELETE FROM team_proximity WHERE person_id = $1', [removeId]);
-  await pool.query('DELETE FROM interactions WHERE person_id = $1', [removeId]);
-  await pool.query('DELETE FROM pipeline_contacts WHERE person_id = $1', [removeId]);
-  await pool.query('DELETE FROM person_signals WHERE person_id = $1', [removeId]);
-  await pool.query('DELETE FROM people WHERE id = $1', [removeId]);
+  // Delete the duplicate — clean up all FK references
+  const fkTables = ['person_scores', 'team_proximity', 'interactions', 'pipeline_contacts',
+    'person_signals', 'person_content', 'person_content_sources', 'person_constraints'];
+  for (const t of fkTables) {
+    try { await pool.query(`DELETE FROM ${t} WHERE person_id = $1`, [removeId]); } catch(e) {}
+  }
+  // Also try conversions.person_id
+  try { await pool.query('UPDATE conversions SET person_id = $1 WHERE person_id = $2', [keepId, removeId]); } catch(e) {}
+  try { await pool.query('DELETE FROM people WHERE id = $1', [removeId]); } catch(e) {
+    console.log('    ⚠️ Could not delete', removeId, ':', e.message.slice(0, 60));
+  }
 }
 
 function pickPrimary(a, b) {
