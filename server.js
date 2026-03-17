@@ -476,6 +476,91 @@ app.get('/api/auth/gmail/callback', async (req, res) => {
     ]);
 
     console.log(`✅ Google connected (Gmail + Drive): ${userInfo.email} for user ${stateData.userId}`);
+
+    // Trigger async Drive ingestion in background
+    setImmediate(async () => {
+      try {
+        console.log(`📁 Auto-ingesting Drive files for ${userInfo.email}...`);
+        const freshToken = tokens.access_token;
+        const userId = stateData.userId;
+        const tenantId = ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+        const crypto = require('crypto');
+
+        const mimeTypes = [
+          ['application/vnd.google-apps.document', 'google_doc', 'Google Docs'],
+          ['application/vnd.google-apps.spreadsheet', 'google_sheet', 'Google Sheets'],
+          ['application/vnd.google-apps.presentation', 'google_slides', 'Google Slides'],
+        ];
+
+        let totalIngested = 0;
+        for (const [mime, typeLabel, sourceName] of mimeTypes) {
+          let pageToken = '';
+          do {
+            const params = new URLSearchParams({ q: `mimeType = '${mime}' and trashed = false`, fields: 'nextPageToken,files(id,name,mimeType,modifiedTime,webViewLink)', pageSize: '100', orderBy: 'modifiedTime desc' });
+            if (pageToken) params.set('pageToken', pageToken);
+            const listRes = await fetch('https://www.googleapis.com/drive/v3/files?' + params, { headers: { Authorization: 'Bearer ' + freshToken } });
+            if (!listRes.ok) break;
+            const listData = await listRes.json();
+            const files = listData.files || [];
+            pageToken = listData.nextPageToken || '';
+
+            for (const file of files) {
+              const hash = crypto.createHash('md5').update('gdrive:' + file.id).digest('hex');
+              const { rows: existing } = await pool.query('SELECT id FROM external_documents WHERE source_url_hash = $1', [hash]);
+              if (existing.length) continue;
+
+              // Extract content
+              let content = '';
+              if (mime.includes('document') || mime.includes('presentation')) {
+                const r = await fetch('https://www.googleapis.com/drive/v3/files/' + file.id + '/export?mimeType=text/plain', { headers: { Authorization: 'Bearer ' + freshToken } });
+                if (r.ok) content = await r.text();
+              } else if (mime.includes('spreadsheet')) {
+                const sr = await fetch('https://sheets.googleapis.com/v4/spreadsheets/' + file.id + '?fields=sheets.properties.title', { headers: { Authorization: 'Bearer ' + freshToken } });
+                if (sr.ok) {
+                  const sd = await sr.json();
+                  const parts = [];
+                  for (const s of (sd.sheets || []).slice(0, 5)) {
+                    const vr = await fetch('https://sheets.googleapis.com/v4/spreadsheets/' + file.id + '/values/' + encodeURIComponent(s.properties.title), { headers: { Authorization: 'Bearer ' + freshToken } });
+                    if (vr.ok) { const d = await vr.json(); parts.push((d.values || []).map(r => r.join('\t')).join('\n')); }
+                  }
+                  content = parts.join('\n\n');
+                }
+              }
+              if (!content || content.length < 20) continue;
+              const truncated = content.length > 50000 ? content.substring(0, 50000) : content;
+
+              await pool.query(
+                `INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash, tenant_id, uploaded_by_user_id, published_at, processing_status, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'context_only', NOW()) ON CONFLICT (source_url_hash) DO NOTHING`,
+                [file.name, truncated, sourceName, typeLabel, file.webViewLink || '', hash, tenantId, userId, file.modifiedTime]
+              );
+
+              // Embed
+              if (process.env.OPENAI_API_KEY && process.env.QDRANT_URL) {
+                try {
+                  const emb = await generateQueryEmbedding((file.name + '\n\n' + truncated).slice(0, 8000));
+                  const url = new URL('/collections/documents/points', process.env.QDRANT_URL);
+                  await new Promise((resolve, reject) => {
+                    const body = JSON.stringify({ points: [{ id: hash, vector: emb, payload: { tenant_id: tenantId, title: file.name, source_type: typeLabel } }] });
+                    const qReq = https.request({ hostname: url.hostname, port: url.port || 443, path: url.pathname + '?wait=true', method: 'PUT',
+                      headers: { 'Content-Type': 'application/json', 'api-key': process.env.QDRANT_API_KEY }, timeout: 15000 },
+                      (res) => { const c = []; res.on('data', d => c.push(d)); res.on('end', () => resolve()); });
+                    qReq.on('error', reject); qReq.write(body); qReq.end();
+                  });
+                } catch (e) { /* embed error, doc still stored */ }
+              }
+              totalIngested++;
+              if (totalIngested % 50 === 0) console.log(`  📁 ${userInfo.email}: ${totalIngested} files ingested...`);
+              await new Promise(r => setTimeout(r, 200));
+            }
+          } while (pageToken);
+        }
+        console.log(`✅ Drive auto-ingest complete for ${userInfo.email}: ${totalIngested} files`);
+      } catch (e) {
+        console.error(`⚠️ Drive auto-ingest error for ${userInfo?.email}: ${e.message}`);
+      }
+    });
+
     const sep = returnTo.includes('?') ? '&' : '?';
     res.redirect(`${returnTo}${sep}gmail=connected`);
   } catch (err) {
