@@ -1759,41 +1759,14 @@ body {
       </div>
     </div>
 
-    <!-- RE-ENGAGE WINDOWS (static for now) -->
+    <!-- RE-ENGAGE WINDOWS -->
     <div class="side-zone">
       <div class="side-zone-header">
         <div class="side-zone-rule"></div>
         <div class="side-zone-title">Re-engage Windows</div>
-        <div class="side-zone-subtitle">Timing-based opportunities from temporal intelligence</div>
+        <div class="side-zone-subtitle">Candidates with timing signals — dormant contacts at companies in flux</div>
       </div>
-
-      <div class="reengage-item">
-        <div class="reengage-name">Marcus Chen</div>
-        <div class="reengage-reason">8 months elapsed since "timing not right." Project Atlas shipped. LinkedIn updated. WhatsApp reply avg: 14 min.</div>
-        <div class="reengage-signals">
-          <span class="reengage-signal timing">TIMING OPEN</span>
-          <span class="reengage-signal channel">WHATSAPP</span>
-          <span class="reengage-signal trigger">PROJECT SHIPPED</span>
-        </div>
-      </div>
-
-      <div class="reengage-item">
-        <div class="reengage-name">Lisa Wang</div>
-        <div class="reengage-reason">12-month career break ending. LinkedIn profile updated last week. Previously VP Product at Atlassian.</div>
-        <div class="reengage-signals">
-          <span class="reengage-signal timing">BREAK ENDING</span>
-          <span class="reengage-signal trigger">LINKEDIN UPDATED</span>
-        </div>
-      </div>
-
-      <div class="reengage-item">
-        <div class="reengage-name">David Park</div>
-        <div class="reengage-reason">Retention bonus cliff in 6 weeks. Company restructuring. Last interaction: positive, "open to hearing about the right thing."</div>
-        <div class="reengage-signals">
-          <span class="reengage-signal timing">CLIFF IN 6W</span>
-          <span class="reengage-signal trigger">RESTRUCTURING</span>
-        </div>
-      </div>
+      <div id="reengageBody"><div style="text-align:center;padding:20px;color:var(--ink-4);font-size:13px">Loading...</div></div>
     </div>
 
   </div>
@@ -2872,6 +2845,40 @@ async function loadConvergingThemes() {
   }
 }
 
+// ── Re-engage Windows ──
+async function loadReengageWindows() {
+  const container = document.getElementById('reengageBody');
+  try {
+    const data = await api('/api/reengage-windows');
+    if (!data || data.length === 0) {
+      container.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--ink-3)">No re-engage candidates found. This surfaces senior contacts at companies with recent restructuring, layoffs, or leadership changes who you haven\'t spoken to in 60+ days.</div>';
+      return;
+    }
+    const SIG_TAGS = { restructuring: 'RESTRUCTURING', layoffs: 'LAYOFFS', ma_activity: 'M&A', leadership_change: 'LEADERSHIP CHANGE' };
+    container.innerHTML = data.map(r => {
+      const daysSince = Math.round(r.days_since_contact || 0);
+      const lastChannel = (r.last_channel || '').replace(/_/g, ' ');
+      const reason = esc(r.current_title || '') + ' at ' + esc(r.current_company_name || '') +
+        '. ' + (daysSince > 0 ? daysSince + ' days since last ' + lastChannel + '. ' : '') +
+        'Company signal: ' + esc((r.signal_type || '').replace(/_/g, ' ')) +
+        ' (' + Math.round((r.confidence_score || 0) * 100) + '% confidence).';
+      const tag = SIG_TAGS[r.signal_type] || r.signal_type?.replace(/_/g, ' ').toUpperCase();
+      const timingTag = daysSince > 180 ? 'DORMANT ' + Math.round(daysSince / 30) + 'M' : daysSince + 'D AGO';
+      return '<div class="reengage-item" style="cursor:pointer" onclick="location.href=\'/person.html?id=' + r.id + '\'">' +
+        '<div class="reengage-name">' + esc(r.full_name) + '</div>' +
+        '<div class="reengage-reason">' + reason + '</div>' +
+        '<div class="reengage-signals">' +
+          '<span class="reengage-signal timing">' + timingTag + '</span>' +
+          '<span class="reengage-signal trigger">' + tag + '</span>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch (e) {
+    console.error('Re-engage error:', e);
+    container.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--ink-4)">Could not load</div>';
+  }
+}
+
 async function init() {
   setEditionDate();
 
@@ -2903,6 +2910,7 @@ async function init() {
   loadContentQueue();
   loadTalentInMotion();
   loadConvergingThemes();
+  loadReengageWindows();
   checkGoogleConnection();
 }
 

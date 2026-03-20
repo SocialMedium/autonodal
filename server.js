@@ -1360,6 +1360,57 @@ app.get('/api/converging-themes', authenticateToken, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// RE-ENGAGE WINDOWS — dormant contacts at companies with recent signals
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/reengage-windows', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT DISTINCT ON (p.id)
+        p.id, p.full_name, p.current_title, p.current_company_name,
+        se.signal_type, se.company_name AS signal_company, se.confidence_score,
+        se.detected_at AS signal_date,
+        i.interaction_at AS last_contact,
+        i.interaction_type AS last_channel,
+        EXTRACT(DAY FROM NOW() - i.interaction_at) AS days_since_contact,
+        ps.engagement_score, ps.timing_score
+      FROM people p
+      JOIN companies c ON c.id = p.current_company_id
+      JOIN signal_events se ON se.company_id = c.id
+        AND se.signal_type::text IN ('restructuring', 'layoffs', 'ma_activity', 'leadership_change')
+        AND se.detected_at > NOW() - INTERVAL '30 days'
+        AND COALESCE(se.is_megacap, false) = false
+      LEFT JOIN LATERAL (
+        SELECT interaction_at, interaction_type FROM interactions
+        WHERE person_id = p.id AND tenant_id = $1
+        ORDER BY interaction_at DESC LIMIT 1
+      ) i ON true
+      LEFT JOIN person_scores ps ON ps.person_id = p.id
+      WHERE p.tenant_id = $1
+        AND p.current_title IS NOT NULL
+        AND p.seniority_level IN ('C-level', 'VP', 'Director', 'Head')
+        AND i.interaction_at IS NOT NULL
+        AND i.interaction_at < NOW() - INTERVAL '60 days'
+      ORDER BY p.id, se.confidence_score DESC
+    `, [req.tenant_id]);
+
+    // Rank by signal strength + dormancy
+    const ranked = rows
+      .map(r => ({
+        ...r,
+        score: (r.confidence_score || 0) * 0.4 + Math.min((r.days_since_contact || 0) / 365, 1) * 0.3 + (r.timing_score || 0) * 0.3
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6);
+
+    res.json(ranked);
+  } catch (err) {
+    console.error('Re-engage windows error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SIGNALS
 // ═══════════════════════════════════════════════════════════════════════════════
 
