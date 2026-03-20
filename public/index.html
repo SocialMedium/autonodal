@@ -2865,15 +2865,8 @@ async function loadConvergingThemes() {
 }
 
 // ── Top Podcasts ──
-const POD_ICONS = {
-  'a16z Podcast': '🎙️', 'All-In Podcast': '🎙️', '20VC - Twenty Minute VC': '🎙️',
-  'This Week in Startups': '🚀', 'My First Million': '💰', 'How I Built This': '🏗️',
-  'Masters of Scale': '📈', 'Invest Like the Best': '📊', "Lenny's Podcast": '💡',
-  'Acquired': '🎯', 'The Full Ratchet': '📉', 'Equity - TechCrunch': '💼',
-  'The Knowledge Project': '🧠', 'In Machines We Trust (MIT)': '🤖', 'Asia Tech Podcast': '🌏'
-};
 function renderPodcastItem(p, i) {
-  var icon = POD_ICONS[p.source_name] || '🎧';
+  var podIcon = typeof icon === 'function' ? '<span style="display:inline-flex;vertical-align:middle;color:var(--ink-3)">' + icon('radio', 14) + '</span>' : '🎧';
   var thumb = p.image_url
     ? '<img src="' + esc(p.image_url) + '" style="width:36px;height:36px;border-radius:6px;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" loading="lazy">'
     : '<div class="podcast-rank">' + (i + 1) + '</div>';
@@ -2881,7 +2874,7 @@ function renderPodcastItem(p, i) {
     thumb +
     '<div class="podcast-info">' +
       '<div class="podcast-title">' + esc(p.title || 'Untitled') + '</div>' +
-      '<div class="podcast-meta">' + icon + ' ' + esc(p.source_name || '') +
+      '<div class="podcast-meta">' + podIcon + ' ' + esc(p.source_name || '') +
         (p.published_at ? ' · ' + ago(p.published_at) : '') + '</div>' +
     '</div>' +
   '</div>';
