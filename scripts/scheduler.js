@@ -192,14 +192,20 @@ async function pipelineIngestSignals() {
   const Parser = require('rss-parser');
   const parser = new Parser({
     timeout: 10000,
-    customFields: { item: [['media:content', 'mediaContent'], ['media:thumbnail', 'mediaThumbnail']] }
+    customFields: {
+      item: [['media:content', 'mediaContent'], ['media:thumbnail', 'mediaThumbnail'], ['itunes:image', 'itunesImage']],
+      feed: [['itunes:image', 'itunesImage']]
+    }
   });
 
-  function extractImage(item) {
-    // Try multiple sources for an image URL
+  function extractImage(item, feedImage) {
+    // Try item-level sources first
     if (item.enclosure?.url && item.enclosure.type?.startsWith('image')) return item.enclosure.url;
     if (item.mediaContent?.$?.url) return item.mediaContent.$.url;
     if (item.mediaThumbnail?.$?.url) return item.mediaThumbnail.$.url;
+    // Per-episode itunes:image (some podcasts have per-episode artwork)
+    if (item.itunesImage?.$?.href) return item.itunesImage.$.href;
+    if (item.itunes?.image) return item.itunes.image;
     // Try extracting from HTML content
     const htmlContent = item.content || item['content:encoded'] || '';
     const imgMatch = htmlContent.match(/<img[^>]+src=["']([^"']+)["']/i);
@@ -207,6 +213,8 @@ async function pipelineIngestSignals() {
     // Try og:image in description
     const ogMatch = htmlContent.match(/og:image[^"]*content=["']([^"']+)["']/i);
     if (ogMatch) return ogMatch[1];
+    // Fall back to feed-level image (podcast show artwork)
+    if (feedImage) return feedImage;
     return null;
   }
 
@@ -214,6 +222,12 @@ async function pipelineIngestSignals() {
     try {
       const feed = await parser.parseURL(source.url);
       stats.fetched++;
+
+      // Extract feed-level image (podcast show artwork, channel logo)
+      const feedImage = feed.image?.url
+        || feed.itunesImage?.$?.href
+        || feed.itunes?.image
+        || null;
 
       for (const item of (feed.items || []).slice(0, 20)) {
         const url = item.link || item.guid;
@@ -227,7 +241,7 @@ async function pipelineIngestSignals() {
 
         const content = (item.contentSnippet || item.content || '')
           .replace(/<[^>]+>/g, ' ').slice(0, 10000);
-        const imageUrl = extractImage(item);
+        const imageUrl = extractImage(item, feedImage);
 
         await pool.query(`
           INSERT INTO external_documents (
