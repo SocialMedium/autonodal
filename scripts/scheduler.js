@@ -407,13 +407,14 @@ Return ONLY valid JSON array:
           if (companyId) {
             await pool.query(`
               INSERT INTO signal_events (
-                company_id, signal_type, signal_category,
+                company_id, company_name, signal_type, signal_category,
                 confidence_score, evidence_summary, hiring_implications,
                 source_document_id, detected_at, image_url, source_url
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8, $9)
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10)
               ON CONFLICT DO NOTHING
             `, [
               companyId,
+              signal.company,
               signal.signal_type,
               'market',
               signal.confidence || 0.5,
