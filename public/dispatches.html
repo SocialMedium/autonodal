@@ -213,7 +213,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
     <div class="chip" onclick="setFilter(this, 'reviewed')">Reviewed</div>
     <div class="chip" onclick="setFilter(this, 'sent')">Sent</div>
     <span style="width:1px;height:20px;background:var(--rule);margin:0 6px"></span>
-    <div class="chip" onclick="setRegion(this, '')">All Regions</div>
+    <div class="chip active" onclick="setRegion(this, '')">All Regions</div>
     <div class="chip" onclick="setRegion(this, 'AU')">🇦🇺 AU</div>
     <div class="chip" onclick="setRegion(this, 'SG')">🇸🇬 SEA</div>
     <div class="chip" onclick="setRegion(this, 'UK')">🇬🇧 UK</div>
@@ -379,6 +379,12 @@ async function loadDispatches() {
           ${d.blog_title ? '<div class="dc-blog-title" style="font-size:12px;color:var(--ink-2);font-weight:500">' + esc(d.blog_title) + '</div>' : ''}
           ${entry ? '<div class="dc-entry">\u2b50 Best entry: <strong>' + esc(entry.name) + '</strong>' + (entry.title ? ' \u00b7 ' + esc(entry.title) : '') + (entry.approach_via ? ' \u00b7 via ' + esc(entry.approach_via) : '') + '</div>' : ''}
           ${d.opportunity_angle ? '<div class="dc-angle">\ud83c\udfaf ' + esc(d.opportunity_angle) + '</div>' : ''}
+          <div class="dc-actions" style="display:flex;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid var(--rule)" onclick="event.stopPropagation()">
+            ${!d.claimed_by ? '<button class="btn-sm" style="background:var(--violet-soft);color:var(--violet);border-color:var(--violet)" onclick="quickClaim(\'' + d.id + '\',this)">Claim</button>' : '<span style="font-size:11px;color:var(--violet);font-weight:600">Claimed' + (d.claimed_by_name ? ' by ' + esc(d.claimed_by_name) : '') + '</span>'}
+            ${d.status === 'draft' || d.status === 'claimed' ? '<button class="btn-sm" style="background:var(--blue-soft);color:var(--blue);border-color:var(--blue)" onclick="quickStatus(\'' + d.id + '\',\'reviewed\',this)">Review</button>' : ''}
+            ${d.status === 'reviewed' ? '<button class="btn-sm" style="background:var(--emerald-soft);color:var(--emerald);border-color:var(--emerald)" onclick="quickStatus(\'' + d.id + '\',\'sent\',this)">Mark Sent</button>' : ''}
+            <button class="btn-sm" style="margin-left:auto" onclick="quickStatus('${d.id}','archived',this)">Archive</button>
+          </div>
         </div>
       `);
     });
@@ -687,7 +693,33 @@ async function triggerRescan() {
   }
 }
 
-// ── Claim ──
+// ── Quick actions from card ──
+async function quickClaim(id, btn) {
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    await api('/api/dispatches/' + id + '/claim', { method: 'POST', body: {} });
+    btn.textContent = 'Claimed';
+    btn.style.background = 'var(--violet)'; btn.style.color = '#fff';
+  } catch (e) { btn.textContent = 'Failed'; }
+}
+
+async function quickStatus(id, status, btn) {
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    await api('/api/dispatches/' + id, { method: 'PATCH', body: { status } });
+    btn.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    btn.style.opacity = '0.6';
+    // Update the card badge
+    const card = btn.closest('.dispatch-card');
+    if (card) {
+      card.className = 'dispatch-card status-' + status;
+      const badge = card.querySelector('.badge[class*="status-"]');
+      if (badge) { badge.className = 'badge status-' + status; badge.textContent = status; }
+    }
+  } catch (e) { btn.textContent = 'Failed'; }
+}
+
+// ── Claim (detail panel) ──
 async function claimThisDispatch() {
   if (!currentDispatchId) return;
   try {
