@@ -1329,21 +1329,28 @@ app.get('/api/converging-themes', authenticateToken, async (req, res) => {
     `, [req.tenant_id]);
 
     // Placement pipeline potential — searches with matching signals
-    const { rows: pipeline } = await pool.query(`
-      SELECT s.title as search_title, s.status, cl.name as client_name,
-             COUNT(DISTINCT se.id) as matching_signals,
-             COUNT(DISTINCT se.company_id) as signalling_companies
-      FROM opportunities s
-      JOIN accounts cl ON cl.id = s.client_id
-      JOIN companies co ON co.id = cl.company_id
-      JOIN signal_events se ON se.company_id = co.id AND se.detected_at > NOW() - INTERVAL '30 days'
-      WHERE s.status IN ('sourcing', 'interviewing')
-        AND s.tenant_id = $1
-      GROUP BY s.id, s.title, s.status, cl.name
-      HAVING COUNT(DISTINCT se.id) >= 2
-      ORDER BY COUNT(DISTINCT se.id) DESC
-      LIMIT 5
-    `, [req.tenant_id]);
+    let pipeline = [];
+    try {
+      const { rows } = await pool.query(`
+        SELECT s.title as search_title, s.status, a.name as client_name,
+               COUNT(DISTINCT se.id) as matching_signals,
+               COUNT(DISTINCT se.company_id) as signalling_companies
+        FROM searches s
+        JOIN search_candidates sc ON sc.search_id = s.id
+        JOIN people p ON p.id = sc.person_id
+        JOIN signal_events se ON se.company_id = p.current_company_id AND se.detected_at > NOW() - INTERVAL '30 days'
+        LEFT JOIN accounts a ON a.id = s.project_id
+        WHERE s.status IN ('sourcing', 'interviewing')
+          AND s.tenant_id = $1
+        GROUP BY s.id, s.title, s.status, a.name
+        HAVING COUNT(DISTINCT se.id) >= 2
+        ORDER BY COUNT(DISTINCT se.id) DESC
+        LIMIT 5
+      `, [req.tenant_id]);
+      pipeline = rows;
+    } catch (e) {
+      console.warn('Converging themes pipeline query failed:', e.message);
+    }
 
     res.json({ signal_themes: themes, sector_themes: sectorThemes, pipeline });
   } catch (err) {
