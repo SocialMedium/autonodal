@@ -1152,13 +1152,13 @@ app.get('/api/market-temperature', authenticateToken, async (req, res) => {
     const total = growth + contraction;
 
     let temperature = 'neutral';
-    let emoji = '🌤️';
+    let emoji = '';
     if (total > 0) {
       const ratio = growth / total;
-      if (ratio > 0.7) { temperature = 'hot'; emoji = '🔥'; }
-      else if (ratio > 0.55) { temperature = 'warm'; emoji = '☀️'; }
-      else if (ratio < 0.3) { temperature = 'cold'; emoji = '❄️'; }
-      else if (ratio < 0.45) { temperature = 'cooling'; emoji = '🌧️'; }
+      if (ratio > 0.7) { temperature = 'hot'; }
+      else if (ratio > 0.55) { temperature = 'warm'; }
+      else if (ratio < 0.3) { temperature = 'cold'; }
+      else if (ratio < 0.45) { temperature = 'cooling'; }
     }
 
     // Build narrative summary via simple template
@@ -1170,7 +1170,7 @@ app.get('/api/market-temperature', authenticateToken, async (req, res) => {
 
     const summary = total === 0
       ? 'No significant macro signals this week.'
-      : `${emoji} Market is ${temperature}. ${total} signals from major public companies this week: ${topMoves.join('; ')}.${contraction > 0 ? ' ' + contraction + ' contraction signals may release senior talent downstream.' : ''}`;
+      : `Market is ${temperature}. ${total} signals from major public companies this week: ${topMoves.join('; ')}.${contraction > 0 ? ' ' + contraction + ' contraction signals may release senior talent downstream.' : ''}`;
 
     res.json({
       temperature,

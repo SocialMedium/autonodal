@@ -1579,10 +1579,10 @@ body {
     </div>
   </div>
   <div class="command-prompts">
-    <div class="prompt-chip" onclick="searchPrompt('VP engineering scaling fintech APAC')"><span class="emoji">🎯</span> VP Eng fintech APAC</div>
-    <div class="prompt-chip" onclick="searchPrompt('candidates at companies with restructuring layoffs')"><span class="emoji">⚡</span> Candidates at restructuring cos</div>
-    <div class="prompt-chip" onclick="searchPrompt('timing not right re-engagement window')"><span class="emoji">🔄</span> Re-engagement candidates</div>
-    <div class="prompt-chip" onclick="searchPrompt('Series B AI startup hiring CTO')"><span class="emoji">🏗️</span> AI startup hiring CTO</div>
+    <div class="prompt-chip" onclick="searchPrompt('VP engineering scaling fintech APAC')"><span class="emoji" id="pc1"></span> VP Eng fintech APAC</div>
+    <div class="prompt-chip" onclick="searchPrompt('candidates at companies with restructuring layoffs')"><span class="emoji" id="pc2"></span> Candidates at restructuring cos</div>
+    <div class="prompt-chip" onclick="searchPrompt('timing not right re-engagement window')"><span class="emoji" id="pc3"></span> Re-engagement candidates</div>
+    <div class="prompt-chip" onclick="searchPrompt('Series B AI startup hiring CTO')"><span class="emoji" id="pc4"></span> AI startup hiring CTO</div>
   </div>
 </section>
 
@@ -1909,7 +1909,20 @@ function buildAssistantBrief(stats) {
 }
 
 const REGION_FLAGS = { AU: '🇦🇺', SG: '🇸🇬', UK: '🇬🇧', US: '🇺🇸', APAC: '🌏', EMEA: '🌍' };
-const SIG_ICONS_BRIEF = { capital_raising: '💰', ma_activity: '🔗', product_launch: '🚀', partnership: '🤝', geographic_expansion: '🌐', restructuring: '⚙️', leadership_change: '👤', layoffs: '📉', strategic_hiring: '👥' };
+const SIG_ICONS_BRIEF = {};
+if (typeof signalIcon === 'function') {
+  ['capital_raising','ma_activity','product_launch','partnership','geographic_expansion','restructuring','leadership_change','layoffs','strategic_hiring'].forEach(function(k) {
+    SIG_ICONS_BRIEF[k] = '<span style="display:inline-flex;vertical-align:middle;color:var(--ink-3)">' + signalIcon(k, 16) + '</span>';
+  });
+}
+// Inject Lucide icons into prompt chips
+if (typeof icon === 'function') {
+  var chipIcons = { pc1: 'target', pc2: 'zap', pc3: 'refresh-cw', pc4: 'cpu' };
+  Object.entries(chipIcons).forEach(function([id, name]) {
+    var el = document.getElementById(id);
+    if (el) el.innerHTML = '<span style="display:inline-flex;vertical-align:middle;color:var(--ink-3)">' + icon(name, 14) + '</span>';
+  });
+}
 
 async function loadPersonalBrief() {
   const body = document.getElementById('assistantBody');
@@ -1930,7 +1943,7 @@ async function loadPersonalBrief() {
     if (data.contact_signals && data.contact_signals.length > 0) {
       html += '<div style="margin-top:14px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--blue);margin-bottom:6px">Your Contacts in Signals</div>';
       data.contact_signals.slice(0, 3).forEach(c => {
-        const icon = SIG_ICONS_BRIEF[c.signal_type] || '📡';
+        const icon = SIG_ICONS_BRIEF[c.signal_type] || (typeof icon === 'function' ? '<span style="display:inline-flex;color:var(--ink-4)">' + icon('radio', 16) + '</span>' : '');
         html += '<div class="priority-item" style="cursor:pointer" onclick="window.location=\'/person.html?id=' + c.person_id + '\'">' +
           '<div class="priority-number" style="font-size:16px">' + icon + '</div>' +
           '<div class="priority-text"><strong>' + esc(c.full_name) + '</strong><br>' +
@@ -1945,7 +1958,7 @@ async function loadPersonalBrief() {
     if (data.client_signals && data.client_signals.length > 0) {
       html += '<div style="margin-top:14px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--amber);margin-bottom:6px">Client Activity</div>';
       data.client_signals.slice(0, 3).forEach(s => {
-        const icon = SIG_ICONS_BRIEF[s.signal_type] || '📡';
+        const icon = SIG_ICONS_BRIEF[s.signal_type] || (typeof icon === 'function' ? '<span style="display:inline-flex;color:var(--ink-4)">' + icon('radio', 16) + '</span>' : '');
         html += '<div class="priority-item" style="cursor:pointer" onclick="window.location=\'/company.html?id=' + s.company_id + '\'">' +
           '<div class="priority-number" style="font-size:16px">' + icon + '</div>' +
           '<div class="priority-text"><strong>' + esc(s.company_name) + '</strong> <span style="font-size:10px;padding:1px 5px;background:var(--amber-soft);color:var(--amber);border-radius:3px;font-weight:600">' + esc(s.relationship_tier || 'client') + '</span><br>' +
@@ -1960,7 +1973,7 @@ async function loadPersonalBrief() {
     if (data.region_dispatches && data.region_dispatches.length > 0) {
       html += '<div style="margin-top:14px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--emerald);margin-bottom:6px">' + flag + ' Top Dispatches</div>';
       data.region_dispatches.forEach(d => {
-        const icon = SIG_ICONS_BRIEF[d.signal_type] || '📡';
+        const icon = SIG_ICONS_BRIEF[d.signal_type] || (typeof icon === 'function' ? '<span style="display:inline-flex;color:var(--ink-4)">' + icon('radio', 16) + '</span>' : '');
         html += '<div class="priority-item" style="cursor:pointer" onclick="window.location=\'/dispatches.html\';localStorage.setItem(\'open_dispatch\',\'' + d.id + '\')">' +
           '<div class="priority-number" style="font-size:16px">' + icon + '</div>' +
           '<div class="priority-text"><strong>' + esc(d.company_name) + '</strong>' +
@@ -2311,7 +2324,7 @@ function loadMoreSignals() {
 }
 
 function renderDealCard(s) {
-  const icon = SIGNAL_ICONS[s.signal_type] || '📡';
+  const icon = SIGNAL_ICONS[s.signal_type] || (typeof icon === 'function' ? '<span style="display:inline-flex;color:var(--ink-4)">' + icon('radio', 16) + '</span>' : '');
   const badgeClass = SIGNAL_BADGE_CLASS[s.signal_type] || 'deal';
   const label = (s.signal_type || '').replace(/_/g, ' ');
   const conf = Math.round((s.confidence_score || 0) * 100);
@@ -2364,7 +2377,7 @@ function renderDealCard(s) {
       </div>
       <div class="deal-badges">
         <span class="badge ${badgeClass}">${label.toUpperCase()}</span>
-        ${s.is_megacap ? '<span class="badge" style="background:#f0f0f0;color:#888;font-style:italic">🌤️ MARKET WEATHER</span>' : ''}
+        ${s.is_megacap ? '<span class="badge" style="background:#f0f0f0;color:#888;font-style:italic">MARKET WEATHER</span>' : ''}
         ${s.is_client ? '<span class="badge client">CLIENT</span>' : ''}
         ${parseInt(s.prox_connection_count) > 0 ? `<button class="badge prox-trigger" data-signal-id="${s.id}" style="background:var(--blue-soft);color:var(--blue);border:1px solid var(--blue);cursor:pointer;font-family:var(--sans);font-size:10px;font-weight:600;padding:2px 8px;border-radius:3px" onmouseenter="this.style.background='var(--blue)';this.style.color='#fff';clearTimeout(this._ht);this._st=setTimeout(()=>ProximityPopup.show(this,'${s.id}'),120)" onmouseleave="this.style.background='var(--blue-soft)';this.style.color='var(--blue)';clearTimeout(this._st);ProximityPopup.scheduleHide()">🔗 ${s.prox_connection_count} proximity${s.best_connector_name ? ' · via ' + esc(s.best_connector_name.split(' ')[0]) : ''}</button>` : ''}
         ${contacts > 0 ? `<a href="${contactsLink}" class="badge" style="background:var(--blue-soft);color:var(--blue);text-decoration:none">👥 ${contacts} contacts</a>` : ''}
@@ -2577,7 +2590,11 @@ async function loadContentQueue() {
 
     countEl.textContent = data.total.toLocaleString() + ' total';
 
-    const typeIcons = { newsletter: '📰', podcast: '🎙️', vc_blog: '📝', rss: '📡', news_pr: '📰', sec_filing: '📑', google_news: '🔍' };
+    const lucideMap = { newsletter: 'mail', podcast: 'radio', vc_blog: 'pen-tool', rss: 'rss', news_pr: 'newspaper', sec_filing: 'file-text', google_news: 'search' };
+    const typeIcons = {};
+    Object.entries(lucideMap).forEach(function([k, v]) {
+      typeIcons[k] = typeof icon === 'function' ? '<span style="display:inline-flex;color:var(--ink-3)">' + icon(v, 15) + '</span>' : k;
+    });
 
     container.innerHTML = data.documents.map((d, i) => `
       <a href="${d.source_url || '#'}" target="_blank" class="queue-item${i === 0 ? ' active' : ''}" style="text-decoration:none;color:inherit">
