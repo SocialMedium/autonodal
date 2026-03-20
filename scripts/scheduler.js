@@ -237,7 +237,7 @@ async function pipelineIngestSignals() {
           ON CONFLICT (source_url_hash) DO NOTHING
         `, [
           source.id, url, urlHash,
-          'rss',
+          source.source_type || 'rss',
           source.name,
           (item.title || '').slice(0, 500),
           content,
