@@ -226,12 +226,13 @@ async function storeSignals(document, analysis, source) {
     try {
       await db.query(`
         INSERT INTO signal_events (
-          company_id, signal_type, signal_category, confidence_score,
+          company_id, company_name, signal_type, signal_category, confidence_score,
           evidence_summary, evidence_snippet, source_document_id,
           source_url, detected_at, hiring_implications
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10)
       `, [
         companyId,
+        analysis.company?.name || null,
         signal.type,
         categorizeSignal(signal.type),
         signal.confidence,
