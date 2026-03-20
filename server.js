@@ -3185,10 +3185,28 @@ app.get('/api/companies', authenticateToken, async (req, res) => {
         SELECT c.id, c.name, c.sector, c.geography, c.domain, c.is_client,
                c.employee_count_band, c.description,
                (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id) AS signal_count,
+               (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id
+                AND se.signal_type::text IN ('capital_raising','product_launch','geographic_expansion','partnership','strategic_hiring')
+                AND se.detected_at > NOW() - INTERVAL '30 days') AS positive_signal_count,
                (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) AS people_count
         FROM companies c
         ${where}
         ORDER BY
+          -- Tier 1: Clients with positive signals (30d)
+          CASE WHEN c.is_client = true AND (SELECT COUNT(*) FROM signal_events se
+            WHERE se.company_id = c.id AND se.detected_at > NOW() - INTERVAL '30 days'
+            AND se.signal_type::text IN ('capital_raising','product_launch','geographic_expansion','partnership','strategic_hiring')
+          ) > 0 THEN 0
+          -- Tier 2: Clients with contacts
+          WHEN c.is_client = true THEN 1
+          -- Tier 3: Non-clients with signals AND contacts
+          WHEN (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.detected_at > NOW() - INTERVAL '30 days') > 0
+            AND (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) > 0 THEN 2
+          -- Tier 4: Companies with contacts only
+          WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) > 0 THEN 3
+          ELSE 4 END,
+          -- Within each tier, sort by signal+contact density
+          (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.detected_at > NOW() - INTERVAL '30 days') DESC,
           (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) DESC,
           c.name
         LIMIT $${limitIdx} OFFSET $${offsetIdx}
