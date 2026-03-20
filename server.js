@@ -1389,7 +1389,7 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
     // ── LATEST: most recent podcast episodes (last 7 days), one per source ──
     const { rows: latest } = await pool.query(`
       SELECT DISTINCT ON (source_name)
-        id, title, source_name, source_url, published_at
+        id, title, source_name, source_url, published_at, image_url
       FROM external_documents
       WHERE source_type = 'podcast'
         AND published_at > NOW() - INTERVAL '7 days'
@@ -1414,7 +1414,7 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
 
           if (docIds.length > 0) {
             const { rows } = await pool.query(`
-              SELECT id, title, source_name, source_url, published_at
+              SELECT id, title, source_name, source_url, published_at, image_url
               FROM external_documents
               WHERE id = ANY($1::uuid[]) AND source_type = 'podcast'
               ORDER BY published_at DESC
@@ -1447,7 +1447,7 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
       const exclude = [...latestIds, ...deepIds];
       const { rows: fallback } = await pool.query(`
         SELECT DISTINCT ON (source_name)
-          id, title, source_name, source_url, published_at
+          id, title, source_name, source_url, published_at, image_url
         FROM external_documents
         WHERE source_type = 'podcast' AND title IS NOT NULL
           AND id != ALL($1::uuid[])

@@ -2874,8 +2874,11 @@ const POD_ICONS = {
 };
 function renderPodcastItem(p, i) {
   var icon = POD_ICONS[p.source_name] || '🎧';
+  var thumb = p.image_url
+    ? '<img src="' + esc(p.image_url) + '" style="width:36px;height:36px;border-radius:6px;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" loading="lazy">'
+    : '<div class="podcast-rank">' + (i + 1) + '</div>';
   return '<div class="podcast-item" onclick="window.open(\'' + esc(p.source_url || '#') + '\',\'_blank\')">' +
-    '<div class="podcast-rank">' + (i + 1) + '</div>' +
+    thumb +
     '<div class="podcast-info">' +
       '<div class="podcast-title">' + esc(p.title || 'Untitled') + '</div>' +
       '<div class="podcast-meta">' + icon + ' ' + esc(p.source_name || '') +
