@@ -47,6 +47,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .enrich-btn:hover { background: #EBF1FE; border-color: var(--blue); color: var(--blue); }
 .enrich-btn.loading { opacity: 0.6; pointer-events: none; }
 .enrich-btn.done { background: #E6F5EC; border-color: var(--emerald); color: var(--emerald); }
+.pheader-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .pinfo { flex: 1; min-width: 0; }
 .pname { font-family: var(--serif); font-size: clamp(22px, 4vw, 28px); font-weight: 600; line-height: 1.2; overflow-wrap: break-word; }
 .ptitle { font-size: 15px; color: var(--ink-2); margin-top: 3px; overflow-wrap: break-word; }
@@ -127,11 +128,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .st-v { font-family: var(--serif); font-size: 18px; font-weight: 600; }
 .st-l { font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--ink-4); font-weight: 600; }
 
-.coll { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--rule); cursor: pointer; }
+.coll { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--rule); cursor: pointer; min-width: 0; overflow: hidden; }
 .coll:hover { background: var(--surface-warm); margin: 0 -6px; padding: 6px; border-radius: 4px; }
 .coll:last-child { border-bottom: none; }
 .coll-av { width: 28px; height: 28px; border-radius: 50%; background: var(--surface-cool); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: var(--ink-3); flex-shrink: 0; }
-.coll-info { min-width: 0; }
+.coll-info { min-width: 0; flex: 1; }
 .coll-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .coll-title { font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -232,9 +233,11 @@ if(p.linkedin_url)h+='<div class="ci">🔗 <a href="'+esc(p.linkedin_url)+'" tar
 else h+='<div class="ci">🔗 <span class="editable" onclick="editField(this,\'linkedin_url\',\'\')">Add LinkedIn</span></div>';
 if(p.phone)h+='<div class="ci">📞 <span class="editable" onclick="editField(this,\'phone\',\''+esc(p.phone)+'\')">'+esc(p.phone)+'</span></div>';
 h+='</div>';
+h+='<div class="pheader-actions">';
 h+='<button class="enrich-btn" id="enrichBtn" onclick="enrichPerson()">🔄 Refresh &amp; Enrich</button>';
 const isPrivate = p.visibility === 'private';
-h+='<button class="enrich-btn'+(isPrivate?' done':'')+'" id="privacyBtn" onclick="togglePrivacy()" style="margin-top:6px">'+(isPrivate?'🔒 Private':'🌐 Visible to team')+'</button>';
+h+='<button class="enrich-btn'+(isPrivate?' done':'')+'" id="privacyBtn" onclick="togglePrivacy()">'+(isPrivate?'🔒 Private':'🌐 Visible to team')+'</button>';
+h+='</div>';
 h+='</div>';
 
 const totalIx=parseInt(s.total||0);

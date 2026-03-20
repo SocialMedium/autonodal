@@ -2034,7 +2034,7 @@ app.patch('/api/people/:id', authenticateToken, async (req, res) => {
   try {
     const allowedFields = ['full_name', 'current_title', 'current_company_name', 'email', 'phone',
                            'linkedin_url', 'location', 'headline', 'seniority_level', 'functional_area', 'bio',
-                           'visibility'];
+                           'visibility', 'email_alt'];
     const updates = [];
     const params = [req.params.id];
     let idx = 1;
@@ -2534,6 +2534,43 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
       }
     } catch (e) {
       enrichResults.embedding = { error: e.message };
+    }
+
+    // 6. Gmail re-link — match unlinked interactions to this person by email/alt_emails
+    try {
+      const { rows: [freshPerson] } = await pool.query(
+        'SELECT email, email_alt FROM people WHERE id = $1 AND tenant_id = $2',
+        [req.params.id, req.tenant_id]
+      );
+      const emailList = [
+        freshPerson.email,
+        freshPerson.email_alt
+      ].filter(Boolean).map(e => e.toLowerCase().trim());
+
+      if (emailList.length > 0) {
+        const { rows: unlinked } = await pool.query(`
+          SELECT id FROM interactions
+          WHERE person_id IS NULL
+            AND tenant_id = $1
+            AND (email_from = ANY($2) OR email_to = ANY($2))
+          LIMIT 500
+        `, [req.tenant_id, emailList]);
+
+        if (unlinked.length > 0) {
+          const ids = unlinked.map(r => r.id);
+          await pool.query(
+            'UPDATE interactions SET person_id = $1 WHERE id = ANY($2) AND tenant_id = $3',
+            [req.params.id, ids, req.tenant_id]
+          );
+          enrichResults.gmail_linked = { count: ids.length, message: `Linked ${ids.length} existing email interactions` };
+        } else {
+          enrichResults.gmail_linked = { count: 0, message: 'No unlinked email interactions found' };
+        }
+      } else {
+        enrichResults.gmail_linked = { count: 0, message: 'No email addresses on file' };
+      }
+    } catch (e) {
+      enrichResults.gmail_linked = { error: e.message };
     }
 
     res.json({ person_id: req.params.id, person_name: person.full_name, results: enrichResults });
@@ -3775,6 +3812,302 @@ app.get('/api/public/stats', async (req, res) => {
     res.json(stats);
   } catch (err) {
     res.status(500).json({ error: 'Stats unavailable' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PUBLIC EMBED ENDPOINTS — no auth, for mitchellake.com website embeds
+// CORS restricted to mitchellake.com + localhost:3000
+// Rate-limited: 60 req/min per IP, Cache-Control: 5 min
+// All queries scoped to tenant_id = '00000000-0000-0000-0000-000000000001'
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const PUBLIC_EMBED_TENANT = '00000000-0000-0000-0000-000000000001';
+const PUBLIC_EMBED_ALLOWED_ORIGINS = ['https://mitchellake.com', 'https://www.mitchellake.com', 'http://localhost:3000'];
+const PUBLIC_EMBED_STRIP_FIELDS = ['proximity_map', 'confidence_score', 'triage_status', 'claimed_by', 'send_to', 'best_connector_name', 'prox_connection_count'];
+
+// Simple in-memory rate limiter: 60 requests/min per IP
+const _publicEmbedRateMap = new Map();
+function publicEmbedRateLimit(req, res, next) {
+  const ip = req.ip;
+  const now = Date.now();
+  const window = 60 * 1000;
+  const max = 60;
+
+  let entry = _publicEmbedRateMap.get(ip);
+  if (!entry || now - entry.start > window) {
+    entry = { start: now, count: 1 };
+    _publicEmbedRateMap.set(ip, entry);
+  } else {
+    entry.count++;
+  }
+
+  if (entry.count > max) {
+    return res.status(429).json({ error: 'Rate limit exceeded' });
+  }
+  next();
+}
+
+// CORS + Cache-Control middleware for public embed routes
+function publicEmbedCors(req, res, next) {
+  const origin = req.headers.origin;
+  if (PUBLIC_EMBED_ALLOWED_ORIGINS.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Cache-Control', 'public, max-age=300');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+}
+
+// Strip sensitive fields from response objects
+function stripEmbedFields(obj) {
+  if (Array.isArray(obj)) return obj.map(stripEmbedFields);
+  if (obj && typeof obj === 'object') {
+    const cleaned = { ...obj };
+    for (const field of PUBLIC_EMBED_STRIP_FIELDS) delete cleaned[field];
+    return cleaned;
+  }
+  return obj;
+}
+
+// Public embed route middleware stack
+const publicEmbed = [publicEmbedRateLimit, publicEmbedCors];
+
+// ── 1. GET /api/public/grabs — latest published Signal Grabs
+app.get('/api/public/grabs', ...publicEmbed, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 50);
+    let where = `WHERE sg.tenant_id = $1 AND sg.status = 'published'`;
+    const params = [PUBLIC_EMBED_TENANT];
+    let idx = 1;
+
+    if (req.query.cluster_type) { idx++; where += ` AND sg.cluster_type = $${idx}`; params.push(req.query.cluster_type); }
+    if (req.query.geography) { idx++; where += ` AND $${idx} = ANY(sg.geographies)`; params.push(req.query.geography.toUpperCase()); }
+
+    idx++; params.push(limit);
+
+    const { rows } = await pool.query(`
+      SELECT sg.id, sg.headline, sg.observation, sg.so_what, sg.watch_next,
+             sg.evidence, sg.geographies, sg.themes, sg.signal_types,
+             sg.cluster_type, sg.published_at, sg.grab_score,
+             ed.image_url AS image_url
+      FROM signal_grabs sg
+      LEFT JOIN external_documents ed ON ed.id = (sg.document_ids[1])::uuid
+      ${where}
+      ORDER BY sg.published_at DESC NULLS LAST, sg.created_at DESC
+      LIMIT $${idx}
+    `, params);
+
+    const countRes = await pool.query(`SELECT COUNT(*) FROM signal_grabs sg ${where}`, params.slice(0, -1));
+
+    res.json({
+      grabs: rows.map(r => stripEmbedFields({ ...r, image_url: r.image_url || null })),
+      total: parseInt(countRes.rows[0].count),
+      generated_at: new Date().toISOString()
+    });
+  } catch (err) { res.status(500).json({ error: 'Grabs unavailable' }); }
+});
+
+// ── 2. GET /api/public/weekly — latest weekly wraps by region
+app.get('/api/public/weekly', ...publicEmbed, async (req, res) => {
+  try {
+    const region = req.query.region ? req.query.region.toUpperCase() : null;
+    const week = req.query.week || null;
+
+    let where = `WHERE sg.tenant_id = $1 AND sg.cluster_type = 'weekly_wrap'`;
+    const params = [PUBLIC_EMBED_TENANT];
+    let idx = 1;
+
+    if (week) { idx++; where += ` AND sg.digest_week = $${idx}`; params.push(week); }
+    if (region) { idx++; where += ` AND $${idx} = ANY(sg.geographies)`; params.push(region); }
+
+    const { rows } = await pool.query(`
+      SELECT sg.id, sg.geographies, sg.headline, sg.observation,
+             sg.so_what, sg.watch_next, sg.digest_week, sg.published_at, sg.created_at,
+             ed.image_url AS image_url
+      FROM signal_grabs sg
+      LEFT JOIN external_documents ed ON ed.id = (sg.document_ids[1])::uuid
+      ${where}
+      ORDER BY sg.created_at DESC
+      LIMIT 4
+    `, params);
+
+    // Parse observation JSON into structured weekly wrap fields
+    const weekly = rows.map(r => {
+      let parsed = {};
+      try { parsed = JSON.parse(r.observation); } catch(e) {}
+      return stripEmbedFields({
+        id: r.id,
+        region: (r.geographies || [])[0] || null,
+        headline: parsed.headline || r.headline,
+        key_numbers: parsed.key_numbers || [],
+        big_moves: parsed.big_moves || [],
+        watch_list: parsed.watch_list || r.watch_next || '',
+        digest_week: r.digest_week || null,
+        published_at: r.published_at || r.created_at,
+        image_url: r.image_url || null
+      });
+    });
+
+    res.json({ weekly, generated_at: new Date().toISOString() });
+  } catch (err) { res.status(500).json({ error: 'Weekly wraps unavailable' }); }
+});
+
+// ── 3. GET /api/public/hero — top 3 hero signals, sanitised
+app.get('/api/public/hero', ...publicEmbed, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT se.id, se.signal_type, se.company_name, se.evidence_summary,
+             se.detected_at, se.image_url, se.source_url,
+             c.sector, c.geography,
+             ed.image_url AS doc_image_url,
+             ed.source_name AS doc_source_name, ed.source_url AS doc_source_url
+      FROM signal_events se
+      LEFT JOIN companies c ON c.id = se.company_id
+      LEFT JOIN external_documents ed ON ed.id = se.source_document_id
+      WHERE se.tenant_id = $1
+        AND se.detected_at > NOW() - INTERVAL '7 days'
+        AND COALESCE(se.is_megacap, false) = false
+        AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')
+        AND se.company_name IS NOT NULL
+      ORDER BY
+        CASE WHEN c.is_client = true THEN 100 ELSE 0 END +
+        (se.confidence_score * 30) +
+        CASE WHEN se.image_url IS NOT NULL OR ed.image_url IS NOT NULL THEN 20 ELSE 0 END
+        DESC
+      LIMIT 3
+    `, [PUBLIC_EMBED_TENANT]);
+
+    const hero = rows.map(r => {
+      const sources = [];
+      if (r.doc_source_name || r.doc_source_url) {
+        sources.push({ source_name: r.doc_source_name || null, source_url: r.doc_source_url || null });
+      }
+      return stripEmbedFields({
+        id: r.id,
+        company_name: r.company_name,
+        signal_type: r.signal_type,
+        headline: r.evidence_summary ? r.evidence_summary.slice(0, 120) : r.company_name + ' — ' + (r.signal_type || '').replace(/_/g, ' '),
+        observation: r.evidence_summary || '',
+        so_what: '',
+        geography: r.geography || '',
+        sector: r.sector || '',
+        image_url: r.image_url || r.doc_image_url || null,
+        sources,
+        signal_date: r.detected_at,
+        detected_at: r.detected_at
+      });
+    });
+
+    res.json({ hero, generated_at: new Date().toISOString() });
+  } catch (err) { res.status(500).json({ error: 'Hero signals unavailable' }); }
+});
+
+// ── 4. GET /api/public/market-temperature — macro market sentiment
+app.get('/api/public/market-temperature', ...publicEmbed, async (req, res) => {
+  try {
+    const tid = PUBLIC_EMBED_TENANT;
+
+    // Signal types by count
+    const { rows: byType } = await pool.query(`
+      SELECT se.signal_type, COUNT(*) as cnt
+      FROM signal_events se
+      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1
+      GROUP BY se.signal_type ORDER BY cnt DESC
+    `, [tid]);
+
+    // Regional breakdown
+    const { rows: byRegion } = await pool.query(`
+      SELECT
+        CASE
+          WHEN c.geography ILIKE '%Australia%' OR c.country_code = 'AU' THEN 'AU'
+          WHEN c.geography ILIKE '%Singapore%' OR c.country_code = 'SG' OR c.geography ILIKE '%Southeast Asia%' THEN 'SG'
+          WHEN c.geography ILIKE '%United Kingdom%' OR c.country_code IN ('UK','GB') OR c.geography ILIKE '%London%' THEN 'UK'
+          WHEN c.geography ILIKE '%United States%' OR c.country_code = 'US' OR c.geography ILIKE '%America%' THEN 'US'
+          ELSE 'OTHER'
+        END AS region,
+        se.signal_type, COUNT(*) as cnt
+      FROM signal_events se
+      LEFT JOIN companies c ON c.id = se.company_id
+      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1
+      GROUP BY region, se.signal_type
+    `, [tid]);
+
+    // Temperature calculation
+    const growthTypes = ['capital_raising', 'product_launch', 'strategic_hiring', 'geographic_expansion', 'partnership'];
+    const contractionTypes = ['restructuring', 'layoffs', 'ma_activity'];
+
+    function calcTemp(types) {
+      const growth = types.filter(t => growthTypes.includes(t.signal_type)).reduce((s, t) => s + parseInt(t.cnt), 0);
+      const contraction = types.filter(t => contractionTypes.includes(t.signal_type)).reduce((s, t) => s + parseInt(t.cnt), 0);
+      const total = growth + contraction;
+      if (total === 0) return { temperature: 'neutral', signal_count: 0 };
+      const ratio = growth / total;
+      let temperature = 'neutral';
+      if (ratio > 0.7) temperature = 'hot';
+      else if (ratio > 0.55) temperature = 'warm';
+      else if (ratio < 0.3) temperature = 'cold';
+      else if (ratio < 0.45) temperature = 'cold';
+      return { temperature, signal_count: total };
+    }
+
+    const overall = calcTemp(byType);
+    const totalSignals = byType.reduce((s, t) => s + parseInt(t.cnt), 0);
+    const dominant = byType.length > 0 ? byType[0].signal_type.replace(/_/g, ' ') : 'none';
+
+    // Build region map
+    const regions = {};
+    for (const r of ['AU', 'SG', 'UK', 'US']) {
+      const regionTypes = byRegion.filter(x => x.region === r);
+      regions[r] = calcTemp(regionTypes);
+      regions[r].signal_count = regionTypes.reduce((s, t) => s + parseInt(t.cnt), 0);
+    }
+
+    const labels = { hot: 'Expansion signals dominate — market is running hot', warm: 'Growth signals outpace contraction — cautiously positive', neutral: 'Balanced mix of growth and contraction signals', cold: 'Contraction signals dominate — defensive posture' };
+
+    res.json(stripEmbedFields({
+      temperature: overall.temperature,
+      label: labels[overall.temperature] || labels.neutral,
+      signal_count: totalSignals,
+      dominant_type: dominant,
+      regions,
+      generated_at: new Date().toISOString()
+    }));
+  } catch (err) { res.status(500).json({ error: 'Market temperature unavailable' }); }
+});
+
+// ── 5. GET /api/public/events — top upcoming events per region, ranked by theme relevance
+app.get('/api/public/events', ...publicEmbed, async (req, res) => {
+  res.set('Cache-Control', 'public, max-age=3600');
+  try {
+    const regions = ['ANZ','Asia','Europe','US','Africa','Global'];
+    const result = {};
+
+    for (const region of regions) {
+      const { rows } = await pool.query(`
+        SELECT
+          id, name, description, event_date, city, country,
+          region, themes, rsvp_count, expected_attendees, external_url
+        FROM event_listings
+        WHERE tenant_id = $1
+          AND region = $2
+          AND status = 'upcoming'
+          AND event_date >= CURRENT_DATE
+        ORDER BY theme_score DESC, event_date ASC
+        LIMIT 2
+      `, [PUBLIC_EMBED_TENANT, region]);
+      result[region] = rows.map(r => ({ ...r, image_url: null }));
+    }
+
+    res.json({
+      events: result,
+      generated_at: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('/api/public/events error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
