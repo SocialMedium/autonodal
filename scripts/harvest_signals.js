@@ -136,12 +136,20 @@ async function storeDocument(item, source) {
     return null; // Already processed
   }
   
+  // Extract image from RSS item (enclosure, media:content, or og:image in content)
+  const imageUrl = item.enclosure?.url
+    || item['media:content']?.$.url
+    || item['media:thumbnail']?.$.url
+    || item.itunes?.image
+    || (item.content?.match(/<img[^>]+src=["']([^"']+)["']/)?.[1])
+    || null;
+
   // Store new document
   const doc = await db.queryOne(`
-    INSERT INTO external_documents (source_type, 
+    INSERT INTO external_documents (source_type,
       source_id, source_name, source_url, source_url_hash,
-      title, content, published_at, fetched_at
-    ) VALUES ('rss', $1, $2, $3, $4, $5, $6, $7, NOW())
+      title, content, published_at, fetched_at, image_url
+    ) VALUES ('rss', $1, $2, $3, $4, $5, $6, $7, NOW(), $8)
     RETURNING *
   `, [
     source.id,
@@ -150,7 +158,8 @@ async function storeDocument(item, source) {
     urlHash,
     item.title,
     item.contentSnippet || item.content || item.summary || '',
-    item.pubDate ? new Date(item.pubDate) : new Date()
+    item.pubDate ? new Date(item.pubDate) : new Date(),
+    imageUrl
   ]);
   
   return doc;
