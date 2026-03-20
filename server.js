@@ -1493,7 +1493,7 @@ app.get('/api/reengage-windows', authenticateToken, async (req, res) => {
       LEFT JOIN person_scores ps ON ps.person_id = p.id
       WHERE p.tenant_id = $1
         AND p.current_title IS NOT NULL
-        AND p.seniority_level IN ('C-level', 'VP', 'Director', 'Head')
+        AND p.seniority_level IN ('c_suite', 'C-Suite', 'C-level', 'vp', 'VP', 'director', 'Director', 'Head')
         AND i.interaction_at IS NOT NULL
         AND i.interaction_at < NOW() - INTERVAL '60 days'
       ORDER BY p.id, se.confidence_score DESC
