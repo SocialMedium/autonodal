@@ -2193,6 +2193,19 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           } else {
             enrichResults.ezekia_profile = { message: 'No new profile data' };
           }
+
+          // Import Ezekia assignments (projects this person was considered for)
+          if (d.relationships?.assignments?.length > 0) {
+            const assignments = d.relationships.assignments;
+            enrichResults.ezekia_assignments = {
+              total: assignments.length,
+              projects: assignments.slice(0, 10).map(a => ({
+                project: a.projectName || a.name,
+                status: a.status,
+                stage: a.stage
+              }))
+            };
+          }
         }
 
         // Import Ezekia notes as research notes (interactions)
@@ -2228,19 +2241,6 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
             notesImported++;
           }
           enrichResults.ezekia_notes = { research: researchNotes.length, system: systemNotes.length, imported: notesImported };
-        }
-
-        // Import Ezekia assignments (projects this person was considered for)
-        if (d.relationships?.assignments?.length > 0) {
-          const assignments = d.relationships.assignments;
-          enrichResults.ezekia_assignments = {
-            total: assignments.length,
-            projects: assignments.slice(0, 10).map(a => ({
-              project: a.projectName || a.name,
-              status: a.status,
-              stage: a.stage
-            }))
-          };
         }
 
         } // end if (ezekiaId)
