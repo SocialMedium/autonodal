@@ -1360,6 +1360,107 @@ app.get('/api/converging-themes', authenticateToken, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// TOP PODCASTS — matched to trending signal themes via semantic search
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
+  try {
+    // 1. Get this week's top trending signal themes
+    const { rows: trending } = await pool.query(`
+      SELECT signal_type, COUNT(*) as cnt
+      FROM signal_events
+      WHERE detected_at > NOW() - INTERVAL '7 days' AND signal_type IS NOT NULL
+      GROUP BY signal_type ORDER BY cnt DESC LIMIT 3
+    `);
+
+    const themeLabels = {
+      capital_raising: 'fundraising venture capital IPO Series',
+      ma_activity: 'acquisition merger deal M&A takeover',
+      product_launch: 'product launch innovation new release',
+      strategic_hiring: 'hiring talent recruitment executive search',
+      geographic_expansion: 'expansion international new market global',
+      restructuring: 'restructuring transformation layoffs turnaround',
+      leadership_change: 'CEO appointment executive leadership transition',
+      partnership: 'partnership alliance collaboration strategic deal',
+      layoffs: 'layoffs downsizing restructuring workforce reduction'
+    };
+
+    // Build a search query from trending themes
+    const searchTerms = trending.map(t => themeLabels[t.signal_type] || t.signal_type.replace(/_/g, ' ')).join(' ');
+    const themeNames = trending.map(t => (t.signal_type || '').replace(/_/g, ' '));
+
+    // 2. Try semantic search via Qdrant
+    let podcasts = [];
+    if (process.env.OPENAI_API_KEY && process.env.QDRANT_URL) {
+      try {
+        const vector = await generateQueryEmbedding(`executive search recruiting: ${searchTerms}`);
+        const qdrantResults = await qdrantSearch('documents', vector, 30);
+
+        if (qdrantResults.length > 0) {
+          const uuidRx = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          const docIds = qdrantResults.map(r => String(r.id)).filter(id => uuidRx.test(id));
+
+          if (docIds.length > 0) {
+            const { rows } = await pool.query(`
+              SELECT id, title, source_name, source_url, published_at
+              FROM external_documents
+              WHERE id = ANY($1::uuid[]) AND source_type = 'podcast'
+              ORDER BY published_at DESC
+            `, [docIds]);
+
+            // Re-attach scores from Qdrant
+            const scoreMap = new Map(qdrantResults.map(r => [String(r.id), r.score]));
+            podcasts = rows.map(r => ({ ...r, match_score: scoreMap.get(r.id) || 0 }))
+              .sort((a, b) => b.match_score - a.match_score)
+              .slice(0, 5);
+          }
+        }
+      } catch (e) {
+        console.warn('Podcast Qdrant search failed:', e.message);
+      }
+    }
+
+    // 3. Fallback: if Qdrant didn't find enough podcasts, use keyword search
+    if (podcasts.length < 5) {
+      const keywords = trending.map(t => t.signal_type.replace(/_/g, ' ')).join('|');
+      const { rows: fallback } = await pool.query(`
+        SELECT id, title, source_name, source_url, published_at
+        FROM external_documents
+        WHERE source_type = 'podcast'
+          AND (title ILIKE $1 OR title ILIKE $2 OR title ILIKE $3)
+        ORDER BY published_at DESC
+        LIMIT $4
+      `, [
+        '%' + (trending[0]?.signal_type?.replace(/_/g, '%') || 'leadership') + '%',
+        '%' + (trending[1]?.signal_type?.replace(/_/g, '%') || 'capital') + '%',
+        '%' + (trending[2]?.signal_type?.replace(/_/g, '%') || 'hiring') + '%',
+        5 - podcasts.length
+      ]);
+      // Merge without duplicates
+      const existingIds = new Set(podcasts.map(p => p.id));
+      fallback.forEach(f => { if (!existingIds.has(f.id)) podcasts.push({ ...f, match_score: 0.3 }); });
+      podcasts = podcasts.slice(0, 5);
+    }
+
+    // 4. If still empty, return most recent podcasts
+    if (podcasts.length === 0) {
+      const { rows } = await pool.query(`
+        SELECT id, title, source_name, source_url, published_at
+        FROM external_documents
+        WHERE source_type = 'podcast' AND title IS NOT NULL
+        ORDER BY published_at DESC LIMIT 5
+      `);
+      podcasts = rows.map(r => ({ ...r, match_score: 0.2 }));
+    }
+
+    res.json({ podcasts, themes: themeNames });
+  } catch (err) {
+    console.error('Top podcasts error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // RE-ENGAGE WINDOWS — dormant contacts at companies with recent signals
 // ═══════════════════════════════════════════════════════════════════════════════
 

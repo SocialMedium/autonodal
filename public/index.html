@@ -1288,6 +1288,39 @@ body {
 .reengage-signal.channel { background: var(--blue-soft); color: var(--blue); }
 .reengage-signal.trigger { background: var(--amber-soft); color: var(--amber); }
 
+/* Podcasts */
+.podcast-item {
+  display: flex;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.podcast-item:last-child { border-bottom: none; }
+.podcast-item:hover { background: var(--surface-warm); margin: 0 -14px; padding: 14px; border-radius: 6px; }
+.podcast-rank {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--surface-cool);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--serif); font-size: 13px; font-weight: 700; color: var(--ink-3);
+  flex-shrink: 0; margin-top: 2px;
+}
+.podcast-info { flex: 1; min-width: 0; }
+.podcast-title {
+  font-family: var(--serif); font-size: 14px; font-weight: 600;
+  line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
+}
+.podcast-meta { font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+.podcast-theme {
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.5px; padding: 2px 6px; border-radius: 3px;
+  background: var(--blue-soft); color: var(--blue); margin-top: 6px;
+  display: inline-block;
+}
+
 /* ═══════════════════════════════════════
    LOGIN MODAL
    ═══════════════════════════════════════ */
@@ -1716,28 +1749,14 @@ body {
   <!-- ─── RIGHT COLUMN ─── -->
   <div class="side-column">
 
-    <!-- SIGNAL ASSISTANT -->
+    <!-- TOP PODCASTS — themed to trending signals -->
     <div class="side-zone">
       <div class="side-zone-header">
         <div class="side-zone-rule"></div>
-        <div class="side-zone-title">Morning Brief</div>
-        <div class="side-zone-subtitle">Your priorities for today</div>
+        <div class="side-zone-title">Top Podcasts</div>
+        <div class="side-zone-subtitle">Matched to this week's trending themes</div>
       </div>
-
-      <div class="assistant-panel">
-        <div class="assistant-header">
-          <div class="assistant-title">
-            <div class="assistant-icon">✦</div>
-            Morning Brief
-          </div>
-          <div class="assistant-status" id="briefRegionBadge">—</div>
-        </div>
-        <div class="assistant-body" id="assistantBody">
-          <div class="assistant-greeting" id="assistantGreeting">Loading your brief...</div>
-        </div>
-        <div class="assistant-actions" id="assistantActions"></div>
-        <div id="google-connect-static" style="padding:0 18px 14px"></div>
-      </div>
+      <div id="podcastBody"><div style="text-align:center;padding:20px;color:var(--ink-4);font-size:13px">Loading...</div></div>
     </div>
 
     <!-- CONTENT QUEUE (wired to recent documents) -->
@@ -2845,6 +2864,44 @@ async function loadConvergingThemes() {
   }
 }
 
+// ── Top Podcasts ──
+async function loadTopPodcasts() {
+  const container = document.getElementById('podcastBody');
+  if (!container) return;
+  try {
+    const data = await api('/api/top-podcasts');
+    if (!data || !data.podcasts || data.podcasts.length === 0) {
+      container.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--ink-3)">No podcast recommendations available yet.</div>';
+      return;
+    }
+    const themes = data.themes || [];
+    const themeTag = themes.length > 0 ? themes.slice(0, 2).join(' · ') : '';
+
+    container.innerHTML =
+      (themeTag ? '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;font-weight:600;color:var(--ink-4);margin-bottom:8px">Trending: ' + esc(themeTag) + '</div>' : '') +
+      data.podcasts.map(function(p, i) {
+        const sourceIcon = {
+          'a16z Podcast': '🎙️', 'All-In Podcast': '🎙️', '20VC - Twenty Minute VC': '🎙️',
+          'This Week in Startups': '🚀', 'My First Million': '💰', 'How I Built This': '🏗️',
+          'Masters of Scale': '📈', 'Invest Like the Best': '📊', 'Lenny\'s Podcast': '💡',
+          'Acquired': '🎯', 'The Full Ratchet': '📉', 'Equity - TechCrunch': '💼'
+        };
+        var icon = sourceIcon[p.source_name] || '🎧';
+        return '<div class="podcast-item" onclick="window.open(\'' + esc(p.source_url || '#') + '\',\'_blank\')">' +
+          '<div class="podcast-rank">' + (i + 1) + '</div>' +
+          '<div class="podcast-info">' +
+            '<div class="podcast-title">' + esc(p.title || 'Untitled') + '</div>' +
+            '<div class="podcast-meta">' + icon + ' ' + esc(p.source_name || '') +
+              (p.published_at ? ' · ' + ago(p.published_at) : '') + '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+  } catch (e) {
+    console.error('Podcasts error:', e);
+    container.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--ink-4)">Could not load podcasts</div>';
+  }
+}
+
 // ── Re-engage Windows ──
 async function loadReengageWindows() {
   const container = document.getElementById('reengageBody');
@@ -2907,6 +2964,7 @@ async function init() {
   loadNetworkSignals();
   loadRegionCards();
   loadSignals();
+  loadTopPodcasts();
   loadContentQueue();
   loadTalentInMotion();
   loadConvergingThemes();
