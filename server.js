@@ -1104,6 +1104,7 @@ app.get('/api/signals/hero', authenticateToken, async (req, res) => {
         AND COALESCE(se.is_megacap, false) = false
         AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')
         AND se.company_name IS NOT NULL
+        AND se.company_name NOT ILIKE '%mitchellake%' AND se.company_name NOT ILIKE '%mitchel lake%'
       ORDER BY
         CASE WHEN c.is_client = true THEN 100 ELSE 0 END +
         CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id) > 0 THEN 50 ELSE 0 END +
@@ -1375,8 +1376,14 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
     where += ` AND (se.visibility IS NULL OR se.visibility != 'private' OR se.owner_user_id = $${paramIdx})`;
     params.push(req.user.user_id);
 
-    // Exclude megacaps and tenant company from signal feed — they appear in Market Temperature only
+    // Exclude megacaps, tenant company, and self-referential signals from feed
     where += ` AND COALESCE(se.is_megacap, false) = false AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')`;
+    // Also exclude signals whose company_name matches the tenant name (catches un-linked records)
+    if (req.user.tenant_name) {
+      paramIdx++;
+      where += ` AND (se.company_name IS NULL OR se.company_name NOT ILIKE $${paramIdx})`;
+      params.push(`%${req.user.tenant_name}%`);
+    }
 
     if (type) {
       paramIdx++;
@@ -2338,25 +2345,34 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
                       `UPDATE user_google_accounts SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3`,
                       [token, new Date(Date.now() + tokens.expires_in * 1000), acct.id]
                     );
+                  } else {
+                    const errBody = await refreshRes.text().catch(() => '');
+                    console.warn(`Gmail token refresh failed for ${acct.google_email}: ${refreshRes.status} ${errBody.slice(0, 200)}`);
                   }
-                } catch (e) { /* use existing token */ }
+                } catch (e) {
+                  console.warn(`Gmail token refresh error for ${acct.google_email}:`, e.message);
+                }
               }
             }
 
-            // Search Gmail
-            const searchQuery = encodeURIComponent(`from:${person.email} OR to:${person.email} newer_than:90d`);
+            // Search Gmail — broad 10y window for full enrichment history
+            const searchQuery = encodeURIComponent(`from:${person.email} OR to:${person.email} newer_than:10y`);
             const gmailRes = await fetch(
-              `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${searchQuery}&maxResults=10`,
+              `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${searchQuery}&maxResults=20`,
               { headers: { 'Authorization': `Bearer ${token}` } }
             );
 
-            if (!gmailRes.ok) continue;
+            if (!gmailRes.ok) {
+              const errBody = await gmailRes.text().catch(() => '');
+              console.warn(`Gmail search failed for ${acct.google_email}: ${gmailRes.status} ${errBody.slice(0, 200)}`);
+              continue;
+            }
             const gmailData = await gmailRes.json();
             totalEmails += gmailData.resultSizeEstimate || 0;
 
             // Fetch and store new messages as interactions
             if (gmailData.messages && gmailData.messages.length > 0) {
-              for (const msg of gmailData.messages.slice(0, 5)) {
+              for (const msg of gmailData.messages.slice(0, 15)) {
                 const { rows: existing } = await pool.query(
                   `SELECT id FROM interactions WHERE person_id = $1 AND external_id = $2 AND tenant_id = $3`,
                   [req.params.id, msg.id, req.tenant_id]
@@ -2396,10 +2412,14 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           messages_found: totalEmails,
           new_stored: newEmails,
           accounts_checked: gmailAccounts.length,
+          searched_email: person.email,
           message: gmailAccounts.length === 0
             ? 'No Gmail accounts connected'
             : `${totalEmails} emails found, ${newEmails} new stored (${gmailAccounts.length} account${gmailAccounts.length > 1 ? 's' : ''} checked)`
         };
+        if (totalEmails === 0 && gmailAccounts.length > 0) {
+          console.log(`Gmail enrich: 0 results for ${person.email} across ${gmailAccounts.length} accounts`);
+        }
       } catch (e) {
         enrichResults.gmail = { error: e.message };
       }

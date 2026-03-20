@@ -60,11 +60,23 @@ async function resolveUser(ezekiaName, ezekiaEmail) {
 // PERSON MATCHING — find existing person or create new
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// System/internal records from Ezekia that are not real candidates
+const EZEKIA_JUNK_PATTERNS = [
+  /job\s+application\s+details/i,
+  /^mitchel\s*lake[-–—\s]/i,
+  /^test\s+(candidate|record|entry)/i,
+];
+
 async function matchPerson(candidate) {
   const ezekiaId = String(candidate.id);
   const fullName = candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim();
   const email = candidate.emails?.[0]?.email;
   const linkedinUrl = candidate.links?.find(l => l.url?.includes('linkedin'))?.url;
+
+  // Skip system/internal records that aren't real candidates
+  if (fullName && EZEKIA_JUNK_PATTERNS.some(p => p.test(fullName))) {
+    return null;
+  }
 
   // 1. Match by Ezekia source_id
   const { rows: bySource } = await pool.query(

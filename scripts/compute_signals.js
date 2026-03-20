@@ -49,9 +49,23 @@ async function computeSignals() {
   let signalsCreated = 0;
   let companiesLinked = 0;
   
+  // System page patterns to skip (internal/ATS pages that aren't real signals)
+  const SKIP_TITLE_PATTERNS = [
+    /job\s+application\s+details/i,
+    /mitchel\s*lake.*(?:careers|apply|login|dashboard)/i,
+  ];
+
   for (const doc of docs) {
+    // Skip internal/system pages
+    if (doc.title && SKIP_TITLE_PATTERNS.some(p => p.test(doc.title))) {
+      console.log(`⏭️  Skipping system page: ${doc.title.substring(0, 60)}`);
+      await db.query(`UPDATE external_documents SET signals_computed_at = NOW(), processing_status = 'skipped_system' WHERE id = $1`, [doc.id]);
+      processed++;
+      continue;
+    }
+
     const text = `${doc.title || ''} ${doc.content || ''}`;
-    
+
     console.log(`🔍 Analyzing: ${(doc.title || 'Untitled').substring(0, 60)}...`);
     
     // Detect signals

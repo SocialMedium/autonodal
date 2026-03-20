@@ -391,8 +391,8 @@ async function saveGrab(cluster, grab) {
       headline, observation, evidence, why_it_matters, so_what, watch_next,
       grab_score, convergence_score, strategic_relevance, network_overlap, novelty, source_quality,
       signal_ids, document_ids, company_ids, geographies, themes, signal_types,
-      status
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 'draft')
+      status, published_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 'published', NOW())
     RETURNING id
   `, [
     ML_TENANT,
