@@ -1365,7 +1365,7 @@ app.get('/api/converging-themes', authenticateToken, async (req, res) => {
 
 app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
   try {
-    // 1. Get this week's top trending signal themes
+    // 1. Get trending signal themes for deep-dive matching
     const { rows: trending } = await pool.query(`
       SELECT signal_type, COUNT(*) as cnt
       FROM signal_events
@@ -1374,27 +1374,39 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
     `);
 
     const themeLabels = {
-      capital_raising: 'fundraising venture capital IPO Series',
-      ma_activity: 'acquisition merger deal M&A takeover',
-      product_launch: 'product launch innovation new release',
-      strategic_hiring: 'hiring talent recruitment executive search',
-      geographic_expansion: 'expansion international new market global',
-      restructuring: 'restructuring transformation layoffs turnaround',
-      leadership_change: 'CEO appointment executive leadership transition',
-      partnership: 'partnership alliance collaboration strategic deal',
-      layoffs: 'layoffs downsizing restructuring workforce reduction'
+      capital_raising: 'fundraising venture capital IPO Series funding round',
+      ma_activity: 'acquisition merger deal M&A takeover corporate development',
+      product_launch: 'product launch innovation new release go to market',
+      strategic_hiring: 'hiring talent recruitment executive search team building',
+      geographic_expansion: 'expansion international new market global growth',
+      restructuring: 'restructuring transformation turnaround change management',
+      leadership_change: 'CEO appointment executive leadership transition succession',
+      partnership: 'partnership alliance collaboration strategic deal ecosystem',
+      layoffs: 'layoffs downsizing workforce reduction cost cutting'
     };
-
-    // Build a search query from trending themes
-    const searchTerms = trending.map(t => themeLabels[t.signal_type] || t.signal_type.replace(/_/g, ' ')).join(' ');
     const themeNames = trending.map(t => (t.signal_type || '').replace(/_/g, ' '));
 
-    // 2. Try semantic search via Qdrant
-    let podcasts = [];
+    // ── LATEST: most recent podcast episodes (last 7 days), one per source ──
+    const { rows: latest } = await pool.query(`
+      SELECT DISTINCT ON (source_name)
+        id, title, source_name, source_url, published_at
+      FROM external_documents
+      WHERE source_type = 'podcast'
+        AND published_at > NOW() - INTERVAL '7 days'
+        AND title IS NOT NULL
+      ORDER BY source_name, published_at DESC
+    `);
+    // Sort by recency after dedup
+    const latestSorted = latest.sort((a, b) => new Date(b.published_at) - new Date(a.published_at)).slice(0, 5);
+
+    // ── DEEP DIVES: semantic match from full archive via Qdrant ──
+    let deepDives = [];
+    const searchTerms = trending.map(t => themeLabels[t.signal_type] || t.signal_type.replace(/_/g, ' ')).join(' ');
+
     if (process.env.OPENAI_API_KEY && process.env.QDRANT_URL) {
       try {
-        const vector = await generateQueryEmbedding(`executive search recruiting: ${searchTerms}`);
-        const qdrantResults = await qdrantSearch('documents', vector, 30);
+        const vector = await generateQueryEmbedding(`executive search talent leadership: ${searchTerms}`);
+        const qdrantResults = await qdrantSearch('documents', vector, 50);
 
         if (qdrantResults.length > 0) {
           const uuidRx = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1408,11 +1420,19 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
               ORDER BY published_at DESC
             `, [docIds]);
 
-            // Re-attach scores from Qdrant
+            // Re-attach scores, deduplicate by source_name, pick best per source
             const scoreMap = new Map(qdrantResults.map(r => [String(r.id), r.score]));
-            podcasts = rows.map(r => ({ ...r, match_score: scoreMap.get(r.id) || 0 }))
-              .sort((a, b) => b.match_score - a.match_score)
-              .slice(0, 5);
+            const scored = rows.map(r => ({ ...r, match_score: scoreMap.get(r.id) || 0 }));
+
+            // One per source to avoid 4x same show
+            const seenSources = new Set(latestSorted.map(l => l.source_name));
+            const bySource = new Map();
+            scored.sort((a, b) => b.match_score - a.match_score).forEach(r => {
+              if (!bySource.has(r.source_name) && !seenSources.has(r.source_name)) {
+                bySource.set(r.source_name, r);
+              }
+            });
+            deepDives = [...bySource.values()].slice(0, 5);
           }
         }
       } catch (e) {
@@ -1420,40 +1440,24 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
       }
     }
 
-    // 3. Fallback: if Qdrant didn't find enough podcasts, use keyword search
-    if (podcasts.length < 5) {
-      const keywords = trending.map(t => t.signal_type.replace(/_/g, ' ')).join('|');
+    // Fallback for deep dives if Qdrant empty
+    if (deepDives.length < 3) {
+      const latestIds = latestSorted.map(l => l.id);
+      const deepIds = deepDives.map(d => d.id);
+      const exclude = [...latestIds, ...deepIds];
       const { rows: fallback } = await pool.query(`
-        SELECT id, title, source_name, source_url, published_at
-        FROM external_documents
-        WHERE source_type = 'podcast'
-          AND (title ILIKE $1 OR title ILIKE $2 OR title ILIKE $3)
-        ORDER BY published_at DESC
-        LIMIT $4
-      `, [
-        '%' + (trending[0]?.signal_type?.replace(/_/g, '%') || 'leadership') + '%',
-        '%' + (trending[1]?.signal_type?.replace(/_/g, '%') || 'capital') + '%',
-        '%' + (trending[2]?.signal_type?.replace(/_/g, '%') || 'hiring') + '%',
-        5 - podcasts.length
-      ]);
-      // Merge without duplicates
-      const existingIds = new Set(podcasts.map(p => p.id));
-      fallback.forEach(f => { if (!existingIds.has(f.id)) podcasts.push({ ...f, match_score: 0.3 }); });
-      podcasts = podcasts.slice(0, 5);
-    }
-
-    // 4. If still empty, return most recent podcasts
-    if (podcasts.length === 0) {
-      const { rows } = await pool.query(`
-        SELECT id, title, source_name, source_url, published_at
+        SELECT DISTINCT ON (source_name)
+          id, title, source_name, source_url, published_at
         FROM external_documents
         WHERE source_type = 'podcast' AND title IS NOT NULL
-        ORDER BY published_at DESC LIMIT 5
-      `);
-      podcasts = rows.map(r => ({ ...r, match_score: 0.2 }));
+          AND id != ALL($1::uuid[])
+        ORDER BY source_name, published_at DESC
+      `, [exclude]);
+      const fb = fallback.sort((a, b) => new Date(b.published_at) - new Date(a.published_at)).slice(0, 5 - deepDives.length);
+      deepDives = [...deepDives, ...fb].slice(0, 5);
     }
 
-    res.json({ podcasts, themes: themeNames });
+    res.json({ latest: latestSorted, deep_dives: deepDives, themes: themeNames });
   } catch (err) {
     console.error('Top podcasts error:', err.message);
     res.status(500).json({ error: err.message });

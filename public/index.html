@@ -2865,37 +2865,50 @@ async function loadConvergingThemes() {
 }
 
 // ── Top Podcasts ──
+const POD_ICONS = {
+  'a16z Podcast': '🎙️', 'All-In Podcast': '🎙️', '20VC - Twenty Minute VC': '🎙️',
+  'This Week in Startups': '🚀', 'My First Million': '💰', 'How I Built This': '🏗️',
+  'Masters of Scale': '📈', 'Invest Like the Best': '📊', "Lenny's Podcast": '💡',
+  'Acquired': '🎯', 'The Full Ratchet': '📉', 'Equity - TechCrunch': '💼',
+  'The Knowledge Project': '🧠', 'In Machines We Trust (MIT)': '🤖', 'Asia Tech Podcast': '🌏'
+};
+function renderPodcastItem(p, i) {
+  var icon = POD_ICONS[p.source_name] || '🎧';
+  return '<div class="podcast-item" onclick="window.open(\'' + esc(p.source_url || '#') + '\',\'_blank\')">' +
+    '<div class="podcast-rank">' + (i + 1) + '</div>' +
+    '<div class="podcast-info">' +
+      '<div class="podcast-title">' + esc(p.title || 'Untitled') + '</div>' +
+      '<div class="podcast-meta">' + icon + ' ' + esc(p.source_name || '') +
+        (p.published_at ? ' · ' + ago(p.published_at) : '') + '</div>' +
+    '</div>' +
+  '</div>';
+}
+
 async function loadTopPodcasts() {
   const container = document.getElementById('podcastBody');
   if (!container) return;
   try {
     const data = await api('/api/top-podcasts');
-    if (!data || !data.podcasts || data.podcasts.length === 0) {
-      container.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--ink-3)">No podcast recommendations available yet.</div>';
-      return;
-    }
-    const themes = data.themes || [];
-    const themeTag = themes.length > 0 ? themes.slice(0, 2).join(' · ') : '';
+    if (!data) { container.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--ink-3)">No podcasts available.</div>'; return; }
 
-    container.innerHTML =
-      (themeTag ? '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;font-weight:600;color:var(--ink-4);margin-bottom:8px">Trending: ' + esc(themeTag) + '</div>' : '') +
-      data.podcasts.map(function(p, i) {
-        const sourceIcon = {
-          'a16z Podcast': '🎙️', 'All-In Podcast': '🎙️', '20VC - Twenty Minute VC': '🎙️',
-          'This Week in Startups': '🚀', 'My First Million': '💰', 'How I Built This': '🏗️',
-          'Masters of Scale': '📈', 'Invest Like the Best': '📊', 'Lenny\'s Podcast': '💡',
-          'Acquired': '🎯', 'The Full Ratchet': '📉', 'Equity - TechCrunch': '💼'
-        };
-        var icon = sourceIcon[p.source_name] || '🎧';
-        return '<div class="podcast-item" onclick="window.open(\'' + esc(p.source_url || '#') + '\',\'_blank\')">' +
-          '<div class="podcast-rank">' + (i + 1) + '</div>' +
-          '<div class="podcast-info">' +
-            '<div class="podcast-title">' + esc(p.title || 'Untitled') + '</div>' +
-            '<div class="podcast-meta">' + icon + ' ' + esc(p.source_name || '') +
-              (p.published_at ? ' · ' + ago(p.published_at) : '') + '</div>' +
-          '</div>' +
-        '</div>';
-      }).join('');
+    let html = '';
+
+    // Latest episodes (last 7 days)
+    if (data.latest && data.latest.length > 0) {
+      html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:700;color:var(--ink-3);margin-bottom:6px">Latest Episodes</div>';
+      html += data.latest.map(renderPodcastItem).join('');
+    }
+
+    // Deep dives (semantic match from archive)
+    if (data.deep_dives && data.deep_dives.length > 0) {
+      const themes = data.themes || [];
+      const themeTag = themes.length > 0 ? themes.slice(0, 2).join(' · ') : '';
+      html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:700;color:var(--blue);margin-top:18px;padding-top:14px;border-top:1px solid var(--rule);margin-bottom:6px">Deep Dives' + (themeTag ? ' <span style="font-weight:400;color:var(--ink-4);text-transform:none;letter-spacing:0">· ' + esc(themeTag) + '</span>' : '') + '</div>';
+      html += data.deep_dives.map(renderPodcastItem).join('');
+    }
+
+    if (!html) html = '<div style="padding:16px;font-size:13px;color:var(--ink-3)">No podcast recommendations available yet.</div>';
+    container.innerHTML = html;
   } catch (e) {
     console.error('Podcasts error:', e);
     container.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--ink-4)">Could not load podcasts</div>';
