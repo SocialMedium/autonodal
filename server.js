@@ -2316,7 +2316,6 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
            FROM user_google_accounts WHERE sync_enabled = true LIMIT 5`
         ).catch(() => ({ rows: [] }));
 
-        let totalEmails = 0;
         let newEmails = 0;
 
         for (const acct of gmailAccounts) {
@@ -2355,8 +2354,9 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
               }
             }
 
-            // Search Gmail — broad 10y window for full enrichment history
-            const searchQuery = encodeURIComponent(`from:${person.email} OR to:${person.email} newer_than:10y`);
+            // Search Gmail — quote the email for exact matching, 10y window for individual enrichment
+            const emailQ = person.email.replace(/"/g, '');
+            const searchQuery = encodeURIComponent(`from:"${emailQ}" OR to:"${emailQ}" OR cc:"${emailQ}" newer_than:10y`);
             const gmailRes = await fetch(
               `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${searchQuery}&maxResults=20`,
               { headers: { 'Authorization': `Bearer ${token}` } }
@@ -2368,7 +2368,6 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
               continue;
             }
             const gmailData = await gmailRes.json();
-            totalEmails += gmailData.resultSizeEstimate || 0;
 
             // Fetch and store new messages as interactions
             if (gmailData.messages && gmailData.messages.length > 0) {
@@ -2381,7 +2380,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 
                 try {
                   const msgRes = await fetch(
-                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date`,
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Date`,
                     { headers: { 'Authorization': `Bearer ${token}` } }
                   );
                   if (!msgRes.ok) continue;
@@ -2390,8 +2389,15 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
                   const headers = msgDetail.payload?.headers || [];
                   const subject = headers.find(h => h.name === 'Subject')?.value || '';
                   const from = headers.find(h => h.name === 'From')?.value || '';
+                  const to = headers.find(h => h.name === 'To')?.value || '';
+                  const cc = headers.find(h => h.name === 'Cc')?.value || '';
                   const dateStr = headers.find(h => h.name === 'Date')?.value;
-                  const direction = from.toLowerCase().includes(person.email.toLowerCase()) ? 'inbound' : 'outbound';
+
+                  // Validate this message actually involves the person — Gmail search can return false positives
+                  const allRecipients = `${from} ${to} ${cc}`.toLowerCase();
+                  if (!allRecipients.includes(emailQ.toLowerCase())) continue;
+
+                  const direction = from.toLowerCase().includes(emailQ.toLowerCase()) ? 'inbound' : 'outbound';
 
                   await pool.query(`
                     INSERT INTO interactions (person_id, user_id, interaction_type, direction, subject, email_snippet,
@@ -2399,7 +2405,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
                     VALUES ($1, $2, 'email', $3, $4, $5, $6, $7, 'enrich_gmail', $8, 'email', $9, NOW(), $10)
                     ON CONFLICT DO NOTHING
                   `, [req.params.id, acct.user_id, direction, subject, msgDetail.snippet || '',
-                      from, person.email, msg.id,
+                      from, to || person.email, msg.id,
                       dateStr ? new Date(dateStr).toISOString() : new Date().toISOString(), req.tenant_id]);
                   newEmails++;
                 } catch (e) { /* skip individual message errors */ }
@@ -2409,16 +2415,16 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
         }
 
         enrichResults.gmail = {
-          messages_found: totalEmails,
+          messages_found: newEmails,
           new_stored: newEmails,
           accounts_checked: gmailAccounts.length,
           searched_email: person.email,
           message: gmailAccounts.length === 0
             ? 'No Gmail accounts connected'
-            : `${totalEmails} emails found, ${newEmails} new stored (${gmailAccounts.length} account${gmailAccounts.length > 1 ? 's' : ''} checked)`
+            : `${newEmails} verified emails stored (${gmailAccounts.length} account${gmailAccounts.length > 1 ? 's' : ''} checked)`
         };
-        if (totalEmails === 0 && gmailAccounts.length > 0) {
-          console.log(`Gmail enrich: 0 results for ${person.email} across ${gmailAccounts.length} accounts`);
+        if (newEmails === 0 && gmailAccounts.length > 0) {
+          console.log(`Gmail enrich: 0 verified matches for ${person.email} across ${gmailAccounts.length} accounts`);
         }
       } catch (e) {
         enrichResults.gmail = { error: e.message };
