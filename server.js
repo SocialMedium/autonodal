@@ -6115,6 +6115,147 @@ app.delete('/api/chat/history', authenticateToken, (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ADMIN — tenant owner only
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function requireAdmin(req, res, next) {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  next();
+}
+
+// Team members overview
+app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.id, u.name, u.email, u.role, u.region, u.onboarded, u.created_at, u.updated_at,
+        (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND s.expires_at > NOW()) AS active_sessions,
+        (SELECT MAX(s.created_at) FROM sessions s WHERE s.user_id = u.id) AS last_login,
+        (SELECT COUNT(*) FROM user_google_accounts ug WHERE ug.user_id = u.id) AS google_accounts,
+        (SELECT bool_or(ug.sync_enabled) FROM user_google_accounts ug WHERE ug.user_id = u.id) AS google_sync_active,
+        (SELECT MAX(ug.last_sync_at) FROM user_google_accounts ug WHERE ug.user_id = u.id) AS google_last_sync,
+        (SELECT COUNT(*) FROM interactions i WHERE i.created_by = u.id AND i.tenant_id = $1) AS interactions_created,
+        (SELECT COUNT(*) FROM interactions i WHERE i.created_by = u.id AND i.tenant_id = $1 AND i.interaction_at > NOW() - INTERVAL '30 days') AS interactions_30d,
+        (SELECT COUNT(*) FROM team_proximity tp WHERE tp.team_member_id = u.id AND tp.tenant_id = $1) AS proximity_connections,
+        (SELECT COUNT(*) FROM signal_dispatches sd WHERE sd.claimed_by = u.id AND sd.tenant_id = $1) AS dispatches_claimed,
+        (SELECT COUNT(*) FROM signal_dispatches sd WHERE sd.claimed_by = u.id AND sd.status = 'sent' AND sd.tenant_id = $1) AS dispatches_sent
+      FROM users u
+      WHERE u.tenant_id = $1
+      ORDER BY u.created_at ASC
+    `, [req.tenant_id]);
+    res.json({ users: rows });
+  } catch (err) {
+    console.error('Admin users error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update user role
+app.patch('/api/admin/users/:id/role', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!['admin', 'consultant', 'researcher', 'viewer'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+    const { rows: [updated] } = await pool.query(
+      'UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3 RETURNING id, name, email, role',
+      [role, req.params.id, req.tenant_id]
+    );
+    if (!updated) return res.status(404).json({ error: 'User not found' });
+    res.json({ user: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Platform health overview
+app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const [stats, sources, pipelines, storage] = await Promise.all([
+      pool.query(`
+        SELECT
+          (SELECT COUNT(*) FROM users WHERE tenant_id = $1) AS total_users,
+          (SELECT COUNT(*) FROM sessions WHERE expires_at > NOW()) AS active_sessions,
+          (SELECT COUNT(*) FROM people WHERE tenant_id = $1) AS total_people,
+          (SELECT COUNT(*) FROM companies WHERE tenant_id = $1) AS total_companies,
+          (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1) AS total_signals,
+          (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '24 hours') AS signals_24h,
+          (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '7 days') AS signals_7d,
+          (SELECT COUNT(*) FROM external_documents WHERE tenant_id = $1) AS total_documents,
+          (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1) AS total_interactions,
+          (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND interaction_at > NOW() - INTERVAL '7 days') AS interactions_7d,
+          (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1) AS total_placements,
+          (SELECT COALESCE(SUM(placement_fee), 0) FROM conversions WHERE tenant_id = $1) AS total_revenue,
+          (SELECT COUNT(*) FROM signal_dispatches WHERE tenant_id = $1) AS total_dispatches,
+          (SELECT COUNT(*) FROM signal_dispatches WHERE tenant_id = $1 AND status = 'draft') AS dispatches_draft,
+          (SELECT COUNT(*) FROM signal_dispatches WHERE tenant_id = $1 AND status = 'sent') AS dispatches_sent,
+          (SELECT COUNT(*) FROM signal_grabs WHERE tenant_id = $1) AS total_grabs,
+          (SELECT COUNT(*) FROM user_google_accounts WHERE sync_enabled = true) AS google_syncs_active
+      `, [req.tenant_id]),
+      pool.query(`
+        SELECT rs.name, rs.source_type, rs.url, rs.enabled,
+               rs.last_fetched_at, rs.last_error, rs.consecutive_errors,
+               (SELECT COUNT(*) FROM external_documents ed WHERE ed.source_name = rs.name AND ed.tenant_id = $1) AS doc_count
+        FROM rss_sources rs
+        ORDER BY rs.enabled DESC, rs.last_fetched_at DESC NULLS LAST
+      `, [req.tenant_id]),
+      pool.query(`
+        SELECT pipeline_key, pipeline_name, status, started_at, completed_at, duration_ms,
+               items_processed, error_message
+        FROM pipeline_runs
+        ORDER BY started_at DESC LIMIT 30
+      `),
+      pool.query(`
+        SELECT
+          (SELECT COUNT(*) FROM embeddings) AS total_embeddings,
+          (SELECT COUNT(*) FROM embeddings WHERE entity_type = 'person') AS person_embeddings,
+          (SELECT COUNT(*) FROM embeddings WHERE entity_type = 'company') AS company_embeddings,
+          (SELECT COUNT(*) FROM embeddings WHERE entity_type = 'document') AS document_embeddings
+      `)
+    ]);
+
+    res.json({
+      stats: stats.rows[0],
+      sources: sources.rows,
+      pipeline_runs: pipelines.rows,
+      embeddings: storage.rows[0]
+    });
+  } catch (err) {
+    console.error('Admin health error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Tenant config
+app.get('/api/admin/tenant', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows: [tenant] } = await pool.query(
+      'SELECT * FROM tenants WHERE id = $1', [req.tenant_id]
+    );
+    res.json({ tenant });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Audit log
+app.get('/api/admin/audit', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const { rows } = await pool.query(`
+      SELECT al.action, al.target_type, al.target_id, al.details, al.ip_address, al.created_at,
+             u.name AS user_name, u.email AS user_email
+      FROM audit_logs al
+      LEFT JOIN users u ON u.id = al.user_id
+      ORDER BY al.created_at DESC
+      LIMIT $1
+    `, [limit]);
+    res.json({ logs: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // XERO OAUTH 2.0
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -6317,6 +6458,21 @@ app.listen(PORT, async () => {
       ALTER TABLE interactions ADD COLUMN IF NOT EXISTS sensitivity VARCHAR(20) DEFAULT 'normal';
     `);
   } catch (e) { /* columns may already exist */ }
+
+  // Bootstrap admin: ensure at least one admin exists per tenant
+  try {
+    const { rows: admins } = await pool.query(
+      `SELECT id FROM users WHERE role = 'admin' AND tenant_id = '00000000-0000-0000-0000-000000000001' LIMIT 1`
+    );
+    if (admins.length === 0) {
+      // Promote the first user created (tenant owner)
+      await pool.query(`
+        UPDATE users SET role = 'admin', updated_at = NOW()
+        WHERE id = (SELECT id FROM users WHERE tenant_id = '00000000-0000-0000-0000-000000000001' ORDER BY created_at ASC LIMIT 1)
+      `);
+      console.log('  ✅ Admin role bootstrapped for tenant owner');
+    }
+  } catch (e) { /* ok if fails */ }
 
   // Ensure network topology tables exist
   try {

@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — MLX Autonode</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --serif: 'Source Serif 4', 'Georgia', serif;
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+  --bg: #FAF9F7;
+  --surface: #FFFFFF;
+  --surface-warm: #F7F5F2;
+  --surface-cool: #F2F4F8;
+  --ink: #1A1A1A;
+  --ink-2: #4A4A4A;
+  --ink-3: #7A7A7A;
+  --ink-4: #AAAAAA;
+  --rule: #E0DDD8;
+  --rule-bold: #C8C4BE;
+  --blue: #2563EB;
+  --blue-soft: #EBF1FE;
+  --emerald: #0D7A50;
+  --emerald-soft: #E8F5EE;
+  --amber: #B45309;
+  --amber-soft: #FEF7E8;
+  --rose: #C41D3E;
+  --rose-soft: #FDF0F2;
+  --violet: #6D28D9;
+  --violet-soft: #F3EEFE;
+  --radius: 8px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+  --shadow-hover: 0 4px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+
+.masthead { background: var(--surface); border-bottom: 2px solid var(--ink); padding: 0 40px; position: sticky; top: 0; z-index: 100; }
+.masthead-top { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+.masthead-brand { display: flex; align-items: baseline; gap: 8px; }
+.masthead-logo { font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+.masthead-logo em { font-style: italic; font-weight: 400; }
+.masthead-nav { display: flex; gap: 2px; }
+.masthead-nav a { font-size: 12px; font-weight: 500; padding: 6px 14px; border-radius: 6px; text-decoration: none; color: var(--ink-3); transition: all 0.15s; }
+.masthead-nav a:hover { color: var(--ink); background: var(--surface-warm); }
+.masthead-nav a.active { color: var(--ink); background: var(--surface-warm); font-weight: 600; }
+.masthead-user { width: 32px; height: 32px; border-radius: 50%; background: var(--ink); color: white; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; cursor: pointer; }
+
+.page { max-width: 1200px; margin: 0 auto; padding: 32px 40px; }
+.page-title { font-family: var(--serif); font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+.page-subtitle { font-size: 12px; color: var(--ink-3); margin-bottom: 28px; }
+
+/* Stats grid */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 32px; }
+.stat-card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 16px; }
+.stat-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 4px; }
+.stat-value { font-family: var(--mono); font-size: 22px; font-weight: 500; }
+.stat-sub { font-size: 10px; color: var(--ink-4); margin-top: 2px; }
+
+/* Section */
+.section { margin-bottom: 36px; }
+.section-title { font-family: var(--serif); font-size: 16px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.section-title .badge { font-family: var(--sans); font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: var(--blue-soft); color: var(--blue); }
+
+/* Table */
+.tbl { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; }
+.tbl th { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); background: var(--surface-warm); padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--rule); }
+.tbl td { font-size: 12px; padding: 10px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.tbl tr:last-child td { border-bottom: none; }
+.tbl tr:hover td { background: var(--surface-warm); }
+
+.pill { font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 10px; display: inline-block; }
+.pill-green { background: var(--emerald-soft); color: var(--emerald); }
+.pill-blue { background: var(--blue-soft); color: var(--blue); }
+.pill-amber { background: var(--amber-soft); color: var(--amber); }
+.pill-rose { background: var(--rose-soft); color: var(--rose); }
+.pill-violet { background: var(--violet-soft); color: var(--violet); }
+.pill-grey { background: var(--surface-warm); color: var(--ink-3); }
+
+.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+.dot-green { background: var(--emerald); }
+.dot-amber { background: var(--amber); }
+.dot-red { background: var(--rose); }
+.dot-grey { background: var(--ink-4); }
+
+select.role-select { font-family: var(--sans); font-size: 11px; padding: 3px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); cursor: pointer; }
+select.role-select:focus { outline: none; border-color: var(--blue); }
+
+.mono { font-family: var(--mono); font-size: 11px; }
+.muted { color: var(--ink-4); }
+.small { font-size: 10px; }
+
+/* Pipeline row */
+.pipeline-row { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--rule); background: var(--surface); }
+.pipeline-row:last-child { border-bottom: none; }
+.pipeline-name { font-size: 12px; font-weight: 500; min-width: 180px; }
+.pipeline-meta { font-size: 10px; color: var(--ink-3); }
+
+/* Source health */
+.source-row { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--rule); background: var(--surface); }
+.source-row:last-child { border-bottom: none; }
+.source-name { font-size: 12px; font-weight: 500; min-width: 200px; }
+.source-meta { font-size: 10px; color: var(--ink-3); flex: 1; }
+
+.loading { text-align: center; padding: 60px; color: var(--ink-3); }
+
+/* Login overlay */
+.login-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 1000; display: none; align-items: center; justify-content: center; }
+.login-overlay.active { display: flex; }
+.login-box { text-align: center; }
+.login-box h2 { font-family: var(--serif); font-size: 24px; margin-bottom: 8px; }
+.login-box p { color: var(--ink-3); margin-bottom: 20px; font-size: 13px; }
+.login-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 24px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); font-family: var(--sans); font-size: 14px; cursor: pointer; text-decoration: none; color: var(--ink); }
+.login-btn:hover { border-color: var(--ink-3); }
+#loginError { color: var(--rose); font-size: 12px; margin-top: 12px; display: none; }
+#loginError.active { display: block; }
+.access-denied { text-align: center; padding: 80px 40px; }
+.access-denied h2 { font-family: var(--serif); font-size: 20px; margin-bottom: 8px; }
+.access-denied p { color: var(--ink-3); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <h2>MLX Admin</h2>
+    <p>Sign in with your MitchelLake account</p>
+    <a class="login-btn" href="/api/auth/google?return_to=/admin.html">Sign in with Google</a>
+    <div id="loginError"></div>
+  </div>
+</div>
+
+<div id="accessDenied" class="access-denied" style="display:none">
+  <h2>Admin access required</h2>
+  <p>Your account does not have admin privileges. Contact the tenant owner.</p>
+  <p style="margin-top:16px"><a href="/index.html" style="color:var(--blue)">Back to dashboard</a></p>
+</div>
+
+<div id="appContent" style="display:none">
+<header class="masthead">
+  <div class="masthead-top">
+    <div class="masthead-brand">
+      <div class="masthead-logo">MLX <em>Autonode</em></div>
+    </div>
+    <nav class="masthead-nav">
+      <a href="/index.html">Signals</a>
+      <a href="/people.html">People</a>
+      <a href="/companies.html">Companies</a>
+      <a href="/dispatches.html">Dispatch</a>
+      <a href="/placements.html">Revenue</a>
+      <a href="/admin.html" class="active">Admin</a>
+    </nav>
+    <div>
+      <div class="masthead-user" id="userAvatar" onclick="doLogout()" title="Sign out">JT</div>
+    </div>
+  </div>
+</header>
+
+<div class="page">
+  <div class="page-title">Platform Administration</div>
+  <div class="page-subtitle" id="tenantInfo">Loading...</div>
+
+  <!-- Stats -->
+  <div class="stats-grid" id="statsGrid">
+    <div class="stat-card"><div class="stat-label">Team Members</div><div class="stat-value" id="sUsers">-</div></div>
+    <div class="stat-card"><div class="stat-label">Active Sessions</div><div class="stat-value" id="sSessions">-</div></div>
+    <div class="stat-card"><div class="stat-label">People</div><div class="stat-value" id="sPeople">-</div></div>
+    <div class="stat-card"><div class="stat-label">Companies</div><div class="stat-value" id="sCompanies">-</div></div>
+    <div class="stat-card"><div class="stat-label">Signals (24h / 7d)</div><div class="stat-value" id="sSignals">-</div></div>
+    <div class="stat-card"><div class="stat-label">Documents</div><div class="stat-value" id="sDocs">-</div></div>
+    <div class="stat-card"><div class="stat-label">Dispatches</div><div class="stat-value" id="sDispatches">-</div><div class="stat-sub" id="sDispatchDetail"></div></div>
+    <div class="stat-card"><div class="stat-label">Revenue Tracked</div><div class="stat-value" id="sRevenue">-</div><div class="stat-sub" id="sRevenueDetail"></div></div>
+    <div class="stat-card"><div class="stat-label">Google Syncs</div><div class="stat-value" id="sGoogle">-</div></div>
+    <div class="stat-card"><div class="stat-label">Embeddings</div><div class="stat-value" id="sEmbeddings">-</div><div class="stat-sub" id="sEmbedDetail"></div></div>
+  </div>
+
+  <!-- Team -->
+  <div class="section">
+    <div class="section-title">Team Members <span class="badge" id="userCount">0</span></div>
+    <table class="tbl" id="usersTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Region</th>
+          <th>Google</th>
+          <th>Last Login</th>
+          <th>Activity (30d)</th>
+          <th>Network</th>
+          <th>Dispatches</th>
+        </tr>
+      </thead>
+      <tbody id="usersBody">
+        <tr><td colspan="9" class="loading">Loading team data...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pipelines -->
+  <div class="section">
+    <div class="section-title">Pipeline Runs <span class="badge" id="pipelineCount">0</span></div>
+    <div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);overflow:hidden" id="pipelinesContainer">
+      <div class="loading">Loading pipeline history...</div>
+    </div>
+  </div>
+
+  <!-- Sources -->
+  <div class="section">
+    <div class="section-title">Feed Sources <span class="badge" id="sourceCount">0</span></div>
+    <div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);overflow:hidden" id="sourcesContainer">
+      <div class="loading">Loading source health...</div>
+    </div>
+  </div>
+
+  <!-- Audit -->
+  <div class="section">
+    <div class="section-title">Recent Audit Log <span class="badge" id="auditCount">0</span></div>
+    <table class="tbl" id="auditTable">
+      <thead>
+        <tr><th>Time</th><th>User</th><th>Action</th><th>Target</th><th>Details</th></tr>
+      </thead>
+      <tbody id="auditBody">
+        <tr><td colspan="5" class="loading">Loading audit log...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+
+<script>
+function getToken() { return localStorage.getItem('ml_token'); }
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+function ago(d) {
+  if (!d) return '-';
+  var ms = Date.now() - new Date(d).getTime();
+  if (ms < 60000) return 'just now';
+  if (ms < 3600000) return Math.floor(ms/60000) + 'm ago';
+  if (ms < 86400000) return Math.floor(ms/3600000) + 'h ago';
+  if (ms < 604800000) return Math.floor(ms/86400000) + 'd ago';
+  return new Date(d).toLocaleDateString();
+}
+function num(n) { return (parseInt(n) || 0).toLocaleString(); }
+function currency(n) { return '$' + (parseInt(n) || 0).toLocaleString(); }
+
+async function api(path, options) {
+  options = options || {};
+  var token = getToken();
+  var res = await fetch(path, Object.assign({}, options, {
+    headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { 'Authorization': 'Bearer ' + token } : {}, options.headers || {}),
+    body: options.body ? JSON.stringify(options.body) : undefined
+  }));
+  if (res.status === 401) { localStorage.removeItem('ml_token'); showLogin(); throw new Error('Unauthorized'); }
+  if (res.status === 403) { document.getElementById('appContent').style.display = 'none'; document.getElementById('accessDenied').style.display = 'block'; throw new Error('Forbidden'); }
+  if (!res.ok) { var err = await res.json().catch(function() { return { error: res.statusText }; }); throw new Error(err.error || 'Request failed'); }
+  return res.json();
+}
+
+function showLogin() { document.getElementById('loginOverlay').classList.add('active'); }
+function doLogout() { if (!confirm('Sign out?')) return; api('/api/auth/logout', { method: 'POST' }).catch(function(){}); localStorage.removeItem('ml_token'); localStorage.removeItem('ml_user'); window.location = '/admin.html'; }
+
+// Auth callback
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var token = params.get('token');
+  var user = params.get('user');
+  if (token && user) {
+    localStorage.setItem('ml_token', token);
+    localStorage.setItem('ml_user', user);
+    window.history.replaceState({}, '', '/admin.html');
+  }
+  if (!getToken()) { showLogin(); return; }
+
+  // Set user avatar
+  try {
+    var u = JSON.parse(localStorage.getItem('ml_user') || '{}');
+    var initials = (u.name || '').split(' ').map(function(w){return w[0]}).join('').toUpperCase().slice(0,2);
+    document.getElementById('userAvatar').textContent = initials || '?';
+  } catch(e) {}
+
+  document.getElementById('appContent').style.display = 'block';
+  loadAll();
+})();
+
+async function loadAll() {
+  try {
+    var [health, users, audit] = await Promise.all([
+      api('/api/admin/health'),
+      api('/api/admin/users'),
+      api('/api/admin/audit?limit=30')
+    ]);
+    renderStats(health.stats);
+    renderUsers(users.users);
+    renderPipelines(health.pipeline_runs);
+    renderSources(health.sources);
+    renderAudit(audit.logs);
+    renderEmbeddings(health.embeddings);
+
+    // Tenant info
+    try {
+      var t = await api('/api/admin/tenant');
+      if (t.tenant) {
+        document.getElementById('tenantInfo').textContent =
+          t.tenant.name + ' \u00B7 ' + (t.tenant.vertical || 'talent') + ' \u00B7 ' +
+          (t.tenant.focus_geographies || []).join(', ') + ' \u00B7 Plan: ' + (t.tenant.plan || 'enterprise');
+      }
+    } catch(e) { document.getElementById('tenantInfo').textContent = 'MitchelLake \u00B7 Production'; }
+  } catch(e) {
+    console.error('Admin load error:', e);
+  }
+}
+
+function renderStats(s) {
+  document.getElementById('sUsers').textContent = num(s.total_users);
+  document.getElementById('sSessions').textContent = num(s.active_sessions);
+  document.getElementById('sPeople').textContent = num(s.total_people);
+  document.getElementById('sCompanies').textContent = num(s.total_companies);
+  document.getElementById('sSignals').textContent = num(s.signals_24h) + ' / ' + num(s.signals_7d);
+  document.getElementById('sDocs').textContent = num(s.total_documents);
+  document.getElementById('sDispatches').textContent = num(s.total_dispatches);
+  document.getElementById('sDispatchDetail').textContent = num(s.dispatches_draft) + ' draft \u00B7 ' + num(s.dispatches_sent) + ' sent';
+  document.getElementById('sRevenue').textContent = currency(s.total_revenue);
+  document.getElementById('sRevenueDetail').textContent = num(s.total_placements) + ' placements';
+  document.getElementById('sGoogle').textContent = num(s.google_syncs_active) + ' active';
+}
+
+function renderEmbeddings(e) {
+  if (!e) return;
+  document.getElementById('sEmbeddings').textContent = num(e.total_embeddings);
+  document.getElementById('sEmbedDetail').textContent = num(e.person_embeddings) + ' people \u00B7 ' + num(e.company_embeddings) + ' co \u00B7 ' + num(e.document_embeddings) + ' docs';
+}
+
+function renderUsers(users) {
+  document.getElementById('userCount').textContent = users.length;
+  var ROLE_PILLS = { admin: 'pill-violet', consultant: 'pill-blue', researcher: 'pill-green', viewer: 'pill-grey' };
+
+  var html = '';
+  users.forEach(function(u) {
+    var googleStatus = '';
+    if (parseInt(u.google_accounts) > 0) {
+      if (u.google_sync_active) {
+        googleStatus = '<span class="dot dot-green"></span>Syncing' + (u.google_last_sync ? '<br><span class="small muted">' + ago(u.google_last_sync) + '</span>' : '');
+      } else {
+        googleStatus = '<span class="dot dot-amber"></span>Connected (paused)';
+      }
+    } else {
+      googleStatus = '<span class="dot dot-grey"></span><span class="muted">Not connected</span>';
+    }
+
+    html += '<tr>' +
+      '<td><strong>' + esc(u.name) + '</strong></td>' +
+      '<td class="mono small">' + esc(u.email) + '</td>' +
+      '<td><select class="role-select" data-user-id="' + u.id + '" onchange="changeRole(this)">' +
+        ['admin','consultant','researcher','viewer'].map(function(r) {
+          return '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + r + '</option>';
+        }).join('') +
+      '</select></td>' +
+      '<td>' + (u.region ? '<span class="pill pill-blue">' + esc(u.region) + '</span>' : '<span class="muted">-</span>') + '</td>' +
+      '<td>' + googleStatus + '</td>' +
+      '<td>' + (u.last_login ? ago(u.last_login) : '<span class="muted">never</span>') +
+        (parseInt(u.active_sessions) > 0 ? '<br><span class="pill pill-green">online</span>' : '') + '</td>' +
+      '<td>' + (parseInt(u.interactions_30d) > 0 ? '<strong>' + num(u.interactions_30d) + '</strong> interactions' : '<span class="muted">0</span>') +
+        '<br><span class="small muted">' + num(u.interactions_created) + ' total</span></td>' +
+      '<td>' + num(u.proximity_connections) + ' connections</td>' +
+      '<td>' + (parseInt(u.dispatches_claimed) > 0 ? num(u.dispatches_claimed) + ' claimed' : '<span class="muted">0</span>') +
+        (parseInt(u.dispatches_sent) > 0 ? '<br><span class="small">' + num(u.dispatches_sent) + ' sent</span>' : '') + '</td>' +
+    '</tr>';
+  });
+  document.getElementById('usersBody').innerHTML = html;
+}
+
+async function changeRole(select) {
+  var userId = select.dataset.userId;
+  var newRole = select.value;
+  if (!confirm('Change role to ' + newRole + '?')) { select.value = select.dataset.prevRole || select.value; return; }
+  try {
+    await api('/api/admin/users/' + userId + '/role', { method: 'PATCH', body: { role: newRole } });
+    select.dataset.prevRole = newRole;
+  } catch(e) {
+    alert('Failed: ' + e.message);
+    loadAll();
+  }
+}
+
+function renderPipelines(runs) {
+  document.getElementById('pipelineCount').textContent = runs.length;
+  if (!runs.length) { document.getElementById('pipelinesContainer').innerHTML = '<div class="loading">No pipeline runs recorded</div>'; return; }
+
+  var STATUS_DOT = { completed: 'dot-green', running: 'dot-amber', failed: 'dot-red' };
+  var html = '';
+  runs.forEach(function(r) {
+    html += '<div class="pipeline-row">' +
+      '<span class="dot ' + (STATUS_DOT[r.status] || 'dot-grey') + '"></span>' +
+      '<span class="pipeline-name">' + esc(r.pipeline_name || r.pipeline_key) + '</span>' +
+      '<span class="pipeline-meta">' + ago(r.started_at) +
+        (r.duration_ms ? ' \u00B7 ' + (r.duration_ms/1000).toFixed(1) + 's' : '') +
+        (parseInt(r.items_processed) > 0 ? ' \u00B7 ' + num(r.items_processed) + ' items' : '') +
+      '</span>' +
+      '<span class="pill ' + (r.status === 'completed' ? 'pill-green' : r.status === 'failed' ? 'pill-rose' : 'pill-amber') + '">' + (r.status || 'unknown') + '</span>' +
+      (r.error_message ? '<span class="small" style="color:var(--rose);margin-left:8px">' + esc(r.error_message).slice(0,60) + '</span>' : '') +
+    '</div>';
+  });
+  document.getElementById('pipelinesContainer').innerHTML = html;
+}
+
+function renderSources(sources) {
+  document.getElementById('sourceCount').textContent = sources.length;
+  if (!sources.length) { document.getElementById('sourcesContainer').innerHTML = '<div class="loading">No sources configured</div>'; return; }
+
+  var html = '';
+  sources.forEach(function(s) {
+    var healthy = s.enabled && (parseInt(s.consecutive_errors) || 0) === 0;
+    var errored = (parseInt(s.consecutive_errors) || 0) > 0;
+    html += '<div class="source-row">' +
+      '<span class="dot ' + (s.enabled ? (errored ? 'dot-red' : 'dot-green') : 'dot-grey') + '"></span>' +
+      '<span class="source-name">' + esc(s.name) + '</span>' +
+      '<span class="pill pill-grey">' + esc(s.source_type) + '</span>' +
+      '<span class="source-meta">' +
+        num(s.doc_count) + ' docs' +
+        (s.last_fetched_at ? ' \u00B7 fetched ' + ago(s.last_fetched_at) : '') +
+        (errored ? ' \u00B7 <span style="color:var(--rose)">' + s.consecutive_errors + ' errors</span>' : '') +
+      '</span>' +
+      '<span class="pill ' + (s.enabled ? 'pill-green' : 'pill-grey') + '">' + (s.enabled ? 'active' : 'disabled') + '</span>' +
+    '</div>';
+  });
+  document.getElementById('sourcesContainer').innerHTML = html;
+}
+
+function renderAudit(logs) {
+  document.getElementById('auditCount').textContent = logs.length;
+  if (!logs.length) { document.getElementById('auditBody').innerHTML = '<tr><td colspan="5" class="muted">No audit entries</td></tr>'; return; }
+
+  var html = '';
+  logs.forEach(function(l) {
+    html += '<tr>' +
+      '<td class="small mono">' + ago(l.created_at) + '</td>' +
+      '<td>' + esc(l.user_name || '-') + '</td>' +
+      '<td><span class="pill pill-grey">' + esc(l.action) + '</span></td>' +
+      '<td class="small">' + esc(l.target_type || '') + (l.target_id ? ' ' + esc(String(l.target_id).slice(0,8)) + '...' : '') + '</td>' +
+      '<td class="small muted">' + esc(l.details ? JSON.stringify(l.details).slice(0,80) : '') + '</td>' +
+    '</tr>';
+  });
+  document.getElementById('auditBody').innerHTML = html;
+}
+</script>
+</body>
+</html>
