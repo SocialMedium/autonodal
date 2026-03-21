@@ -1205,7 +1205,7 @@ const PIPELINES = {
     icon: '🏷️',
     fn: async () => {
       const { execSync } = require('child_process');
-      execSync('node ' + require('path').join(__dirname, 'classify_documents.js') + ' --limit 10', { timeout: 300000, stdio: 'inherit' });
+      execSync('node ' + require('path').join(__dirname, 'classify_documents.js') + ' --limit 50', { timeout: 600000, stdio: 'inherit' });
     },
     schedule: '45 */2 * * *',
     description: 'Classify Drive documents, extract case studies, identify shortlisted candidates in pitch decks'

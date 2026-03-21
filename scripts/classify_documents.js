@@ -22,7 +22,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
 const CLASSIFICATION_VERSION = 'v1';
 const RERUN = process.argv.includes('--rerun');
-const LIMIT = (() => { const i = process.argv.indexOf('--limit'); return i !== -1 ? parseInt(process.argv[i + 1]) || 10 : 10; })();
+const LIMIT = (() => { const i = process.argv.indexOf('--limit'); return i !== -1 ? parseInt(process.argv[i + 1]) || 50 : 50; })();
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 

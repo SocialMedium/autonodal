@@ -28,7 +28,7 @@ const MIME_TYPES = [
   'application/vnd.google-apps.presentation',
   'application/pdf',
 ];
-const MAX_FILES_PER_ACCOUNT = 50;
+const MAX_FILES_PER_ACCOUNT = 200;
 const MAX_CONTENT_LENGTH = 50000;
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
