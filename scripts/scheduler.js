@@ -1187,6 +1187,28 @@ const PIPELINES = {
     },
     schedule: '10 */2 * * *',
     description: 'Match synced emails to people, compute engagement signals, update person_scores'
+  },
+
+  sync_drive: {
+    name: 'Google Drive Sync',
+    icon: '📁',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'sync_drive.js'), { timeout: 300000, stdio: 'inherit' });
+    },
+    schedule: '30 */2 * * *',
+    description: 'Scan connected Google accounts for new/modified Drive documents, ingest as companion data'
+  },
+
+  classify_documents: {
+    name: 'Document Classification',
+    icon: '🏷️',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'classify_documents.js') + ' --limit 10', { timeout: 300000, stdio: 'inherit' });
+    },
+    schedule: '45 */2 * * *',
+    description: 'Classify Drive documents, extract case studies, identify shortlisted candidates in pitch decks'
   }
 };
 

@@ -6136,6 +6136,115 @@ app.delete('/api/chat/history', authenticateToken, (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// CASE STUDY LIBRARY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/case-studies', authenticateToken, async (req, res) => {
+  try {
+    const { sector, geography, theme, status, limit: lim = 50, offset = 0 } = req.query;
+    let where = 'WHERE cs.tenant_id = $1';
+    const params = [req.tenant_id];
+    let idx = 1;
+
+    if (sector) { idx++; where += ` AND cs.sector ILIKE $${idx}`; params.push(`%${sector}%`); }
+    if (geography) { idx++; where += ` AND cs.geography ILIKE $${idx}`; params.push(`%${geography}%`); }
+    if (theme) { idx++; where += ` AND $${idx} = ANY(cs.themes)`; params.push(theme); }
+    if (status) { idx++; where += ` AND cs.status = $${idx}`; params.push(status); }
+
+    idx++; params.push(Math.min(parseInt(lim) || 50, 100));
+    idx++; params.push(parseInt(offset) || 0);
+
+    const { rows } = await pool.query(`
+      SELECT cs.*, c.name AS client_company_name, c.is_client,
+             ed.title AS source_document_title, ed.source_url
+      FROM case_studies cs
+      LEFT JOIN companies c ON c.id = cs.client_id
+      LEFT JOIN external_documents ed ON ed.id = cs.document_id
+      ${where}
+      ORDER BY cs.year DESC NULLS LAST, cs.created_at DESC
+      LIMIT $${idx - 1} OFFSET $${idx}
+    `, params);
+
+    const { rows: [{ count }] } = await pool.query(
+      `SELECT COUNT(*) FROM case_studies cs ${where}`, params.slice(0, -2)
+    );
+
+    res.json({ case_studies: rows, total: parseInt(count) });
+  } catch (err) {
+    console.error('Case studies error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/case-studies/:id', authenticateToken, async (req, res) => {
+  try {
+    const { rows: [cs] } = await pool.query(`
+      SELECT cs.*, c.name AS client_company_name, c.sector AS client_sector,
+             ed.title AS source_document_title, ed.source_url, ed.content_summary
+      FROM case_studies cs
+      LEFT JOIN companies c ON c.id = cs.client_id
+      LEFT JOIN external_documents ed ON ed.id = cs.document_id
+      WHERE cs.id = $1 AND cs.tenant_id = $2
+    `, [req.params.id, req.tenant_id]);
+    if (!cs) return res.status(404).json({ error: 'Not found' });
+
+    // Get people from the source document
+    let people = [];
+    if (cs.document_id) {
+      const { rows } = await pool.query(`
+        SELECT dp.person_name, dp.person_title, dp.person_company, dp.mention_role, dp.context_note,
+               dp.person_id, p.current_title AS current_title_now, p.current_company_name AS current_company_now
+        FROM document_people dp
+        LEFT JOIN people p ON p.id = dp.person_id
+        WHERE dp.document_id = $1
+        ORDER BY dp.mention_role, dp.person_name
+      `, [cs.document_id]);
+      people = rows;
+    }
+
+    res.json({ case_study: cs, people });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Classified documents overview
+app.get('/api/documents/classified', authenticateToken, async (req, res) => {
+  try {
+    const { document_type, limit: lim = 30 } = req.query;
+    let where = 'WHERE ed.tenant_id = $1 AND ed.classified_at IS NOT NULL';
+    const params = [req.tenant_id];
+    let idx = 1;
+    if (document_type) { idx++; where += ` AND ed.document_type = $${idx}`; params.push(document_type); }
+    idx++; params.push(Math.min(parseInt(lim) || 30, 100));
+
+    const { rows } = await pool.query(`
+      SELECT ed.id, ed.title, ed.document_type, ed.content_summary, ed.relevance_tags,
+             ed.source_url, ed.classified_at, ed.uploaded_by_user_id,
+             u.name AS uploaded_by_name,
+             (SELECT COUNT(*) FROM document_people dp WHERE dp.document_id = ed.id) AS people_count
+      FROM external_documents ed
+      LEFT JOIN users u ON u.id = ed.uploaded_by_user_id
+      ${where}
+      ORDER BY ed.classified_at DESC
+      LIMIT $${idx}
+    `, params);
+
+    // Type summary
+    const { rows: typeSummary } = await pool.query(`
+      SELECT document_type, COUNT(*) AS count
+      FROM external_documents
+      WHERE tenant_id = $1 AND classified_at IS NOT NULL AND document_type IS NOT NULL
+      GROUP BY document_type ORDER BY COUNT(*) DESC
+    `, [req.tenant_id]);
+
+    res.json({ documents: rows, type_summary: typeSummary });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ADMIN — tenant owner only
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -6616,6 +6725,15 @@ app.listen(PORT, async () => {
       ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
     `);
   } catch (e) { /* columns may already exist */ }
+
+  // Case study library + document classification tables
+  try {
+    const fs = require('fs');
+    const csMigration = require('path').join(__dirname, 'sql', 'migration_case_studies.sql');
+    if (fs.existsSync(csMigration)) {
+      await pool.query(fs.readFileSync(csMigration, 'utf8'));
+    }
+  } catch (e) { /* tables may already exist */ }
 
   // Ensure people privacy columns exist
   try {
