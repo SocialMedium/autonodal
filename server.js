@@ -6271,7 +6271,20 @@ app.delete('/api/chat/history', authenticateToken, (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 // CASE STUDY LIBRARY
 // ═══════════════════════════════════════════════════════════════════════════════
+//
+// GOVERNANCE MODEL:
+// - Placements (conversions table) are ALWAYS internal. They contain fees,
+//   candidate PII, contact details. They NEVER appear in external output.
+// - Case studies have two representations:
+//   1. INTERNAL: full data (client name, role, people, source doc) — team only
+//   2. EXTERNAL-SAFE: public_* fields only, no candidate names, no fees,
+//      no contact info. Requires public_approved = true.
+// - Only case studies with public_approved = true AND visibility = 'dispatch_ready'
+//   or 'published' can be bundled with dispatches or served externally.
+//
+// ═══════════════════════════════════════════════════════════════════════════════
 
+// Internal: full case study list (authenticated, team only)
 app.get('/api/case-studies', authenticateToken, async (req, res) => {
   try {
     const { sector, geography, theme, status, limit: lim = 50, offset = 0 } = req.query;
@@ -6309,6 +6322,7 @@ app.get('/api/case-studies', authenticateToken, async (req, res) => {
   }
 });
 
+// Internal: full case study detail (authenticated, team only)
 app.get('/api/case-studies/:id', authenticateToken, async (req, res) => {
   try {
     const { rows: [cs] } = await pool.query(`
@@ -6321,7 +6335,7 @@ app.get('/api/case-studies/:id', authenticateToken, async (req, res) => {
     `, [req.params.id, req.tenant_id]);
     if (!cs) return res.status(404).json({ error: 'Not found' });
 
-    // Get people from the source document
+    // People from the source document — INTERNAL ONLY
     let people = [];
     if (cs.document_id) {
       const { rows } = await pool.query(`
@@ -6336,6 +6350,145 @@ app.get('/api/case-studies/:id', authenticateToken, async (req, res) => {
     }
 
     res.json({ case_study: cs, people });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Sanitise a case study for external use (admin only)
+app.patch('/api/case-studies/:id/sanitise', authenticateToken, async (req, res) => {
+  try {
+    const { public_title, public_summary, public_sector, public_geography, public_capability, public_approved } = req.body;
+    const updates = ['updated_at = NOW()'];
+    const params = [req.params.id, req.tenant_id];
+    let idx = 2;
+
+    if (public_title !== undefined) { idx++; updates.push(`public_title = $${idx}`); params.push(public_title); }
+    if (public_summary !== undefined) { idx++; updates.push(`public_summary = $${idx}`); params.push(public_summary); }
+    if (public_sector !== undefined) { idx++; updates.push(`public_sector = $${idx}`); params.push(public_sector); }
+    if (public_geography !== undefined) { idx++; updates.push(`public_geography = $${idx}`); params.push(public_geography); }
+    if (public_capability !== undefined) { idx++; updates.push(`public_capability = $${idx}`); params.push(public_capability); }
+    if (public_approved !== undefined) {
+      idx++; updates.push(`public_approved = $${idx}`); params.push(public_approved);
+      if (public_approved) {
+        updates.push(`sanitised_by = $${idx + 1}`, `sanitised_at = NOW()`);
+        idx++; params.push(req.user.user_id);
+        updates.push(`visibility = CASE WHEN visibility = 'internal_only' THEN 'dispatch_ready' ELSE visibility END`);
+        updates.push(`status = CASE WHEN status = 'draft' THEN 'sanitised' ELSE status END`);
+      }
+    }
+
+    const { rows: [updated] } = await pool.query(
+      `UPDATE case_studies SET ${updates.join(', ')} WHERE id = $1 AND tenant_id = $2 RETURNING id, public_title, public_approved, visibility, status`,
+      params
+    );
+    if (!updated) return res.status(404).json({ error: 'Not found' });
+
+    auditLog(req.user.user_id, 'sanitise_case_study', 'case_study', updated.id, { public_approved: updated.public_approved, visibility: updated.visibility });
+    res.json({ case_study: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUBLIC / DISPATCH-SAFE: case studies for external consumption
+// HARD GATE: only returns public_approved = true, visibility IN ('dispatch_ready', 'published')
+// NEVER returns: client_name, candidate names, fees, contact details, source documents
+app.get('/api/public/case-studies', async (req, res) => {
+  try {
+    const { sector, geography, theme, capability, limit: lim = 20 } = req.query;
+    const tenantId = '00000000-0000-0000-0000-000000000001';
+    let where = `WHERE cs.tenant_id = $1 AND cs.public_approved = true AND cs.visibility IN ('dispatch_ready', 'published')`;
+    const params = [tenantId];
+    let idx = 1;
+
+    if (sector) { idx++; where += ` AND cs.public_sector ILIKE $${idx}`; params.push(`%${sector}%`); }
+    if (geography) { idx++; where += ` AND cs.public_geography ILIKE $${idx}`; params.push(`%${geography}%`); }
+    if (theme) { idx++; where += ` AND $${idx} = ANY(cs.themes)`; params.push(theme); }
+    if (capability) { idx++; where += ` AND $${idx} = ANY(cs.capabilities)`; params.push(capability); }
+    idx++; params.push(Math.min(parseInt(lim) || 20, 50));
+
+    const { rows } = await pool.query(`
+      SELECT
+        cs.id, cs.slug,
+        cs.public_title AS title,
+        cs.public_summary AS summary,
+        cs.public_sector AS sector,
+        cs.public_geography AS geography,
+        cs.public_capability AS capability,
+        cs.engagement_type,
+        cs.seniority_level,
+        cs.year,
+        cs.themes,
+        cs.change_vectors,
+        cs.capabilities
+      FROM case_studies cs
+      ${where}
+      ORDER BY cs.year DESC NULLS LAST, cs.relevance_score DESC
+      LIMIT $${idx}
+    `, params);
+
+    res.json({ case_studies: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Match case studies to a dispatch by theme/sector/geography overlap
+// Used by the dispatch rendering pipeline — returns ONLY public-safe fields
+app.get('/api/case-studies/match', authenticateToken, async (req, res) => {
+  try {
+    const { themes, sectors, geographies, change_vectors, limit: lim = 3 } = req.query;
+    const tenantId = req.tenant_id;
+
+    // Only return approved case studies
+    let where = `WHERE cs.tenant_id = $1 AND cs.public_approved = true`;
+    const params = [tenantId];
+    let idx = 1;
+
+    // Build relevance scoring
+    const scoreTerms = [];
+    if (themes) {
+      const themeArr = themes.split(',').map(t => t.trim());
+      idx++; params.push(themeArr);
+      scoreTerms.push(`(SELECT COUNT(*) FROM unnest(cs.themes) t WHERE t = ANY($${idx}::text[]))::float * 0.4`);
+    }
+    if (sectors) {
+      idx++; params.push(`%${sectors}%`);
+      scoreTerms.push(`CASE WHEN cs.public_sector ILIKE $${idx} THEN 0.25 ELSE 0 END`);
+    }
+    if (geographies) {
+      idx++; params.push(`%${geographies}%`);
+      scoreTerms.push(`CASE WHEN cs.public_geography ILIKE $${idx} THEN 0.2 ELSE 0 END`);
+    }
+    if (change_vectors) {
+      const cvArr = change_vectors.split(',').map(v => v.trim());
+      idx++; params.push(cvArr);
+      scoreTerms.push(`(SELECT COUNT(*) FROM unnest(cs.change_vectors) v WHERE v = ANY($${idx}::text[]))::float * 0.15`);
+    }
+
+    const scoreExpr = scoreTerms.length > 0 ? scoreTerms.join(' + ') : '0';
+    idx++; params.push(Math.min(parseInt(lim) || 3, 10));
+
+    const { rows } = await pool.query(`
+      SELECT
+        cs.id, cs.slug,
+        cs.public_title AS title,
+        cs.public_summary AS summary,
+        cs.public_sector AS sector,
+        cs.public_geography AS geography,
+        cs.public_capability AS capability,
+        cs.engagement_type,
+        cs.themes,
+        cs.capabilities,
+        (${scoreExpr}) AS match_score
+      FROM case_studies cs
+      ${where}
+      ORDER BY (${scoreExpr}) DESC, cs.relevance_score DESC
+      LIMIT $${idx}
+    `, params);
+
+    res.json({ matched_case_studies: rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

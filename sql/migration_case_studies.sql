@@ -67,12 +67,34 @@ CREATE TABLE IF NOT EXISTS case_studies (
   relevance_score   DECIMAL(4,3) DEFAULT 0,
   completeness      DECIMAL(4,3) DEFAULT 0,
 
+  -- ═══ External-safe fields ═══
+  -- These are the ONLY fields that may appear in dispatches, public pages, or external content.
+  -- They must NEVER contain: candidate names, fees, contact details, or identifiable client info
+  -- unless the client has approved public use.
+  public_title      TEXT,
+    -- e.g., "CTO Search — High-Growth Fintech, Singapore"
+    -- NOT "CTO Search — Acme Corp" unless client has approved
+  public_summary    TEXT,
+    -- 2-3 sentence anonymised summary safe for external use
+  public_sector     TEXT,
+    -- can match internal sector or be more general
+  public_geography  TEXT,
+  public_capability TEXT,
+    -- e.g., "Cross-border executive search in high-growth fintech"
+  public_approved   BOOLEAN NOT NULL DEFAULT false,
+    -- HARD GATE: case study cannot appear in dispatches/public unless true
+
   -- Governance
   visibility        VARCHAR(20) NOT NULL DEFAULT 'internal_only',
+    -- internal_only: visible to team only
+    -- dispatch_ready: approved for bundling with dispatches (requires public_approved = true)
+    -- published: live on public site
   status            VARCHAR(20) NOT NULL DEFAULT 'draft',
-    -- draft, reviewed, published
+    -- draft, reviewed, sanitised, published
   extracted_by      VARCHAR(50) DEFAULT 'system',
   reviewed_by       UUID REFERENCES users(id),
+  sanitised_by      UUID REFERENCES users(id),
+  sanitised_at      TIMESTAMPTZ,
 
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
