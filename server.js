@@ -5174,7 +5174,10 @@ TOOL SELECTION (use the most specific tool available):
 13. Save intel → log_intelligence
 14. Create person → create_person
 15. Import placements ("we placed X as Y at Z") → import_placements
-16. Complex cross-referencing queries not covered above → run_sql_query with JOINs
+16. Import case studies ("we did a CTO search for fintech in SG") → import_case_studies
+17. Complex cross-referencing queries not covered above → run_sql_query with JOINs
+
+CASE STUDY GOVERNANCE: Case studies imported via chat are INTERNAL DRAFTS. They contain client names and engagement details that must NOT go external without sanitisation. Remind the user that imported case studies need review and public_* field approval before they can appear in dispatches or on the website.
 
 IMPORTANT: Prefer dedicated tools (#1-#5) over run_sql_query. They return pre-computed, pre-ranked results and are faster and more reliable. Only fall back to run_sql_query for questions that no dedicated tool covers.
 When using run_sql_query, replace <TENANT> with the actual tenant_id from context.
@@ -5304,6 +5307,38 @@ const CHAT_TOOLS = [
         }
       },
       required: ['placements']
+    }
+  },
+  {
+    name: 'import_case_studies',
+    description: 'Import case study records from a list. Use when the user describes past engagements, completed searches, or drops a list of case studies. Each case study needs at minimum: a description of the engagement. The system will extract structured fields. Case studies are created as internal drafts — they require separate sanitisation before external use.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        case_studies: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              client_name: { type: 'string', description: 'Client company name (INTERNAL — will not be published externally without sanitisation)' },
+              role_title: { type: 'string', description: 'Role searched for' },
+              engagement_type: { type: 'string', enum: ['executive_search', 'board_advisory', 'leadership_assessment', 'team_build', 'succession', 'market_mapping'], description: 'Type of engagement' },
+              seniority_level: { type: 'string', enum: ['c_suite', 'vp', 'director', 'head', 'senior'], description: 'Seniority of role' },
+              sector: { type: 'string', description: 'Industry sector' },
+              geography: { type: 'string', description: 'Region or country' },
+              year: { type: 'integer', description: 'Year of engagement' },
+              challenge: { type: 'string', description: 'What the client needed' },
+              approach: { type: 'string', description: 'How MitchelLake approached it' },
+              outcome: { type: 'string', description: 'Result achieved' },
+              themes: { type: 'array', items: { type: 'string' }, description: 'Thematic tags e.g. cross-border, founder-transition' },
+              capabilities: { type: 'array', items: { type: 'string' }, description: 'Capabilities demonstrated e.g. post-acquisition, turnaround' }
+            },
+            required: ['role_title']
+          },
+          description: 'Array of case study records to import'
+        }
+      },
+      required: ['case_studies']
     }
   },
 ];
@@ -6107,6 +6142,81 @@ async function executeTool(name, input, userId, tenantId) {
 
         auditLog(userId, 'import_placements', 'conversions', null, { imported: results.imported, skipped: results.skipped, total: placements.length });
         return JSON.stringify({ ...results, message: `Imported ${results.imported} placements (${results.skipped} duplicates skipped)` });
+      }
+
+      case 'import_case_studies': {
+        const { case_studies = [] } = input;
+        if (!case_studies.length) return JSON.stringify({ error: 'No case studies provided' });
+
+        // Ensure table exists
+        try {
+          const fs = require('fs');
+          const migPath = require('path').join(__dirname, 'sql', 'migration_case_studies.sql');
+          if (fs.existsSync(migPath)) await pool.query(fs.readFileSync(migPath, 'utf8'));
+        } catch (e) { /* table may already exist */ }
+
+        const results = { imported: 0, skipped: 0, details: [] };
+
+        for (const cs of case_studies) {
+          try {
+            // Resolve client company
+            let clientId = null;
+            if (cs.client_name) {
+              const { rows } = await pool.query(
+                `SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1`,
+                [`%${cs.client_name.trim()}%`, tenantId]
+              );
+              if (rows.length) clientId = rows[0].id;
+            }
+
+            // Build title
+            const title = [cs.role_title, cs.client_name].filter(Boolean).join(' — ') || 'Case Study';
+
+            // Check for duplicate
+            const { rows: dupes } = await pool.query(
+              `SELECT id FROM case_studies WHERE title ILIKE $1 AND tenant_id = $2 LIMIT 1`,
+              [title, tenantId]
+            );
+            if (dupes.length) {
+              results.skipped++;
+              results.details.push({ title, status: 'duplicate' });
+              continue;
+            }
+
+            // Compute completeness
+            const fields = [cs.client_name, cs.engagement_type, cs.role_title, cs.sector,
+                            cs.geography, cs.challenge, cs.approach, cs.outcome];
+            const completeness = fields.filter(Boolean).length / fields.length;
+
+            const { rows: [inserted] } = await pool.query(`
+              INSERT INTO case_studies (
+                tenant_id, title, client_name, client_id, engagement_type,
+                role_title, seniority_level, sector, geography, year,
+                challenge, approach, outcome,
+                themes, capabilities, change_vectors,
+                completeness, extracted_by, status, visibility
+              ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'chat_import','draft','internal_only')
+              RETURNING id
+            `, [
+              tenantId, title, cs.client_name || null, clientId, cs.engagement_type || null,
+              cs.role_title || null, cs.seniority_level || null, cs.sector || null, cs.geography || null, cs.year || null,
+              cs.challenge || null, cs.approach || null, cs.outcome || null,
+              cs.themes || [], cs.capabilities || [], cs.change_vectors || [],
+              completeness
+            ]);
+
+            results.imported++;
+            results.details.push({ title, id: inserted.id, status: 'imported', completeness: (completeness * 100).toFixed(0) + '%' });
+          } catch (e) {
+            results.details.push({ title: cs.role_title || 'unknown', status: 'error', error: e.message });
+          }
+        }
+
+        auditLog(userId, 'import_case_studies', 'case_studies', null, { imported: results.imported, skipped: results.skipped, total: case_studies.length });
+        return JSON.stringify({
+          ...results,
+          message: `Imported ${results.imported} case studies as internal drafts (${results.skipped} duplicates skipped). These require sanitisation before external use — use /api/case-studies/:id/sanitise to approve public fields.`
+        });
       }
 
       default: return JSON.stringify({ error: `Unknown tool: ${name}` });
