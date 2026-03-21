@@ -1165,6 +1165,28 @@ const PIPELINES = {
     },
     schedule: '0 4 * * *',
     description: 'Harvest new episodes from all podcast RSS feeds into external_documents'
+  },
+
+  sync_gmail: {
+    name: 'Gmail Sync',
+    icon: '📧',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'sync_gmail.js'), { timeout: 300000, stdio: 'inherit' });
+    },
+    schedule: '*/15 * * * *',
+    description: 'Delta sync Gmail threads for connected accounts → interactions + team_proximity'
+  },
+
+  gmail_match: {
+    name: 'Gmail Match & Signals',
+    icon: '🔗',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'gmail_match.js'), { timeout: 180000, stdio: 'inherit' });
+    },
+    schedule: '10 */2 * * *',
+    description: 'Match synced emails to people, compute engagement signals, update person_scores'
   }
 };
 
