@@ -3528,10 +3528,26 @@ app.get('/api/search', authenticateToken, async (req, res) => {
           // No valid UUIDs — skip DB query
         } else {
         const { rows: people } = await pool.query(`
-          SELECT id, full_name, current_title, current_company_name, headline,
-                 location, seniority_level, expertise_tags, industries, source,
-                 email, linkedin_url
-          FROM people WHERE id = ANY($1::uuid[]) AND tenant_id = $2
+          SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.headline,
+                 p.location, p.seniority_level, p.expertise_tags, p.industries, p.source,
+                 p.email, p.linkedin_url, p.current_company_id,
+                 ps.timing_score, ps.flight_risk_score, ps.engagement_score, ps.receptivity_score,
+                 (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id AND i.interaction_type = 'research_note') AS note_count,
+                 (SELECT COUNT(*) FROM team_proximity tp WHERE tp.person_id = p.id AND tp.tenant_id = $2 AND tp.relationship_strength >= 0.3) AS team_connections,
+                 (SELECT u.name FROM users u WHERE u.id = (
+                   SELECT tp2.team_member_id FROM team_proximity tp2 WHERE tp2.person_id = p.id AND tp2.tenant_id = $2
+                   ORDER BY tp2.relationship_strength DESC LIMIT 1
+                 )) AS best_connector,
+                 (SELECT se.signal_type FROM signal_events se WHERE se.company_id = p.current_company_id
+                   AND se.detected_at > NOW() - INTERVAL '30 days' AND se.tenant_id = $2
+                   ORDER BY se.confidence_score DESC LIMIT 1) AS company_signal_type,
+                 (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = p.current_company_id
+                   AND se.detected_at > NOW() - INTERVAL '30 days' AND se.tenant_id = $2) AS company_signal_count,
+                 c.is_client AS at_client_company
+          FROM people p
+          LEFT JOIN person_scores ps ON ps.person_id = p.id
+          LEFT JOIN companies c ON c.id = p.current_company_id
+          WHERE p.id = ANY($1::uuid[]) AND p.tenant_id = $2
         `, [pointIds, req.tenant_id]);
 
         const peopleMap = new Map(people.map(p => [p.id, p]));
@@ -3543,7 +3559,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
             return {
               ...person,
               match_score: Math.round(r.score * 100),
-              has_research_notes: r.payload?.has_research_notes || false,
+              has_research_notes: r.payload?.has_research_notes || parseInt(person.note_count) > 0,
             };
           })
           .filter(Boolean);
@@ -3567,8 +3583,18 @@ app.get('/api/search', authenticateToken, async (req, res) => {
           SELECT c.id, c.name, c.sector, c.geography, c.domain, c.is_client,
                  c.employee_count_band, c.description,
                  (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id) AS signal_count,
-                 (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) AS people_count
-          FROM companies c WHERE c.id = ANY($1::uuid[]) AND c.tenant_id = $2
+                 (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.detected_at > NOW() - INTERVAL '30 days') AS recent_signal_count,
+                 (SELECT se.signal_type FROM signal_events se WHERE se.company_id = c.id AND se.detected_at > NOW() - INTERVAL '30 days'
+                   ORDER BY se.confidence_score DESC LIMIT 1) AS top_signal_type,
+                 (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) AS people_count,
+                 (SELECT COUNT(DISTINCT tp.person_id) FROM team_proximity tp
+                   JOIN people p2 ON p2.id = tp.person_id AND p2.current_company_id = c.id
+                   WHERE tp.tenant_id = $2 AND tp.relationship_strength >= 0.3) AS network_connections,
+                 (SELECT a.relationship_tier FROM accounts a WHERE (a.company_id = c.id OR LOWER(a.name) = LOWER(c.name)) AND a.tenant_id = $2 LIMIT 1) AS client_tier,
+                 cas.adjacency_score, cas.warmest_contact_name
+          FROM companies c
+          LEFT JOIN company_adjacency_scores cas ON LOWER(TRIM(cas.company_name)) = LOWER(TRIM(c.name))
+          WHERE c.id = ANY($1::uuid[]) AND c.tenant_id = $2
         `, [compIds, req.tenant_id]);
 
         const compMap = new Map(companies.map(c => [c.id, c]));
@@ -3630,7 +3656,15 @@ app.get('/api/search', authenticateToken, async (req, res) => {
           if (sigIds.length > 0) {
             const { rows: signals } = await pool.query(`
               SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
-                     se.evidence_summary, se.detected_at, c.sector, c.geography, c.is_client
+                     se.evidence_summary, se.detected_at, c.sector, c.geography, c.is_client,
+                     (SELECT COUNT(DISTINCT tp.person_id) FROM team_proximity tp
+                       JOIN people p ON p.id = tp.person_id AND p.current_company_id = se.company_id
+                       WHERE tp.tenant_id = $2 AND tp.relationship_strength >= 0.3) AS network_connections,
+                     (SELECT u.name FROM users u WHERE u.id = (
+                       SELECT tp2.team_member_id FROM team_proximity tp2
+                       JOIN people p2 ON p2.id = tp2.person_id AND p2.current_company_id = se.company_id
+                       WHERE tp2.tenant_id = $2 ORDER BY tp2.relationship_strength DESC LIMIT 1
+                     )) AS best_connector
               FROM signal_events se LEFT JOIN companies c ON c.id = se.company_id
               WHERE se.id = ANY($1::uuid[]) AND se.tenant_id = $2
             `, [sigIds, req.tenant_id]);
@@ -5107,24 +5141,27 @@ const CHAT_SYSTEM = `You are Lorac — the AI intelligence agent for the Signal 
 CRITICAL BEHAVIOUR:
 - DO NOT explain what you are going to do. Just DO it.
 - DO NOT narrate your tool calls. Execute tools silently and present the results.
-- When asked a cross-referencing question like "who do we know at X" — use run_sql_query immediately with a JOIN query. Do NOT chain multiple search tools.
-- For ANY question involving cross-referencing two entity types (signals + people, companies + contacts, placements + clients) — use run_sql_query with a single JOIN query. This is ALWAYS faster and more accurate than chaining separate search tools.
 - Present results as a clean formatted table or list. Not a wall of text.
 
-QUERY PATTERNS (use these SQL patterns directly):
-1. "Who do we know at companies with X signals?"
-   → run_sql_query: SELECT DISTINCT p.full_name, p.current_title, p.current_company_name, se.signal_type, se.evidence_summary, se.detected_at, p.id FROM people p JOIN companies c ON c.id = p.current_company_id JOIN signal_events se ON se.company_id = c.id WHERE se.signal_type = 'capital_raising' AND se.detected_at > NOW() - INTERVAL '90 days' AND p.tenant_id = '<TENANT>' ORDER BY se.detected_at DESC
+TOOL SELECTION (use the most specific tool available):
+1. Market patterns, trends, convergence, "what are we seeing" → get_converging_themes
+2. Priorities, best opportunities, where to focus, pipeline → get_ranked_opportunities
+3. Talent movement, flight risk, re-engage, who to reach out to → get_talent_in_motion
+4. "Who do we know at X", network into a company, connections → get_signal_proximity (pass company_name or company_id)
+5. Dispatch actions: claim, review, generate, regenerate → dispatch_action
+6. Person lookup by name, title, skills → search_people
+7. Company lookup → search_companies
+8. Person deep-dive → get_person_detail (needs person_id)
+9. Company deep-dive → get_company_detail (needs company_id)
+10. Signal search by type/confidence/time → search_signals
+11. Placement history → search_placements
+12. Research notes → search_research_notes
+13. Save intel → log_intelligence
+14. Create person → create_person
+15. Complex cross-referencing queries not covered above → run_sql_query with JOINs
 
-2. "What signals do we have for X company?"
-   → run_sql_query: SELECT se.signal_type, se.evidence_summary, se.confidence_score, se.detected_at FROM signal_events se JOIN companies c ON c.id = se.company_id WHERE c.name ILIKE '%X%' AND se.tenant_id = '<TENANT>' ORDER BY se.detected_at DESC
-
-3. "Who moved recently / flight risk?"
-   → run_sql_query: SELECT p.full_name, p.current_title, p.current_company_name, ps.flight_risk_score, ps.timing_score FROM people p JOIN person_scores ps ON ps.person_id = p.id WHERE ps.flight_risk_score > 0.5 AND p.tenant_id = '<TENANT>' ORDER BY ps.flight_risk_score DESC LIMIT 20
-
-4. "What placements have we done in X sector?"
-   → run_sql_query: SELECT p.full_name, cv.role_title, a.name as client, cv.placement_fee, cv.start_date FROM conversions cv JOIN people p ON p.id = cv.person_id JOIN accounts a ON a.id = cv.client_id LEFT JOIN companies c ON c.id = a.company_id WHERE (c.sector ILIKE '%X%' OR cv.role_title ILIKE '%X%') AND cv.tenant_id = '<TENANT>' ORDER BY cv.start_date DESC
-
-IMPORTANT: Replace <TENANT> with the actual tenant_id from context. The user's tenant_id is always provided in the conversation context.
+IMPORTANT: Prefer dedicated tools (#1-#5) over run_sql_query. They return pre-computed, pre-ranked results and are faster and more reliable. Only fall back to run_sql_query for questions that no dedicated tool covers.
+When using run_sql_query, replace <TENANT> with the actual tenant_id from context.
 
 CONTEXT:
 - MitchelLake is a retained executive search firm (APAC, UK, global)
@@ -5163,6 +5200,69 @@ const CHAT_TOOLS = [
   { name: 'process_uploaded_file', description: 'Process uploaded CSV/PDF. Actions: preview, import_people, import_companies, extract_text, import_linkedin_connections (match LinkedIn connections against DB, create team_proximity records), import_linkedin_messages (store LinkedIn message history as interactions/intel).', input_schema: { type: 'object', properties: { file_id: { type: 'string' }, action: { type: 'string', enum: ['preview', 'import_people', 'import_companies', 'extract_text', 'import_linkedin_connections', 'import_linkedin_messages'] }, column_mapping: { type: 'object' } }, required: ['file_id', 'action'] } },
   { name: 'run_sql_query', description: 'PRIMARY TOOL — Run SQL (SELECT, UPDATE, INSERT, DELETE) against the database. Use this FIRST for any cross-referencing query. JOINs are fast. Always include tenant_id filter. Key tables: people, companies, signal_events, interactions, conversions, accounts, opportunities, team_proximity, person_scores.', input_schema: { type: 'object', properties: { query: { type: 'string', description: 'SQL query. Must include AND tenant_id = \'<tenant_id>\' for data tables.' }, explanation: { type: 'string', description: 'Brief one-line explanation of what this query does' } }, required: ['query', 'explanation'] } },
   { name: 'get_platform_stats', description: 'Current platform statistics.', input_schema: { type: 'object', properties: {} } },
+
+  // ── MCP-style intelligence tools ──────────────────────────────────────────
+  {
+    name: 'get_converging_themes',
+    description: 'Returns signal clusters by type and sector showing where multiple companies exhibit the same signal pattern. Includes client overlap, candidate counts, and active search pipeline matches. Use when asked about market patterns, trends, sector activity, convergence, or "what are we seeing". Much faster and more reliable than composing SQL for these questions.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        lookback_days: { type: 'integer', default: 30, description: 'Days to look back for signal activity (default 30)' },
+        min_companies: { type: 'integer', default: 3, description: 'Minimum companies per cluster (default 3)' }
+      }
+    }
+  },
+  {
+    name: 'get_ranked_opportunities',
+    description: 'Returns companies ranked by composite opportunity score combining signal strength, network overlap, geographic relevance, and placement adjacency. Use when asked about priorities, where to focus, best opportunities, pipeline, or "what should we be working on". Supports region filtering and score thresholds.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        region: { type: 'string', description: 'Region code: AU, SG, UK, US, APAC, EMEA, or omit for all' },
+        min_score: { type: 'number', default: 0, description: 'Minimum composite score (0-1)' },
+        limit: { type: 'integer', default: 15, description: 'Max results to return' },
+        by_region: { type: 'boolean', default: false, description: 'If true, returns top opportunities grouped by region instead of a flat list' }
+      }
+    }
+  },
+  {
+    name: 'get_talent_in_motion',
+    description: 'Returns people showing movement signals: flight risk (at companies with restructuring/layoff/M&A signals), activity spikes (high engagement/timing scores), re-engagement windows (senior contacts at signal companies dormant 60+ days), and recent person-level signals. Use when asked about talent movement, who to reach out to, re-engagement opportunities, flight risk, or market talent activity.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        focus: { type: 'string', enum: ['all', 'flight_risk', 'active_profiles', 'reengage', 'person_signals'], default: 'all', description: 'Which talent motion category to return' },
+        limit: { type: 'integer', default: 10, description: 'Max results per category' }
+      }
+    }
+  },
+  {
+    name: 'get_signal_proximity',
+    description: 'For a given signal or company, returns the network proximity map: who we know there, team member connections, relationship strengths, contact scores (timing, receptivity), and whether the company is a client. Use when asked "who do we know at X", "what is our connection to X", "how do we get into X", or "show me the network for X". Returns a structured graph of team→contact→company relationships.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        signal_id: { type: 'string', description: 'Signal event UUID — use this when the question is about a specific signal' },
+        company_id: { type: 'string', description: 'Company UUID — use this when the question is about a company (alternative to signal_id)' },
+        company_name: { type: 'string', description: 'Company name — will be resolved to company_id if company_id not provided' }
+      }
+    }
+  },
+  {
+    name: 'dispatch_action',
+    description: 'Perform actions on signal dispatches: claim for review, unclaim, update status, trigger generation for new signals, or regenerate content with a theme override. Use when asked to "claim that dispatch", "mark as reviewed", "generate dispatches", "send that dispatch", or "rewrite the blog post about X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['claim', 'unclaim', 'update_status', 'generate_all', 'rescan_proximity', 'regenerate_content'], description: 'The action to perform' },
+        dispatch_id: { type: 'string', description: 'Required for claim, unclaim, update_status, regenerate_content' },
+        status: { type: 'string', enum: ['draft', 'claimed', 'reviewed', 'sent', 'archived'], description: 'New status — for update_status action' },
+        theme: { type: 'string', description: 'Override theme for regenerate_content action' }
+      },
+      required: ['action']
+    }
+  },
 ];
 
 async function executeTool(name, input, userId, tenantId) {
@@ -5432,6 +5532,429 @@ async function executeTool(name, input, userId, tenantId) {
         const { rows: [s] } = await pool.query(`SELECT (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1) AS signals, (SELECT COUNT(*) FROM companies WHERE (sector IS NOT NULL OR is_client = true) AND tenant_id = $1) AS companies, (SELECT COUNT(*) FROM people WHERE tenant_id = $1) AS people, (SELECT COUNT(*) FROM external_documents WHERE tenant_id = $1) AS documents, (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1) AS placements, (SELECT COALESCE(SUM(placement_fee),0) FROM conversions WHERE tenant_id = $1) AS revenue`, [tenantId]);
         return JSON.stringify(s);
       }
+      // ── MCP-style intelligence tools ──────────────────────────────────────
+      case 'get_converging_themes': {
+        const lookbackDays = input.lookback_days || 30;
+        const minCompanies = input.min_companies || 3;
+
+        // Signal type clusters
+        const { rows: signalThemes } = await pool.query(`
+          WITH candidate_counts AS (
+            SELECT se2.signal_type, COUNT(DISTINCT p.id) as cnt
+            FROM people p
+            JOIN companies c2 ON c2.id = p.current_company_id
+            JOIN signal_events se2 ON se2.company_id = c2.id AND se2.detected_at > NOW() - INTERVAL '${lookbackDays} days'
+            WHERE p.current_title IS NOT NULL AND p.tenant_id = $1
+            GROUP BY se2.signal_type
+          )
+          SELECT
+            se.signal_type,
+            COUNT(DISTINCT se.company_id) as company_count,
+            COUNT(DISTINCT CASE WHEN c.is_client = true THEN se.company_id END) as client_count,
+            COUNT(*) as signal_count,
+            ROUND(AVG(se.confidence_score)::numeric, 2) as avg_confidence,
+            COALESCE(cc.cnt, 0) as candidate_count,
+            array_agg(DISTINCT c.name ORDER BY c.name) FILTER (WHERE c.is_client = true) as client_names,
+            array_agg(DISTINCT se.company_name ORDER BY se.company_name) FILTER (WHERE se.company_name IS NOT NULL) as company_names
+          FROM signal_events se
+          LEFT JOIN companies c ON c.id = se.company_id
+          LEFT JOIN candidate_counts cc ON cc.signal_type = se.signal_type
+          WHERE se.detected_at > NOW() - INTERVAL '${lookbackDays} days'
+            AND se.signal_type IS NOT NULL
+            AND se.tenant_id = $1
+          GROUP BY se.signal_type, cc.cnt
+          HAVING COUNT(DISTINCT se.company_id) >= ${minCompanies}
+          ORDER BY COUNT(DISTINCT CASE WHEN c.is_client = true THEN se.company_id END) DESC,
+                   COUNT(DISTINCT se.company_id) DESC
+          LIMIT 8
+        `, [tenantId]);
+
+        // Sector convergences
+        const { rows: sectorThemes } = await pool.query(`
+          SELECT
+            c.sector,
+            COUNT(DISTINCT se.company_id) as company_count,
+            COUNT(DISTINCT CASE WHEN c.is_client = true THEN c.id END) as client_count,
+            COUNT(*) as signal_count,
+            array_agg(DISTINCT se.signal_type::text) as signal_types,
+            array_agg(DISTINCT c.name ORDER BY c.name) FILTER (WHERE c.is_client = true) as client_names
+          FROM signal_events se
+          JOIN companies c ON c.id = se.company_id AND c.sector IS NOT NULL
+          WHERE se.detected_at > NOW() - INTERVAL '${lookbackDays} days'
+            AND se.tenant_id = $1
+          GROUP BY c.sector
+          HAVING COUNT(DISTINCT se.company_id) >= ${minCompanies} AND COUNT(*) >= 5
+          ORDER BY COUNT(DISTINCT CASE WHEN c.is_client = true THEN c.id END) DESC, COUNT(*) DESC
+          LIMIT 5
+        `, [tenantId]);
+
+        // Pipeline matches
+        let pipeline = [];
+        try {
+          const { rows } = await pool.query(`
+            SELECT s.title as search_title, s.status, a.name as client_name,
+                   COUNT(DISTINCT se.id) as matching_signals,
+                   COUNT(DISTINCT se.company_id) as signalling_companies
+            FROM opportunities s
+            JOIN pipeline_contacts sc ON sc.search_id = s.id
+            JOIN people p ON p.id = sc.person_id
+            JOIN signal_events se ON se.company_id = p.current_company_id AND se.detected_at > NOW() - INTERVAL '${lookbackDays} days'
+            LEFT JOIN accounts a ON a.id = s.project_id
+            WHERE s.status IN ('sourcing', 'interviewing')
+              AND s.tenant_id = $1
+            GROUP BY s.id, s.title, s.status, a.name
+            HAVING COUNT(DISTINCT se.id) >= 2
+            ORDER BY COUNT(DISTINCT se.id) DESC
+            LIMIT 5
+          `, [tenantId]);
+          pipeline = rows;
+        } catch (e) { /* pipeline query may fail if tables don't exist */ }
+
+        return JSON.stringify({
+          lookback_days: lookbackDays,
+          signal_themes: signalThemes,
+          sector_themes: sectorThemes,
+          pipeline_matches: pipeline,
+          summary: `${signalThemes.length} signal type clusters, ${sectorThemes.length} sector convergences, ${pipeline.length} active search overlaps`
+        });
+      }
+
+      case 'get_ranked_opportunities': {
+        const { region, min_score = 0, limit = 15, by_region = false } = input;
+
+        if (by_region) {
+          const perRegion = Math.min(limit, 10);
+          const { rows } = await pool.query(`
+            SELECT ro.company_name, ro.sector, ro.region_code, ro.composite_score, ro.rank_in_region,
+                   ro.signal_importance, ro.network_overlap, ro.geo_relevance,
+                   ro.signal_summary, ro.recommended_action, ro.signal_count, ro.signal_types,
+                   ro.warmest_contact_name, ro.best_connection_user_name,
+                   cas.contact_count, cas.senior_contact_count,
+                   gp.region_name, gp.is_home_market
+            FROM ranked_opportunities ro
+            LEFT JOIN company_adjacency_scores cas ON LOWER(TRIM(cas.company_name)) = LOWER(TRIM(ro.company_name))
+            LEFT JOIN geo_priorities gp ON gp.region_code = ro.region_code
+            WHERE ro.status = 'active' AND ro.rank_in_region <= $1
+              AND ro.region_code IS NOT NULL AND ro.region_code != 'UNKNOWN'
+            ORDER BY gp.weight_boost DESC NULLS LAST, ro.rank_in_region ASC
+          `, [perRegion]);
+
+          const grouped = {};
+          for (const row of rows) {
+            const rc = row.region_code;
+            if (!grouped[rc]) grouped[rc] = { region_code: rc, region_name: row.region_name, is_home_market: row.is_home_market, opportunities: [] };
+            grouped[rc].opportunities.push(row);
+          }
+          return JSON.stringify({ by_region: true, regions: grouped });
+        }
+
+        // Flat list
+        let where = `WHERE ro.status = 'active'`;
+        const params = [];
+        let idx = 0;
+        if (region && region !== 'all') { idx++; where += ` AND ro.region_code = $${idx}`; params.push(region); }
+        if (min_score > 0) { idx++; where += ` AND ro.composite_score >= $${idx}`; params.push(min_score); }
+        idx++; params.push(Math.min(limit, 50));
+
+        const { rows } = await pool.query(`
+          SELECT ro.company_name, ro.sector, ro.region_code, ro.composite_score, ro.rank_in_region,
+                 ro.signal_importance, ro.network_overlap, ro.geo_relevance,
+                 ro.signal_summary, ro.recommended_action, ro.signal_count, ro.signal_types,
+                 ro.warmest_contact_name, ro.best_connection_user_name,
+                 cas.contact_count, cas.senior_contact_count,
+                 gp.region_name, gp.is_home_market
+          FROM ranked_opportunities ro
+          LEFT JOIN company_adjacency_scores cas ON LOWER(TRIM(cas.company_name)) = LOWER(TRIM(ro.company_name))
+          LEFT JOIN geo_priorities gp ON gp.region_code = ro.region_code
+          ${where}
+          ORDER BY ro.composite_score DESC
+          LIMIT $${idx}
+        `, params);
+
+        return JSON.stringify({ by_region: false, opportunities: rows, count: rows.length });
+      }
+
+      case 'get_talent_in_motion': {
+        const { focus = 'all', limit: maxResults = 10 } = input;
+        const lim = Math.min(maxResults, 30);
+        const result = {};
+
+        // Flight risk
+        if (focus === 'all' || focus === 'flight_risk') {
+          const { rows } = await pool.query(`
+            SELECT DISTINCT ON (p.id)
+              p.id, p.full_name, p.current_title, p.current_company_name,
+              p.seniority_level, p.linkedin_url,
+              se.signal_type, se.evidence_summary, se.detected_at, se.confidence_score,
+              ps.flight_risk_score, ps.timing_score,
+              (SELECT COUNT(*) FROM people p2 WHERE p2.current_company_id = p.current_company_id) as colleagues_affected,
+              (SELECT COUNT(*) FROM people p2 WHERE p2.current_company_id = p.current_company_id
+               AND p2.seniority_level IN ('c_suite','vp','director')) as senior_affected
+            FROM people p
+            JOIN companies c ON c.id = p.current_company_id
+            JOIN signal_events se ON se.company_id = c.id
+              AND se.signal_type::text IN ('restructuring', 'layoffs', 'ma_activity', 'leadership_change', 'strategic_hiring')
+              AND se.detected_at > NOW() - INTERVAL '30 days'
+              AND COALESCE(se.is_megacap, false) = false
+            LEFT JOIN person_scores ps ON ps.person_id = p.id
+            WHERE p.current_title IS NOT NULL AND p.tenant_id = $2
+            ORDER BY p.id, se.detected_at DESC
+            LIMIT $1
+          `, [lim, tenantId]);
+          result.flight_risk = rows;
+        }
+
+        // Active profiles
+        if (focus === 'all' || focus === 'active_profiles') {
+          const { rows } = await pool.query(`
+            SELECT p.id, p.full_name, p.current_title, p.current_company_name,
+                   p.seniority_level, p.linkedin_url,
+                   ps.activity_score, ps.timing_score, ps.receptivity_score, ps.flight_risk_score,
+                   ps.engagement_score, ps.activity_trend, ps.engagement_trend,
+                   ps.last_interaction_at, ps.interaction_count_30d, ps.external_signals_30d
+            FROM people p
+            JOIN person_scores ps ON ps.person_id = p.id
+            WHERE (ps.timing_score > 0.4 OR ps.activity_score > 0.4 OR ps.receptivity_score > 0.5 OR ps.flight_risk_score > 0.4)
+              AND p.current_title IS NOT NULL AND p.tenant_id = $2
+            ORDER BY (COALESCE(ps.timing_score,0) + COALESCE(ps.activity_score,0) + COALESCE(ps.receptivity_score,0)) DESC
+            LIMIT $1
+          `, [lim, tenantId]);
+          result.active_profiles = rows;
+        }
+
+        // Re-engage windows
+        if (focus === 'all' || focus === 'reengage') {
+          const { rows } = await pool.query(`
+            SELECT DISTINCT ON (p.id)
+              p.id, p.full_name, p.current_title, p.current_company_name,
+              se.signal_type, se.company_name AS signal_company, se.confidence_score,
+              se.detected_at AS signal_date,
+              i.interaction_at AS last_contact,
+              i.interaction_type AS last_channel,
+              EXTRACT(DAY FROM NOW() - i.interaction_at) AS days_since_contact,
+              ps.engagement_score, ps.timing_score
+            FROM people p
+            JOIN companies c ON c.id = p.current_company_id
+            JOIN signal_events se ON se.company_id = c.id
+              AND se.signal_type::text IN ('restructuring', 'layoffs', 'ma_activity', 'leadership_change')
+              AND se.detected_at > NOW() - INTERVAL '30 days'
+              AND COALESCE(se.is_megacap, false) = false
+            LEFT JOIN LATERAL (
+              SELECT interaction_at, interaction_type FROM interactions
+              WHERE person_id = p.id AND tenant_id = $2
+              ORDER BY interaction_at DESC LIMIT 1
+            ) i ON true
+            LEFT JOIN person_scores ps ON ps.person_id = p.id
+            WHERE p.tenant_id = $2
+              AND p.current_title IS NOT NULL
+              AND p.seniority_level IN ('c_suite', 'C-Suite', 'C-level', 'vp', 'VP', 'director', 'Director', 'Head')
+              AND i.interaction_at IS NOT NULL
+              AND i.interaction_at < NOW() - INTERVAL '60 days'
+            ORDER BY p.id, se.confidence_score DESC
+          `, [tenantId]);
+
+          const ranked = rows
+            .map(r => ({ ...r, reengage_score: (r.confidence_score || 0) * 0.4 + Math.min((r.days_since_contact || 0) / 365, 1) * 0.3 + (r.timing_score || 0) * 0.3 }))
+            .sort((a, b) => b.reengage_score - a.reengage_score)
+            .slice(0, lim);
+          result.reengage_windows = ranked;
+        }
+
+        // Person signals
+        if (focus === 'all' || focus === 'person_signals') {
+          const { rows } = await pool.query(`
+            SELECT psg.id, psg.signal_type, psg.title, psg.description, psg.confidence_score, psg.detected_at,
+                   p.id as person_id, p.full_name, p.current_title, p.current_company_name, p.seniority_level
+            FROM person_signals psg
+            JOIN people p ON p.id = psg.person_id
+            WHERE psg.signal_type IN ('flight_risk_alert', 'activity_spike', 'timing_opportunity', 'new_role', 'company_exit')
+              AND psg.detected_at > NOW() - INTERVAL '14 days'
+              AND psg.tenant_id = $2
+            ORDER BY psg.detected_at DESC
+            LIMIT $1
+          `, [lim, tenantId]);
+          result.person_signals = rows;
+        }
+
+        return JSON.stringify(result);
+      }
+
+      case 'get_signal_proximity': {
+        let companyId = input.company_id;
+        let signalContext = null;
+
+        // Resolve from signal_id
+        if (input.signal_id) {
+          const { rows: [sig] } = await pool.query('SELECT * FROM signal_events WHERE id = $1 AND tenant_id = $2', [input.signal_id, tenantId]);
+          if (!sig) return JSON.stringify({ error: 'Signal not found' });
+          companyId = sig.company_id;
+          signalContext = { id: sig.id, type: sig.signal_type, confidence: sig.confidence_score, headline: sig.evidence_summary, company: sig.company_name, detected_at: sig.detected_at };
+        }
+
+        // Resolve from company_name
+        if (!companyId && input.company_name) {
+          const { rows } = await pool.query('SELECT id, name FROM companies WHERE name ILIKE $1 AND tenant_id = $2 ORDER BY is_client DESC LIMIT 1', [`%${input.company_name}%`, tenantId]);
+          if (rows.length) companyId = rows[0].id;
+          else return JSON.stringify({ error: `No company found matching "${input.company_name}"` });
+        }
+
+        if (!companyId) return JSON.stringify({ error: 'Provide signal_id, company_id, or company_name' });
+
+        // Get company info
+        const { rows: [company] } = await pool.query('SELECT id, name, sector, geography, is_client, domain FROM companies WHERE id = $1 AND tenant_id = $2', [companyId, tenantId]);
+        if (!company) return JSON.stringify({ error: 'Company not found' });
+
+        // Check client status
+        let account = null;
+        try {
+          const { rows: [acct] } = await pool.query(`
+            SELECT a.id, a.name, a.relationship_tier FROM accounts a
+            WHERE a.tenant_id = $1 AND (a.company_id = $2 OR LOWER(a.name) = LOWER($3)) LIMIT 1
+          `, [tenantId, companyId, company.name]);
+          account = acct || null;
+        } catch (e) { /* accounts table may not exist */ }
+
+        // Get contacts with team proximity
+        const { rows: contacts } = await pool.query(`
+          SELECT
+            p.id, p.full_name, p.current_title, p.current_company_name, p.seniority_level,
+            ps.timing_score, ps.receptivity_score, ps.engagement_score,
+            json_object_agg(
+              tp.team_member_id::text,
+              json_build_object('strength', tp.relationship_strength, 'type', tp.relationship_type)
+            ) AS connections_by_team_member,
+            MAX(tp.relationship_strength) AS best_strength,
+            (SELECT u.name FROM users u WHERE u.id = (
+              SELECT tp2.team_member_id FROM team_proximity tp2 WHERE tp2.person_id = p.id AND tp2.tenant_id = $1
+              ORDER BY tp2.relationship_strength DESC LIMIT 1
+            )) AS best_connector_name
+          FROM people p
+          JOIN team_proximity tp ON tp.person_id = p.id AND tp.tenant_id = $1
+          LEFT JOIN person_scores ps ON ps.person_id = p.id AND ps.tenant_id = $1
+          WHERE p.tenant_id = $1
+            AND p.current_company_id = $2
+            AND tp.relationship_strength >= 0.20
+          GROUP BY p.id, p.full_name, p.current_title, p.current_company_name, p.seniority_level,
+                   ps.timing_score, ps.receptivity_score, ps.engagement_score
+          ORDER BY MAX(tp.relationship_strength) DESC
+          LIMIT 15
+        `, [tenantId, companyId]);
+
+        // Get recent signals for context
+        const { rows: signals } = await pool.query(`
+          SELECT signal_type, evidence_summary, confidence_score, detected_at
+          FROM signal_events WHERE company_id = $1 AND tenant_id = $2 AND detected_at > NOW() - INTERVAL '90 days'
+          ORDER BY detected_at DESC LIMIT 5
+        `, [companyId, tenantId]);
+
+        return JSON.stringify({
+          company: { ...company, is_client: !!account, client_tier: account?.relationship_tier },
+          signal: signalContext,
+          contacts: contacts.map(c => ({
+            id: c.id,
+            name: c.full_name,
+            title: c.current_title,
+            seniority: c.seniority_level,
+            best_strength: parseFloat(c.best_strength) || 0,
+            best_connector: c.best_connector_name,
+            connections: c.connections_by_team_member,
+            timing_score: c.timing_score,
+            receptivity_score: c.receptivity_score,
+            engagement_score: c.engagement_score
+          })),
+          recent_signals: signals,
+          connection_count: contacts.length,
+          summary: `${contacts.length} contacts at ${company.name}${account ? ` (client, tier: ${account.relationship_tier})` : ''}, ${signals.length} recent signals`
+        });
+      }
+
+      case 'dispatch_action': {
+        const { action, dispatch_id, status, theme } = input;
+
+        switch (action) {
+          case 'generate_all': {
+            try {
+              const { generateDispatches } = require('./scripts/generate_dispatches');
+              generateDispatches().then(r => console.log('Dispatch generation complete:', r)).catch(e => console.error('Dispatch generation failed:', e.message));
+              return JSON.stringify({ success: true, message: 'Dispatch generation triggered — runs in background' });
+            } catch (e) { return JSON.stringify({ error: 'Failed to trigger generation: ' + e.message }); }
+          }
+          case 'rescan_proximity': {
+            try {
+              const { rescanProximity } = require('./scripts/generate_dispatches');
+              rescanProximity().then(r => console.log('Rescan complete:', r)).catch(e => console.error('Rescan failed:', e.message));
+              return JSON.stringify({ success: true, message: 'Proximity rescan triggered — runs in background' });
+            } catch (e) { return JSON.stringify({ error: 'Failed to trigger rescan: ' + e.message }); }
+          }
+          case 'claim': {
+            if (!dispatch_id) return JSON.stringify({ error: 'dispatch_id required for claim action' });
+            const { rows: [d] } = await pool.query('SELECT id, claimed_by, status FROM signal_dispatches WHERE id = $1 AND tenant_id = $2', [dispatch_id, tenantId]);
+            if (!d) return JSON.stringify({ error: 'Dispatch not found' });
+            if (d.claimed_by && d.claimed_by !== userId) {
+              const { rows: [claimer] } = await pool.query('SELECT name FROM users WHERE id = $1', [d.claimed_by]);
+              return JSON.stringify({ error: `Already claimed by ${claimer?.name || 'another user'}` });
+            }
+            const { rows: [updated] } = await pool.query(`
+              UPDATE signal_dispatches SET claimed_by = $2, claimed_at = NOW(), status = CASE WHEN status = 'draft' THEN 'claimed' ELSE status END, updated_at = NOW()
+              WHERE id = $1 AND tenant_id = $3 RETURNING id, company_name, signal_type, status
+            `, [dispatch_id, userId, tenantId]);
+            return JSON.stringify({ success: true, dispatch: updated, message: 'Dispatch claimed' });
+          }
+          case 'unclaim': {
+            if (!dispatch_id) return JSON.stringify({ error: 'dispatch_id required for unclaim action' });
+            const { rows: [updated] } = await pool.query(`
+              UPDATE signal_dispatches SET claimed_by = NULL, claimed_at = NULL, status = 'draft', updated_at = NOW()
+              WHERE id = $1 AND (claimed_by = $2 OR claimed_by IS NULL) AND tenant_id = $3 RETURNING id, company_name, status
+            `, [dispatch_id, userId, tenantId]);
+            if (!updated) return JSON.stringify({ error: 'Cannot unclaim — not your dispatch or not found' });
+            return JSON.stringify({ success: true, dispatch: updated, message: 'Dispatch unclaimed' });
+          }
+          case 'update_status': {
+            if (!dispatch_id) return JSON.stringify({ error: 'dispatch_id required for update_status action' });
+            if (!status) return JSON.stringify({ error: 'status required for update_status action' });
+            const updates = [`status = $3`, `updated_at = NOW()`];
+            if (status === 'reviewed') updates.push(`reviewed_at = NOW(), reviewed_by = $4`);
+            if (status === 'sent') updates.push(`sent_at = NOW()`);
+            const params = status === 'reviewed'
+              ? [dispatch_id, tenantId, status, userId]
+              : [dispatch_id, tenantId, status];
+            const { rows: [updated] } = await pool.query(`
+              UPDATE signal_dispatches SET ${updates.join(', ')}
+              WHERE id = $1 AND tenant_id = $2 RETURNING id, company_name, signal_type, status
+            `, params);
+            if (!updated) return JSON.stringify({ error: 'Dispatch not found' });
+            return JSON.stringify({ success: true, dispatch: updated, message: `Status updated to ${status}` });
+          }
+          case 'regenerate_content': {
+            if (!dispatch_id) return JSON.stringify({ error: 'dispatch_id required for regenerate_content action' });
+            const { rows: [d] } = await pool.query(`
+              SELECT sd.*, se.evidence_summary, se.signal_type, se.confidence_score,
+                     c.sector, c.geography
+              FROM signal_dispatches sd
+              LEFT JOIN signal_events se ON se.id = sd.signal_event_id
+              LEFT JOIN companies c ON c.id = sd.company_id
+              WHERE sd.id = $1 AND sd.tenant_id = $2
+            `, [dispatch_id, tenantId]);
+            if (!d) return JSON.stringify({ error: 'Dispatch not found' });
+
+            const blogTheme = theme || d.blog_theme || d.opportunity_angle || 'market intelligence';
+            const prompt = `Write a 550-700 word executive thought leadership piece about: ${blogTheme}\n\nContext: ${d.signal_type} signal for a ${d.sector || 'technology'} company in ${d.geography || 'APAC'}.\nEvidence: ${d.evidence_summary || d.signal_summary || 'Recent market signal'}\n\nWrite with authority, not sales language. Advisor tone. First person plural. No company name. No generic business clichés. Australian English.`;
+
+            try {
+              const regen = await callClaude([{ role: 'user', content: prompt }], [], 'You are a market intelligence writer for an executive search firm. Output JSON: {"title":"...","body":"...","keywords":["..."]}');
+              const text = regen.content.find(c => c.type === 'text')?.text || '';
+              const parsed = JSON.parse(text.replace(/```json\n?|\n?```/g, ''));
+
+              await pool.query(`UPDATE signal_dispatches SET blog_theme = $2, blog_title = $3, blog_body = $4, blog_keywords = $5, updated_at = NOW() WHERE id = $1 AND tenant_id = $6`,
+                [dispatch_id, blogTheme, parsed.title, JSON.stringify(parsed.body || parsed), parsed.keywords || [], tenantId]);
+
+              return JSON.stringify({ success: true, title: parsed.title, keywords: parsed.keywords, message: 'Content regenerated' });
+            } catch (e) { return JSON.stringify({ error: 'Regeneration failed: ' + e.message }); }
+          }
+          default: return JSON.stringify({ error: `Unknown dispatch action: ${action}` });
+        }
+      }
+
       default: return JSON.stringify({ error: `Unknown tool: ${name}` });
     }
   } catch (err) {

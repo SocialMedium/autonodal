@@ -2479,15 +2479,27 @@ async function doSearch() {
 
     // People
     html += mkGroup('people', 'People', r.people, 3, function(p) {
+      var ctx = [];
+      if (p.at_client_company) ctx.push('<span style="font-size:8px;font-weight:600;color:var(--amber)">CLIENT CO</span>');
+      if (parseInt(p.company_signal_count) > 0) ctx.push('<span style="font-size:8px;color:var(--blue)">' + esc((p.company_signal_type||'').replace(/_/g,' ')) + '</span>');
+      if (parseInt(p.team_connections) > 0) ctx.push('<span style="font-size:8px;color:var(--ink-3)">' + p.team_connections + ' connected' + (p.best_connector ? ' · via ' + esc(p.best_connector) : '') + '</span>');
+      if (parseInt(p.note_count) > 0) ctx.push('<span style="font-size:8px;color:var(--ink-4)">' + p.note_count + ' notes</span>');
+      if (parseFloat(p.timing_score) > 0.4) ctx.push('<span style="font-size:8px;color:var(--emerald)">timing ↑</span>');
+      if (parseFloat(p.flight_risk_score) > 0.4) ctx.push('<span style="font-size:8px;color:var(--red)">flight risk</span>');
+      var ctxHtml = ctx.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px 8px;margin-top:3px">' + ctx.join('') + '</div>' : '';
       return card('<div style="display:flex;justify-content:space-between;margin-bottom:5px"><div style="display:flex;gap:8px;align-items:center;min-width:0"><div style="width:28px;height:28px;border-radius:50%;background:var(--blue-soft);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:var(--blue);flex-shrink:0">' + srInitials(p.full_name) + '</div><div style="min-width:0"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(p.full_name) + '</div><div style="font-size:10px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(p.current_title || '') + (p.current_company_name ? ' · ' + esc(p.current_company_name) : '') + '</div></div></div>' + scoreBadge(p.score) + '</div>' +
-        (p.location ? '<div style="font-size:9px;color:var(--ink-4)">📍 ' + esc(p.location) + '</div>' : '') + scoreBar(p.score), '/person.html?id=' + p.id);
+        (p.location ? '<div style="font-size:9px;color:var(--ink-4)">📍 ' + esc(p.location) + '</div>' : '') + ctxHtml + scoreBar(p.score), '/person.html?id=' + p.id);
     });
 
     // Signals
     html += mkGroup('signals', 'Signals', r.signals, 3, function(s) {
       var sc = SIG_C[s.signal_type] || '#888';
+      var sctx = [];
+      if (s.is_client) sctx.push('<span style="font-size:8px;font-weight:600;color:var(--amber)">CLIENT</span>');
+      if (parseInt(s.network_connections) > 0) sctx.push('<span style="font-size:8px;color:var(--ink-3)">' + s.network_connections + ' connected' + (s.best_connector ? ' · via ' + esc(s.best_connector) : '') + '</span>');
+      var sctxHtml = sctx.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px 8px;margin-top:3px">' + sctx.join('') + '</div>' : '';
       return card('<div style="display:flex;justify-content:space-between;margin-bottom:5px"><div style="display:flex;gap:8px;align-items:center;min-width:0"><div style="width:28px;height:28px;border-radius:50%;background:' + sc + '18;display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="width:8px;height:8px;border-radius:50%;background:' + sc + ';display:inline-block"></span></div><div style="min-width:0"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(s.company_name || 'Unknown') + '</div><div style="font-size:9px;padding:1px 5px;border-radius:6px;background:' + sc + '18;color:' + sc + ';display:inline-block">' + esc((s.signal_type||'').replace(/_/g,' ')) + '</div></div></div>' + scoreBadge(s.score) + '</div>' +
-        '<div style="font-size:10px;color:var(--ink-3);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin-bottom:4px">' + esc((s.evidence_summary||'').slice(0,120)) + '</div>' + scoreBar(s.score), s.company_id ? '/company.html?id=' + s.company_id : '#');
+        '<div style="font-size:10px;color:var(--ink-3);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin-bottom:4px">' + esc((s.evidence_summary||'').slice(0,120)) + '</div>' + sctxHtml + scoreBar(s.score), s.company_id ? '/company.html?id=' + s.company_id : '#');
     });
 
     // Documents
@@ -2498,8 +2510,14 @@ async function doSearch() {
 
     // Companies
     html += mkGroup('companies', 'Companies', r.companies, 2, function(c) {
+      var cctx = [];
+      if (parseInt(c.recent_signal_count) > 0) cctx.push('<span style="font-size:8px;padding:1px 5px;border-radius:6px;background:' + (SIG_C[c.top_signal_type]||'#888') + '18;color:' + (SIG_C[c.top_signal_type]||'#888') + '">' + esc((c.top_signal_type||'').replace(/_/g,' ')) + (parseInt(c.recent_signal_count) > 1 ? ' +' + (parseInt(c.recent_signal_count)-1) : '') + '</span>');
+      if (parseInt(c.network_connections) > 0) cctx.push('<span style="font-size:8px;color:var(--ink-3)">' + c.network_connections + ' connected' + (c.warmest_contact_name ? ' · warmest: ' + esc(c.warmest_contact_name) : '') + '</span>');
+      if (c.client_tier) cctx.push('<span style="font-size:8px;font-weight:600;color:var(--amber)">' + esc(c.client_tier) + '</span>');
+      if (parseFloat(c.adjacency_score) > 0) cctx.push('<span style="font-size:8px;color:var(--ink-4)">adjacency ' + parseFloat(c.adjacency_score).toFixed(2) + '</span>');
+      var cctxHtml = cctx.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px 8px;margin-top:3px">' + cctx.join('') + '</div>' : '';
       return card('<div style="display:flex;justify-content:space-between;margin-bottom:5px"><div style="display:flex;gap:8px;align-items:center"><div style="width:28px;height:28px;border-radius:7px;background:var(--surface-warm);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:var(--ink-3);flex-shrink:0">' + srInitials(c.name) + '</div><div><div style="font-size:12px;font-weight:500">' + esc(c.name) + (c.is_client ? ' <span style="font-size:9px;color:var(--amber);font-weight:600">CLIENT</span>' : '') + '</div><div style="font-size:10px;color:var(--ink-3)">' + [c.sector, c.geography].filter(Boolean).join(' · ') + '</div></div></div>' + scoreBadge(c.score) + '</div>' +
-        '<div style="font-size:9px;color:var(--ink-4)">' + (parseInt(c.signal_count) > 0 ? '📡 ' + c.signal_count + ' signals · ' : '') + (parseInt(c.people_count) > 0 ? '👥 ' + c.people_count + ' people' : '') + '</div>' + scoreBar(c.score), '/company.html?id=' + c.id);
+        '<div style="font-size:9px;color:var(--ink-4)">' + (parseInt(c.signal_count) > 0 ? c.signal_count + ' signals · ' : '') + (parseInt(c.people_count) > 0 ? c.people_count + ' people' : '') + '</div>' + cctxHtml + scoreBar(c.score), '/company.html?id=' + c.id);
     });
 
     // Placements
