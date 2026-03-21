@@ -127,6 +127,20 @@ async function optionalAuth(req, res, next) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// AUDIT LOG HELPER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function auditLog(userId, action, targetType, targetId, details, ip) {
+  try {
+    await pool.query(
+      `INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details, ip_address, created_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW())`,
+      [userId, action, targetType || null, targetId || null, details ? JSON.stringify(details) : null, ip || null]
+    );
+  } catch (e) { /* audit logging should never block operations */ }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // AUTH ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -211,6 +225,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
       );
       user = newUser;
       console.log(`✅ New team member created: ${user.name} (${user.email})`);
+      auditLog(user.id, 'user_registered', 'user', user.id, { name: user.name, email: user.email });
     }
 
     // Create session
@@ -2970,8 +2985,8 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
               if (exists.length) {
                 await pool.query('UPDATE people SET current_company_id = $1, current_company_name = $2, updated_at = NOW() WHERE id = $3 AND (current_company_id IS NULL OR current_company_id != $1)', [req.params.id, company.name, exists[0].id]);
               } else {
-                await pool.query('INSERT INTO people (full_name, email, current_company_id, current_company_name, source, tenant_id, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())',
-                  [name, email, req.params.id, company.name, 'gmail_discovery', req.tenant_id]);
+                await pool.query('INSERT INTO people (full_name, email, current_company_id, current_company_name, source, created_by, tenant_id, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW())',
+                  [name, email, req.params.id, company.name, 'gmail_discovery', req.user?.user_id || null, req.tenant_id]);
               }
               linked++;
             }
@@ -5346,10 +5361,11 @@ async function executeTool(name, input, userId, tenantId) {
         const { rows: ex } = await pool.query(`SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [person_name, tenantId]);
         if (ex.length) { personId = ex[0].id; }
         else {
-          const { rows: [np] } = await pool.query(`INSERT INTO people (full_name, current_company_name, source, tenant_id) VALUES ($1, $2, 'chat_intel', $3) RETURNING id`, [person_name, company_name || null, tenantId]);
+          const { rows: [np] } = await pool.query(`INSERT INTO people (full_name, current_company_name, source, created_by, tenant_id) VALUES ($1, $2, 'chat_intel', $3, $4) RETURNING id`, [person_name, company_name || null, userId, tenantId]);
           personId = np.id;
         }
-        const { rows: [note] } = await pool.query(`INSERT INTO interactions (person_id, interaction_type, subject, summary, extracted_intelligence, source, interaction_at, tenant_id) VALUES ($1, 'research_note', $2, $3, $4, 'chat_concierge', NOW(), $5) RETURNING id`, [personId, subject, intelligence, JSON.stringify(extracted), tenantId]);
+        const { rows: [note] } = await pool.query(`INSERT INTO interactions (person_id, user_id, created_by, interaction_type, subject, summary, extracted_intelligence, source, interaction_at, tenant_id) VALUES ($1, $2, $2, 'research_note', $3, $4, $5, 'chat_concierge', NOW(), $6) RETURNING id`, [personId, userId, subject, intelligence, JSON.stringify(extracted), tenantId]);
+        auditLog(userId, 'log_intelligence', 'person', personId, { person_name, subject, source: 'chat_concierge' });
         return JSON.stringify({ success: true, person_id: personId, note_id: note.id, person_name, subject, extracted, message: `Saved on ${person_name}'s record` });
       }
       case 'create_person': {
@@ -5358,7 +5374,8 @@ async function executeTool(name, input, userId, tenantId) {
         if (dupes.length) return JSON.stringify({ existing_matches: dupes, message: 'Possible duplicates found' });
         let coId = null;
         if (current_company_name) { const { rows } = await pool.query(`SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [current_company_name, tenantId]); if (rows.length) coId = rows[0].id; }
-        const { rows: [p] } = await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, current_company_id, email, phone, location, linkedin_url, seniority_level, source, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'chat_concierge',$10) RETURNING id, full_name`, [full_name, current_title||null, current_company_name||null, coId, email||null, phone||null, location||null, linkedin_url||null, seniority_level||null, tenantId]);
+        const { rows: [p] } = await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, current_company_id, email, phone, location, linkedin_url, seniority_level, source, created_by, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'chat_concierge',$10,$11) RETURNING id, full_name`, [full_name, current_title||null, current_company_name||null, coId, email||null, phone||null, location||null, linkedin_url||null, seniority_level||null, userId, tenantId]);
+        auditLog(userId, 'create_person', 'person', p.id, { full_name, source: 'chat_concierge' });
         return JSON.stringify({ ...p, message: `Created ${full_name}` });
       }
       case 'process_uploaded_file': {
@@ -5376,10 +5393,11 @@ async function executeTool(name, input, userId, tenantId) {
             if (!name || name.trim().length < 2) { skipped++; continue; }
             const { rows: d } = await pool.query(`SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [name.trim(), tenantId]);
             if (d.length) { skipped++; continue; }
-            await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, email, location, linkedin_url, source, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,'csv_import',$7)`,
-              [name.trim(), row[m.current_title||'Title']||row['Job Title']||null, row[m.current_company_name||'Company']||row['Organization']||null, row[m.email||'Email']||null, row[m.location||'Location']||null, row[m.linkedin_url||'LinkedIn']||null, tenantId]);
+            await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, email, location, linkedin_url, source, created_by, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,'csv_import',$7,$8)`,
+              [name.trim(), row[m.current_title||'Title']||row['Job Title']||null, row[m.current_company_name||'Company']||row['Organization']||null, row[m.email||'Email']||null, row[m.location||'Location']||null, row[m.linkedin_url||'LinkedIn']||null, userId, tenantId]);
             imported++;
           }
+          auditLog(userId, 'csv_import', 'people', null, { imported, skipped, total: fm.preview.length, filename: fm.originalname });
           return JSON.stringify({ imported, skipped, total: fm.preview.length });
         }
         if (action === 'import_linkedin_connections' && fm.preview) {
@@ -5443,7 +5461,7 @@ async function executeTool(name, input, userId, tenantId) {
               try {
                 const { rows: dupes } = await pool.query('SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1', [fullName, tenantId]);
                 if (!dupes.length) {
-                  const { rows: [np] } = await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, linkedin_url, email, source, tenant_id) VALUES ($1,$2,$3,$4,$5,'linkedin_import',$6) RETURNING id`, [fullName, position || null, company || null, linkedinUrl || null, email || null, tenantId]);
+                  const { rows: [np] } = await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, linkedin_url, email, source, created_by, tenant_id) VALUES ($1,$2,$3,$4,$5,'linkedin_import',$6,$7) RETURNING id`, [fullName, position || null, company || null, linkedinUrl || null, email || null, userId, tenantId]);
                   stats.new_people++;
                   // Also create proximity for new person
                   if (userId && np) {
@@ -5458,6 +5476,7 @@ async function executeTool(name, input, userId, tenantId) {
               try { await pool.query(`INSERT INTO linkedin_connections (team_member_id, first_name, last_name, full_name, linkedin_url, linkedin_slug, email, company, position, connected_at, matched_person_id, match_method, match_confidence) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (linkedin_slug) DO UPDATE SET company = EXCLUDED.company, position = EXCLUDED.position, matched_person_id = COALESCE(EXCLUDED.matched_person_id, linkedin_connections.matched_person_id), imported_at = NOW()`, [userId, firstName, lastName, fullName, linkedinUrl, slug, email||null, company||null, position||null, connectedOn, matchedPerson?.id||null, matchMethod, matchConfidence||null]); } catch (e) {}
             }
           }
+          auditLog(userId, 'linkedin_import', 'people', null, { total: stats.total, matched: stats.matched, new_people: stats.new_people, proximity_created: stats.proximity_created, filename: fm.originalname });
           return JSON.stringify({ ...stats, match_rate: stats.total > 0 ? `${(stats.matched / stats.total * 100).toFixed(1)}%` : '0%', message: `Imported ${stats.total} LinkedIn connections: ${stats.matched} matched to existing people, ${stats.new_people} new people created, ${stats.proximity_created} team proximity links` });
         }
 
@@ -5500,7 +5519,7 @@ async function executeTool(name, input, userId, tenantId) {
                 const latestDate = sorted[sorted.length - 1]?.date;
 
                 try {
-                  await pool.query(`INSERT INTO interactions (person_id, interaction_type, subject, summary, source, interaction_at, tenant_id) VALUES ($1, 'linkedin_message', $2, $3, 'linkedin_import', $4, $5) ON CONFLICT DO NOTHING`, [match.id, `LinkedIn conversation (${messages.length} messages)`, summary, latestDate ? new Date(latestDate).toISOString() : new Date().toISOString(), tenantId]);
+                  await pool.query(`INSERT INTO interactions (person_id, user_id, created_by, interaction_type, subject, summary, source, interaction_at, tenant_id) VALUES ($1, $2, $2, 'linkedin_message', $3, $4, 'linkedin_import', $5, $6) ON CONFLICT DO NOTHING`, [match.id, userId, `LinkedIn conversation (${messages.length} messages)`, summary, latestDate ? new Date(latestDate).toISOString() : new Date().toISOString(), tenantId]);
                   stats.interactions_created++;
                 } catch (e) { stats.errors++; }
               } else {
@@ -5509,6 +5528,7 @@ async function executeTool(name, input, userId, tenantId) {
             }
           }
 
+          auditLog(userId, 'linkedin_messages_import', 'interactions', null, { total_messages: stats.total, conversations: conversations.size, matched: stats.matched, interactions_created: stats.interactions_created, filename: fm.originalname });
           return JSON.stringify({ total_messages: stats.total, conversations: conversations.size, matched_people: stats.matched, interactions_created: stats.interactions_created, unmatched_senders: [...stats.unmatched_senders].slice(0, 20), errors: stats.errors, message: `Processed ${stats.total} LinkedIn messages across ${conversations.size} conversations. Created ${stats.interactions_created} interaction records.` });
         }
 
@@ -5898,6 +5918,7 @@ async function executeTool(name, input, userId, tenantId) {
               UPDATE signal_dispatches SET claimed_by = $2, claimed_at = NOW(), status = CASE WHEN status = 'draft' THEN 'claimed' ELSE status END, updated_at = NOW()
               WHERE id = $1 AND tenant_id = $3 RETURNING id, company_name, signal_type, status
             `, [dispatch_id, userId, tenantId]);
+            auditLog(userId, 'dispatch_claim', 'dispatch', dispatch_id, { company: updated.company_name });
             return JSON.stringify({ success: true, dispatch: updated, message: 'Dispatch claimed' });
           }
           case 'unclaim': {
@@ -6161,6 +6182,7 @@ app.patch('/api/admin/users/:id/role', authenticateToken, requireAdmin, async (r
       [role, req.params.id, req.tenant_id]
     );
     if (!updated) return res.status(404).json({ error: 'User not found' });
+    auditLog(req.user.user_id, 'change_role', 'user', updated.id, { name: updated.name, new_role: role });
     res.json({ user: updated });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -6230,22 +6252,26 @@ app.get('/api/admin/ingestion', authenticateToken, requireAdmin, async (req, res
   try {
     const tenantId = req.tenant_id;
 
-    // People imported per user by source
+    // People imported per user by source — use created_by first, fall back to proximity
     const { rows: peopleBySource } = await pool.query(`
       SELECT
-        u.id AS user_id, u.name, u.email,
+        COALESCE(u1.id, u2.id) AS user_id,
+        COALESCE(u1.name, u2.name) AS name,
+        COALESCE(u1.email, u2.email) AS email,
         p.source,
         COUNT(*) AS count,
         MIN(p.created_at) AS earliest,
         MAX(p.created_at) AS latest
       FROM people p
-      LEFT JOIN users u ON (
-        u.id = (SELECT tp.team_member_id FROM team_proximity tp WHERE tp.person_id = p.id AND tp.tenant_id = $1 LIMIT 1)
-        OR u.id = p.owner_user_id
-      )
+      LEFT JOIN users u1 ON u1.id = p.created_by
+      LEFT JOIN LATERAL (
+        SELECT tp.team_member_id FROM team_proximity tp
+        WHERE tp.person_id = p.id AND tp.tenant_id = $1 LIMIT 1
+      ) tp_link ON p.created_by IS NULL
+      LEFT JOIN users u2 ON u2.id = tp_link.team_member_id AND p.created_by IS NULL
       WHERE p.tenant_id = $1
-        AND p.source IN ('csv_import', 'linkedin_import', 'chat_concierge', 'ezekia')
-      GROUP BY u.id, u.name, u.email, p.source
+        AND p.source IN ('csv_import', 'linkedin_import', 'chat_concierge', 'chat_intel', 'ezekia', 'gmail_discovery')
+      GROUP BY COALESCE(u1.id, u2.id), COALESCE(u1.name, u2.name), COALESCE(u1.email, u2.email), p.source
       ORDER BY MAX(p.created_at) DESC
     `, [tenantId]);
 
@@ -6587,6 +6613,15 @@ app.listen(PORT, async () => {
     await pool.query(`
       ALTER TABLE interactions ADD COLUMN IF NOT EXISTS is_internal BOOLEAN DEFAULT false;
       ALTER TABLE interactions ADD COLUMN IF NOT EXISTS sensitivity VARCHAR(20) DEFAULT 'normal';
+    `);
+  } catch (e) { /* columns may already exist */ }
+
+  // User attribution columns
+  try {
+    await pool.query(`
+      ALTER TABLE people ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id);
+      ALTER TABLE companies ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id);
+      ALTER TABLE interactions ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id);
     `);
   } catch (e) { /* columns may already exist */ }
 
