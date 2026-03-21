@@ -1760,7 +1760,56 @@ app.get('/api/signals/:id', authenticateToken, async (req, res) => {
     `, [req.params.id, req.tenant_id]);
 
     if (rows.length === 0) return res.status(404).json({ error: 'Signal not found' });
-    res.json(rows[0]);
+    const signal = rows[0];
+
+    // Auto-bundle relevant case studies
+    let relevant_case_studies = [];
+    try {
+      const scoreTerms = [];
+      const csParams = [req.tenant_id];
+      let csIdx = 1;
+
+      if (signal.sector) {
+        csIdx++; csParams.push(`%${signal.sector}%`);
+        scoreTerms.push(`CASE WHEN cs.sector ILIKE $${csIdx} THEN 0.3 ELSE 0 END`);
+      }
+      if (signal.geography) {
+        csIdx++; csParams.push(`%${signal.geography}%`);
+        scoreTerms.push(`CASE WHEN cs.geography ILIKE $${csIdx} THEN 0.25 ELSE 0 END`);
+      }
+      if (signal.signal_type) {
+        const sigThemes = {
+          capital_raising: ['high-growth','scaling'], geographic_expansion: ['cross-border','expansion'],
+          strategic_hiring: ['leadership','team-build'], ma_activity: ['post-acquisition','integration'],
+          leadership_change: ['succession','transition'], restructuring: ['turnaround','transformation'],
+        };
+        const themes = sigThemes[signal.signal_type] || [];
+        if (themes.length) {
+          csIdx++; csParams.push(themes);
+          scoreTerms.push(`(SELECT COUNT(*) FROM unnest(cs.themes) t WHERE t = ANY($${csIdx}::text[]))::float * 0.25`);
+        }
+      }
+      if (signal.company_id) {
+        csIdx++; csParams.push(signal.company_id);
+        scoreTerms.push(`CASE WHEN cs.client_id = $${csIdx}::uuid THEN 0.5 ELSE 0 END`);
+      }
+
+      if (scoreTerms.length > 0) {
+        const scoreExpr = scoreTerms.join(' + ');
+        const { rows: csRows } = await pool.query(`
+          SELECT cs.id, cs.title, cs.sector, cs.geography, cs.engagement_type, cs.year,
+                 cs.themes, cs.capabilities, cs.public_approved, cs.visibility,
+                 cs.public_title, cs.public_summary,
+                 (${scoreExpr}) AS relevance
+          FROM case_studies cs
+          WHERE cs.tenant_id = $1 AND (${scoreExpr}) > 0
+          ORDER BY (${scoreExpr}) DESC LIMIT 5
+        `, csParams);
+        relevant_case_studies = csRows;
+      }
+    } catch (e) { /* case_studies table may not exist */ }
+
+    res.json({ ...signal, relevant_case_studies });
   } catch (err) {
     console.error('Signal detail error:', err.message);
     res.status(500).json({ error: 'Failed to fetch signal' });
@@ -4850,7 +4899,56 @@ app.get('/api/dispatches/:id', authenticateToken, async (req, res) => {
     `, [req.params.id, req.tenant_id]);
 
     if (rows.length === 0) return res.status(404).json({ error: 'Dispatch not found' });
-    res.json(rows[0]);
+    const dispatch = rows[0];
+
+    // Auto-bundle relevant case studies
+    let relevant_case_studies = [];
+    try {
+      const scoreTerms = [];
+      const csParams = [req.tenant_id];
+      let csIdx = 1;
+
+      if (dispatch.sector) {
+        csIdx++; csParams.push(`%${dispatch.sector}%`);
+        scoreTerms.push(`CASE WHEN cs.sector ILIKE $${csIdx} THEN 0.3 ELSE 0 END`);
+      }
+      if (dispatch.geography) {
+        csIdx++; csParams.push(`%${dispatch.geography}%`);
+        scoreTerms.push(`CASE WHEN cs.geography ILIKE $${csIdx} THEN 0.25 ELSE 0 END`);
+      }
+      if (dispatch.signal_type) {
+        const sigThemes = {
+          capital_raising: ['high-growth','scaling'], geographic_expansion: ['cross-border','expansion'],
+          strategic_hiring: ['leadership','team-build'], ma_activity: ['post-acquisition','integration'],
+          leadership_change: ['succession','transition'], restructuring: ['turnaround','transformation'],
+        };
+        const themes = sigThemes[dispatch.signal_type] || [];
+        if (themes.length) {
+          csIdx++; csParams.push(themes);
+          scoreTerms.push(`(SELECT COUNT(*) FROM unnest(cs.themes) t WHERE t = ANY($${csIdx}::text[]))::float * 0.25`);
+        }
+      }
+      if (dispatch.company_id) {
+        csIdx++; csParams.push(dispatch.company_id);
+        scoreTerms.push(`CASE WHEN cs.client_id = $${csIdx}::uuid THEN 0.5 ELSE 0 END`);
+      }
+
+      if (scoreTerms.length > 0) {
+        const scoreExpr = scoreTerms.join(' + ');
+        const { rows: csRows } = await pool.query(`
+          SELECT cs.id, cs.title, cs.sector, cs.geography, cs.engagement_type, cs.year,
+                 cs.themes, cs.capabilities, cs.public_approved, cs.visibility,
+                 cs.public_title, cs.public_summary,
+                 (${scoreExpr}) AS relevance
+          FROM case_studies cs
+          WHERE cs.tenant_id = $1 AND (${scoreExpr}) > 0
+          ORDER BY (${scoreExpr}) DESC LIMIT 5
+        `, csParams);
+        relevant_case_studies = csRows;
+      }
+    } catch (e) { /* case_studies table may not exist */ }
+
+    res.json({ ...dispatch, relevant_case_studies });
   } catch (err) {
     console.error('Dispatch detail error:', err.message);
     res.status(500).json({ error: 'Failed to fetch dispatch' });
@@ -5177,7 +5275,13 @@ TOOL SELECTION (use the most specific tool available):
 16. Import case studies ("we did a CTO search for fintech in SG") → import_case_studies
 17. Complex cross-referencing queries not covered above → run_sql_query with JOINs
 
-CASE STUDY GOVERNANCE: Case studies imported via chat are INTERNAL DRAFTS. They contain client names and engagement details that must NOT go external without sanitisation. Remind the user that imported case studies need review and public_* field approval before they can appear in dispatches or on the website.
+CASE STUDY + PLACEMENT IMPORT RULES:
+- Store EXACTLY what the user provides. Do NOT invent, embellish, or infer any data.
+- If the user gives you "CTO, fintech, Singapore" — store those 3 fields only. Leave challenge, approach, outcome, themes as null.
+- Do NOT generate narrative descriptions, challenges, approaches, or outcomes unless the user explicitly states them.
+- Do NOT infer engagement_type, seniority_level, or themes — only set them if the user says them.
+- Case studies are INTERNAL DRAFTS. Remind the user they need sanitisation before external use.
+- Placements are ALWAYS internal — fees and candidate details never go external.
 
 IMPORTANT: Prefer dedicated tools (#1-#5) over run_sql_query. They return pre-computed, pre-ranked results and are faster and more reliable. Only fall back to run_sql_query for questions that no dedicated tool covers.
 When using run_sql_query, replace <TENANT> with the actual tenant_id from context.
@@ -5311,7 +5415,7 @@ const CHAT_TOOLS = [
   },
   {
     name: 'import_case_studies',
-    description: 'Import case study records from a list. Use when the user describes past engagements, completed searches, or drops a list of case studies. Each case study needs at minimum: a description of the engagement. The system will extract structured fields. Case studies are created as internal drafts — they require separate sanitisation before external use.',
+    description: 'Import case study records from a list. Store EXACTLY what the user provides — do NOT invent, embellish, or infer fields the user did not state. If the user says "CTO search, fintech, Singapore, 2024" then store only those fields and leave everything else null. Case studies are created as internal drafts requiring sanitisation before external use.',
     input_schema: {
       type: 'object',
       properties: {
@@ -6540,6 +6644,85 @@ app.get('/api/public/case-studies', async (req, res) => {
 
     res.json({ case_studies: rows });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Internal match: flag relevant case studies for team users on signals/dispatches
+// Returns INTERNAL fields — for team use, not external publishing
+app.get('/api/case-studies/relevant', authenticateToken, async (req, res) => {
+  try {
+    const { signal_type, sector, geography, company_name, company_id, limit: lim = 5 } = req.query;
+    const tenantId = req.tenant_id;
+
+    let where = 'WHERE cs.tenant_id = $1';
+    const params = [tenantId];
+    let idx = 1;
+
+    // Build scoring from available dimensions
+    const scoreTerms = [];
+
+    if (sector) {
+      idx++; params.push(`%${sector}%`);
+      scoreTerms.push(`CASE WHEN cs.sector ILIKE $${idx} OR cs.public_sector ILIKE $${idx} THEN 0.3 ELSE 0 END`);
+    }
+    if (geography) {
+      idx++; params.push(`%${geography}%`);
+      scoreTerms.push(`CASE WHEN cs.geography ILIKE $${idx} OR cs.public_geography ILIKE $${idx} THEN 0.25 ELSE 0 END`);
+    }
+    if (signal_type) {
+      // Map signal types to likely engagement types and themes
+      const sigMap = {
+        capital_raising: { themes: ['high-growth', 'scaling', 'fundraising'], eng: 'executive_search' },
+        geographic_expansion: { themes: ['cross-border', 'market-entry', 'expansion'], eng: 'executive_search' },
+        strategic_hiring: { themes: ['leadership', 'team-build', 'scaling'], eng: 'executive_search' },
+        ma_activity: { themes: ['post-acquisition', 'integration', 'merger'], eng: 'executive_search' },
+        leadership_change: { themes: ['succession', 'leadership-transition', 'turnaround'], eng: 'succession' },
+        restructuring: { themes: ['turnaround', 'restructuring', 'transformation'], eng: 'executive_search' },
+        layoffs: { themes: ['restructuring', 'talent-market'], eng: 'executive_search' },
+        product_launch: { themes: ['product', 'innovation', 'go-to-market'], eng: 'executive_search' },
+        partnership: { themes: ['partnership', 'alliance', 'ecosystem'], eng: 'executive_search' },
+      };
+      const mapping = sigMap[signal_type] || { themes: [], eng: null };
+      if (mapping.themes.length) {
+        idx++; params.push(mapping.themes);
+        scoreTerms.push(`(SELECT COUNT(*) FROM unnest(cs.themes) t WHERE t = ANY($${idx}::text[]))::float * 0.2`);
+      }
+      if (mapping.eng) {
+        idx++; params.push(mapping.eng);
+        scoreTerms.push(`CASE WHEN cs.engagement_type = $${idx} THEN 0.1 ELSE 0 END`);
+      }
+    }
+    if (company_id) {
+      idx++; params.push(company_id);
+      scoreTerms.push(`CASE WHEN cs.client_id = $${idx}::uuid THEN 0.5 ELSE 0 END`);
+    } else if (company_name) {
+      idx++; params.push(`%${company_name}%`);
+      scoreTerms.push(`CASE WHEN cs.client_name ILIKE $${idx} THEN 0.4 ELSE 0 END`);
+    }
+
+    const scoreExpr = scoreTerms.length > 0 ? scoreTerms.join(' + ') : '0';
+    idx++; params.push(Math.min(parseInt(lim) || 5, 20));
+
+    const { rows } = await pool.query(`
+      SELECT
+        cs.id, cs.title, cs.client_name, cs.role_title, cs.engagement_type,
+        cs.sector, cs.geography, cs.seniority_level, cs.year,
+        cs.themes, cs.capabilities, cs.change_vectors,
+        cs.challenge, cs.outcome,
+        cs.public_approved, cs.visibility, cs.status,
+        cs.public_title, cs.public_summary,
+        (${scoreExpr}) AS relevance_score
+      FROM case_studies cs
+      ${where}
+      AND (${scoreExpr}) > 0
+      ORDER BY (${scoreExpr}) DESC, cs.year DESC NULLS LAST
+      LIMIT $${idx}
+    `, params);
+
+    res.json({ relevant_case_studies: rows });
+  } catch (err) {
+    console.error('Case studies relevant error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
