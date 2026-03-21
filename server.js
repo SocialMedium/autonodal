@@ -6605,6 +6605,60 @@ app.patch('/api/case-studies/:id/sanitise', authenticateToken, async (req, res) 
   }
 });
 
+// Edit case study (any field)
+app.patch('/api/case-studies/:id', authenticateToken, async (req, res) => {
+  try {
+    const allowed = ['title', 'client_name', 'role_title', 'engagement_type', 'seniority_level',
+      'sector', 'geography', 'year', 'challenge', 'approach', 'outcome', 'impact_note',
+      'themes', 'change_vectors', 'capabilities', 'status', 'visibility'];
+    const updates = ['updated_at = NOW()'];
+    const params = [req.params.id, req.tenant_id];
+    let idx = 2;
+
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) {
+        idx++;
+        if (['themes', 'change_vectors', 'capabilities'].includes(key)) {
+          updates.push(`${key} = $${idx}::text[]`);
+          params.push(Array.isArray(req.body[key]) ? req.body[key] : [req.body[key]]);
+        } else {
+          updates.push(`${key} = $${idx}`);
+          params.push(req.body[key]);
+        }
+      }
+    }
+
+    if (updates.length <= 1) return res.status(400).json({ error: 'No valid fields to update' });
+
+    const { rows: [updated] } = await pool.query(
+      `UPDATE case_studies SET ${updates.join(', ')} WHERE id = $1 AND tenant_id = $2 RETURNING *`,
+      params
+    );
+    if (!updated) return res.status(404).json({ error: 'Not found' });
+
+    auditLog(req.user.user_id, 'edit_case_study', 'case_study', updated.id, { fields: Object.keys(req.body) });
+    res.json({ case_study: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete case study
+app.delete('/api/case-studies/:id', authenticateToken, async (req, res) => {
+  try {
+    const { rows: [deleted] } = await pool.query(
+      'DELETE FROM case_studies WHERE id = $1 AND tenant_id = $2 RETURNING id, title',
+      [req.params.id, req.tenant_id]
+    );
+    if (!deleted) return res.status(404).json({ error: 'Not found' });
+
+    auditLog(req.user.user_id, 'delete_case_study', 'case_study', deleted.id, { title: deleted.title });
+    res.json({ success: true, deleted: deleted.title });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // PUBLIC / DISPATCH-SAFE: case studies for external consumption
 // HARD GATE: only returns public_approved = true, visibility IN ('dispatch_ready', 'published')
 // NEVER returns: client_name, candidate names, fees, contact details, source documents

@@ -301,31 +301,41 @@ async function openDetail(id) {
     var cs = data.case_study;
     var people = data.people || [];
 
-    var html = '<div class="panel-title">' + esc(cs.title) + '</div>' +
+    var html = '<div style="display:flex;justify-content:space-between;align-items:flex-start">' +
+      '<div class="panel-title">' + esc(cs.title) + '</div>' +
+      '<button class="btn" style="background:var(--rose-soft);color:var(--rose);border:none;font-size:11px;padding:5px 12px;flex-shrink:0" onclick="deleteCaseStudy(\'' + cs.id + '\',\'' + esc(cs.title).replace(/'/g,'\\\'') + '\')">Delete</button>' +
+    '</div>' +
       '<div style="margin-top:6px">' +
         '<span class="pill ' + (STATUS_PILLS[cs.status] || 'pill-grey') + '">' + esc(cs.status) + '</span> ' +
         '<span class="pill ' + (VIS_PILLS[cs.visibility] || 'pill-grey') + '">' + esc((cs.visibility || '').replace(/_/g, ' ')) + '</span>' +
         (cs.public_approved ? ' <span class="pill pill-green">approved for external</span>' : ' <span class="pill pill-rose">not approved</span>') +
       '</div>';
 
-    // Internal fields
-    html += '<div class="panel-section"><div class="panel-section-title">Internal Details</div>';
-    var fields = [
-      ['Client', cs.client_name || cs.client_company_name],
-      ['Engagement', cs.engagement_type ? (ENG_LABELS[cs.engagement_type] || cs.engagement_type) : null],
-      ['Role', cs.role_title],
-      ['Seniority', cs.seniority_level],
-      ['Sector', cs.sector],
-      ['Geography', cs.geography],
-      ['Year', cs.year],
-    ];
-    fields.forEach(function(f) {
-      if (f[1]) html += '<div class="panel-field"><div class="panel-label">' + f[0] + '</div><div class="panel-value">' + esc(String(f[1])) + '</div></div>';
-    });
-    if (cs.challenge) html += '<div class="panel-field"><div class="panel-label">Challenge</div><div class="panel-value">' + esc(cs.challenge) + '</div></div>';
-    if (cs.approach) html += '<div class="panel-field"><div class="panel-label">Approach</div><div class="panel-value">' + esc(cs.approach) + '</div></div>';
-    if (cs.outcome) html += '<div class="panel-field"><div class="panel-label">Outcome</div><div class="panel-value">' + esc(cs.outcome) + '</div></div>';
-    if (cs.impact_note) html += '<div class="panel-field"><div class="panel-label">Impact</div><div class="panel-value">' + esc(cs.impact_note) + '</div></div>';
+    // Editable internal fields
+    html += '<div class="panel-section"><div class="panel-section-title">Internal Details <span class="small muted">(click Save after editing)</span></div>';
+    function editField(label, key, val, type) {
+      if (type === 'textarea') return '<div class="form-field"><label>' + label + '</label><textarea id="ef_' + key + '">' + esc(val || '') + '</textarea></div>';
+      if (type === 'select') return '<div class="form-field"><label>' + label + '</label><select id="ef_' + key + '" class="filter-select" style="width:100%;padding:7px 10px">' +
+        '<option value="">—</option>' +
+        ['executive_search','board_advisory','leadership_assessment','team_build','succession','market_mapping'].map(function(o) {
+          return '<option value="' + o + '"' + (val === o ? ' selected' : '') + '>' + (ENG_LABELS[o] || o) + '</option>';
+        }).join('') + '</select></div>';
+      return '<div class="form-field"><label>' + label + '</label><input id="ef_' + key + '" value="' + esc(val || '') + '"></div>';
+    }
+    html += editField('Client', 'client_name', cs.client_name || cs.client_company_name, 'input');
+    html += editField('Role', 'role_title', cs.role_title, 'input');
+    html += editField('Engagement Type', 'engagement_type', cs.engagement_type, 'select');
+    html += editField('Seniority', 'seniority_level', cs.seniority_level, 'input');
+    html += editField('Sector', 'sector', cs.sector, 'input');
+    html += editField('Geography', 'geography', cs.geography, 'input');
+    html += editField('Year', 'year', cs.year, 'input');
+    html += editField('Challenge / Context', 'challenge', cs.challenge, 'textarea');
+    html += editField('Approach', 'approach', cs.approach, 'textarea');
+    html += editField('Outcome', 'outcome', cs.outcome, 'textarea');
+    html += editField('Impact', 'impact_note', cs.impact_note, 'textarea');
+    html += editField('Themes (comma-separated)', 'themes', (cs.themes || []).join(', '), 'input');
+    html += editField('Capabilities (comma-separated)', 'capabilities', (cs.capabilities || []).join(', '), 'input');
+    html += '<button class="btn btn-primary" style="margin-top:8px" onclick="saveEdit(\'' + cs.id + '\')">Save Changes</button>';
     html += '</div>';
 
     // Themes & capabilities
@@ -405,6 +415,40 @@ async function saveSanitise(id, approve) {
   } catch (e) {
     alert('Failed: ' + e.message);
   }
+}
+
+async function saveEdit(id) {
+  try {
+    var body = {};
+    ['client_name','role_title','engagement_type','seniority_level','sector','geography','year','challenge','approach','outcome','impact_note'].forEach(function(k) {
+      var el = document.getElementById('ef_' + k);
+      if (el) {
+        var v = el.value.trim();
+        if (k === 'year') v = v ? parseInt(v) || null : null;
+        body[k] = v || null;
+      }
+    });
+    // Update title from client + role
+    if (body.role_title && body.client_name) body.title = body.role_title + ' \u2014 ' + body.client_name;
+    // Parse comma-separated arrays
+    var themesEl = document.getElementById('ef_themes');
+    if (themesEl) body.themes = themesEl.value.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+    var capsEl = document.getElementById('ef_capabilities');
+    if (capsEl) body.capabilities = capsEl.value.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+
+    await api('/api/case-studies/' + id, { method: 'PATCH', body: body });
+    closePanel();
+    loadCaseStudies();
+  } catch (e) { alert('Save failed: ' + e.message); }
+}
+
+async function deleteCaseStudy(id, title) {
+  if (!confirm('Delete case study?\n\n' + title + '\n\nThis cannot be undone.')) return;
+  try {
+    await api('/api/case-studies/' + id, { method: 'DELETE' });
+    closePanel();
+    loadCaseStudies();
+  } catch (e) { alert('Delete failed: ' + e.message); }
 }
 
 function closePanel() { document.getElementById('panelOverlay').classList.remove('active'); }
