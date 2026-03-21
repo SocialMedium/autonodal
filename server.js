@@ -5173,7 +5173,8 @@ TOOL SELECTION (use the most specific tool available):
 12. Research notes → search_research_notes
 13. Save intel → log_intelligence
 14. Create person → create_person
-15. Complex cross-referencing queries not covered above → run_sql_query with JOINs
+15. Import placements ("we placed X as Y at Z") → import_placements
+16. Complex cross-referencing queries not covered above → run_sql_query with JOINs
 
 IMPORTANT: Prefer dedicated tools (#1-#5) over run_sql_query. They return pre-computed, pre-ranked results and are faster and more reliable. Only fall back to run_sql_query for questions that no dedicated tool covers.
 When using run_sql_query, replace <TENANT> with the actual tenant_id from context.
@@ -5276,6 +5277,33 @@ const CHAT_TOOLS = [
         theme: { type: 'string', description: 'Override theme for regenerate_content action' }
       },
       required: ['action']
+    }
+  },
+  {
+    name: 'import_placements',
+    description: 'Import placement records. Use when the user pastes or describes recent placements — e.g., "we placed Jane Smith as CTO at Acme Corp". Resolves people and companies against existing records, creates conversions entries. Each placement needs at minimum: candidate name, role title, and client/company name. Optional: start date, fee, currency.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        placements: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              candidate_name: { type: 'string', description: 'Full name of placed candidate' },
+              role_title: { type: 'string', description: 'Role they were placed into' },
+              company_name: { type: 'string', description: 'Client company name' },
+              start_date: { type: 'string', description: 'Start date (YYYY-MM-DD or approximate)' },
+              placement_fee: { type: 'number', description: 'Fee amount if known' },
+              currency: { type: 'string', default: 'AUD', description: 'Currency code' },
+              notes: { type: 'string', description: 'Any additional context' }
+            },
+            required: ['candidate_name', 'role_title', 'company_name']
+          },
+          description: 'Array of placement records to import'
+        }
+      },
+      required: ['placements']
     }
   },
 ];
@@ -5974,6 +6002,111 @@ async function executeTool(name, input, userId, tenantId) {
           }
           default: return JSON.stringify({ error: `Unknown dispatch action: ${action}` });
         }
+      }
+
+      case 'import_placements': {
+        const { placements = [] } = input;
+        if (!placements.length) return JSON.stringify({ error: 'No placements provided' });
+
+        const results = { imported: 0, skipped: 0, errors: [], details: [] };
+
+        for (const pl of placements) {
+          try {
+            // Resolve candidate
+            let personId = null;
+            const { rows: personMatches } = await pool.query(
+              `SELECT id, full_name, current_title FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 3`,
+              [pl.candidate_name.trim(), tenantId]
+            );
+            if (personMatches.length === 1) {
+              personId = personMatches[0].id;
+            } else if (personMatches.length > 1) {
+              // Try exact match first
+              const exact = personMatches.find(p => p.full_name.toLowerCase() === pl.candidate_name.trim().toLowerCase());
+              personId = exact ? exact.id : personMatches[0].id;
+            } else {
+              // Create person
+              const { rows: [newPerson] } = await pool.query(
+                `INSERT INTO people (full_name, current_title, source, created_by, tenant_id) VALUES ($1, $2, 'placement_import', $3, $4) RETURNING id`,
+                [pl.candidate_name.trim(), pl.role_title || null, userId, tenantId]
+              );
+              personId = newPerson.id;
+            }
+
+            // Resolve client company → account
+            let clientId = null;
+            const { rows: acctMatches } = await pool.query(
+              `SELECT a.id FROM accounts a WHERE a.name ILIKE $1 AND a.tenant_id = $2 LIMIT 1`,
+              [`%${pl.company_name.trim()}%`, tenantId]
+            );
+            if (acctMatches.length) {
+              clientId = acctMatches[0].id;
+            } else {
+              // Check companies table, create account if company exists
+              const { rows: coMatches } = await pool.query(
+                `SELECT id, name FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1`,
+                [`%${pl.company_name.trim()}%`, tenantId]
+              );
+              if (coMatches.length) {
+                const { rows: [newAcct] } = await pool.query(
+                  `INSERT INTO accounts (name, company_id, relationship_status, tenant_id, created_at, updated_at)
+                   VALUES ($1, $2, 'active', $3, NOW(), NOW()) RETURNING id`,
+                  [coMatches[0].name, coMatches[0].id, tenantId]
+                );
+                clientId = newAcct.id;
+              } else {
+                // Create both company and account
+                const { rows: [newCo] } = await pool.query(
+                  `INSERT INTO companies (name, is_client, created_by, tenant_id, created_at, updated_at)
+                   VALUES ($1, true, $2, $3, NOW(), NOW()) RETURNING id`,
+                  [pl.company_name.trim(), userId, tenantId]
+                );
+                const { rows: [newAcct] } = await pool.query(
+                  `INSERT INTO accounts (name, company_id, relationship_status, tenant_id, created_at, updated_at)
+                   VALUES ($1, $2, 'active', $3, NOW(), NOW()) RETURNING id`,
+                  [pl.company_name.trim(), newCo.id, tenantId]
+                );
+                clientId = newAcct.id;
+              }
+            }
+
+            // Check for duplicate placement
+            const { rows: dupes } = await pool.query(
+              `SELECT id FROM conversions WHERE person_id = $1 AND client_id = $2 AND role_title = $3 AND tenant_id = $4 LIMIT 1`,
+              [personId, clientId, pl.role_title, tenantId]
+            );
+            if (dupes.length) {
+              results.skipped++;
+              results.details.push({ candidate: pl.candidate_name, company: pl.company_name, status: 'duplicate' });
+              continue;
+            }
+
+            // Insert placement
+            await pool.query(
+              `INSERT INTO conversions (person_id, client_id, role_title, start_date, placement_fee, currency, notes, placed_by_user_id, tenant_id, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())`,
+              [personId, clientId, pl.role_title, pl.start_date || null,
+               pl.placement_fee || null, pl.currency || 'AUD', pl.notes || null,
+               userId, tenantId]
+            );
+
+            // Update person's current company
+            const { rows: [co] } = await pool.query('SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1', [`%${pl.company_name.trim()}%`, tenantId]);
+            if (co) {
+              await pool.query('UPDATE people SET current_company_name = $1, current_company_id = $2, current_title = $3, updated_at = NOW() WHERE id = $4',
+                [pl.company_name.trim(), co.id, pl.role_title, personId]);
+            }
+
+            results.imported++;
+            results.details.push({ candidate: pl.candidate_name, company: pl.company_name, role: pl.role_title, status: 'imported' });
+
+          } catch (e) {
+            results.errors.push({ candidate: pl.candidate_name, error: e.message });
+          }
+        }
+
+        auditLog(userId, 'import_placements', 'conversions', null, { imported: results.imported, skipped: results.skipped, total: placements.length });
+        return JSON.stringify({ ...results, message: `Imported ${results.imported} placements (${results.skipped} duplicates skipped)` });
       }
 
       default: return JSON.stringify({ error: `Unknown tool: ${name}` });

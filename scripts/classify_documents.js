@@ -58,7 +58,9 @@ Your job is to classify the document and extract structured data. Return ONLY va
 
 Document types:
 - case_study: Describes a completed engagement — client, role, challenge, outcome
-- pitch_deck: Presentation for a prospective client — includes shortlisted candidates, firm capabilities, proposed approach
+- search_update: Progress update on an active or recent search — contains shortlists, longlists, or calibration candidates. These are REAL candidates being considered for a role.
+- calibration_deck: Candidate calibration or comparison deck — profiles of candidates being assessed against each other for a specific role. Contains real shortlisted/longlisted people.
+- pitch_deck: Presentation for a prospective client — may contain EXAMPLE or SAMPLE candidate targets to illustrate capability. These are indicative, not confirmed shortlists.
 - credentials: Firm credentials pack — past work, sectors, capabilities, testimonials
 - proposal: Formal proposal for a specific engagement — scope, fees, timeline
 - research_note: Market research, sector analysis, talent mapping
@@ -68,7 +70,12 @@ Document types:
 - internal_ops: Internal operational document (not client-facing)
 - other: Does not fit above categories
 
-For case studies, extract all structured fields. For pitch decks, extract shortlisted candidates. For all types, extract people and companies mentioned.`;
+IMPORTANT distinctions:
+- search_update and calibration_deck contain REAL candidates (shortlisted/longlisted). Extract them with high confidence.
+- pitch_deck may contain EXAMPLE candidates (targets/samples). Extract them but mark as "target" role, lower confidence.
+- case_study describes COMPLETED work. Extract the placed candidate if named, plus the client.
+
+For case studies, extract all structured fields. For search updates and calibration decks, extract every named candidate with their title, company, and role (shortlisted/longlisted). For all types, extract people and companies mentioned.`;
 
 async function classifyDocument(doc) {
   const contentPreview = (doc.content || '').substring(0, 12000);
@@ -83,7 +90,7 @@ ${contentPreview}
 
 Return JSON with this structure:
 {
-  "document_type": "case_study|pitch_deck|credentials|proposal|research_note|meeting_notes|candidate_profile|industry_analysis|internal_ops|other",
+  "document_type": "case_study|search_update|calibration_deck|pitch_deck|credentials|proposal|research_note|meeting_notes|candidate_profile|industry_analysis|internal_ops|other",
   "confidence": 0.0-1.0,
   "content_summary": "2-3 sentence summary of what this document contains",
   "relevance_tags": ["bd", "delivery", "thought_leadership", "market_intel", "client_material"],
@@ -93,7 +100,7 @@ Return JSON with this structure:
       "name": "Full Name",
       "title": "Their title if mentioned",
       "company": "Their company if mentioned",
-      "role_in_document": "shortlisted|placed|referenced|authored|interviewed|target|mentioned",
+      "role_in_document": "shortlisted|longlisted|placed|referenced|authored|interviewed|target|mentioned",
       "context": "Brief note on why they appear"
     }
   ],

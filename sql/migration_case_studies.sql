@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS document_people (
   person_title    TEXT,
   person_company  TEXT,
   mention_role    VARCHAR(50) NOT NULL DEFAULT 'mentioned',
-    -- shortlisted, placed, referenced, authored, interviewed, target
+    -- shortlisted, longlisted, placed, referenced, authored, interviewed, target
   confidence      DECIMAL(3,2) DEFAULT 0.5,
   context_note    TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
