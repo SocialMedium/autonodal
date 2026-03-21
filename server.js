@@ -6147,15 +6147,13 @@ function requireAdmin(req, res, next) {
 // Team members overview
 app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    // Core user data — only references tables guaranteed to exist
     const { rows } = await pool.query(`
       SELECT u.id, u.name, u.email, u.role, u.region, u.onboarded, u.created_at, u.updated_at,
         (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND s.expires_at > NOW()) AS active_sessions,
         (SELECT MAX(s.created_at) FROM sessions s WHERE s.user_id = u.id) AS last_login,
-        (SELECT COUNT(*) FROM user_google_accounts ug WHERE ug.user_id = u.id) AS google_accounts,
-        (SELECT bool_or(ug.sync_enabled) FROM user_google_accounts ug WHERE ug.user_id = u.id) AS google_sync_active,
-        (SELECT MAX(ug.last_sync_at) FROM user_google_accounts ug WHERE ug.user_id = u.id) AS google_last_sync,
-        (SELECT COUNT(*) FROM interactions i WHERE i.created_by = u.id AND i.tenant_id = $1) AS interactions_created,
-        (SELECT COUNT(*) FROM interactions i WHERE i.created_by = u.id AND i.tenant_id = $1 AND i.interaction_at > NOW() - INTERVAL '30 days') AS interactions_30d,
+        (SELECT COUNT(*) FROM interactions i WHERE i.user_id = u.id AND i.tenant_id = $1) AS interactions_created,
+        (SELECT COUNT(*) FROM interactions i WHERE i.user_id = u.id AND i.tenant_id = $1 AND i.interaction_at > NOW() - INTERVAL '30 days') AS interactions_30d,
         (SELECT COUNT(*) FROM team_proximity tp WHERE tp.team_member_id = u.id AND tp.tenant_id = $1) AS proximity_connections,
         (SELECT COUNT(*) FROM signal_dispatches sd WHERE sd.claimed_by = u.id AND sd.tenant_id = $1) AS dispatches_claimed,
         (SELECT COUNT(*) FROM signal_dispatches sd WHERE sd.claimed_by = u.id AND sd.status = 'sent' AND sd.tenant_id = $1) AS dispatches_sent
@@ -6163,6 +6161,27 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
       WHERE u.tenant_id = $1
       ORDER BY u.created_at ASC
     `, [req.tenant_id]);
+
+    // Enrich with Google account data (table may not exist)
+    try {
+      const { rows: googleRows } = await pool.query(`
+        SELECT user_id,
+          COUNT(*) AS google_accounts,
+          bool_or(sync_enabled) AS google_sync_active,
+          MAX(last_sync_at) AS google_last_sync
+        FROM user_google_accounts GROUP BY user_id
+      `);
+      const googleMap = new Map(googleRows.map(g => [g.user_id, g]));
+      rows.forEach(u => {
+        const g = googleMap.get(u.id);
+        u.google_accounts = g?.google_accounts || 0;
+        u.google_sync_active = g?.google_sync_active || false;
+        u.google_last_sync = g?.google_last_sync || null;
+      });
+    } catch (e) {
+      rows.forEach(u => { u.google_accounts = 0; u.google_sync_active = false; u.google_last_sync = null; });
+    }
+
     res.json({ users: rows });
   } catch (err) {
     console.error('Admin users error:', err.message);
@@ -6192,51 +6211,57 @@ app.patch('/api/admin/users/:id/role', authenticateToken, requireAdmin, async (r
 // Platform health overview
 app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const [stats, sources, pipelines, storage] = await Promise.all([
-      pool.query(`
-        SELECT
-          (SELECT COUNT(*) FROM users WHERE tenant_id = $1) AS total_users,
-          (SELECT COUNT(*) FROM sessions WHERE expires_at > NOW()) AS active_sessions,
-          (SELECT COUNT(*) FROM people WHERE tenant_id = $1) AS total_people,
-          (SELECT COUNT(*) FROM companies WHERE tenant_id = $1) AS total_companies,
-          (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1) AS total_signals,
-          (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '24 hours') AS signals_24h,
-          (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '7 days') AS signals_7d,
-          (SELECT COUNT(*) FROM external_documents WHERE tenant_id = $1) AS total_documents,
-          (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1) AS total_interactions,
-          (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND interaction_at > NOW() - INTERVAL '7 days') AS interactions_7d,
-          (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1) AS total_placements,
-          (SELECT COALESCE(SUM(placement_fee), 0) FROM conversions WHERE tenant_id = $1) AS total_revenue,
-          (SELECT COUNT(*) FROM signal_dispatches WHERE tenant_id = $1) AS total_dispatches,
-          (SELECT COUNT(*) FROM signal_dispatches WHERE tenant_id = $1 AND status = 'draft') AS dispatches_draft,
-          (SELECT COUNT(*) FROM signal_dispatches WHERE tenant_id = $1 AND status = 'sent') AS dispatches_sent,
-          (SELECT COUNT(*) FROM signal_grabs WHERE tenant_id = $1) AS total_grabs,
-          (SELECT COUNT(*) FROM user_google_accounts WHERE sync_enabled = true) AS google_syncs_active
-      `, [req.tenant_id]),
-      pool.query(`
-        SELECT rs.name, rs.source_type, rs.url, rs.enabled,
-               rs.last_fetched_at, rs.last_error, rs.consecutive_errors,
-               (SELECT COUNT(*) FROM external_documents ed WHERE ed.source_name = rs.name AND ed.tenant_id = $1) AS doc_count
-        FROM rss_sources rs
-        ORDER BY rs.enabled DESC, rs.last_fetched_at DESC NULLS LAST
-      `, [req.tenant_id]),
-      pool.query(`
-        SELECT pipeline_key, pipeline_name, status, started_at, completed_at, duration_ms,
-               items_processed, error_message
-        FROM pipeline_runs
-        ORDER BY started_at DESC LIMIT 30
-      `),
-      pool.query(`
-        SELECT
-          (SELECT COUNT(*) FROM embeddings) AS total_embeddings,
-          (SELECT COUNT(*) FROM embeddings WHERE entity_type = 'person') AS person_embeddings,
-          (SELECT COUNT(*) FROM embeddings WHERE entity_type = 'company') AS company_embeddings,
-          (SELECT COUNT(*) FROM embeddings WHERE entity_type = 'document') AS document_embeddings
-      `)
-    ]);
+    // Each query is fail-safe — tables may not exist on all deployments
+    const stats = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM users WHERE tenant_id = $1) AS total_users,
+        (SELECT COUNT(*) FROM sessions WHERE expires_at > NOW()) AS active_sessions,
+        (SELECT COUNT(*) FROM people WHERE tenant_id = $1) AS total_people,
+        (SELECT COUNT(*) FROM companies WHERE tenant_id = $1) AS total_companies,
+        (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1) AS total_signals,
+        (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '24 hours') AS signals_24h,
+        (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '7 days') AS signals_7d,
+        (SELECT COUNT(*) FROM external_documents WHERE tenant_id = $1) AS total_documents,
+        (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1) AS total_interactions,
+        (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND interaction_at > NOW() - INTERVAL '7 days') AS interactions_7d,
+        (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1) AS total_placements,
+        (SELECT COALESCE(SUM(placement_fee), 0) FROM conversions WHERE tenant_id = $1) AS total_revenue,
+        (SELECT COUNT(*) FROM signal_dispatches WHERE tenant_id = $1) AS total_dispatches,
+        (SELECT COUNT(*) FROM signal_dispatches WHERE tenant_id = $1 AND status = 'draft') AS dispatches_draft,
+        (SELECT COUNT(*) FROM signal_dispatches WHERE tenant_id = $1 AND status = 'sent') AS dispatches_sent
+    `, [req.tenant_id]).catch(e => { console.error('Admin stats error:', e.message); return { rows: [{}] }; });
+
+    // Optional tables — may not exist
+    let googleCount = 0;
+    try { const r = await pool.query('SELECT COUNT(*) AS cnt FROM user_google_accounts WHERE sync_enabled = true'); googleCount = r.rows[0]?.cnt || 0; } catch (e) {}
+    let grabsCount = 0;
+    try { const r = await pool.query('SELECT COUNT(*) AS cnt FROM signal_grabs WHERE tenant_id = $1', [req.tenant_id]); grabsCount = r.rows[0]?.cnt || 0; } catch (e) {}
+
+    const sources = await pool.query(`
+      SELECT rs.name, rs.source_type, rs.url, rs.enabled,
+             rs.last_fetched_at, rs.last_error, rs.consecutive_errors,
+             (SELECT COUNT(*) FROM external_documents ed WHERE ed.source_name = rs.name AND ed.tenant_id = $1) AS doc_count
+      FROM rss_sources rs
+      ORDER BY rs.enabled DESC, rs.last_fetched_at DESC NULLS LAST
+    `, [req.tenant_id]).catch(() => ({ rows: [] }));
+
+    const pipelines = await pool.query(`
+      SELECT pipeline_key, pipeline_name, status, started_at, completed_at, duration_ms,
+             items_processed, error_message
+      FROM pipeline_runs
+      ORDER BY started_at DESC LIMIT 30
+    `).catch(() => ({ rows: [] }));
+
+    const storage = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM embeddings) AS total_embeddings,
+        (SELECT COUNT(*) FROM embeddings WHERE entity_type = 'person') AS person_embeddings,
+        (SELECT COUNT(*) FROM embeddings WHERE entity_type = 'company') AS company_embeddings,
+        (SELECT COUNT(*) FROM embeddings WHERE entity_type = 'document') AS document_embeddings
+    `).catch(() => ({ rows: [{}] }));
 
     res.json({
-      stats: stats.rows[0],
+      stats: { ...stats.rows[0], google_syncs_active: googleCount, total_grabs: grabsCount },
       sources: sources.rows,
       pipeline_runs: pipelines.rows,
       embeddings: storage.rows[0]
@@ -6253,27 +6278,31 @@ app.get('/api/admin/ingestion', authenticateToken, requireAdmin, async (req, res
     const tenantId = req.tenant_id;
 
     // People imported per user by source — use created_by first, fall back to proximity
-    const { rows: peopleBySource } = await pool.query(`
-      SELECT
-        COALESCE(u1.id, u2.id) AS user_id,
-        COALESCE(u1.name, u2.name) AS name,
-        COALESCE(u1.email, u2.email) AS email,
-        p.source,
-        COUNT(*) AS count,
-        MIN(p.created_at) AS earliest,
-        MAX(p.created_at) AS latest
-      FROM people p
-      LEFT JOIN users u1 ON u1.id = p.created_by
-      LEFT JOIN LATERAL (
-        SELECT tp.team_member_id FROM team_proximity tp
-        WHERE tp.person_id = p.id AND tp.tenant_id = $1 LIMIT 1
-      ) tp_link ON p.created_by IS NULL
-      LEFT JOIN users u2 ON u2.id = tp_link.team_member_id AND p.created_by IS NULL
-      WHERE p.tenant_id = $1
-        AND p.source IN ('csv_import', 'linkedin_import', 'chat_concierge', 'chat_intel', 'ezekia', 'gmail_discovery')
-      GROUP BY COALESCE(u1.id, u2.id), COALESCE(u1.name, u2.name), COALESCE(u1.email, u2.email), p.source
-      ORDER BY MAX(p.created_at) DESC
-    `, [tenantId]);
+    let peopleBySource = [];
+    try {
+      const { rows } = await pool.query(`
+        SELECT
+          COALESCE(u1.id, u2.id) AS user_id,
+          COALESCE(u1.name, u2.name) AS name,
+          COALESCE(u1.email, u2.email) AS email,
+          p.source,
+          COUNT(*) AS count,
+          MIN(p.created_at) AS earliest,
+          MAX(p.created_at) AS latest
+        FROM people p
+        LEFT JOIN users u1 ON u1.id = p.created_by
+        LEFT JOIN LATERAL (
+          SELECT tp.team_member_id FROM team_proximity tp
+          WHERE tp.person_id = p.id AND tp.tenant_id = $1 LIMIT 1
+        ) tp_link ON p.created_by IS NULL
+        LEFT JOIN users u2 ON u2.id = tp_link.team_member_id AND p.created_by IS NULL
+        WHERE p.tenant_id = $1
+          AND p.source IN ('csv_import', 'linkedin_import', 'chat_concierge', 'chat_intel', 'ezekia', 'gmail_discovery')
+        GROUP BY COALESCE(u1.id, u2.id), COALESCE(u1.name, u2.name), COALESCE(u1.email, u2.email), p.source
+        ORDER BY MAX(p.created_at) DESC
+      `, [tenantId]);
+      peopleBySource = rows;
+    } catch (e) { /* created_by column may not exist yet on older deployments */ }
 
     // LinkedIn connections per team member
     let linkedinConnections = [];
@@ -6304,8 +6333,8 @@ app.get('/api/admin/ingestion', authenticateToken, requireAdmin, async (req, res
           ug.user_id, u.name, u.email AS user_email,
           ug.google_email, ug.sync_enabled, ug.last_sync_at, ug.scopes,
           ug.created_at AS connected_at,
-          (SELECT COUNT(*) FROM interactions i WHERE i.source = 'gmail' AND i.created_by = ug.user_id AND i.tenant_id = $1) AS emails_synced,
-          (SELECT COUNT(*) FROM interactions i WHERE i.source = 'gmail' AND i.created_by = ug.user_id AND i.tenant_id = $1 AND i.interaction_at > NOW() - INTERVAL '7 days') AS emails_7d,
+          (SELECT COUNT(*) FROM interactions i WHERE i.source = 'gmail' AND i.user_id = ug.user_id AND i.tenant_id = $1) AS emails_synced,
+          (SELECT COUNT(*) FROM interactions i WHERE i.source = 'gmail' AND i.user_id = ug.user_id AND i.tenant_id = $1 AND i.interaction_at > NOW() - INTERVAL '7 days') AS emails_7d,
           (SELECT COUNT(*) FROM email_signals es WHERE es.user_id = ug.user_id) AS email_signals
         FROM user_google_accounts ug
         JOIN users u ON u.id = ug.user_id
@@ -6341,31 +6370,39 @@ app.get('/api/admin/ingestion', authenticateToken, requireAdmin, async (req, res
     } catch (e) { /* columns may not exist */ }
 
     // Documents uploaded per user
-    const { rows: docUploads } = await pool.query(`
-      SELECT u.id AS user_id, u.name, u.email,
-             COUNT(*) AS docs_uploaded,
-             MIN(ed.published_at) AS earliest,
-             MAX(ed.published_at) AS latest
-      FROM external_documents ed
-      JOIN users u ON u.id = ed.uploaded_by_user_id
-      WHERE ed.tenant_id = $1 AND ed.uploaded_by_user_id IS NOT NULL
-      GROUP BY u.id, u.name, u.email
-      ORDER BY COUNT(*) DESC
-    `, [tenantId]);
+    let docUploads = [];
+    try {
+      const { rows } = await pool.query(`
+        SELECT u.id AS user_id, u.name, u.email,
+               COUNT(*) AS docs_uploaded,
+               MIN(ed.published_at) AS earliest,
+               MAX(ed.published_at) AS latest
+        FROM external_documents ed
+        JOIN users u ON u.id = ed.uploaded_by_user_id
+        WHERE ed.tenant_id = $1 AND ed.uploaded_by_user_id IS NOT NULL
+        GROUP BY u.id, u.name, u.email
+        ORDER BY COUNT(*) DESC
+      `, [tenantId]);
+      docUploads = rows;
+    } catch (e) { /* column may not exist */ }
 
     // Team proximity by source (how connections were created)
-    const { rows: proxBySrc } = await pool.query(`
-      SELECT
-        u.name, u.email,
-        tp.source AS proximity_source,
-        COUNT(*) AS connections,
-        ROUND(AVG(tp.strength)::numeric, 2) AS avg_strength
-      FROM team_proximity tp
-      JOIN users u ON u.id = tp.team_member_id
-      WHERE tp.tenant_id = $1
-      GROUP BY u.name, u.email, tp.source
-      ORDER BY u.name, COUNT(*) DESC
-    `, [tenantId]);
+    let proxBySrc = [];
+    try {
+      const { rows } = await pool.query(`
+        SELECT
+          u.name, u.email,
+          tp.source AS proximity_source,
+          COUNT(*) AS connections,
+          ROUND(AVG(tp.strength)::numeric, 2) AS avg_strength
+        FROM team_proximity tp
+        JOIN users u ON u.id = tp.team_member_id
+        WHERE tp.tenant_id = $1
+        GROUP BY u.name, u.email, tp.source
+        ORDER BY u.name, COUNT(*) DESC
+      `, [tenantId]);
+      proxBySrc = rows;
+    } catch (e) { /* table may not exist */ }
 
     res.json({
       people_by_source: peopleBySource,
