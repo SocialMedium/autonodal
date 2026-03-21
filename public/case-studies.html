@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Case Studies — MLX Autonode</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --serif: 'Source Serif 4', 'Georgia', serif;
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+  --bg: #FAF9F7; --surface: #FFFFFF; --surface-warm: #F7F5F2; --surface-cool: #F2F4F8;
+  --ink: #1A1A1A; --ink-2: #4A4A4A; --ink-3: #7A7A7A; --ink-4: #AAAAAA;
+  --rule: #E0DDD8; --rule-bold: #C8C4BE;
+  --blue: #2563EB; --blue-soft: #EBF1FE; --emerald: #0D7A50; --emerald-soft: #E8F5EE;
+  --amber: #B45309; --amber-soft: #FEF7E8; --rose: #C41D3E; --rose-soft: #FDF0F2;
+  --violet: #6D28D9; --violet-soft: #F3EEFE;
+  --radius: 8px; --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+
+.masthead { background: var(--surface); border-bottom: 2px solid var(--ink); padding: 0 40px; position: sticky; top: 0; z-index: 100; }
+.masthead-top { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+.masthead-brand { display: flex; align-items: baseline; gap: 8px; }
+.masthead-logo { font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+.masthead-logo em { font-style: italic; font-weight: 400; }
+.masthead-nav { display: flex; gap: 2px; }
+.masthead-nav a { font-size: 12px; font-weight: 500; padding: 6px 14px; border-radius: 6px; text-decoration: none; color: var(--ink-3); transition: all 0.15s; }
+.masthead-nav a:hover { color: var(--ink); background: var(--surface-warm); }
+.masthead-nav a.active { color: var(--ink); background: var(--surface-warm); font-weight: 600; }
+.masthead-user { width: 32px; height: 32px; border-radius: 50%; background: var(--ink); color: white; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; cursor: pointer; }
+
+.page { max-width: 1200px; margin: 0 auto; padding: 32px 40px; }
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+.page-title { font-family: var(--serif); font-size: 24px; font-weight: 600; }
+.page-subtitle { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+
+/* Filters */
+.filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.filter-btn { font-family: var(--sans); font-size: 11px; padding: 5px 12px; border-radius: 20px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink-3); cursor: pointer; transition: all 0.15s; }
+.filter-btn:hover { border-color: var(--ink-3); color: var(--ink-2); }
+.filter-btn.active { background: var(--ink); color: white; border-color: var(--ink); }
+.filter-select { font-family: var(--sans); font-size: 11px; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink-2); cursor: pointer; }
+
+/* Stats bar */
+.stats-bar { display: flex; gap: 20px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); margin-bottom: 20px; }
+.stat-item { font-size: 11px; color: var(--ink-3); }
+.stat-item strong { font-family: var(--mono); color: var(--ink); }
+
+/* Cards */
+.cs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+.cs-card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 18px; cursor: pointer; transition: all 0.15s; position: relative; }
+.cs-card:hover { border-color: var(--blue); box-shadow: var(--shadow-card); }
+.cs-card.dispatch-ready { border-left: 3px solid var(--emerald); }
+.cs-card.published { border-left: 3px solid var(--blue); }
+
+.cs-title { font-family: var(--serif); font-size: 15px; font-weight: 500; margin-bottom: 6px; line-height: 1.3; }
+.cs-meta { font-size: 11px; color: var(--ink-3); margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.cs-summary { font-size: 12px; color: var(--ink-2); line-height: 1.5; margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.cs-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.cs-footer { display: flex; justify-content: space-between; align-items: center; }
+
+.pill { font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 10px; display: inline-block; }
+.pill-green { background: var(--emerald-soft); color: var(--emerald); }
+.pill-blue { background: var(--blue-soft); color: var(--blue); }
+.pill-amber { background: var(--amber-soft); color: var(--amber); }
+.pill-rose { background: var(--rose-soft); color: var(--rose); }
+.pill-violet { background: var(--violet-soft); color: var(--violet); }
+.pill-grey { background: var(--surface-warm); color: var(--ink-3); }
+.tag { font-size: 9px; padding: 2px 7px; border-radius: 4px; background: var(--surface-cool); color: var(--ink-3); }
+
+.mono { font-family: var(--mono); }
+.muted { color: var(--ink-4); }
+.small { font-size: 10px; }
+
+/* Detail panel */
+.panel-overlay { position: fixed; inset: 0; z-index: 200; display: none; }
+.panel-overlay.active { display: flex; }
+.panel-bg { position: absolute; inset: 0; background: rgba(0,0,0,0.3); }
+.panel { position: absolute; right: 0; top: 0; bottom: 0; width: 560px; max-width: 90vw; background: var(--surface); overflow-y: auto; box-shadow: -4px 0 24px rgba(0,0,0,0.1); padding: 28px; }
+.panel-close { position: absolute; top: 16px; right: 16px; background: none; border: none; font-size: 18px; cursor: pointer; color: var(--ink-3); padding: 4px 8px; border-radius: 4px; }
+.panel-close:hover { background: var(--surface-warm); }
+.panel-title { font-family: var(--serif); font-size: 20px; font-weight: 600; margin-bottom: 4px; padding-right: 40px; }
+.panel-section { margin-top: 20px; }
+.panel-section-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 8px; }
+.panel-field { margin-bottom: 12px; }
+.panel-label { font-size: 10px; font-weight: 600; color: var(--ink-3); margin-bottom: 2px; }
+.panel-value { font-size: 13px; color: var(--ink); }
+
+/* Sanitise form */
+.sanitise-form { margin-top: 20px; padding: 16px; background: var(--amber-soft); border-radius: var(--radius); }
+.sanitise-form h4 { font-size: 12px; font-weight: 600; color: var(--amber); margin-bottom: 10px; }
+.form-field { margin-bottom: 10px; }
+.form-field label { font-size: 10px; font-weight: 600; color: var(--ink-3); display: block; margin-bottom: 3px; }
+.form-field input, .form-field textarea { width: 100%; font-family: var(--sans); font-size: 12px; padding: 7px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+.form-field textarea { resize: vertical; min-height: 60px; }
+.btn { font-family: var(--sans); font-size: 12px; font-weight: 600; padding: 8px 18px; border-radius: 6px; border: none; cursor: pointer; transition: all 0.15s; }
+.btn-primary { background: var(--emerald); color: white; }
+.btn-primary:hover { opacity: 0.9; }
+.btn-secondary { background: var(--surface); border: 1px solid var(--rule); color: var(--ink-2); }
+.btn-secondary:hover { border-color: var(--ink-3); }
+
+.loading { text-align: center; padding: 60px; color: var(--ink-3); }
+.empty { text-align: center; padding: 60px; color: var(--ink-4); }
+
+.login-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 1000; display: none; align-items: center; justify-content: center; }
+.login-overlay.active { display: flex; }
+.login-box { text-align: center; }
+.login-box h2 { font-family: var(--serif); font-size: 24px; margin-bottom: 8px; }
+.login-box p { color: var(--ink-3); margin-bottom: 20px; font-size: 13px; }
+.login-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 24px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); font-family: var(--sans); font-size: 14px; cursor: pointer; text-decoration: none; color: var(--ink); }
+</style>
+</head>
+<body>
+
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <h2>MLX Autonode</h2>
+    <p>Sign in to access case studies</p>
+    <a class="login-btn" href="/api/auth/google?return_to=/case-studies.html">Sign in with Google</a>
+  </div>
+</div>
+
+<header class="masthead">
+  <div class="masthead-top">
+    <div class="masthead-brand">
+      <div class="masthead-logo">MLX <em>Autonode</em></div>
+    </div>
+    <nav class="masthead-nav">
+      <a href="/index.html">Signals</a>
+      <a href="/people.html">People</a>
+      <a href="/companies.html">Companies</a>
+      <a href="/dispatches.html">Dispatch</a>
+      <a href="/placements.html">Revenue</a>
+      <a href="/case-studies.html" class="active">Case Studies</a>
+    </nav>
+    <div>
+      <div class="masthead-user" id="userAvatar" onclick="doLogout()" title="Sign out">?</div>
+    </div>
+  </div>
+</header>
+
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Case Study Library</div>
+      <div class="page-subtitle" id="pageSubtitle">Loading...</div>
+    </div>
+  </div>
+
+  <div class="stats-bar" id="statsBar">
+    <div class="stat-item">Total: <strong id="sTot">-</strong></div>
+    <div class="stat-item">Draft: <strong id="sDraft">-</strong></div>
+    <div class="stat-item">Sanitised: <strong id="sSan">-</strong></div>
+    <div class="stat-item">Dispatch-ready: <strong id="sReady">-</strong></div>
+    <div class="stat-item">Published: <strong id="sPub">-</strong></div>
+  </div>
+
+  <div class="filters" id="filters">
+    <button class="filter-btn active" onclick="filterStatus(this, '')">All</button>
+    <button class="filter-btn" onclick="filterStatus(this, 'draft')">Draft</button>
+    <button class="filter-btn" onclick="filterStatus(this, 'sanitised')">Sanitised</button>
+    <button class="filter-btn" onclick="filterStatus(this, 'published')">Published</button>
+    <select class="filter-select" id="sectorFilter" onchange="loadCaseStudies()"><option value="">All sectors</option></select>
+    <select class="filter-select" id="geoFilter" onchange="loadCaseStudies()"><option value="">All regions</option></select>
+  </div>
+
+  <div class="cs-grid" id="csGrid">
+    <div class="loading">Loading case studies...</div>
+  </div>
+</div>
+
+<!-- Detail panel -->
+<div class="panel-overlay" id="panelOverlay">
+  <div class="panel-bg" onclick="closePanel()"></div>
+  <div class="panel" id="panelContent">
+    <button class="panel-close" onclick="closePanel()">&#x2715;</button>
+    <div id="panelBody"></div>
+  </div>
+</div>
+
+<script>
+var currentStatus = '';
+var allStudies = [];
+
+function getToken() { return localStorage.getItem('ml_token'); }
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+function num(n) { return (parseInt(n) || 0).toLocaleString(); }
+
+async function api(path, options) {
+  options = options || {};
+  var token = getToken();
+  var res = await fetch(path, Object.assign({}, options, {
+    headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { 'Authorization': 'Bearer ' + token } : {}, options.headers || {}),
+    body: options.body ? JSON.stringify(options.body) : undefined
+  }));
+  if (res.status === 401) { localStorage.removeItem('ml_token'); showLogin(); throw new Error('Unauthorized'); }
+  if (!res.ok) { var err = await res.json().catch(function() { return { error: res.statusText }; }); throw new Error(err.error || 'Request failed'); }
+  return res.json();
+}
+
+function showLogin() { document.getElementById('loginOverlay').classList.add('active'); }
+function doLogout() { if (!confirm('Sign out?')) return; api('/api/auth/logout', { method: 'POST' }).catch(function(){}); localStorage.removeItem('ml_token'); localStorage.removeItem('ml_user'); window.location = '/case-studies.html'; }
+
+// Auth
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var token = params.get('token'), user = params.get('user');
+  if (token && user) { localStorage.setItem('ml_token', token); localStorage.setItem('ml_user', user); window.history.replaceState({}, '', '/case-studies.html'); }
+  if (!getToken()) { showLogin(); return; }
+  try { var u = JSON.parse(localStorage.getItem('ml_user') || '{}'); document.getElementById('userAvatar').textContent = (u.name || '').split(' ').map(function(w){return w[0]}).join('').toUpperCase().slice(0,2) || '?'; } catch(e) {}
+  loadCaseStudies();
+})();
+
+var VIS_PILLS = { internal_only: 'pill-grey', dispatch_ready: 'pill-green', published: 'pill-blue' };
+var STATUS_PILLS = { draft: 'pill-grey', reviewed: 'pill-amber', sanitised: 'pill-violet', published: 'pill-blue' };
+var ENG_LABELS = { executive_search: 'Exec Search', board_advisory: 'Board', leadership_assessment: 'Assessment', team_build: 'Team Build', succession: 'Succession', market_mapping: 'Mapping' };
+
+async function loadCaseStudies() {
+  try {
+    var params = '?limit=100';
+    if (currentStatus) params += '&status=' + currentStatus;
+    var sector = document.getElementById('sectorFilter').value;
+    var geo = document.getElementById('geoFilter').value;
+    if (sector) params += '&sector=' + encodeURIComponent(sector);
+    if (geo) params += '&geography=' + encodeURIComponent(geo);
+
+    var data = await api('/api/case-studies' + params);
+    allStudies = data.case_studies || [];
+    document.getElementById('pageSubtitle').textContent = data.total + ' case studies in library';
+
+    // Stats
+    var stats = { draft: 0, sanitised: 0, dispatch_ready: 0, published: 0 };
+    allStudies.forEach(function(cs) {
+      if (cs.status === 'draft') stats.draft++;
+      if (cs.status === 'sanitised') stats.sanitised++;
+      if (cs.visibility === 'dispatch_ready') stats.dispatch_ready++;
+      if (cs.visibility === 'published') stats.published++;
+    });
+    document.getElementById('sTot').textContent = num(data.total);
+    document.getElementById('sDraft').textContent = num(stats.draft);
+    document.getElementById('sSan').textContent = num(stats.sanitised);
+    document.getElementById('sReady').textContent = num(stats.dispatch_ready);
+    document.getElementById('sPub').textContent = num(stats.published);
+
+    // Populate filter dropdowns (once)
+    var sectors = new Set(), geos = new Set();
+    allStudies.forEach(function(cs) { if (cs.sector) sectors.add(cs.sector); if (cs.geography) geos.add(cs.geography); });
+    if (!document.getElementById('sectorFilter').dataset.loaded) {
+      sectors.forEach(function(s) { document.getElementById('sectorFilter').innerHTML += '<option value="' + esc(s) + '">' + esc(s) + '</option>'; });
+      geos.forEach(function(g) { document.getElementById('geoFilter').innerHTML += '<option value="' + esc(g) + '">' + esc(g) + '</option>'; });
+      document.getElementById('sectorFilter').dataset.loaded = '1';
+    }
+
+    renderGrid(allStudies);
+  } catch (e) {
+    document.getElementById('csGrid').innerHTML = '<div class="empty">Failed to load: ' + esc(e.message) + '</div>';
+  }
+}
+
+function filterStatus(btn, status) {
+  currentStatus = status;
+  document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  loadCaseStudies();
+}
+
+function renderGrid(studies) {
+  if (!studies.length) { document.getElementById('csGrid').innerHTML = '<div class="empty">No case studies yet. Drop a list into Lorac or sync from Google Drive.</div>'; return; }
+
+  var html = '';
+  studies.forEach(function(cs) {
+    var visCls = cs.visibility === 'dispatch_ready' ? ' dispatch-ready' : cs.visibility === 'published' ? ' published' : '';
+    var meta = [cs.engagement_type ? (ENG_LABELS[cs.engagement_type] || cs.engagement_type) : null, cs.sector, cs.geography, cs.year].filter(Boolean).join(' \u00B7 ');
+    var summary = cs.challenge || cs.public_summary || cs.outcome || '';
+    var tags = (cs.themes || []).concat(cs.capabilities || []).slice(0, 5);
+
+    html += '<div class="cs-card' + visCls + '" onclick="openDetail(\'' + cs.id + '\')">' +
+      '<div class="cs-title">' + esc(cs.title) + '</div>' +
+      '<div class="cs-meta">' + esc(meta) + '</div>' +
+      (summary ? '<div class="cs-summary">' + esc(summary) + '</div>' : '') +
+      (tags.length ? '<div class="cs-tags">' + tags.map(function(t) { return '<span class="tag">' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
+      '<div class="cs-footer">' +
+        '<div>' +
+          '<span class="pill ' + (STATUS_PILLS[cs.status] || 'pill-grey') + '">' + esc(cs.status) + '</span> ' +
+          '<span class="pill ' + (VIS_PILLS[cs.visibility] || 'pill-grey') + '">' + esc((cs.visibility || '').replace(/_/g, ' ')) + '</span>' +
+          (cs.public_approved ? ' <span class="pill pill-green">approved</span>' : '') +
+        '</div>' +
+        '<div class="small muted">' + (cs.completeness ? (parseFloat(cs.completeness) * 100).toFixed(0) + '% complete' : '') + '</div>' +
+      '</div>' +
+    '</div>';
+  });
+  document.getElementById('csGrid').innerHTML = html;
+}
+
+async function openDetail(id) {
+  try {
+    var data = await api('/api/case-studies/' + id);
+    var cs = data.case_study;
+    var people = data.people || [];
+
+    var html = '<div class="panel-title">' + esc(cs.title) + '</div>' +
+      '<div style="margin-top:6px">' +
+        '<span class="pill ' + (STATUS_PILLS[cs.status] || 'pill-grey') + '">' + esc(cs.status) + '</span> ' +
+        '<span class="pill ' + (VIS_PILLS[cs.visibility] || 'pill-grey') + '">' + esc((cs.visibility || '').replace(/_/g, ' ')) + '</span>' +
+        (cs.public_approved ? ' <span class="pill pill-green">approved for external</span>' : ' <span class="pill pill-rose">not approved</span>') +
+      '</div>';
+
+    // Internal fields
+    html += '<div class="panel-section"><div class="panel-section-title">Internal Details</div>';
+    var fields = [
+      ['Client', cs.client_name || cs.client_company_name],
+      ['Engagement', cs.engagement_type ? (ENG_LABELS[cs.engagement_type] || cs.engagement_type) : null],
+      ['Role', cs.role_title],
+      ['Seniority', cs.seniority_level],
+      ['Sector', cs.sector],
+      ['Geography', cs.geography],
+      ['Year', cs.year],
+    ];
+    fields.forEach(function(f) {
+      if (f[1]) html += '<div class="panel-field"><div class="panel-label">' + f[0] + '</div><div class="panel-value">' + esc(String(f[1])) + '</div></div>';
+    });
+    if (cs.challenge) html += '<div class="panel-field"><div class="panel-label">Challenge</div><div class="panel-value">' + esc(cs.challenge) + '</div></div>';
+    if (cs.approach) html += '<div class="panel-field"><div class="panel-label">Approach</div><div class="panel-value">' + esc(cs.approach) + '</div></div>';
+    if (cs.outcome) html += '<div class="panel-field"><div class="panel-label">Outcome</div><div class="panel-value">' + esc(cs.outcome) + '</div></div>';
+    if (cs.impact_note) html += '<div class="panel-field"><div class="panel-label">Impact</div><div class="panel-value">' + esc(cs.impact_note) + '</div></div>';
+    html += '</div>';
+
+    // Themes & capabilities
+    var allTags = (cs.themes || []).concat(cs.capabilities || []).concat(cs.change_vectors || []);
+    if (allTags.length) {
+      html += '<div class="panel-section"><div class="panel-section-title">Themes &amp; Capabilities</div>' +
+        '<div class="cs-tags">' + allTags.map(function(t) { return '<span class="tag">' + esc(t) + '</span>'; }).join('') + '</div></div>';
+    }
+
+    // People (internal only)
+    if (people.length) {
+      html += '<div class="panel-section"><div class="panel-section-title">People Referenced (Internal)</div>';
+      people.forEach(function(p) {
+        html += '<div style="padding:6px 0;border-bottom:1px solid var(--rule);font-size:12px">' +
+          '<strong>' + esc(p.person_name) + '</strong>' +
+          (p.person_title ? ' <span class="muted">' + esc(p.person_title) + '</span>' : '') +
+          (p.person_company ? ' <span class="muted">@ ' + esc(p.person_company) + '</span>' : '') +
+          ' <span class="pill ' + (p.mention_role === 'shortlisted' || p.mention_role === 'longlisted' ? 'pill-blue' : p.mention_role === 'placed' ? 'pill-green' : 'pill-grey') + '">' + esc(p.mention_role) + '</span>' +
+          (p.current_company_now && p.current_company_now !== p.person_company ? '<div class="small muted" style="margin-top:2px">Now: ' + esc(p.current_title_now || '') + ' @ ' + esc(p.current_company_now) + '</div>' : '') +
+        '</div>';
+      });
+      html += '</div>';
+    }
+
+    // Public-safe fields (current state)
+    html += '<div class="panel-section"><div class="panel-section-title">External-Safe Fields</div>';
+    if (cs.public_title || cs.public_summary) {
+      html += '<div class="panel-field"><div class="panel-label">Public Title</div><div class="panel-value">' + esc(cs.public_title || 'Not set') + '</div></div>';
+      html += '<div class="panel-field"><div class="panel-label">Public Summary</div><div class="panel-value">' + esc(cs.public_summary || 'Not set') + '</div></div>';
+      html += '<div class="panel-field"><div class="panel-label">Public Sector / Geography</div><div class="panel-value">' + esc([cs.public_sector, cs.public_geography].filter(Boolean).join(' \u00B7 ') || 'Not set') + '</div></div>';
+    } else {
+      html += '<div class="panel-value muted">No public fields set yet. Sanitise below to make this case study available for dispatches.</div>';
+    }
+    html += '</div>';
+
+    // Sanitise form
+    html += '<div class="sanitise-form" id="sanitiseForm">' +
+      '<h4>Sanitise for External Use</h4>' +
+      '<p class="small muted" style="margin-bottom:10px">These fields are the ONLY ones that will appear in dispatches or on the public website. No client names, candidate names, or fees unless explicitly approved.</p>' +
+      '<div class="form-field"><label>Public Title</label><input id="sfTitle" value="' + esc(cs.public_title || '') + '" placeholder="e.g. CTO Search \u2014 High-Growth Fintech, Singapore"></div>' +
+      '<div class="form-field"><label>Public Summary (2-3 sentences, anonymised)</label><textarea id="sfSummary" placeholder="e.g. Retained to identify a technology leader for a high-growth fintech scaling across APAC...">' + esc(cs.public_summary || '') + '</textarea></div>' +
+      '<div class="form-field"><label>Public Sector</label><input id="sfSector" value="' + esc(cs.public_sector || cs.sector || '') + '"></div>' +
+      '<div class="form-field"><label>Public Geography</label><input id="sfGeo" value="' + esc(cs.public_geography || cs.geography || '') + '"></div>' +
+      '<div class="form-field"><label>Public Capability</label><input id="sfCap" value="' + esc(cs.public_capability || '') + '" placeholder="e.g. Cross-border executive search in high-growth fintech"></div>' +
+      '<div style="display:flex;gap:8px;margin-top:12px">' +
+        '<button class="btn btn-primary" onclick="saveSanitise(\'' + cs.id + '\', true)">Approve for External Use</button>' +
+        '<button class="btn btn-secondary" onclick="saveSanitise(\'' + cs.id + '\', false)">Save Draft (Internal Only)</button>' +
+      '</div>' +
+    '</div>';
+
+    // Source document link
+    if (cs.source_document_title) {
+      html += '<div class="panel-section"><div class="panel-section-title">Source Document</div>' +
+        '<div class="panel-value"><a href="' + esc(cs.source_url || '#') + '" target="_blank" style="color:var(--blue)">' + esc(cs.source_document_title) + '</a></div></div>';
+    }
+
+    document.getElementById('panelBody').innerHTML = html;
+    document.getElementById('panelOverlay').classList.add('active');
+  } catch (e) {
+    alert('Failed to load: ' + e.message);
+  }
+}
+
+async function saveSanitise(id, approve) {
+  try {
+    var body = {
+      public_title: document.getElementById('sfTitle').value || null,
+      public_summary: document.getElementById('sfSummary').value || null,
+      public_sector: document.getElementById('sfSector').value || null,
+      public_geography: document.getElementById('sfGeo').value || null,
+      public_capability: document.getElementById('sfCap').value || null,
+      public_approved: approve,
+    };
+    await api('/api/case-studies/' + id + '/sanitise', { method: 'PATCH', body: body });
+    closePanel();
+    loadCaseStudies();
+  } catch (e) {
+    alert('Failed: ' + e.message);
+  }
+}
+
+function closePanel() { document.getElementById('panelOverlay').classList.remove('active'); }
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closePanel(); });
+</script>
+</body>
+</html>
