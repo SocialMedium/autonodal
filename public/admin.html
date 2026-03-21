@@ -199,6 +199,78 @@ select.role-select:focus { outline: none; border-color: var(--blue); }
     </table>
   </div>
 
+  <!-- Data Ingestion -->
+  <div class="section">
+    <div class="section-title">Data Ingestion by User</div>
+
+    <!-- LinkedIn Connections -->
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--ink-2)">LinkedIn Connections <span class="badge" id="linkedinCount">0</span></div>
+      <table class="tbl" id="linkedinTable">
+        <thead>
+          <tr><th>User</th><th>Total</th><th>Matched</th><th>Unmatched</th><th>Match Rate</th><th>Avg Confidence</th><th>Companies</th><th>First Import</th><th>Last Import</th></tr>
+        </thead>
+        <tbody id="linkedinBody"><tr><td colspan="9" class="loading">Loading...</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- Google Accounts -->
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--ink-2)">Google Accounts <span class="badge" id="googleCount">0</span></div>
+      <table class="tbl" id="googleTable">
+        <thead>
+          <tr><th>User</th><th>Google Email</th><th>Sync</th><th>Last Sync</th><th>Emails Synced</th><th>Emails (7d)</th><th>Email Signals</th><th>Connected</th></tr>
+        </thead>
+        <tbody id="googleBody"><tr><td colspan="8" class="loading">Loading...</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- People by Import Source -->
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--ink-2)">People Imported by Source <span class="badge" id="importCount">0</span></div>
+      <table class="tbl" id="importTable">
+        <thead>
+          <tr><th>User</th><th>Source</th><th>Count</th><th>First</th><th>Latest</th></tr>
+        </thead>
+        <tbody id="importBody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- Network Proximity by Source -->
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--ink-2)">Network Connections by Source <span class="badge" id="proxCount">0</span></div>
+      <table class="tbl" id="proxTable">
+        <thead>
+          <tr><th>User</th><th>Source</th><th>Connections</th><th>Avg Strength</th></tr>
+        </thead>
+        <tbody id="proxBody"><tr><td colspan="4" class="loading">Loading...</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- Document Uploads -->
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--ink-2)">Document Uploads <span class="badge" id="docUploadCount">0</span></div>
+      <table class="tbl" id="docUploadTable">
+        <thead>
+          <tr><th>User</th><th>Docs Uploaded</th><th>First</th><th>Latest</th></tr>
+        </thead>
+        <tbody id="docUploadBody"><tr><td colspan="4" class="loading">Loading...</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- Ezekia + Xero -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--ink-2)">Ezekia CRM</div>
+        <div class="stat-card" id="ezekiaCard" style="font-size:12px;color:var(--ink-3)">Loading...</div>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--ink-2)">Xero Accounting</div>
+        <div class="stat-card" id="xeroCard" style="font-size:12px;color:var(--ink-3)">Loading...</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Pipelines -->
   <div class="section">
     <div class="section-title">Pipeline Runs <span class="badge" id="pipelineCount">0</span></div>
@@ -286,13 +358,15 @@ function doLogout() { if (!confirm('Sign out?')) return; api('/api/auth/logout',
 
 async function loadAll() {
   try {
-    var [health, users, audit] = await Promise.all([
+    var [health, users, audit, ingestion] = await Promise.all([
       api('/api/admin/health'),
       api('/api/admin/users'),
-      api('/api/admin/audit?limit=30')
+      api('/api/admin/audit?limit=30'),
+      api('/api/admin/ingestion')
     ]);
     renderStats(health.stats);
     renderUsers(users.users);
+    renderIngestion(ingestion);
     renderPipelines(health.pipeline_runs);
     renderSources(health.sources);
     renderAudit(audit.logs);
@@ -426,6 +500,144 @@ function renderSources(sources) {
     '</div>';
   });
   document.getElementById('sourcesContainer').innerHTML = html;
+}
+
+function renderIngestion(data) {
+  // LinkedIn Connections
+  var lc = data.linkedin_connections || [];
+  document.getElementById('linkedinCount').textContent = lc.length;
+  if (lc.length) {
+    var html = '';
+    lc.forEach(function(r) {
+      var total = parseInt(r.total_connections) || 0;
+      var matched = parseInt(r.matched) || 0;
+      var rate = total > 0 ? (matched / total * 100).toFixed(1) + '%' : '-';
+      html += '<tr>' +
+        '<td><strong>' + esc(r.name || 'Unknown') + '</strong><br><span class="mono small muted">' + esc(r.email || '') + '</span></td>' +
+        '<td class="mono">' + num(r.total_connections) + '</td>' +
+        '<td class="mono">' + num(r.matched) + '</td>' +
+        '<td class="mono">' + num(r.unmatched) + '</td>' +
+        '<td><span class="pill ' + (parseFloat(rate) > 50 ? 'pill-green' : 'pill-amber') + '">' + rate + '</span></td>' +
+        '<td class="mono">' + (r.avg_confidence || '-') + '</td>' +
+        '<td class="mono">' + num(r.unique_companies) + '</td>' +
+        '<td class="small">' + ago(r.first_import) + '</td>' +
+        '<td class="small">' + ago(r.last_import) + '</td>' +
+      '</tr>';
+    });
+    document.getElementById('linkedinBody').innerHTML = html;
+  } else {
+    document.getElementById('linkedinBody').innerHTML = '<tr><td colspan="9" class="muted">No LinkedIn imports yet</td></tr>';
+  }
+
+  // Google Accounts
+  var ga = data.google_accounts || [];
+  document.getElementById('googleCount').textContent = ga.length;
+  if (ga.length) {
+    var html = '';
+    ga.forEach(function(g) {
+      html += '<tr>' +
+        '<td><strong>' + esc(g.name) + '</strong></td>' +
+        '<td class="mono small">' + esc(g.google_email || '-') + '</td>' +
+        '<td>' + (g.sync_enabled ? '<span class="dot dot-green"></span><span class="pill pill-green">active</span>' : '<span class="dot dot-amber"></span><span class="pill pill-amber">paused</span>') + '</td>' +
+        '<td class="small">' + ago(g.last_sync_at) + '</td>' +
+        '<td class="mono">' + num(g.emails_synced) + '</td>' +
+        '<td class="mono">' + num(g.emails_7d) + '</td>' +
+        '<td class="mono">' + num(g.email_signals) + '</td>' +
+        '<td class="small">' + ago(g.connected_at) + '</td>' +
+      '</tr>';
+    });
+    document.getElementById('googleBody').innerHTML = html;
+  } else {
+    document.getElementById('googleBody').innerHTML = '<tr><td colspan="8" class="muted">No Google accounts connected</td></tr>';
+  }
+
+  // People by import source
+  var pi = data.people_by_source || [];
+  document.getElementById('importCount').textContent = pi.length;
+  if (pi.length) {
+    var SRC_PILLS = { csv_import: 'pill-blue', linkedin_import: 'pill-violet', chat_concierge: 'pill-green', ezekia: 'pill-amber' };
+    var html = '';
+    pi.forEach(function(r) {
+      html += '<tr>' +
+        '<td>' + (r.name ? '<strong>' + esc(r.name) + '</strong>' : '<span class="muted">system</span>') + '</td>' +
+        '<td><span class="pill ' + (SRC_PILLS[r.source] || 'pill-grey') + '">' + esc((r.source || '').replace(/_/g, ' ')) + '</span></td>' +
+        '<td class="mono">' + num(r.count) + '</td>' +
+        '<td class="small">' + ago(r.earliest) + '</td>' +
+        '<td class="small">' + ago(r.latest) + '</td>' +
+      '</tr>';
+    });
+    document.getElementById('importBody').innerHTML = html;
+  } else {
+    document.getElementById('importBody').innerHTML = '<tr><td colspan="5" class="muted">No imports tracked</td></tr>';
+  }
+
+  // Proximity by source
+  var px = data.proximity_by_source || [];
+  document.getElementById('proxCount').textContent = px.length;
+  if (px.length) {
+    var html = '';
+    px.forEach(function(r) {
+      html += '<tr>' +
+        '<td><strong>' + esc(r.name) + '</strong><br><span class="mono small muted">' + esc(r.email || '') + '</span></td>' +
+        '<td><span class="pill pill-grey">' + esc((r.proximity_source || '').replace(/_/g, ' ')) + '</span></td>' +
+        '<td class="mono">' + num(r.connections) + '</td>' +
+        '<td class="mono">' + (r.avg_strength || '-') + '</td>' +
+      '</tr>';
+    });
+    document.getElementById('proxBody').innerHTML = html;
+  } else {
+    document.getElementById('proxBody').innerHTML = '<tr><td colspan="4" class="muted">No proximity data</td></tr>';
+  }
+
+  // Document uploads
+  var du = data.doc_uploads || [];
+  document.getElementById('docUploadCount').textContent = du.length;
+  if (du.length) {
+    var html = '';
+    du.forEach(function(r) {
+      html += '<tr>' +
+        '<td><strong>' + esc(r.name) + '</strong><br><span class="mono small muted">' + esc(r.email || '') + '</span></td>' +
+        '<td class="mono">' + num(r.docs_uploaded) + '</td>' +
+        '<td class="small">' + ago(r.earliest) + '</td>' +
+        '<td class="small">' + ago(r.latest) + '</td>' +
+      '</tr>';
+    });
+    document.getElementById('docUploadBody').innerHTML = html;
+  } else {
+    document.getElementById('docUploadBody').innerHTML = '<tr><td colspan="4" class="muted">No user uploads</td></tr>';
+  }
+
+  // Ezekia
+  var ez = data.ezekia_stats;
+  if (ez) {
+    document.getElementById('ezekiaCard').innerHTML =
+      '<div style="display:flex;gap:20px">' +
+        '<div><div class="stat-label">People from Ezekia</div><div style="font-size:18px;font-weight:500;font-family:var(--mono)">' + num(ez.ezekia_people) + '</div></div>' +
+        '<div><div class="stat-label">Enriched</div><div style="font-size:18px;font-weight:500;font-family:var(--mono)">' + num(ez.enriched_people) + '</div></div>' +
+      '</div>' +
+      '<div style="margin-top:8px;font-size:10px;color:var(--ink-4)">' +
+        (ez.last_ezekia_sync ? 'Last sync: ' + ago(ez.last_ezekia_sync) : 'No sync recorded') +
+        (ez.last_enrichment ? ' · Last enrichment: ' + ago(ez.last_enrichment) : '') +
+      '</div>';
+  } else {
+    document.getElementById('ezekiaCard').innerHTML = '<span class="muted">Not configured</span>';
+  }
+
+  // Xero
+  var xr = data.xero_sync || [];
+  if (xr.length) {
+    var x = xr[0];
+    document.getElementById('xeroCard').innerHTML =
+      '<div><div class="stat-label">' + esc(x.tenant_name || 'Connected') + '</div>' +
+      '<div style="font-size:18px;font-weight:500;font-family:var(--mono)">' + num(x.invoices_synced) + ' invoices</div></div>' +
+      '<div style="margin-top:8px;font-size:10px;color:var(--ink-4)">' +
+        (x.last_sync_at ? 'Last sync: ' + ago(x.last_sync_at) : 'Never synced') +
+        (x.expires_at ? ' · Token expires: ' + ago(x.expires_at) : '') +
+        (x.last_error ? '<br><span style="color:var(--rose)">Error: ' + esc(x.last_error).slice(0,60) + '</span>' : '') +
+      '</div>';
+  } else {
+    document.getElementById('xeroCard').innerHTML = '<span class="muted">Not connected</span>';
+  }
 }
 
 function renderAudit(logs) {

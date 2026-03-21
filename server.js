@@ -6225,6 +6225,137 @@ app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) =
   }
 });
 
+// Data ingestion per user
+app.get('/api/admin/ingestion', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const tenantId = req.tenant_id;
+
+    // People imported per user by source
+    const { rows: peopleBySource } = await pool.query(`
+      SELECT
+        u.id AS user_id, u.name, u.email,
+        p.source,
+        COUNT(*) AS count,
+        MIN(p.created_at) AS earliest,
+        MAX(p.created_at) AS latest
+      FROM people p
+      LEFT JOIN users u ON (
+        u.id = (SELECT tp.team_member_id FROM team_proximity tp WHERE tp.person_id = p.id AND tp.tenant_id = $1 LIMIT 1)
+        OR u.id = p.owner_user_id
+      )
+      WHERE p.tenant_id = $1
+        AND p.source IN ('csv_import', 'linkedin_import', 'chat_concierge', 'ezekia')
+      GROUP BY u.id, u.name, u.email, p.source
+      ORDER BY MAX(p.created_at) DESC
+    `, [tenantId]);
+
+    // LinkedIn connections per team member
+    let linkedinConnections = [];
+    try {
+      const { rows } = await pool.query(`
+        SELECT
+          lc.team_member_id, u.name, u.email,
+          COUNT(*) AS total_connections,
+          COUNT(lc.matched_person_id) AS matched,
+          COUNT(*) - COUNT(lc.matched_person_id) AS unmatched,
+          ROUND(AVG(lc.match_confidence)::numeric, 2) AS avg_confidence,
+          MIN(lc.imported_at) AS first_import,
+          MAX(lc.imported_at) AS last_import,
+          COUNT(DISTINCT lc.company) AS unique_companies
+        FROM linkedin_connections lc
+        LEFT JOIN users u ON u.id = lc.team_member_id
+        GROUP BY lc.team_member_id, u.name, u.email
+        ORDER BY COUNT(*) DESC
+      `);
+      linkedinConnections = rows;
+    } catch (e) { /* table may not exist */ }
+
+    // Google accounts detail
+    let googleAccounts = [];
+    try {
+      const { rows } = await pool.query(`
+        SELECT
+          ug.user_id, u.name, u.email AS user_email,
+          ug.google_email, ug.sync_enabled, ug.last_sync_at, ug.scopes,
+          ug.created_at AS connected_at,
+          (SELECT COUNT(*) FROM interactions i WHERE i.source = 'gmail' AND i.created_by = ug.user_id AND i.tenant_id = $1) AS emails_synced,
+          (SELECT COUNT(*) FROM interactions i WHERE i.source = 'gmail' AND i.created_by = ug.user_id AND i.tenant_id = $1 AND i.interaction_at > NOW() - INTERVAL '7 days') AS emails_7d,
+          (SELECT COUNT(*) FROM email_signals es WHERE es.user_id = ug.user_id) AS email_signals
+        FROM user_google_accounts ug
+        JOIN users u ON u.id = ug.user_id
+        ORDER BY ug.last_sync_at DESC NULLS LAST
+      `, [tenantId]);
+      googleAccounts = rows;
+    } catch (e) { /* table may not exist */ }
+
+    // Xero sync status
+    let xeroSync = [];
+    try {
+      const { rows } = await pool.query(`
+        SELECT xt.tenant_name, xt.expires_at, xt.updated_at AS token_updated,
+               xs.last_sync_at, xs.invoices_synced, xs.last_error
+        FROM xero_tokens xt
+        LEFT JOIN xero_sync_state xs ON xs.tenant_id = xt.tenant_id
+      `);
+      xeroSync = rows;
+    } catch (e) { /* tables may not exist */ }
+
+    // Ezekia enrichment stats
+    let ezekiaStats = null;
+    try {
+      const { rows: [stats] } = await pool.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE source = 'ezekia') AS ezekia_people,
+          COUNT(*) FILTER (WHERE enriched_at IS NOT NULL) AS enriched_people,
+          MAX(synced_at) FILTER (WHERE source = 'ezekia') AS last_ezekia_sync,
+          MAX(enriched_at) AS last_enrichment
+        FROM people WHERE tenant_id = $1
+      `, [tenantId]);
+      ezekiaStats = stats;
+    } catch (e) { /* columns may not exist */ }
+
+    // Documents uploaded per user
+    const { rows: docUploads } = await pool.query(`
+      SELECT u.id AS user_id, u.name, u.email,
+             COUNT(*) AS docs_uploaded,
+             MIN(ed.published_at) AS earliest,
+             MAX(ed.published_at) AS latest
+      FROM external_documents ed
+      JOIN users u ON u.id = ed.uploaded_by_user_id
+      WHERE ed.tenant_id = $1 AND ed.uploaded_by_user_id IS NOT NULL
+      GROUP BY u.id, u.name, u.email
+      ORDER BY COUNT(*) DESC
+    `, [tenantId]);
+
+    // Team proximity by source (how connections were created)
+    const { rows: proxBySrc } = await pool.query(`
+      SELECT
+        u.name, u.email,
+        tp.source AS proximity_source,
+        COUNT(*) AS connections,
+        ROUND(AVG(tp.strength)::numeric, 2) AS avg_strength
+      FROM team_proximity tp
+      JOIN users u ON u.id = tp.team_member_id
+      WHERE tp.tenant_id = $1
+      GROUP BY u.name, u.email, tp.source
+      ORDER BY u.name, COUNT(*) DESC
+    `, [tenantId]);
+
+    res.json({
+      people_by_source: peopleBySource,
+      linkedin_connections: linkedinConnections,
+      google_accounts: googleAccounts,
+      xero_sync: xeroSync,
+      ezekia_stats: ezekiaStats,
+      doc_uploads: docUploads,
+      proximity_by_source: proxBySrc
+    });
+  } catch (err) {
+    console.error('Admin ingestion error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Tenant config
 app.get('/api/admin/tenant', authenticateToken, requireAdmin, async (req, res) => {
   try {
