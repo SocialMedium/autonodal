@@ -3646,7 +3646,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
     // Search companies
     if (collection === 'companies' || collection === 'all') {
-      const compLimit = collection === 'all' ? Math.min(limit, 8) : limit;
+      const compLimit = collection === 'all' ? Math.min(limit, 12) : limit;
       const qdrantResults = await qdrantSearch('companies', vector, compLimit);
 
       if (qdrantResults.length > 0) {
@@ -3692,7 +3692,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
     // Search documents
     if (collection === 'documents' || collection === 'all') {
-      const docLimit = collection === 'all' ? Math.min(limit, 10) : limit;
+      const docLimit = collection === 'all' ? Math.min(limit, 12) : limit;
       const qdrantResults = await qdrantSearch('documents', vector, docLimit);
 
       if (qdrantResults.length > 0) {
@@ -3726,7 +3726,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Search signals (direct)
     if (collection === 'signals' || collection === 'all') {
       try {
-        const sigLimit = collection === 'all' ? Math.min(limit, 8) : limit;
+        const sigLimit = collection === 'all' ? Math.min(limit, 12) : limit;
         const qdrantResults = await qdrantSearch('signal_events', vector, sigLimit);
         if (qdrantResults.length > 0) {
           const sigIds = qdrantResults.map(r => r.payload?.signal_id).filter(Boolean);
@@ -3759,7 +3759,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Search case studies (replaces placements in search — more useful, no duplicate retainer stages)
     if (collection === 'case_studies' || collection === 'all') {
       try {
-        const csLimit = collection === 'all' ? Math.min(limit, 6) : limit;
+        const csLimit = collection === 'all' ? Math.min(limit, 12) : limit;
         // Try Qdrant first
         let csResults = [];
         try {
@@ -3801,7 +3801,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Search interactions
     if (collection === 'interactions' || collection === 'all') {
       try {
-        const intLimit = collection === 'all' ? Math.min(limit, 6) : limit;
+        const intLimit = collection === 'all' ? Math.min(limit, 10) : limit;
         const qdrantResults = await qdrantSearch('interactions', vector, intLimit);
         if (qdrantResults.length > 0) {
           const intIds = qdrantResults.map(r => r.payload?.interaction_id).filter(Boolean);
