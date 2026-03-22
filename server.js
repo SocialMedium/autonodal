@@ -4829,15 +4829,17 @@ app.get('/api/dispatches', authenticateToken, async (req, res) => {
       idx++; where += ` AND sd.status = $${idx}`; params.push(status);
     }
 
-    // Region filter — uses shared REGION_MAP constant
-    if (region && region !== 'all' && REGION_MAP[region]) {
-      const geos = REGION_MAP[region];
+    // Region filter — match on company geography + country_code, with fallback to text search
+    if (region && region !== 'all') {
+      const regionCodes = REGION_CODES[region] || [];
+      const geoNames = REGION_MAP[region] || [];
       const orParts = [];
-      geos.forEach(g => { idx++; orParts.push(`c.geography ILIKE $${idx}`); params.push(`%${g}%`); });
-      geos.forEach(g => { idx++; orParts.push(`sd.company_name ILIKE $${idx}`); params.push(`%${g}%`); });
-      geos.forEach(g => { idx++; orParts.push(`sd.signal_summary ILIKE $${idx}`); params.push(`%${g}%`); });
-      geos.forEach(g => { idx++; orParts.push(`sd.opportunity_angle ILIKE $${idx}`); params.push(`%${g}%`); });
-      where += ` AND (${orParts.join(' OR ')})`;
+      // Primary: match company geography or country_code
+      regionCodes.forEach(code => { idx++; orParts.push(`c.geography ILIKE $${idx}`); params.push(`%${code}%`); });
+      geoNames.slice(0, 5).forEach(g => { idx++; orParts.push(`c.geography ILIKE $${idx}`); params.push(`%${g}%`); });
+      // Fallback: match signal summary text
+      geoNames.slice(0, 3).forEach(g => { idx++; orParts.push(`sd.signal_summary ILIKE $${idx}`); params.push(`%${g}%`); });
+      if (orParts.length > 0) where += ` AND (${orParts.join(' OR ')})`;
     }
 
     idx++; params.push(limit);
