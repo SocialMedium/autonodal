@@ -311,6 +311,8 @@ function setRegion(el, region) {
   offset = 0;
   document.getElementById('dispatchList').innerHTML = '';
   loadDispatches();
+  loadGrabs();
+  loadWeeklyWrap();
 }
 
 async function loadDispatches() {
@@ -736,7 +738,9 @@ async function claimThisDispatch() {
 // ── Signal Grabs ──
 async function loadGrabs() {
   try {
-    const data = await api('/api/grabs?status=all&limit=10&exclude_weekly=true');
+    var grabParams = 'status=all&limit=10&exclude_weekly=true';
+    if (currentRegion) grabParams += '&region=' + encodeURIComponent(currentRegion);
+    const data = await api('/api/grabs?' + grabParams);
     const list = document.getElementById('grabsList');
     if (!data.grabs || !data.grabs.length) {
       list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--ink-4);font-size:13px;grid-column:1/-1">No signal grabs yet. Click "Generate Now" to create editorial intelligence from recent signals.</div>';
@@ -791,6 +795,13 @@ async function loadWeeklyWrap() {
     var data = await api('/api/grabs/weekly');
     if (!data.wrap || !data.wrap.regions || !data.wrap.regions.length) { section.style.display = 'none'; return; }
     var w = data.wrap;
+    // Filter regions if a region is selected
+    if (currentRegion && currentRegion !== 'all') {
+      var regionMap = { AU: ['AU'], SG: ['SG'], UK: ['UK'], US: ['US'], APAC: ['AU','SG'], EMEA: ['UK'] };
+      var showCodes = regionMap[currentRegion] || [];
+      if (showCodes.length) w = Object.assign({}, w, { regions: w.regions.filter(function(r) { return showCodes.includes(r.code); }) });
+      if (!w.regions.length) { section.style.display = 'none'; return; }
+    }
     var regionColors = { AU:'#0D7A50', SG:'#6D28D9', UK:'#2563EB', US:'#B45309' };
     var regionFlags = { AU:'🇦🇺', SG:'🇸🇬', UK:'🇬🇧', US:'🇺🇸' };
 

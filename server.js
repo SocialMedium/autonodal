@@ -3988,6 +3988,20 @@ app.get('/api/grabs', authenticateToken, async (req, res) => {
     if (type) { idx++; where += ` AND sg.cluster_type = $${idx}`; params.push(type); }
     if (req.query.exclude_weekly === 'true') { where += ` AND sg.cluster_type != 'weekly_wrap'`; }
 
+    // Region filter — match against geographies array or storyline text
+    const region = req.query.region;
+    if (region && region !== 'all' && region !== '') {
+      const geoNames = REGION_MAP[region] || [];
+      const regionCodes = REGION_CODES[region] || [];
+      const allTerms = [...regionCodes, ...geoNames.slice(0, 5)];
+      if (allTerms.length > 0) {
+        const orParts = [];
+        allTerms.forEach(g => { idx++; orParts.push(`$${idx} = ANY(sg.geographies)`); params.push(g); });
+        allTerms.slice(0, 3).forEach(g => { idx++; orParts.push(`sg.storyline ILIKE $${idx}`); params.push(`%${g}%`); });
+        where += ` AND (${orParts.join(' OR ')})`;
+      }
+    }
+
     idx++; params.push(limit);
 
     const { rows } = await pool.query(`
