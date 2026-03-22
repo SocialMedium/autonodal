@@ -208,12 +208,12 @@ async function main() {
     if (fs.existsSync(migPath)) await pool.query(fs.readFileSync(migPath, 'utf8'));
   } catch (e) {}
 
-  // Clear existing hallucinated/bad case studies first
+  // Clear ALL existing case studies — clean slate before bulk import
   const { rowCount: deleted } = await pool.query(
-    `DELETE FROM case_studies WHERE tenant_id = $1 AND extracted_by IN ('system', 'chat_import')`,
+    `DELETE FROM case_studies WHERE tenant_id = $1`,
     [TENANT_ID]
   );
-  if (deleted > 0) console.log(`  Cleared ${deleted} existing system-imported case studies\n`);
+  if (deleted > 0) console.log(`  Cleared ${deleted} existing case studies (clean slate)\n`);
 
   let imported = 0, skipped = 0;
 
