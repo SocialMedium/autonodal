@@ -269,6 +269,22 @@ const PODCAST_SOURCES = [
     signal_types: ['product_launch', 'partnership'],
     poll_interval_minutes: 180,
   },
+  {
+    name: 'Prof G Markets',
+    url: 'https://feeds.megaphone.fm/PPY4661100530',
+    region: 'us',
+    credibility_score: 0.85,
+    signal_types: ['capital_raising', 'ma_activity', 'product_launch', 'leadership_change'],
+    poll_interval_minutes: 120,
+  },
+  {
+    name: 'Pivot with Kara Swisher and Scott Galloway',
+    url: 'https://feeds.megaphone.fm/pivot',
+    region: 'us',
+    credibility_score: 0.85,
+    signal_types: ['capital_raising', 'ma_activity', 'leadership_change', 'restructuring', 'product_launch'],
+    poll_interval_minutes: 120,
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
