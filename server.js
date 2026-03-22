@@ -3756,31 +3756,46 @@ app.get('/api/search', authenticateToken, async (req, res) => {
       } catch (e) { /* collection may not exist yet */ }
     }
 
-    // Search conversions (placements)
-    if (collection === 'placements' || collection === 'all') {
+    // Search case studies (replaces placements in search — more useful, no duplicate retainer stages)
+    if (collection === 'case_studies' || collection === 'all') {
       try {
-        const cvLimit = collection === 'all' ? Math.min(limit, 6) : limit;
-        const qdrantResults = await qdrantSearch('conversions', vector, cvLimit);
-        if (qdrantResults.length > 0) {
-          const cvIds = qdrantResults.map(r => r.payload?.conversion_id).filter(Boolean);
-          if (cvIds.length > 0) {
-            const { rows: conversions } = await pool.query(`
-              SELECT cv.id, cv.role_title, cv.placement_fee, cv.currency, cv.start_date,
-                     p.full_name as person_name, a.name as account_name
-              FROM conversions cv
-              LEFT JOIN people p ON p.id = cv.person_id
-              LEFT JOIN accounts a ON a.id = cv.client_id
-              WHERE cv.id = ANY($1::uuid[]) AND cv.tenant_id = $2
-            `, [cvIds, req.tenant_id]);
-            const cvMap = new Map(conversions.map(c => [c.id, c]));
-            results.placements = qdrantResults.map(r => {
-              const cv = cvMap.get(r.payload?.conversion_id);
-              if (!cv) return null;
-              return { ...cv, match_score: Math.round(r.score * 100), score: r.score };
-            }).filter(Boolean);
+        const csLimit = collection === 'all' ? Math.min(limit, 6) : limit;
+        // Try Qdrant first
+        let csResults = [];
+        try {
+          const qdrantResults = await qdrantSearch('case_studies', vector, csLimit);
+          if (qdrantResults.length > 0) {
+            const csIds = qdrantResults.map(r => String(r.id)).filter(id => /^[0-9a-f-]{36}$/i.test(id));
+            if (csIds.length > 0) {
+              const { rows } = await pool.query(`
+                SELECT id, title, client_name, role_title, sector, geography, year,
+                       challenge, engagement_type, themes, capabilities
+                FROM case_studies WHERE id = ANY($1::uuid[]) AND tenant_id = $2
+              `, [csIds, req.tenant_id]);
+              const csMap = new Map(rows.map(r => [r.id, r]));
+              csResults = qdrantResults.map(r => {
+                const cs = csMap.get(r.id);
+                if (!cs) return null;
+                return { ...cs, match_score: Math.round(r.score * 100), score: r.score };
+              }).filter(Boolean);
+            }
           }
+        } catch (e) { /* collection may not exist */ }
+
+        // Fallback to SQL text search
+        if (csResults.length < 3) {
+          const { rows } = await pool.query(`
+            SELECT id, title, client_name, role_title, sector, geography, year,
+                   challenge, engagement_type, themes, capabilities
+            FROM case_studies
+            WHERE tenant_id = $1 AND (title ILIKE $2 OR client_name ILIKE $2 OR role_title ILIKE $2 OR challenge ILIKE $2)
+            ORDER BY year DESC NULLS LAST LIMIT $3
+          `, [req.tenant_id, `%${q}%`, csLimit]);
+          const existing = new Set(csResults.map(r => r.id));
+          rows.forEach(r => { if (!existing.has(r.id)) csResults.push({ ...r, match_score: 60, score: 0.6 }); });
         }
-      } catch (e) { /* collection may not exist yet */ }
+        results.case_studies = csResults.slice(0, csLimit);
+      } catch (e) { /* table may not exist */ }
     }
 
     // Search interactions
@@ -3820,7 +3835,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
       results,
       total: (results.people?.length || 0) + (results.companies?.length || 0) +
              (results.documents?.length || 0) + (results.signals?.length || 0) +
-             (results.placements?.length || 0) + (results.interactions?.length || 0),
+             (results.case_studies?.length || 0) + (results.interactions?.length || 0),
     });
   } catch (err) {
     console.error('Search error:', err.message);
