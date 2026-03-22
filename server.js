@@ -3115,76 +3115,114 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
       enrichResults.people = { error: e.message };
     }
 
-    // 5. Google News search — fetch recent news for signal detection
+    // 5. Google News search — fetch recent news + instant signal detection
     try {
       const searchName = company.name.replace(/\s+(Pty|Ltd|Limited|Inc|Corp|plc|AG|S\.A\.|Group|Holdings)\b/gi, '').trim();
       const newsUrl = `https://news.google.com/rss/search?q=${encodeURIComponent('"' + searchName + '"')}&hl=en&gl=AU&ceid=AU:en`;
       const newsXml = await new Promise((resolve, reject) => {
         const client = newsUrl.startsWith('https') ? https : require('http');
-        const req = client.get(newsUrl, { timeout: 10000, headers: { 'User-Agent': 'MLX-Intelligence/1.0' } }, (res) => {
+        const nReq = client.get(newsUrl, { timeout: 10000, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MLX-Intelligence/1.0)' } }, (res) => {
           const chunks = []; res.on('data', c => chunks.push(c)); res.on('end', () => resolve(Buffer.concat(chunks).toString()));
         });
-        req.on('error', reject); req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+        nReq.on('error', reject); nReq.on('timeout', () => { nReq.destroy(); reject(new Error('timeout')); });
       });
 
       // Parse RSS items
-      const items = [];
+      const newsItems = [];
       const itemRegex = /<item>([\s\S]*?)<\/item>/g;
-      let match;
-      while ((match = itemRegex.exec(newsXml)) !== null && items.length < 10) {
-        const itemXml = match[1];
+      let newsMatch;
+      while ((newsMatch = itemRegex.exec(newsXml)) !== null && newsItems.length < 10) {
+        const itemXml = newsMatch[1];
         const getTag = (tag) => { const m = itemXml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`)); return (m?.[1] || m?.[2] || '').trim(); };
         const title = getTag('title');
         const link = getTag('link');
         const pubDate = getTag('pubDate');
         const source = getTag('source');
-        if (title && link) items.push({ title, link, pubDate, source });
+        if (title && link) newsItems.push({ title, link, pubDate, source });
       }
 
+      // Run instant signal detection via Claude on the headlines
+      let signalsCreated = 0;
+      if (newsItems.length > 0 && process.env.ANTHROPIC_API_KEY) {
+        try {
+          const headlineBlock = newsItems.map((n, i) => `${i + 1}. "${n.title}" — ${n.source || 'Unknown'} (${n.pubDate || 'recent'})`).join('\n');
+          const signalPrompt = `Analyse these recent news headlines about "${company.name}" for executive search signals.
+
+HEADLINES:
+${headlineBlock}
+
+For each headline that contains a signal, return a JSON array. Signal types: capital_raising, geographic_expansion, strategic_hiring, ma_activity, partnership, product_launch, leadership_change, layoffs, restructuring.
+
+Return ONLY a JSON array (or empty array [] if no signals found):
+[{"headline_index": 1, "signal_type": "...", "confidence": 0.5-1.0, "evidence_summary": "one sentence describing the signal"}]
+
+Only include genuine business signals. Ignore opinion pieces, listicles, or generic mentions.`;
+
+          const signalResponse = await callClaude(
+            [{ role: 'user', content: signalPrompt }],
+            [],
+            'You are a market signal analyst. Return ONLY valid JSON arrays.'
+          );
+          const signalText = signalResponse.content?.find(c => c.type === 'text')?.text || '[]';
+          const detectedSignals = JSON.parse(signalText.replace(/```json\n?|\n?```/g, '').trim());
+
+          for (const sig of (Array.isArray(detectedSignals) ? detectedSignals : [])) {
+            if (!sig.signal_type || !sig.evidence_summary) continue;
+            const headlineItem = newsItems[sig.headline_index - 1];
+            if (!headlineItem) continue;
+
+            // Check for duplicate signal
+            const { rows: existing } = await pool.query(
+              `SELECT id FROM signal_events WHERE company_id = $1 AND signal_type = $2 AND evidence_summary ILIKE $3 AND tenant_id = $4 LIMIT 1`,
+              [req.params.id, sig.signal_type, `%${sig.evidence_summary.slice(0, 50)}%`, req.tenant_id]
+            );
+            if (existing.length) continue;
+
+            await pool.query(`
+              INSERT INTO signal_events (signal_type, company_id, company_name, confidence_score,
+                evidence_summary, source_url, detected_at, signal_date, tenant_id)
+              VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8)
+            `, [
+              sig.signal_type, req.params.id, company.name, Math.min(sig.confidence || 0.6, 0.85),
+              sig.evidence_summary, headlineItem.link,
+              headlineItem.pubDate ? new Date(headlineItem.pubDate).toISOString() : new Date().toISOString(),
+              req.tenant_id
+            ]);
+            signalsCreated++;
+          }
+        } catch (e) {
+          // Signal detection failure is non-fatal
+          console.error('News signal detection error:', e.message);
+        }
+      }
+
+      // Store articles as documents
       let newsIngested = 0;
-      for (const item of items) {
+      for (const item of newsItems) {
         const sourceUrlHash = require('crypto').createHash('md5').update(item.link).digest('hex');
-        // Skip if already ingested
         const { rows: exists } = await pool.query('SELECT id FROM external_documents WHERE source_url_hash = $1 AND tenant_id = $2', [sourceUrlHash, req.tenant_id]);
         if (exists.length) continue;
-
         await pool.query(`
           INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash,
             tenant_id, uploaded_by_user_id, published_at, processing_status, created_at)
-          VALUES ($1, $2, $3, 'news_enrich', $4, $5, $6, $7, $8, 'pending', NOW())
-        `, [
-          item.title, item.title, // content = title for now (Google News RSS doesn't include body)
-          item.source || 'Google News', item.link, sourceUrlHash,
-          req.tenant_id, req.user?.user_id || null,
-          item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString()
-        ]);
-
-        // Link document to company
-        try {
-          const { rows: [newDoc] } = await pool.query('SELECT id FROM external_documents WHERE source_url_hash = $1', [sourceUrlHash]);
-          if (newDoc) {
-            await pool.query(
-              `INSERT INTO document_companies (document_id, company_id, mention_role, confidence, tenant_id) VALUES ($1, $2, 'subject', 0.9, $3) ON CONFLICT DO NOTHING`,
-              [newDoc.id, req.params.id, req.tenant_id]
-            );
-          }
-        } catch (e) { /* document_companies may not exist */ }
-
+          VALUES ($1, $2, $3, 'news_enrich', $4, $5, $6, $7, $8, 'processed', NOW())
+        `, [item.title, item.title, item.source || 'Google News', item.link, sourceUrlHash,
+            req.tenant_id, req.user?.user_id || null,
+            item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString()]);
         newsIngested++;
       }
 
-      if (newsIngested > 0 || items.length > 0) {
-        enrichResults.news = {
-          articles_found: items.length,
-          new_ingested: newsIngested,
-          headlines: items.slice(0, 5).map(i => ({ title: i.title, source: i.source, date: i.pubDate })),
-          message: newsIngested > 0
-            ? `${newsIngested} new articles ingested — will be processed for signals on next pipeline run`
-            : `${items.length} articles found (all already ingested)`
-        };
-      } else {
-        enrichResults.news = { message: 'No recent news found' };
-      }
+      enrichResults.news = {
+        articles_found: newsItems.length,
+        new_ingested: newsIngested,
+        signals_created: signalsCreated,
+        headlines: newsItems.slice(0, 5).map(i => ({ title: i.title, source: i.source, date: i.pubDate })),
+        message: signalsCreated > 0
+          ? `${newsItems.length} articles found, ${signalsCreated} signals detected and created`
+          : newsItems.length > 0
+            ? `${newsItems.length} articles found, no new signals detected`
+            : 'No recent news found'
+      };
     } catch (e) {
       enrichResults.news = { error: e.message };
     }
