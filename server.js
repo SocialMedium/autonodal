@@ -5291,7 +5291,8 @@ TOOL SELECTION (use the most specific tool available):
 15. Import placements ("we placed X as Y at Z") → import_placements
 16. Import case studies ("we did a CTO search for fintech in SG") → import_case_studies
 17. Run a pipeline ("harvest podcasts", "sync gmail", "classify documents", etc.) → run_pipeline
-18. Complex cross-referencing queries not covered above → run_sql_query with JOINs
+18. Search case studies ("what work have we done in fintech", "case studies in APAC") → search_case_studies
+19. Complex cross-referencing queries not covered above → run_sql_query with JOINs
 
 CASE STUDY + PLACEMENT IMPORT RULES:
 - Store EXACTLY what the user provides. Do NOT invent, embellish, or infer any data.
@@ -5461,6 +5462,18 @@ const CHAT_TOOLS = [
         }
       },
       required: ['case_studies']
+    }
+  },
+  {
+    name: 'search_case_studies',
+    description: 'Search the case study library by keyword, sector, geography, client, or role. Uses semantic vector search when available, falls back to SQL text search. Use when asked about past work, relevant experience, case studies, or "what have we done in X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query — client name, sector, role type, geography, or general topic' },
+        limit: { type: 'integer', default: 10 }
+      },
+      required: ['query']
     }
   },
   {
@@ -6353,6 +6366,51 @@ async function executeTool(name, input, userId, tenantId) {
           ...results,
           message: `Imported ${results.imported} case studies as internal drafts (${results.skipped} duplicates skipped). These require sanitisation before external use — use /api/case-studies/:id/sanitise to approve public fields.`
         });
+      }
+
+      case 'search_case_studies': {
+        const { query, limit = 10 } = input;
+        let results = [];
+
+        // Try Qdrant semantic search first
+        try {
+          const vector = await generateQueryEmbedding(query);
+          const qdrantResults = await qdrantSearch('case_studies', vector, limit);
+          if (qdrantResults.length > 0) {
+            const csIds = qdrantResults.map(r => String(r.id)).filter(id => /^[0-9a-f-]{36}$/i.test(id));
+            if (csIds.length > 0) {
+              const { rows } = await pool.query(
+                `SELECT id, title, client_name, role_title, sector, geography, year, challenge, themes, capabilities
+                 FROM case_studies WHERE id = ANY($1::uuid[]) AND tenant_id = $2`,
+                [csIds, tenantId]
+              );
+              const csMap = new Map(rows.map(r => [r.id, r]));
+              results = qdrantResults.map(r => {
+                const cs = csMap.get(r.id);
+                if (!cs) return null;
+                return { ...cs, match_score: Math.round(r.score * 100) };
+              }).filter(Boolean);
+            }
+          }
+        } catch (e) { /* Qdrant collection may not exist */ }
+
+        // Fallback to SQL text search
+        if (results.length < 3) {
+          const { rows } = await pool.query(
+            `SELECT id, title, client_name, role_title, sector, geography, year, challenge, themes, capabilities
+             FROM case_studies
+             WHERE tenant_id = $1 AND (
+               title ILIKE $2 OR client_name ILIKE $2 OR role_title ILIKE $2 OR
+               challenge ILIKE $2 OR sector ILIKE $2 OR geography ILIKE $2
+             )
+             ORDER BY year DESC NULLS LAST LIMIT $3`,
+            [tenantId, `%${query}%`, limit]
+          );
+          const existing = new Set(results.map(r => r.id));
+          rows.forEach(r => { if (!existing.has(r.id)) results.push(r); });
+        }
+
+        return JSON.stringify({ case_studies: results.slice(0, limit), count: results.length });
       }
 
       case 'run_pipeline': {

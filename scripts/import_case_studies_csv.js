@@ -14,7 +14,68 @@ require('dotenv').config();
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+const https = require('https');
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
+const QDRANT_URL = process.env.QDRANT_URL;
+const QDRANT_API_KEY = process.env.QDRANT_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function generateEmbedding(text) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ model: 'text-embedding-3-small', input: text.slice(0, 8000) });
+    const req = https.request({ hostname: 'api.openai.com', path: '/v1/embeddings', method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Length': Buffer.byteLength(body) },
+      timeout: 15000 }, (res) => {
+      const chunks = []; res.on('data', c => chunks.push(c)); res.on('end', () => {
+        try { const d = JSON.parse(Buffer.concat(chunks).toString()); if (d.error) return reject(new Error(d.error.message)); resolve(d.data[0].embedding); } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject); req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+    req.write(body); req.end();
+  });
+}
+
+async function qdrantUpsert(collection, pointId, vector, payload) {
+  if (!QDRANT_URL) return;
+  const url = new URL(`/collections/${collection}/points`, QDRANT_URL);
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ points: [{ id: pointId, vector, payload }] });
+    const parsed = new URL(url);
+    const opts = { hostname: parsed.hostname, port: parsed.port, path: parsed.pathname, method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), ...(QDRANT_API_KEY ? { 'api-key': QDRANT_API_KEY } : {}) },
+      timeout: 10000 };
+    if (parsed.protocol === 'https:') {
+      const req = https.request(opts, (res) => { const c = []; res.on('data', d => c.push(d)); res.on('end', () => resolve()); });
+      req.on('error', e => reject(e)); req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+      req.write(body); req.end();
+    } else {
+      const http = require('http');
+      const req = http.request(opts, (res) => { const c = []; res.on('data', d => c.push(d)); res.on('end', () => resolve()); });
+      req.on('error', e => reject(e)); req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+      req.write(body); req.end();
+    }
+  });
+}
+
+// Ensure Qdrant collection exists
+async function ensureCollection() {
+  if (!QDRANT_URL) return;
+  try {
+    const url = new URL('/collections/case_studies', QDRANT_URL);
+    const parsed = new URL(url);
+    const body = JSON.stringify({ vectors: { size: 1536, distance: 'Cosine' } });
+    await new Promise((resolve, reject) => {
+      const opts = { hostname: parsed.hostname, port: parsed.port, path: parsed.pathname, method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), ...(QDRANT_API_KEY ? { 'api-key': QDRANT_API_KEY } : {}) }, timeout: 10000 };
+      const mod = parsed.protocol === 'https:' ? https : require('http');
+      const req = mod.request(opts, (res) => { const c = []; res.on('data', d => c.push(d)); res.on('end', () => resolve()); });
+      req.on('error', () => resolve()); req.on('timeout', () => { req.destroy(); resolve(); });
+      req.write(body); req.end();
+    });
+  } catch (e) { /* collection may already exist */ }
+}
 
 // Raw data extracted from the PDF — Client | Role | Description
 const CASE_STUDIES = [
@@ -215,17 +276,35 @@ async function main() {
   );
   if (deleted > 0) console.log(`  Cleared ${deleted} existing case studies (clean slate)\n`);
 
-  let imported = 0, skipped = 0;
+  // Ensure Qdrant collection
+  await ensureCollection();
+
+  let imported = 0, skipped = 0, embedded = 0, companiesCreated = 0;
 
   for (const [client, role, description] of CASE_STUDIES) {
-    // Resolve client company
+    // Resolve or create client company
     let clientId = null;
     try {
       const { rows } = await pool.query(
         `SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1`,
-        [`%${client.trim()}%`, TENANT_ID]
+        [client.trim(), TENANT_ID]
       );
-      if (rows.length) clientId = rows[0].id;
+      if (rows.length) {
+        clientId = rows[0].id;
+        // Update description if empty
+        await pool.query(
+          `UPDATE companies SET description = COALESCE(NULLIF(description, ''), $1), is_client = true, updated_at = NOW() WHERE id = $2 AND (description IS NULL OR description = '')`,
+          [description.trim().slice(0, 500), clientId]
+        );
+      } else {
+        // Create company
+        const { rows: [newCo] } = await pool.query(
+          `INSERT INTO companies (name, is_client, description, tenant_id, created_at, updated_at) VALUES ($1, true, $2, $3, NOW(), NOW()) RETURNING id`,
+          [client.trim(), description.trim().slice(0, 500), TENANT_ID]
+        );
+        clientId = newCo.id;
+        companiesCreated++;
+      }
     } catch (e) {}
 
     const title = `${role} — ${client}`;
@@ -238,21 +317,45 @@ async function main() {
     if (dupes.length) { skipped++; continue; }
 
     try {
-      await pool.query(`
+      const { rows: [cs] } = await pool.query(`
         INSERT INTO case_studies (
           tenant_id, title, client_name, client_id, role_title,
           engagement_type, challenge,
           status, visibility, extracted_by
         ) VALUES ($1, $2, $3, $4, $5, 'executive_search', $6, 'draft', 'internal_only', 'bulk_import')
+        RETURNING id
       `, [TENANT_ID, title, client.trim(), clientId, role.trim(), description.trim()]);
       imported++;
+
+      // Embed in Qdrant for semantic search
+      if (OPENAI_API_KEY && cs) {
+        try {
+          const embText = `${client} ${role} ${description}`;
+          const vector = await generateEmbedding(embText);
+          await qdrantUpsert('case_studies', cs.id, vector, {
+            tenant_id: TENANT_ID,
+            title: title,
+            client_name: client.trim(),
+            role_title: role.trim(),
+            description: description.trim().slice(0, 500),
+            type: 'case_study',
+          });
+          embedded++;
+          if (embedded % 10 === 0) console.log(`  Embedded ${embedded}...`);
+          await sleep(200); // Rate limit OpenAI
+        } catch (e) {
+          // Embedding failure is non-fatal
+        }
+      }
     } catch (e) {
       console.error(`  Error: ${client} / ${role}: ${e.message}`);
     }
   }
 
-  console.log(`  Imported: ${imported}`);
+  console.log(`\n  Imported: ${imported}`);
   console.log(`  Skipped (duplicates): ${skipped}`);
+  console.log(`  Companies created: ${companiesCreated}`);
+  console.log(`  Embedded in Qdrant: ${embedded}`);
   console.log(`  Total in PDF: ${CASE_STUDIES.length}`);
   console.log('\n═══════════════════════════════════════════════════');
 
