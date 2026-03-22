@@ -1200,6 +1200,17 @@ const PIPELINES = {
     description: 'Scan connected Google accounts for new/modified Drive documents, ingest as companion data'
   },
 
+  import_case_studies_bulk: {
+    name: 'Bulk Import Case Studies',
+    icon: '📚',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'import_case_studies_csv.js'), { timeout: 120000, stdio: 'inherit' });
+    },
+    schedule: null, // Manual only — no cron
+    description: 'One-time bulk import of 177 case studies from PDF export'
+  },
+
   classify_documents: {
     name: 'Document Classification',
     icon: '🏷️',
