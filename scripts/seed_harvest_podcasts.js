@@ -71,14 +71,8 @@ const PODCAST_SOURCES = [
     signal_types: ['capital_raising', 'product_launch', 'leadership_change'],
     poll_interval_minutes: 120,
   },
-  {
-    name: 'Masters of Scale',
-    url: 'https://rss.art19.com/masters-of-scale',
-    region: 'us',
-    credibility_score: 0.85,
-    signal_types: ['leadership_change', 'geographic_expansion', 'product_launch'],
-    poll_interval_minutes: 180,
-  },
+  // Masters of Scale removed — Art19 feed redirects back to our own site
+
   {
     name: 'How I Built This',
     url: 'https://feeds.npr.org/510313/podcast.xml',
@@ -143,14 +137,7 @@ const PODCAST_SOURCES = [
     signal_types: ['capital_raising', 'ma_activity'],
     poll_interval_minutes: 180,
   },
-  {
-    name: 'My First Million',
-    url: 'https://feeds.megaphone.fm/HSW2628916555',
-    region: 'us',
-    credibility_score: 0.75,
-    signal_types: ['capital_raising', 'product_launch'],
-    poll_interval_minutes: 180,
-  },
+  // My First Million removed — feed not loading, redirects to own site
   {
     name: 'Village Global Venture Stories',
     url: 'https://feeds.megaphone.fm/village-global',
