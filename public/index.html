@@ -2457,7 +2457,9 @@ async function doSearch() {
 
   overlay.classList.add('active');
   document.getElementById('commandBar').classList.add('searching');
-  body.innerHTML = '<div class="search-loading"><div class="spinner"></div><div>Searching across people, signals, documents, placements...</div></div>';
+  window._lastSearchQuery = q;
+  window._lastSearchCollection = 'all';
+  body.innerHTML = '<div class="search-loading"><div class="spinner"></div><div>Searching across people, signals, documents, case studies...</div></div>';
 
   try {
     const data = await api(`/api/search?q=${encodeURIComponent(q)}&collection=all&limit=20`);
@@ -2465,8 +2467,10 @@ async function doSearch() {
     title.textContent = `"${q}" — ${data.total} results`;
 
     const SIG_C = { capital_raising:'#EF9F27', strategic_hiring:'#5DCAA5', geographic_expansion:'#378ADD', leadership_change:'#D4537E', ma_activity:'#AFA9EC', product_launch:'#97C459', layoffs:'#E24B4A', restructuring:'#E24B4A', partnership:'#85B7EB' };
+    window._searchRenderers = {};
 
     function mkGroup(key, label, items, cols, renderFn) {
+      window._searchRenderers[key] = renderFn;
       if (!items || !items.length) return '';
       return '<div data-group="' + key + '"><div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px 5px"><span style="font-size:9px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)">' + label + '</span><span style="font-size:9px;color:var(--ink-4)">' + items.length + ' results</span></div>' +
         '<div style="display:grid;grid-template-columns:repeat(' + cols + ',minmax(0,1fr));gap:8px;padding:0 16px 14px">' + items.map(renderFn).join('') + '</div></div>';
@@ -2566,7 +2570,55 @@ async function doSearch() {
 function filterSearchTab(btn, key) {
   btn.parentElement.querySelectorAll('button').forEach(function(b) { b.style.background = 'transparent'; b.style.color = 'var(--ink-3)'; b.style.fontWeight = '400'; });
   btn.style.background = 'var(--surface-warm)'; btn.style.color = 'var(--ink)'; btn.style.fontWeight = '600';
-  document.querySelectorAll('[data-group]').forEach(function(g) { g.style.display = (key === 'all' || g.dataset.group === key) ? '' : 'none'; });
+
+  if (key === 'all') {
+    document.querySelectorAll('[data-group]').forEach(function(g) { g.style.display = ''; });
+    var lm = document.getElementById('searchLoadMore'); if (lm) lm.remove();
+  } else {
+    // Hide other groups, show selected
+    document.querySelectorAll('[data-group]').forEach(function(g) { g.style.display = g.dataset.group === key ? '' : 'none'; });
+    // Add "Load more" button if not already present
+    var existing = document.getElementById('searchLoadMore');
+    if (existing) existing.remove();
+    var groupEl = document.querySelector('[data-group="' + key + '"]');
+    if (groupEl) {
+      var loadBtn = document.createElement('div');
+      loadBtn.id = 'searchLoadMore';
+      loadBtn.style.cssText = 'text-align:center;padding:12px 16px';
+      loadBtn.innerHTML = '<button onclick="loadMoreResults(\'' + key + '\')" style="font-size:11px;padding:6px 20px;border-radius:20px;border:1px solid var(--rule);background:var(--surface);color:var(--blue);cursor:pointer;font-family:var(--sans);font-weight:500">Load more ' + key.replace(/_/g, ' ') + '</button>';
+      groupEl.after(loadBtn);
+    }
+  }
+}
+
+async function loadMoreResults(collection) {
+  var q = window._lastSearchQuery;
+  if (!q) return;
+  var btn = document.querySelector('#searchLoadMore button');
+  if (btn) { btn.textContent = 'Loading...'; btn.disabled = true; }
+
+  try {
+    var data = await api('/api/search?q=' + encodeURIComponent(q) + '&collection=' + collection + '&limit=50');
+    var items = data.results[collection] || [];
+    if (!items.length) { if (btn) btn.textContent = 'No more results'; return; }
+
+    // Re-render just this group with the full results
+    var groupEl = document.querySelector('[data-group="' + collection + '"]');
+    if (groupEl) {
+      var gridEl = groupEl.querySelector('div:nth-child(2)');
+      if (gridEl) {
+        // Build new cards using the same renderer
+        gridEl.innerHTML = items.map(function(item) { return window._searchRenderers[collection](item); }).join('');
+      }
+      // Update count
+      var countEl = groupEl.querySelector('span:last-child');
+      if (countEl) countEl.textContent = items.length + ' results';
+    }
+    var lm = document.getElementById('searchLoadMore');
+    if (lm) lm.remove();
+  } catch (e) {
+    if (btn) { btn.textContent = 'Failed — try again'; btn.disabled = false; }
+  }
 }
 
 function closeSearch() {
