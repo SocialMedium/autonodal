@@ -3446,7 +3446,20 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
       pipelineTotal = parseInt(cnt);
     } catch (e) {}
 
-    res.json({ ...company, signals, people, placements, documents, financials, opportunities, pipeline_total: pipelineTotal });
+    // Case studies where this company was the client
+    let case_studies = [];
+    try {
+      const { rows } = await pool.query(`
+        SELECT id, title, role_title, engagement_type, seniority_level, year,
+               challenge, approach, outcome, themes, capabilities, status, visibility
+        FROM case_studies
+        WHERE (client_id = $1 OR client_name ILIKE $2) AND tenant_id = $3
+        ORDER BY year DESC NULLS LAST
+      `, [companyId, `%${company.name}%`, req.tenant_id]);
+      case_studies = rows;
+    } catch (e) { /* table may not exist */ }
+
+    res.json({ ...company, signals, people, placements, documents, financials, opportunities, pipeline_total: pipelineTotal, case_studies });
   } catch (err) {
     console.error('Company detail error:', err.message);
     res.status(500).json({ error: 'Failed to fetch company' });
