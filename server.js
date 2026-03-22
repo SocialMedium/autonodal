@@ -5273,7 +5273,8 @@ TOOL SELECTION (use the most specific tool available):
 14. Create person → create_person
 15. Import placements ("we placed X as Y at Z") → import_placements
 16. Import case studies ("we did a CTO search for fintech in SG") → import_case_studies
-17. Complex cross-referencing queries not covered above → run_sql_query with JOINs
+17. Run a pipeline ("harvest podcasts", "sync gmail", "classify documents", etc.) → run_pipeline
+18. Complex cross-referencing queries not covered above → run_sql_query with JOINs
 
 CASE STUDY + PLACEMENT IMPORT RULES:
 - Store EXACTLY what the user provides. Do NOT invent, embellish, or infer any data.
@@ -5443,6 +5444,20 @@ const CHAT_TOOLS = [
         }
       },
       required: ['case_studies']
+    }
+  },
+  {
+    name: 'run_pipeline',
+    description: 'Trigger a platform pipeline manually. Use when the user asks to run, trigger, or execute a pipeline such as: harvest_podcasts, sync_gmail, gmail_match, sync_drive, classify_documents, cleanup_broken_podcasts, import_case_studies_bulk, ingest_signals, compute_scores, match_searches, enrich_content, signal_dispatch, compute_network_topology, compute_triangulation, compute_signal_grabs. Say "run the X pipeline" or "harvest podcasts" or "sync gmail".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        pipeline_key: {
+          type: 'string',
+          description: 'Pipeline key to run. Common ones: harvest_podcasts, sync_gmail, gmail_match, sync_drive, classify_documents, cleanup_broken_podcasts, import_case_studies_bulk, ingest_signals, compute_scores, compute_signal_grabs, signal_dispatch, compute_network_topology, compute_triangulation'
+        }
+      },
+      required: ['pipeline_key']
     }
   },
 ];
@@ -6321,6 +6336,27 @@ async function executeTool(name, input, userId, tenantId) {
           ...results,
           message: `Imported ${results.imported} case studies as internal drafts (${results.skipped} duplicates skipped). These require sanitisation before external use — use /api/case-studies/:id/sanitise to approve public fields.`
         });
+      }
+
+      case 'run_pipeline': {
+        const { pipeline_key } = input;
+        if (!pipeline_key) return JSON.stringify({ error: 'pipeline_key required' });
+
+        try {
+          const scheduler = require('./scripts/scheduler.js');
+          const pipelines = scheduler.PIPELINES;
+          if (!pipelines[pipeline_key]) {
+            const available = Object.keys(pipelines).join(', ');
+            return JSON.stringify({ error: `Unknown pipeline "${pipeline_key}". Available: ${available}` });
+          }
+          const pipeline = pipelines[pipeline_key];
+          // Trigger async — don't wait for completion
+          scheduler.runPipeline(pipeline_key, 'chat').catch(e => console.error(`Pipeline ${pipeline_key} error:`, e.message));
+          auditLog(userId, 'run_pipeline', 'pipeline', null, { pipeline_key });
+          return JSON.stringify({ success: true, message: `${pipeline.name} triggered — running in background. Check /api/pipelines/runs for status.` });
+        } catch (e) {
+          return JSON.stringify({ error: 'Failed to trigger pipeline: ' + e.message });
+        }
       }
 
       default: return JSON.stringify({ error: `Unknown tool: ${name}` });
