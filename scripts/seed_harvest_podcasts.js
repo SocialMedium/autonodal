@@ -47,14 +47,7 @@ const PODCAST_SOURCES = [
     signal_types: ['capital_raising', 'leadership_change', 'ma_activity'],
     poll_interval_minutes: 120,
   },
-  {
-    name: 'Equity - TechCrunch',
-    url: 'https://feeds.megaphone.fm/equitypod',
-    region: 'us',
-    credibility_score: 0.85,
-    signal_types: ['capital_raising', 'ma_activity', 'product_launch'],
-    poll_interval_minutes: 120,
-  },
+  // Equity TechCrunch removed — Megaphone feed redirects to our own site
   {
     name: 'All-In Podcast',
     url: 'https://feeds.megaphone.fm/all-in-with-chamath-jason-sacks-and-friedberg',
