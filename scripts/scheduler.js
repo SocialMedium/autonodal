@@ -1200,6 +1200,17 @@ const PIPELINES = {
     description: 'Scan connected Google accounts for new/modified Drive documents, ingest as companion data'
   },
 
+  cleanup_broken_podcasts: {
+    name: 'Cleanup Broken Podcasts',
+    icon: '🧹',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'cleanup_broken_podcasts.js'), { timeout: 30000, stdio: 'inherit' });
+    },
+    schedule: null,
+    description: 'Delete episodes from My First Million, Equity TechCrunch, Masters of Scale'
+  },
+
   import_case_studies_bulk: {
     name: 'Bulk Import Case Studies',
     icon: '📚',
