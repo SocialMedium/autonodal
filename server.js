@@ -3986,6 +3986,7 @@ app.get('/api/grabs', authenticateToken, async (req, res) => {
 
     if (status !== 'all') { idx++; where += ` AND sg.status = $${idx}`; params.push(status); }
     if (type) { idx++; where += ` AND sg.cluster_type = $${idx}`; params.push(type); }
+    if (req.query.exclude_weekly === 'true') { where += ` AND sg.cluster_type != 'weekly_wrap'`; }
 
     idx++; params.push(limit);
 
@@ -4057,7 +4058,7 @@ app.get('/api/grabs/weekly', authenticateToken, async (req, res) => {
       try { wrapData = JSON.parse(wrap.observation); } catch(e) {}
     }
 
-    res.json({ wrap: wrapData, wrap_id: wrap?.id, top_grabs: topGrabs, week_of: new Date().toISOString().slice(0, 10) });
+    res.json({ wrap: wrapData, wrap_id: wrap?.id, wrap_produced_at: wrap?.created_at, top_grabs: topGrabs, week_of: new Date().toISOString().slice(0, 10) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

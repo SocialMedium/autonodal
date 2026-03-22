@@ -736,7 +736,7 @@ async function claimThisDispatch() {
 // ── Signal Grabs ──
 async function loadGrabs() {
   try {
-    const data = await api('/api/grabs?status=all&limit=10');
+    const data = await api('/api/grabs?status=all&limit=10&exclude_weekly=true');
     const list = document.getElementById('grabsList');
     if (!data.grabs || !data.grabs.length) {
       list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--ink-4);font-size:13px;grid-column:1/-1">No signal grabs yet. Click "Generate Now" to create editorial intelligence from recent signals.</div>';
@@ -752,7 +752,7 @@ async function loadGrabs() {
       return '<div style="background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:16px 18px;border-top:3px solid ' + tc + '">' +
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">' +
           '<span style="font-size:9px;padding:2px 8px;border-radius:10px;background:' + tc + '18;color:' + tc + ';font-weight:600;text-transform:uppercase;letter-spacing:.5px">' + esc(g.cluster_type) + '</span>' +
-          '<span style="font-size:9px;color:var(--ink-4);font-family:var(--mono)">' + (g.grab_score ? (g.grab_score * 100).toFixed(0) + '%' : '') + '</span>' +
+          '<span style="font-size:9px;color:var(--ink-4);font-family:var(--mono)">' + (g.created_at ? new Date(g.created_at).toLocaleDateString('en-AU', {day:'numeric',month:'short',year:'numeric'}) + ' ' + new Date(g.created_at).toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit'}) : '') + (g.grab_score ? ' · ' + (g.grab_score * 100).toFixed(0) + '%' : '') + '</span>' +
         '</div>' +
         '<div style="font-family:var(--serif);font-size:16px;font-weight:600;line-height:1.3;margin-bottom:8px">' + esc(g.headline) + '</div>' +
         '<div style="font-size:13px;color:var(--ink-2);line-height:1.55;margin-bottom:10px">' + esc(g.observation) + '</div>' +
@@ -794,7 +794,9 @@ async function loadWeeklyWrap() {
     var regionColors = { AU:'#0D7A50', SG:'#6D28D9', UK:'#2563EB', US:'#B45309' };
     var regionFlags = { AU:'🇦🇺', SG:'🇸🇬', UK:'🇬🇧', US:'🇺🇸' };
 
-    var h = '<div style="font-family:var(--serif);font-size:18px;font-weight:600;margin-bottom:10px">Weekly Wrap <span style="font-size:13px;color:var(--ink-3);font-family:var(--mono);font-weight:400">' + esc(w.week_of) + '</span></div>';
+    var producedAt = data.wrap_produced_at ? new Date(data.wrap_produced_at) : null;
+    var producedStr = producedAt ? producedAt.toLocaleDateString('en-AU', {day:'numeric',month:'short',year:'numeric'}) + ' ' + producedAt.toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit'}) : '';
+    var h = '<div style="font-family:var(--serif);font-size:18px;font-weight:600;margin-bottom:10px">Weekly Wrap <span style="font-size:13px;color:var(--ink-3);font-family:var(--mono);font-weight:400">' + esc(w.week_of) + '</span>' + (producedStr ? ' <span style="font-size:10px;color:var(--ink-4);font-family:var(--mono);font-weight:400">produced ' + producedStr + '</span>' : '') + '</div>';
     h += '<div style="display:flex;gap:6px;margin-bottom:12px;font-size:11px;color:var(--ink-3)">';
     h += '<span><strong>' + (w.global?.signals||0).toLocaleString() + '</strong> signals</span> · ';
     h += '<span><strong>' + (w.global?.companies||0).toLocaleString() + '</strong> companies</span> · ';
