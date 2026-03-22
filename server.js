@@ -3115,6 +3115,80 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
       enrichResults.people = { error: e.message };
     }
 
+    // 5. Google News search — fetch recent news for signal detection
+    try {
+      const searchName = company.name.replace(/\s+(Pty|Ltd|Limited|Inc|Corp|plc|AG|S\.A\.|Group|Holdings)\b/gi, '').trim();
+      const newsUrl = `https://news.google.com/rss/search?q=${encodeURIComponent('"' + searchName + '"')}&hl=en&gl=AU&ceid=AU:en`;
+      const newsXml = await new Promise((resolve, reject) => {
+        const client = newsUrl.startsWith('https') ? https : require('http');
+        const req = client.get(newsUrl, { timeout: 10000, headers: { 'User-Agent': 'MLX-Intelligence/1.0' } }, (res) => {
+          const chunks = []; res.on('data', c => chunks.push(c)); res.on('end', () => resolve(Buffer.concat(chunks).toString()));
+        });
+        req.on('error', reject); req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+      });
+
+      // Parse RSS items
+      const items = [];
+      const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+      let match;
+      while ((match = itemRegex.exec(newsXml)) !== null && items.length < 10) {
+        const itemXml = match[1];
+        const getTag = (tag) => { const m = itemXml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`)); return (m?.[1] || m?.[2] || '').trim(); };
+        const title = getTag('title');
+        const link = getTag('link');
+        const pubDate = getTag('pubDate');
+        const source = getTag('source');
+        if (title && link) items.push({ title, link, pubDate, source });
+      }
+
+      let newsIngested = 0;
+      for (const item of items) {
+        const sourceUrlHash = require('crypto').createHash('md5').update(item.link).digest('hex');
+        // Skip if already ingested
+        const { rows: exists } = await pool.query('SELECT id FROM external_documents WHERE source_url_hash = $1 AND tenant_id = $2', [sourceUrlHash, req.tenant_id]);
+        if (exists.length) continue;
+
+        await pool.query(`
+          INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash,
+            tenant_id, uploaded_by_user_id, published_at, processing_status, created_at)
+          VALUES ($1, $2, $3, 'news_enrich', $4, $5, $6, $7, $8, 'pending', NOW())
+        `, [
+          item.title, item.title, // content = title for now (Google News RSS doesn't include body)
+          item.source || 'Google News', item.link, sourceUrlHash,
+          req.tenant_id, req.user?.user_id || null,
+          item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString()
+        ]);
+
+        // Link document to company
+        try {
+          const { rows: [newDoc] } = await pool.query('SELECT id FROM external_documents WHERE source_url_hash = $1', [sourceUrlHash]);
+          if (newDoc) {
+            await pool.query(
+              `INSERT INTO document_companies (document_id, company_id, mention_role, confidence, tenant_id) VALUES ($1, $2, 'subject', 0.9, $3) ON CONFLICT DO NOTHING`,
+              [newDoc.id, req.params.id, req.tenant_id]
+            );
+          }
+        } catch (e) { /* document_companies may not exist */ }
+
+        newsIngested++;
+      }
+
+      if (newsIngested > 0 || items.length > 0) {
+        enrichResults.news = {
+          articles_found: items.length,
+          new_ingested: newsIngested,
+          headlines: items.slice(0, 5).map(i => ({ title: i.title, source: i.source, date: i.pubDate })),
+          message: newsIngested > 0
+            ? `${newsIngested} new articles ingested — will be processed for signals on next pipeline run`
+            : `${items.length} articles found (all already ingested)`
+        };
+      } else {
+        enrichResults.news = { message: 'No recent news found' };
+      }
+    } catch (e) {
+      enrichResults.news = { error: e.message };
+    }
+
     // 4. Re-embed with all enriched data
     try {
       const { rows: [latest] } = await pool.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
