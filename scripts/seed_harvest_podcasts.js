@@ -48,6 +48,15 @@ const PODCAST_SOURCES = [
     poll_interval_minutes: 120,
   },
   // Equity TechCrunch removed — Megaphone feed redirects to our own site
+  // Masters of Scale removed — only Art19 feed exists, broken redirects
+  {
+    name: 'Decoder with Nilay Patel',
+    url: 'https://feeds.megaphone.fm/recodedecode',
+    region: 'us',
+    credibility_score: 0.85,
+    signal_types: ['leadership_change', 'product_launch', 'ma_activity', 'restructuring'],
+    poll_interval_minutes: 120,
+  },
   {
     name: 'All-In Podcast',
     url: 'https://feeds.megaphone.fm/all-in-with-chamath-jason-sacks-and-friedberg',
