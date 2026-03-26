@@ -28,7 +28,16 @@ async function main() {
   console.log('LinkedIn Messages Import');
   console.log('File:', csvPath, '| User:', userEmail);
 
-  const { rows: [user] } = await pool.query('SELECT id, name FROM users WHERE email = $1', [userEmail]);
+  let { rows: [user] } = await pool.query('SELECT id, name, email FROM users WHERE email = $1', [userEmail]);
+  if (!user) {
+    const pattern = userEmail.split('@')[0];
+    const { rows } = await pool.query('SELECT id, name, email FROM users WHERE email ILIKE $1 LIMIT 1', [`%${pattern}%`]);
+    user = rows[0];
+  }
+  if (!user) {
+    const { rows } = await pool.query("SELECT id, name, email FROM users WHERE name ILIKE '%sophie%' LIMIT 1");
+    user = rows[0];
+  }
   if (!user) { console.error('User not found:', userEmail); process.exit(1); }
   const userId = user.id;
   const userName = (user.name || '').toLowerCase();

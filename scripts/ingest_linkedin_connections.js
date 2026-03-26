@@ -39,11 +39,21 @@ async function main() {
   console.log(` User: ${userEmail}`);
   console.log('═══════════════════════════════════════════════════════════');
 
-  // Find user
-  const { rows: [user] } = await pool.query('SELECT id FROM users WHERE email = $1', [userEmail]);
+  // Find user — try exact match, then ILIKE pattern
+  let { rows: [user] } = await pool.query('SELECT id, email, name FROM users WHERE email = $1', [userEmail]);
+  if (!user) {
+    const pattern = userEmail.split('@')[0]; // e.g. "sophiec"
+    const { rows } = await pool.query('SELECT id, email, name FROM users WHERE email ILIKE $1 LIMIT 1', [`%${pattern}%`]);
+    user = rows[0];
+  }
+  if (!user) {
+    // Try by name
+    const { rows } = await pool.query("SELECT id, email, name FROM users WHERE name ILIKE '%sophie%' LIMIT 1");
+    user = rows[0];
+  }
   if (!user) { console.error('User not found:', userEmail); process.exit(1); }
   const userId = user.id;
-  console.log(`  User ID: ${userId}`);
+  console.log(`  User: ${user.name} (${user.email}) — ID: ${userId}`);
 
   // Read CSV
   const raw = fs.readFileSync(csvPath, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');

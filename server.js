@@ -8531,8 +8531,9 @@ app.listen(PORT, async () => {
       if (parseInt(check.cnt) < 100) {
         console.log('  📋 Sophie LinkedIn CSV found — importing in background...');
         const { exec } = require('child_process');
-        exec(`node ${require('path').join(__dirname, 'scripts', 'ingest_linkedin_connections.js')}`, { timeout: 1200000 }, (err, stdout) => {
-          if (stdout) console.log(stdout.slice(-600));
+        exec(`node ${require('path').join(__dirname, 'scripts', 'ingest_linkedin_connections.js')}`, { timeout: 1200000 }, (err, stdout, stderr) => {
+          if (stdout) console.log(stdout.slice(-800));
+          if (stderr) console.error('  stderr:', stderr.slice(-300));
           if (err) console.error('  ⚠️ Sophie LinkedIn import error:', err.message?.slice(0, 200));
           else console.log('  ✅ Sophie LinkedIn import complete');
         });
@@ -8552,8 +8553,9 @@ app.listen(PORT, async () => {
       if (parseInt(check.cnt) < 100) {
         console.log('  💬 Sophie LinkedIn messages found — importing in background...');
         const { exec } = require('child_process');
-        exec(`node ${require('path').join(__dirname, 'scripts', 'ingest_linkedin_messages.js')}`, { timeout: 1200000 }, (err, stdout) => {
-          if (stdout) console.log(stdout.slice(-600));
+        exec(`node ${require('path').join(__dirname, 'scripts', 'ingest_linkedin_messages.js')}`, { timeout: 1200000 }, (err, stdout, stderr) => {
+          if (stdout) console.log(stdout.slice(-800));
+          if (stderr) console.error('  stderr:', stderr.slice(-300));
           if (err) console.error('  ⚠️ Sophie messages import error:', err.message?.slice(0, 200));
           else console.log('  ✅ Sophie LinkedIn messages import complete');
         });
