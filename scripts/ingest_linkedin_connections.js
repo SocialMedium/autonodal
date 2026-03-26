@@ -131,40 +131,51 @@ async function main() {
       }
     }
 
-    // Batch create new people
-    for (const p of toCreate) {
+    // Multi-row INSERT for people (much faster than individual)
+    if (toCreate.length > 0) {
+      const values = [];
+      const params = [];
+      let idx = 1;
+      for (const p of toCreate) {
+        values.push(`($${idx},$${idx+1},$${idx+2},$${idx+3},$${idx+4},$${idx+5},$${idx+6},'linkedin_import',$${idx+7},$${idx+8})`);
+        params.push(p.fullName, p.firstName, p.lastName, p.position || null, p.company || null, p.linkedinUrl || null, p.email || null, userId, TENANT_ID);
+        idx += 9;
+      }
       try {
-        const { rows: [newP] } = await pool.query(
+        const { rows: newPeople } = await pool.query(
           `INSERT INTO people (full_name, first_name, last_name, current_title, current_company_name, linkedin_url, email, source, created_by, tenant_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,'linkedin_import',$8,$9)
-           ON CONFLICT DO NOTHING RETURNING id`,
-          [p.fullName, p.firstName, p.lastName, p.position || null, p.company || null, p.linkedinUrl || null, p.email || null, userId, TENANT_ID]
+           VALUES ${values.join(',')}
+           ON CONFLICT DO NOTHING RETURNING id, full_name, linkedin_url`,
+          params
         );
-        if (newP) {
+        for (const newP of newPeople) {
           toProximity.push(newP.id);
           stats.created++;
-          // Add to indexes for future matching within this run
-          const norm = p.fullName.toLowerCase().trim();
-          if (!nameIndex.has(norm)) nameIndex.set(norm, []);
-          nameIndex.get(norm).push(newP.id);
-          if (p.linkedinUrl) {
-            const s = (p.linkedinUrl.toLowerCase().match(/linkedin\.com\/in\/([^\/]+)/) || [])[1];
-            if (s) linkedinIndex.set(s, newP.id);
-          }
+          const norm = (newP.full_name || '').toLowerCase().trim();
+          if (norm) { if (!nameIndex.has(norm)) nameIndex.set(norm, []); nameIndex.get(norm).push(newP.id); }
+          if (newP.linkedin_url) { const s = (newP.linkedin_url.toLowerCase().match(/linkedin\.com\/in\/([^\/]+)/) || [])[1]; if (s) linkedinIndex.set(s, newP.id); }
         }
-      } catch (e) { stats.skipped++; }
+      } catch (e) { stats.skipped += toCreate.length; }
     }
 
-    // Batch create proximity
-    for (const pid of toProximity) {
+    // Multi-row INSERT for proximity
+    if (toProximity.length > 0) {
+      const pValues = [];
+      const pParams = [];
+      let pIdx = 1;
+      for (const pid of toProximity) {
+        pValues.push(`($${pIdx},$${pIdx+1},'linkedin_connection',0.5,'linkedin_import',$${pIdx+2})`);
+        pParams.push(pid, userId, TENANT_ID);
+        pIdx += 3;
+      }
       try {
-        await pool.query(
+        const { rowCount } = await pool.query(
           `INSERT INTO team_proximity (person_id, team_member_id, relationship_type, relationship_strength, source, tenant_id)
-           VALUES ($1, $2, 'linkedin_connection', 0.5, 'linkedin_import', $3)
+           VALUES ${pValues.join(',')}
            ON CONFLICT (person_id, team_member_id) DO UPDATE SET relationship_strength = GREATEST(team_proximity.relationship_strength, 0.5)`,
-          [pid, userId, TENANT_ID]
+          pParams
         );
-        stats.proximity++;
+        stats.proximity += rowCount;
       } catch (e) {}
     }
 
