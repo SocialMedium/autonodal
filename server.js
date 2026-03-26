@@ -8021,6 +8021,143 @@ app.post('/api/profile/trigger-sync', authenticateToken, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ECOSYSTEM MAP DATA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/ecosystem', authenticateToken, async (req, res) => {
+  try {
+    const tid = req.tenant_id;
+
+    // 1. Regional signal density
+    const { rows: signalsByRegion } = await pool.query(`
+      SELECT
+        CASE
+          WHEN c.country_code IN ('AU','NZ') OR c.geography ILIKE '%australia%' THEN 'AU'
+          WHEN c.country_code IN ('SG','MY','ID','TH','VN','PH') OR c.geography ILIKE '%singapore%' OR c.geography ILIKE '%southeast%' THEN 'SG'
+          WHEN c.country_code IN ('GB','UK','IE','DE','FR','NL') OR c.geography ILIKE '%united kingdom%' OR c.geography ILIKE '%london%' OR c.geography ILIKE '%europe%' THEN 'UK'
+          WHEN c.country_code IN ('US','CA') OR c.geography ILIKE '%united states%' OR c.geography ILIKE '%america%' THEN 'US'
+          ELSE 'OTHER'
+        END AS region,
+        se.signal_type,
+        COUNT(*) AS signal_count,
+        COUNT(*) FILTER (WHERE se.detected_at > NOW() - INTERVAL '7 days') AS signals_7d,
+        COUNT(*) FILTER (WHERE se.detected_at > NOW() - INTERVAL '30 days') AS signals_30d,
+        AVG(se.confidence_score) AS avg_confidence
+      FROM signal_events se
+      LEFT JOIN companies c ON c.id = se.company_id
+      WHERE se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '90 days'
+      GROUP BY region, se.signal_type
+      ORDER BY region, signal_count DESC
+    `, [tid]).catch(() => ({ rows: [] }));
+
+    // 2. Network density per region
+    const { rows: density } = await pool.query(`
+      SELECT nds.region_code, gp.region_name, gp.weight_boost, gp.is_home_market,
+             nds.total_contacts, nds.active_contacts, nds.senior_contacts,
+             nds.placement_count, nds.client_count,
+             nds.density_score, nds.depth_score, nds.recency_score
+      FROM network_density_scores nds
+      JOIN geo_priorities gp ON gp.region_code = nds.region_code
+      WHERE nds.tenant_id = $1
+      ORDER BY nds.density_score DESC
+    `, [tid]).catch(() => ({ rows: [] }));
+
+    // 3. Revenue by region (from Xero data only)
+    const { rows: revenue } = await pool.query(`
+      SELECT
+        CASE
+          WHEN cv.currency = 'AUD' THEN 'AU'
+          WHEN cv.currency = 'SGD' THEN 'SG'
+          WHEN cv.currency = 'GBP' THEN 'UK'
+          WHEN cv.currency = 'USD' THEN 'US'
+          ELSE 'OTHER'
+        END AS region,
+        COUNT(*) AS placement_count,
+        COALESCE(SUM(cv.placement_fee), 0) AS total_revenue,
+        COALESCE(SUM(cv.placement_fee) FILTER (WHERE cv.start_date > NOW() - INTERVAL '12 months'), 0) AS revenue_12m,
+        COALESCE(SUM(cv.placement_fee) FILTER (WHERE cv.start_date > NOW() - INTERVAL '6 months'), 0) AS revenue_6m
+      FROM conversions cv
+      WHERE cv.tenant_id = $1 AND cv.source IN ('xero_export', 'xero', 'manual') AND cv.placement_fee IS NOT NULL
+      GROUP BY region
+    `, [tid]).catch(() => ({ rows: [] }));
+
+    // 4. Top companies per region with signal activity
+    const { rows: topCompanies } = await pool.query(`
+      SELECT
+        CASE
+          WHEN c.country_code IN ('AU','NZ') OR c.geography ILIKE '%australia%' THEN 'AU'
+          WHEN c.country_code IN ('SG','MY','ID','TH','VN','PH') OR c.geography ILIKE '%singapore%' THEN 'SG'
+          WHEN c.country_code IN ('GB','UK','IE','DE','FR','NL') OR c.geography ILIKE '%united kingdom%' OR c.geography ILIKE '%london%' THEN 'UK'
+          WHEN c.country_code IN ('US','CA') OR c.geography ILIKE '%united states%' THEN 'US'
+          ELSE 'OTHER'
+        END AS region,
+        c.id, c.name, c.is_client, c.sector,
+        COUNT(se.id) AS signal_count,
+        (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) AS contact_count,
+        (SELECT COUNT(*) FROM team_proximity tp JOIN people p2 ON p2.id = tp.person_id WHERE p2.current_company_id = c.id) AS proximity_count
+      FROM companies c
+      JOIN signal_events se ON se.company_id = c.id AND se.detected_at > NOW() - INTERVAL '90 days'
+      WHERE c.tenant_id = $1
+      GROUP BY region, c.id, c.name, c.is_client, c.sector
+      ORDER BY region, signal_count DESC
+    `, [tid]).catch(() => ({ rows: [] }));
+
+    // 5. Converging themes (top 5 globally)
+    const { rows: themes } = await pool.query(`
+      SELECT se.signal_type, COUNT(*) AS count, COUNT(DISTINCT se.company_id) AS companies,
+             COUNT(DISTINCT se.company_id) FILTER (WHERE c.is_client = true) AS client_companies
+      FROM signal_events se
+      LEFT JOIN companies c ON c.id = se.company_id
+      WHERE se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '30 days'
+      GROUP BY se.signal_type
+      ORDER BY count DESC LIMIT 8
+    `, [tid]).catch(() => ({ rows: [] }));
+
+    // 6. Case study coverage by geography
+    const { rows: caseGeo } = await pool.query(`
+      SELECT geography, COUNT(*) AS count
+      FROM case_studies
+      WHERE tenant_id = $1 AND status != 'deleted' AND geography IS NOT NULL
+      GROUP BY geography ORDER BY count DESC LIMIT 10
+    `, [tid]).catch(() => ({ rows: [] }));
+
+    // Structure signals by region
+    const regionSignals = {};
+    for (const r of signalsByRegion) {
+      if (!regionSignals[r.region]) regionSignals[r.region] = { total: 0, signals_7d: 0, signals_30d: 0, types: {} };
+      regionSignals[r.region].total += parseInt(r.signal_count);
+      regionSignals[r.region].signals_7d += parseInt(r.signals_7d);
+      regionSignals[r.region].signals_30d += parseInt(r.signals_30d);
+      regionSignals[r.region].types[r.signal_type] = parseInt(r.signal_count);
+    }
+
+    // Structure companies by region (top 5 per region)
+    const regionCompanies = {};
+    for (const c of topCompanies) {
+      if (!regionCompanies[c.region]) regionCompanies[c.region] = [];
+      if (regionCompanies[c.region].length < 5) regionCompanies[c.region].push(c);
+    }
+
+    res.json({
+      regions: {
+        AU: { lat: -33.87, lng: 151.21, name: 'Australia & NZ', color: '#0D7A50', flag: '\ud83c\udde6\ud83c\uddfa' },
+        SG: { lat: 1.35, lng: 103.82, name: 'Singapore & SEA', color: '#6D28D9', flag: '\ud83c\uddf8\ud83c\uddec' },
+        UK: { lat: 51.51, lng: -0.13, name: 'United Kingdom & Europe', color: '#2563EB', flag: '\ud83c\uddec\ud83c\udde7' },
+        US: { lat: 37.77, lng: -122.42, name: 'United States & Americas', color: '#B45309', flag: '\ud83c\uddfa\ud83c\uddf8' },
+      },
+      signals: regionSignals,
+      density: density,
+      revenue: revenue,
+      companies: regionCompanies,
+      themes: themes,
+      case_studies_geo: caseGeo
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ADMIN: Per-User Data Operations
 // ═══════════════════════════════════════════════════════════════════════════════
 

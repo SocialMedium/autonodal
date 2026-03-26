@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ecosystem — MLX Autonode</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+<style>
+:root {
+  --serif: 'Source Serif 4', 'Georgia', serif;
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+  --bg: #0a0e1a; --surface: #111827; --surface-warm: #1a1f2e;
+  --ink: #f0f0f0; --ink-2: #c0c0c0; --ink-3: #888; --ink-4: #555;
+  --rule: #1f2937; --rule-bold: #374151;
+  --blue: #3b82f6; --blue-soft: rgba(59,130,246,0.15);
+  --emerald: #10b981; --emerald-soft: rgba(16,185,129,0.15);
+  --amber: #f59e0b; --amber-soft: rgba(245,158,11,0.15);
+  --rose: #ef4444; --rose-soft: rgba(239,68,68,0.15);
+  --violet: #8b5cf6; --violet-soft: rgba(139,92,246,0.15);
+  --radius: 8px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 14px; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+
+.masthead { background: var(--surface); border-bottom: 1px solid var(--rule); padding: 0 40px; position: sticky; top: 0; z-index: 100; }
+.masthead-top { display: flex; align-items: center; justify-content: space-between; height: 48px; }
+.masthead-logo { font-family: var(--serif); font-size: 18px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); }
+.masthead-logo em { font-style: italic; font-weight: 400; }
+.masthead-nav { display: flex; gap: 2px; }
+.masthead-nav a { font-size: 11px; font-weight: 500; padding: 5px 12px; border-radius: 5px; text-decoration: none; color: var(--ink-3); transition: all 0.15s; }
+.masthead-nav a:hover { color: var(--ink); background: var(--surface-warm); }
+.masthead-nav a.active { color: var(--ink); background: var(--surface-warm); font-weight: 600; }
+.masthead-user { width: 28px; height: 28px; border-radius: 50%; background: var(--ink-4); color: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; cursor: pointer; }
+
+/* Map */
+.map-container { position: relative; width: 100%; height: 60vh; min-height: 400px; overflow: hidden; }
+#worldMap { width: 100%; height: 100%; }
+.map-land { fill: #1a2035; stroke: #2a3555; stroke-width: 0.3; }
+.map-land:hover { fill: #222d48; }
+.map-border { fill: none; stroke: #1a2035; stroke-width: 0.5; }
+
+/* Region bubbles */
+.region-bubble { cursor: pointer; transition: transform 0.3s; }
+.region-bubble:hover { transform: scale(1.1); }
+.bubble-label { font-family: var(--sans); font-weight: 600; fill: white; pointer-events: none; }
+.bubble-sub { font-family: var(--mono); fill: rgba(255,255,255,0.5); pointer-events: none; }
+
+/* Signal pulses */
+.signal-pulse { animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 0.6; r: 0; } 50% { opacity: 0; } }
+
+/* Arcs */
+.arc-path { fill: none; stroke-width: 1; opacity: 0.3; }
+.arc-path.active { opacity: 0.6; stroke-width: 1.5; }
+
+/* Controls */
+.controls { position: absolute; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 6px; z-index: 10; }
+.ctrl-btn { font-size: 10px; font-weight: 600; padding: 6px 14px; border-radius: 20px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink-3); cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+.ctrl-btn:hover { border-color: var(--ink-3); color: var(--ink); }
+.ctrl-btn.active { background: var(--blue); border-color: var(--blue); color: white; }
+.ctrl-btn.layer-signals.active { background: var(--emerald); border-color: var(--emerald); }
+.ctrl-btn.layer-revenue.active { background: var(--amber); border-color: var(--amber); }
+.ctrl-btn.layer-network.active { background: var(--violet); border-color: var(--violet); }
+
+/* Legend */
+.legend { position: absolute; bottom: 16px; left: 16px; background: rgba(17,24,39,0.9); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 16px; z-index: 10; }
+.legend-title { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 6px; }
+.legend-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-2); margin-bottom: 3px; }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* Dashboard strip */
+.dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; padding: 20px 40px; }
+.dash-card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 16px; cursor: pointer; transition: all 0.15s; }
+.dash-card:hover { border-color: var(--rule-bold); }
+.dash-card.selected { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+.dash-region { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.dash-flag { font-size: 20px; }
+.dash-name { font-size: 13px; font-weight: 600; }
+.dash-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.dash-stat { text-align: center; }
+.dash-val { font-family: var(--mono); font-size: 16px; font-weight: 500; }
+.dash-lbl { font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-4); }
+
+/* Signal type breakdown */
+.signal-bar { display: flex; height: 4px; border-radius: 2px; overflow: hidden; margin-top: 8px; gap: 1px; }
+.signal-seg { height: 100%; min-width: 2px; border-radius: 1px; }
+
+/* Theme cards */
+.themes-strip { padding: 0 40px 20px; display: flex; gap: 10px; overflow-x: auto; }
+.theme-pill { flex-shrink: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: 20px; padding: 8px 16px; font-size: 11px; font-weight: 500; color: var(--ink-2); cursor: pointer; transition: all 0.15s; }
+.theme-pill:hover { border-color: var(--ink-3); color: var(--ink); }
+.theme-pill .count { font-family: var(--mono); color: var(--ink-4); margin-left: 6px; }
+
+/* Top companies panel */
+.companies-panel { padding: 0 40px 40px; }
+.companies-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.co-card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 12px 16px; cursor: pointer; transition: all 0.15s; }
+.co-card:hover { border-color: var(--rule-bold); }
+.co-card.client { border-left: 3px solid var(--amber); }
+.co-name { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+.co-meta { font-size: 10px; color: var(--ink-4); }
+.co-badges { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+.co-badge { font-size: 8px; font-weight: 600; padding: 2px 6px; border-radius: 3px; }
+
+#loginPrompt { display: none; text-align: center; padding: 80px; }
+#appContent { display: none; }
+</style>
+</head>
+<body>
+
+<div id="loginPrompt">
+  <h2 style="font-family: var(--serif); color: var(--ink)">Sign in to continue</h2>
+  <a href="/api/auth/google" style="display:inline-block;margin-top:16px;padding:10px 24px;background:var(--blue);color:white;border-radius:6px;text-decoration:none;font-weight:600">Sign in with Google</a>
+</div>
+
+<div id="appContent">
+<header class="masthead">
+  <div class="masthead-top">
+    <div class="masthead-logo">MLX <em>Autonode</em></div>
+    <nav class="masthead-nav">
+      <a href="/index.html">Signals</a>
+      <a href="/companies.html">Companies</a>
+      <a href="/dispatches.html">Dispatch</a>
+      <a href="/ecosystem.html" class="active">Ecosystem</a>
+      <a href="/case-studies.html">Case Studies</a>
+      <a href="/admin.html">Admin</a>
+    </nav>
+    <div class="masthead-user" onclick="location.href='/profile.html'" id="userAvatar"></div>
+  </div>
+</header>
+
+<!-- Map -->
+<div class="map-container">
+  <svg id="worldMap"></svg>
+  <div class="controls" id="layerControls">
+    <button class="ctrl-btn layer-signals active" onclick="toggleLayer(this,'signals')">Signals</button>
+    <button class="ctrl-btn layer-network active" onclick="toggleLayer(this,'network')">Network</button>
+    <button class="ctrl-btn layer-revenue active" onclick="toggleLayer(this,'revenue')">Revenue</button>
+    <button class="ctrl-btn" onclick="toggleLayer(this,'arcs')">Connections</button>
+  </div>
+  <div class="legend" id="mapLegend">
+    <div class="legend-title">Signal Types</div>
+    <div id="legendContent"></div>
+  </div>
+</div>
+
+<!-- Region dashboard -->
+<div class="dashboard" id="regionDash"></div>
+
+<!-- Theme pills -->
+<div class="themes-strip" id="themesStrip"></div>
+
+<!-- Top companies -->
+<div class="companies-panel">
+  <div style="font-family:var(--serif);font-size:16px;font-weight:600;margin-bottom:12px;color:var(--ink)">Active Companies by Region</div>
+  <div class="companies-grid" id="companiesGrid"></div>
+</div>
+</div>
+
+<script>
+var TOKEN = localStorage.getItem('ml_token');
+if (!TOKEN) { document.getElementById('loginPrompt').style.display = 'block'; }
+else { document.getElementById('appContent').style.display = 'block'; init(); }
+
+var LAYERS = { signals: true, network: true, revenue: true, arcs: false };
+var DATA = null;
+
+var SIG_COLORS = {
+  capital_raising: '#f59e0b', ma_activity: '#8b5cf6', product_launch: '#10b981',
+  partnership: '#3b82f6', geographic_expansion: '#06b6d4', restructuring: '#ef4444',
+  leadership_change: '#ec4899', layoffs: '#ef4444', strategic_hiring: '#10b981'
+};
+var SIG_LABELS = {
+  capital_raising: 'Capital', ma_activity: 'M&A', product_launch: 'Launch',
+  partnership: 'Partnership', geographic_expansion: 'Expansion', restructuring: 'Restructure',
+  leadership_change: 'Leadership', layoffs: 'Layoffs', strategic_hiring: 'Hiring'
+};
+
+function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+function num(n) { var v = parseInt(n) || 0; return v >= 1000000 ? (v/1000000).toFixed(1) + 'M' : v >= 1000 ? (v/1000).toFixed(0) + 'K' : v.toLocaleString(); }
+function currency(n) { var v = parseFloat(n) || 0; return v >= 1000000 ? '$' + (v/1000000).toFixed(1) + 'M' : v >= 1000 ? '$' + (v/1000).toFixed(0) + 'K' : '$' + v.toFixed(0); }
+
+async function api(path) {
+  var res = await fetch(path, { headers: { Authorization: 'Bearer ' + TOKEN } });
+  if (res.status === 401) { location.href = '/api/auth/google'; return null; }
+  return res.json();
+}
+
+function toggleLayer(btn, layer) {
+  LAYERS[layer] = !LAYERS[layer];
+  btn.classList.toggle('active');
+  renderMap();
+}
+
+async function init() {
+  // Load world map + data in parallel
+  var [world, data] = await Promise.all([
+    d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json'),
+    api('/api/ecosystem')
+  ]);
+  DATA = data;
+  if (!DATA) return;
+
+  drawMap(world);
+  renderDashboard();
+  renderThemes();
+  renderCompanies();
+  renderLegend();
+}
+
+function drawMap(world) {
+  var svg = d3.select('#worldMap');
+  var container = document.querySelector('.map-container');
+  var w = container.clientWidth, h = container.clientHeight;
+  svg.attr('viewBox', '0 0 ' + w + ' ' + h);
+
+  var projection = d3.geoNaturalEarth1()
+    .scale(w / 5.5)
+    .translate([w / 2, h / 2 + 20]);
+
+  var path = d3.geoPath().projection(projection);
+  var countries = topojson.feature(world, world.objects.countries);
+
+  // Gradient background
+  var defs = svg.append('defs');
+  var grad = defs.append('radialGradient').attr('id', 'mapGlow').attr('cx', '50%').attr('cy', '50%').attr('r', '60%');
+  grad.append('stop').attr('offset', '0%').attr('stop-color', '#0f1729');
+  grad.append('stop').attr('offset', '100%').attr('stop-color', '#060a14');
+  svg.append('rect').attr('width', w).attr('height', h).attr('fill', 'url(#mapGlow)');
+
+  // Dot grid
+  var dotG = svg.append('g').attr('opacity', 0.04);
+  for (var x = 0; x < w; x += 40) for (var y = 0; y < h; y += 40) {
+    dotG.append('circle').attr('cx', x).attr('cy', y).attr('r', 0.5).attr('fill', '#4488cc');
+  }
+
+  // Countries
+  svg.append('g').selectAll('path').data(countries.features).join('path')
+    .attr('class', 'map-land').attr('d', path);
+
+  // Store projection for overlay rendering
+  window._proj = projection;
+  window._svg = svg;
+  window._mapW = w;
+  window._mapH = h;
+
+  renderMap();
+}
+
+function renderMap() {
+  var svg = window._svg, proj = window._proj;
+  if (!svg || !proj || !DATA) return;
+
+  // Clear overlays
+  svg.selectAll('.overlay-g').remove();
+  var g = svg.append('g').attr('class', 'overlay-g');
+
+  var regions = DATA.regions;
+
+  // Connection arcs between regions
+  if (LAYERS.arcs) {
+    var regionKeys = Object.keys(regions);
+    for (var i = 0; i < regionKeys.length; i++) {
+      for (var j = i + 1; j < regionKeys.length; j++) {
+        var r1 = regions[regionKeys[i]], r2 = regions[regionKeys[j]];
+        var p1 = proj([r1.lng, r1.lat]), p2 = proj([r2.lng, r2.lat]);
+        if (!p1 || !p2) continue;
+        var mx = (p1[0] + p2[0]) / 2, my = Math.min(p1[1], p2[1]) - 40;
+        g.append('path')
+          .attr('class', 'arc-path')
+          .attr('d', 'M' + p1[0] + ',' + p1[1] + ' Q' + mx + ',' + my + ' ' + p2[0] + ',' + p2[1])
+          .attr('stroke', 'rgba(100,150,255,0.3)')
+          .attr('stroke-dasharray', '4 4');
+      }
+    }
+  }
+
+  Object.entries(regions).forEach(function(entry) {
+    var code = entry[0], r = entry[1];
+    var pt = proj([r.lng, r.lat]);
+    if (!pt) return;
+
+    var sigs = DATA.signals[code] || { total: 0, signals_7d: 0, types: {} };
+    var rev = (DATA.revenue || []).find(function(rv) { return rv.region === code; }) || {};
+    var dens = (DATA.density || []).find(function(d) { return d.region_code === code; }) || {};
+
+    // Signal pulse ring
+    if (LAYERS.signals && sigs.total > 0) {
+      var pulseR = 15 + Math.min(sigs.signals_7d * 2, 40);
+      g.append('circle').attr('cx', pt[0]).attr('cy', pt[1]).attr('r', pulseR)
+        .attr('fill', 'none').attr('stroke', r.color).attr('stroke-width', 1.5)
+        .attr('opacity', 0.4).style('animation', 'pulse 3s ease-in-out infinite');
+      g.append('circle').attr('cx', pt[0]).attr('cy', pt[1]).attr('r', pulseR * 0.7)
+        .attr('fill', 'none').attr('stroke', r.color).attr('stroke-width', 1)
+        .attr('opacity', 0.2).style('animation', 'pulse 3s ease-in-out infinite').style('animation-delay', '0.5s');
+    }
+
+    // Network density bubble
+    if (LAYERS.network) {
+      var densR = 8 + Math.min((parseInt(dens.total_contacts) || 0) / 50, 30);
+      g.append('circle').attr('cx', pt[0]).attr('cy', pt[1]).attr('r', densR)
+        .attr('fill', r.color).attr('fill-opacity', 0.12).attr('stroke', r.color).attr('stroke-opacity', 0.3).attr('stroke-width', 1);
+    }
+
+    // Revenue bubble
+    if (LAYERS.revenue) {
+      var revVal = parseFloat(rev.total_revenue) || 0;
+      var revR = revVal > 0 ? 6 + Math.min(revVal / 100000, 25) : 0;
+      if (revR > 0) {
+        g.append('circle').attr('cx', pt[0] + 15).attr('cy', pt[1] + 15).attr('r', revR)
+          .attr('fill', '#f59e0b').attr('fill-opacity', 0.25).attr('stroke', '#f59e0b').attr('stroke-opacity', 0.5).attr('stroke-width', 0.8);
+        g.append('text').attr('x', pt[0] + 15).attr('y', pt[1] + 15 + 3).attr('text-anchor', 'middle')
+          .attr('font-size', 8).attr('font-weight', 600).attr('fill', '#f59e0b').attr('font-family', 'var(--mono)')
+          .text(currency(revVal));
+      }
+    }
+
+    // Signal type breakdown ring
+    if (LAYERS.signals && sigs.total > 0) {
+      var typeEntries = Object.entries(sigs.types).sort(function(a, b) { return b[1] - a[1]; });
+      var angle = 0;
+      var ringR = 20 + Math.min(sigs.total / 10, 20);
+      typeEntries.forEach(function(te) {
+        var sweep = (te[1] / sigs.total) * Math.PI * 2;
+        var x1 = pt[0] + Math.cos(angle) * ringR, y1 = pt[1] + Math.sin(angle) * ringR;
+        var x2 = pt[0] + Math.cos(angle + sweep) * ringR, y2 = pt[1] + Math.sin(angle + sweep) * ringR;
+        var large = sweep > Math.PI ? 1 : 0;
+        g.append('path')
+          .attr('d', 'M' + x1 + ',' + y1 + ' A' + ringR + ',' + ringR + ' 0 ' + large + ' 1 ' + x2 + ',' + y2)
+          .attr('fill', 'none').attr('stroke', SIG_COLORS[te[0]] || '#888').attr('stroke-width', 3).attr('stroke-linecap', 'round')
+          .attr('opacity', 0.7);
+        angle += sweep;
+      });
+    }
+
+    // Main label
+    g.append('text').attr('x', pt[0]).attr('y', pt[1] - 28).attr('text-anchor', 'middle')
+      .attr('font-size', 11).attr('font-weight', 600).attr('fill', r.color).attr('font-family', 'var(--sans)')
+      .text(r.flag + ' ' + r.name);
+    g.append('text').attr('x', pt[0]).attr('y', pt[1] - 16).attr('text-anchor', 'middle')
+      .attr('font-size', 9).attr('font-weight', 500).attr('fill', 'rgba(255,255,255,0.4)').attr('font-family', 'var(--mono)')
+      .text(num(sigs.total) + ' signals \u00b7 ' + num(dens.total_contacts || 0) + ' contacts');
+  });
+}
+
+function renderDashboard() {
+  var dash = document.getElementById('regionDash');
+  dash.innerHTML = '';
+
+  Object.entries(DATA.regions).forEach(function(entry) {
+    var code = entry[0], r = entry[1];
+    var sigs = DATA.signals[code] || { total: 0, signals_7d: 0, signals_30d: 0, types: {} };
+    var rev = (DATA.revenue || []).find(function(rv) { return rv.region === code; }) || {};
+    var dens = (DATA.density || []).find(function(d) { return d.region_code === code; }) || {};
+
+    // Signal type bar
+    var typeEntries = Object.entries(sigs.types).sort(function(a, b) { return b[1] - a[1]; });
+    var barHtml = '<div class="signal-bar">';
+    typeEntries.forEach(function(te) {
+      var pct = Math.max(2, (te[1] / Math.max(sigs.total, 1)) * 100);
+      barHtml += '<div class="signal-seg" style="width:' + pct + '%;background:' + (SIG_COLORS[te[0]] || '#888') + '" title="' + esc(SIG_LABELS[te[0]] || te[0]) + ': ' + te[1] + '"></div>';
+    });
+    barHtml += '</div>';
+
+    dash.innerHTML += '<div class="dash-card" onclick="filterRegion(\'' + code + '\')" style="border-top:3px solid ' + r.color + '">' +
+      '<div class="dash-region"><span class="dash-flag">' + r.flag + '</span><span class="dash-name">' + esc(r.name) + '</span></div>' +
+      '<div class="dash-stats">' +
+        '<div class="dash-stat"><div class="dash-val" style="color:' + r.color + '">' + num(sigs.signals_30d || sigs.total) + '</div><div class="dash-lbl">Signals (30d)</div></div>' +
+        '<div class="dash-stat"><div class="dash-val">' + num(dens.total_contacts || 0) + '</div><div class="dash-lbl">Contacts</div></div>' +
+        '<div class="dash-stat"><div class="dash-val" style="color:#f59e0b">' + currency(rev.total_revenue || 0) + '</div><div class="dash-lbl">Revenue</div></div>' +
+      '</div>' +
+      barHtml +
+    '</div>';
+  });
+}
+
+function renderThemes() {
+  var strip = document.getElementById('themesStrip');
+  strip.innerHTML = '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--ink-4);padding:8px 0;flex-shrink:0">Converging Themes</div>';
+  (DATA.themes || []).forEach(function(t) {
+    strip.innerHTML += '<div class="theme-pill" style="border-color:' + (SIG_COLORS[t.signal_type] || 'var(--rule)') + '">' +
+      '<span style="color:' + (SIG_COLORS[t.signal_type] || 'var(--ink-2)') + '">\u25cf</span> ' +
+      esc(SIG_LABELS[t.signal_type] || t.signal_type) +
+      '<span class="count">' + t.companies + ' cos \u00b7 ' + (parseInt(t.client_companies) > 0 ? t.client_companies + ' clients' : t.count + ' signals') + '</span></div>';
+  });
+}
+
+function renderCompanies() {
+  var grid = document.getElementById('companiesGrid');
+  grid.innerHTML = '';
+  var regions = DATA.regions;
+  Object.entries(DATA.companies || {}).forEach(function(entry) {
+    var code = entry[0], companies = entry[1];
+    var r = regions[code] || {};
+    companies.forEach(function(c) {
+      grid.innerHTML += '<div class="co-card' + (c.is_client ? ' client' : '') + '" onclick="location.href=\'/company.html?id=' + c.id + '\'">' +
+        '<div class="co-name">' + (r.flag || '') + ' ' + esc(c.name) + '</div>' +
+        '<div class="co-meta">' + esc(c.sector || '') + ' \u00b7 ' + c.signal_count + ' signals \u00b7 ' + (c.contact_count || 0) + ' contacts</div>' +
+        '<div class="co-badges">' +
+          (c.is_client ? '<span class="co-badge" style="background:var(--amber-soft);color:var(--amber)">CLIENT</span>' : '') +
+          (parseInt(c.proximity_count) > 0 ? '<span class="co-badge" style="background:var(--violet-soft);color:var(--violet)">' + c.proximity_count + ' proximity</span>' : '') +
+        '</div></div>';
+    });
+  });
+}
+
+function renderLegend() {
+  var html = '';
+  Object.entries(SIG_COLORS).forEach(function(e) {
+    html += '<div class="legend-row"><div class="legend-dot" style="background:' + e[1] + '"></div>' + (SIG_LABELS[e[0]] || e[0]) + '</div>';
+  });
+  document.getElementById('legendContent').innerHTML = html;
+}
+
+function filterRegion(code) {
+  document.querySelectorAll('.dash-card').forEach(function(c) { c.classList.remove('selected'); });
+  event.currentTarget.classList.add('selected');
+  // Zoom map to region (future enhancement)
+}
+</script>
+</body>
+</html>
