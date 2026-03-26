@@ -1583,4 +1583,4 @@ else if (args.includes('--run-now')) { runAll().then(() => { pool.end(); process
 else if (args.includes('--run')) { const k = args[args.indexOf('--run') + 1]; runPipeline(k, 'manual').then(() => { pool.end(); process.exit(0); }); }
 else { startScheduler(); }
 
-module.exports = { runPipeline, PIPELINES, pipelineState, registerRoutes };
+module.exports = { runPipeline, PIPELINES, pipelineState, registerRoutes, startScheduler };
