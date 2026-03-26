@@ -4951,6 +4951,42 @@ app.post('/api/dispatches/generate', authenticateToken, async (req, res) => {
   }
 });
 
+// Generate dispatch for a specific signal
+app.post('/api/dispatches/generate-for-signal', authenticateToken, async (req, res) => {
+  try {
+    const { signal_id } = req.body;
+    if (!signal_id) return res.status(400).json({ error: 'signal_id required' });
+
+    // Check signal exists
+    const { rows: [signal] } = await pool.query(
+      `SELECT id, company_id, company_name, signal_type, evidence_summary, confidence_score, source_url
+       FROM signal_events WHERE id = $1 AND tenant_id = $2`,
+      [signal_id, req.tenant_id]
+    );
+    if (!signal) return res.status(404).json({ error: 'Signal not found' });
+
+    // Check if dispatch already exists for this signal
+    const { rows: existing } = await pool.query(
+      `SELECT id FROM signal_dispatches WHERE signal_event_id = $1 LIMIT 1`, [signal_id]
+    );
+    if (existing.length) return res.json({ dispatch_id: existing[0].id, message: 'Dispatch already exists for this signal' });
+
+    // Create a basic dispatch — the generate pipeline will enrich it
+    const { rows: [dispatch] } = await pool.query(`
+      INSERT INTO signal_dispatches (
+        signal_event_id, company_id, company_name, signal_type, signal_summary,
+        status, created_by, tenant_id, generated_at
+      ) VALUES ($1, $2, $3, $4, $5, 'draft', $6, $7, NOW())
+      RETURNING id
+    `, [signal.id, signal.company_id, signal.company_name, signal.signal_type,
+        signal.evidence_summary, req.user.user_id, req.tenant_id]);
+
+    res.json({ dispatch_id: dispatch.id, message: 'Dispatch created as draft' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Claim a dispatch
 app.post('/api/dispatches/:id/claim', authenticateToken, async (req, res) => {
   try {

@@ -2069,6 +2069,11 @@ async function loadNetworkSignals() {
       const dispatchBadge = s.dispatch_id
         ? '<a href="/dispatches.html" onclick="event.stopPropagation();localStorage.setItem(\'open_dispatch\',\'' + s.dispatch_id + '\')" class="badge" style="background:var(--blue-soft);color:var(--blue);text-decoration:none;font-weight:600">\ud83c\udfaf Dispatch' + (s.dispatch_status === 'claimed' && s.claimed_by_name ? ' (' + esc(s.claimed_by_name) + ')' : '') + '</a>'
         : '';
+      const actionBtns = '<div style="display:flex;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid var(--rule)" onclick="event.stopPropagation()">' +
+        (s.dispatch_id
+          ? (!s.claimed_by ? '<button class="badge" style="background:var(--violet-soft);color:var(--violet);border:1px solid var(--violet);cursor:pointer" onclick="claimSignalDispatch(\'' + s.dispatch_id + '\',this)">Claim</button>' : '<span class="badge" style="background:var(--violet-soft);color:var(--violet)">\ud83d\udd12 ' + esc(s.claimed_by_name || 'Claimed') + '</span>')
+          : '<button class="badge" style="background:var(--emerald-soft);color:var(--emerald);border:1px solid var(--emerald);cursor:pointer" onclick="generateDispatchForSignal(\'' + s.id + '\',this)">Generate Dispatch</button>') +
+        '</div>';
 
       return '<div class="network-card' + (s.is_client ? ' client' : '') + '" style="cursor:pointer" onclick="if(!event.target.closest(\'a,button\')){location.href=\'' + companyHref + '\'}">' +
         '<div class="network-top">' +
@@ -2089,6 +2094,7 @@ async function loadNetworkSignals() {
           '<span class="badge time">' + conf + '% \u00b7 ' + ago(s.detected_at) + '</span>' +
           (s.source_url ? '<a href="' + esc(s.source_url) + '" target="_blank" onclick="event.stopPropagation()" class="badge" style="background:var(--surface-warm);color:var(--blue);text-decoration:none">\u2197 Source</a>' : '') +
         '</div>' +
+        actionBtns +
       '</div>';
     }).join('');
   } catch (e) {
@@ -2097,6 +2103,24 @@ async function loadNetworkSignals() {
 }
 
 // ── Region Cards ──
+async function claimSignalDispatch(dispatchId, btn) {
+  btn.disabled = true; btn.textContent = 'Claiming...';
+  try {
+    await api('/api/dispatches/' + dispatchId + '/claim', { method: 'POST' });
+    btn.textContent = '\ud83d\udd12 Claimed';
+    btn.style.background = 'var(--violet-soft)'; btn.style.cursor = 'default';
+  } catch (e) { btn.textContent = 'Error'; btn.disabled = false; }
+}
+
+async function generateDispatchForSignal(signalId, btn) {
+  btn.disabled = true; btn.textContent = 'Generating...';
+  try {
+    await api('/api/dispatches/generate-for-signal', { method: 'POST', body: { signal_id: signalId } });
+    btn.textContent = '\ud83c\udfaf Dispatch Created';
+    btn.style.background = 'var(--blue-soft)'; btn.style.color = 'var(--blue)'; btn.style.cursor = 'default';
+  } catch (e) { btn.textContent = 'Failed'; btn.disabled = false; }
+}
+
 async function loadRegionCards() {
   const regions = [
     { code: 'AU', flag: '\ud83c\udde6\ud83c\uddfa', name: 'Australia', color: '#0D7A50' },

@@ -3,7 +3,7 @@
 //        ProximityPopup.scheduleHide()
 
 const ProximityPopup = (() => {
-  const W = 360, H = 210;
+  let W = 360, H = 210;
   const SHOW_DELAY = 120, HIDE_DELAY = 200, MARGIN = 12;
 
   const TC = [
@@ -77,6 +77,16 @@ const ProximityPopup = (() => {
   function renderGraph(data) {
     var graph = data.graph, signal = data.signal;
     if (!graph || !graph.nodes.length) return;
+
+    // Scale popup for larger graphs
+    var nodeCount = graph.nodes.length;
+    if (nodeCount > 10) { W = 480; H = 300; }
+    else if (nodeCount > 6) { W = 420; H = 260; }
+    else { W = 360; H = 210; }
+    popEl.style.width = W + 'px';
+    svgEl.setAttribute('width', W);
+    svgEl.setAttribute('height', H);
+
     while (svgEl.children.length > 1) svgEl.removeChild(svgEl.lastChild);
     if (sim) { sim.stop(); sim = null; }
 
@@ -147,9 +157,18 @@ const ProximityPopup = (() => {
       circle.setAttribute('stroke', nodeColor(n)); circle.setAttribute('stroke-opacity', '0.28');
       circle.setAttribute('stroke-width', n.type === 'team' ? '1.5' : '0.8');
       circle.style.cursor = 'pointer';
-      circle.addEventListener('click', function() {
-        // Any click on the mini graph opens the full network page for this signal
-        window.location.href = '/network.html?signal=' + currentId;
+      circle.addEventListener('click', function(e) {
+        e.stopPropagation();
+        // Expand popup to fullscreen on click
+        if (!popEl.classList.contains('pp-expanded')) {
+          popEl.classList.add('pp-expanded');
+          popEl.style.cssText = 'position:fixed;z-index:9999;left:10%;top:10%;width:80vw;height:80vh;background:#06091a;border:0.5px solid rgba(255,255,255,0.14);border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.72);pointer-events:auto;opacity:1;transform:none;overflow:hidden;font-family:var(--sans,system-ui)';
+          svgEl.setAttribute('width', popEl.clientWidth || 800);
+          svgEl.setAttribute('height', (popEl.clientHeight || 600) - 80);
+          if (sim) { sim.alpha(0.8).restart(); }
+        } else {
+          window.location.href = '/network.html?signal=' + currentId;
+        }
       });
       nodeG.appendChild(circle); n._el = circle;
 
@@ -172,7 +191,10 @@ const ProximityPopup = (() => {
         .distance(function(l) { return l.type === 'works_at' ? 52 + (1 - (l.strength || 0.5)) * 40 : 38 + (1 - (l.strength || 0.5)) * 55; })
         .strength(function(l) { return l.type === 'works_at' ? 0.45 : (l.strength || 0.5) * 0.55; })
       )
-      .force('charge', d3.forceManyBody().strength(function(d) { return d.type === 'team' ? -280 : d.type === 'company' ? -180 : -45; }))
+      .force('charge', d3.forceManyBody().strength(function(d) {
+        var scale = nodeCount > 10 ? 1.4 : nodeCount > 6 ? 1.2 : 1;
+        return d.type === 'team' ? -280 * scale : d.type === 'company' ? -180 * scale : -45 * scale;
+      }))
       .force('center', d3.forceCenter(W / 2, H / 2))
       .force('collision', d3.forceCollide(function(d) { return nodeR(d) + 6; }))
       .alphaDecay(0.025);
