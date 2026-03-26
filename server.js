@@ -3499,9 +3499,11 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
       SELECT p.id, p.full_name, p.current_title, p.seniority_level, p.location,
              p.expertise_tags, p.linkedin_url, p.email, p.source,
              (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id) AS interaction_count,
+             (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id AND i.interaction_at > NOW() - INTERVAL '90 days') AS interactions_90d,
              (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id AND i.interaction_type = 'research_note') AS note_count,
              (SELECT MAX(i.interaction_at) FROM interactions i WHERE i.person_id = p.id) AS last_interaction,
              (SELECT MAX(tp.relationship_strength) FROM team_proximity tp WHERE tp.person_id = p.id) AS proximity_strength,
+             (SELECT STRING_AGG(DISTINCT u.name, ', ') FROM team_proximity tp JOIN users u ON u.id = tp.team_member_id WHERE tp.person_id = p.id) AS connected_via,
              (SELECT STRING_AGG(DISTINCT tp.relationship_type, ', ') FROM team_proximity tp WHERE tp.person_id = p.id) AS connection_types
       FROM people p WHERE p.current_company_id = $1 AND p.tenant_id = $2
       ORDER BY
@@ -3509,7 +3511,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
         (SELECT MAX(tp.relationship_strength) FROM team_proximity tp WHERE tp.person_id = p.id) DESC NULLS LAST,
         CASE WHEN p.seniority_level IN ('c_suite','vp','director') THEN 0 ELSE 1 END,
         p.full_name
-      LIMIT 100
+      LIMIT 10
     `, [companyId, req.tenant_id]);
 
     // Placements at this company
