@@ -8358,4 +8358,36 @@ app.listen(PORT, async () => {
   } catch (e) {
     console.log('  ⚠️ Client backfill skipped:', e.message);
   }
+
+  // One-time WIP workbook ingestion (runs once, guarded by check)
+  try {
+    const wipFile = require('path').join(__dirname, 'data', 'Global_Billings_and_WIP.xlsx');
+    if (require('fs').existsSync(wipFile)) {
+      // Check if already ingested
+      const { rows: [check] } = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM placements WHERE source IN ('wip_workbook', 'xero_export') LIMIT 1`
+      ).catch(() => ({ rows: [{ cnt: '0' }] }));
+      if (parseInt(check.cnt) === 0) {
+        console.log('\n  📊 WIP workbook found — running one-time ingestion...');
+        const { execSync } = require('child_process');
+        try {
+          console.log('  📊 Step 1/3: Invoice ledgers...');
+          execSync('node ' + require('path').join(__dirname, 'scripts', 'ingest_invoice_ledgers.js'), { timeout: 300000, stdio: 'inherit' });
+        } catch (e) { console.error('  ⚠️ Invoice ingestion error:', e.message); }
+        try {
+          console.log('  📊 Step 2/3: Consultant WIP...');
+          execSync('node ' + require('path').join(__dirname, 'scripts', 'ingest_consultant_wip.js'), { timeout: 600000, stdio: 'inherit' });
+        } catch (e) { console.error('  ⚠️ WIP ingestion error:', e.message); }
+        try {
+          console.log('  📊 Step 3/3: Receivables...');
+          execSync('node ' + require('path').join(__dirname, 'scripts', 'ingest_receivables.js'), { timeout: 120000, stdio: 'inherit' });
+        } catch (e) { console.error('  ⚠️ Receivables ingestion error:', e.message); }
+        console.log('  ✅ WIP workbook ingestion complete\n');
+      } else {
+        console.log(`  ℹ️  WIP data already loaded (${check.cnt} records) — skipping ingestion`);
+      }
+    }
+  } catch (e) {
+    console.log('  ⚠️ WIP ingestion check:', e.message);
+  }
 });
