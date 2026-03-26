@@ -8001,22 +8001,6 @@ app.post('/api/admin/upload-linkedin', authenticateToken, requireAdmin, adminUpl
     }
 
     console.log(`Admin LinkedIn upload: ${rows.length} rows, headers: [${headers.slice(0, 8).join('], [')}]`);
-    console.log(`Admin LinkedIn upload: first row keys: [${Object.keys(rows[0] || {}).join('], [')}]`);
-    console.log(`Admin LinkedIn upload: first row sample: ${JSON.stringify(rows[0]).slice(0, 300)}`);
-
-    // Load existing people for matching
-    const { rows: dbPeople } = await pool.query(
-      `SELECT id, full_name, linkedin_url, current_company_name, email FROM people WHERE tenant_id = $1`, [req.tenant_id]
-    );
-    const linkedinIndex = new Map(), nameIndex = new Map();
-    for (const p of dbPeople) {
-      if (p.linkedin_url) {
-        const slug = (p.linkedin_url.toLowerCase().match(/linkedin\.com\/in\/([^\/]+)/) || [])[1];
-        if (slug) linkedinIndex.set(slug, p);
-      }
-      const norm = (p.full_name || '').toLowerCase().trim();
-      if (norm) { if (!nameIndex.has(norm)) nameIndex.set(norm, []); nameIndex.get(norm).push(p); }
-    }
 
     // Flexible header detection
     const sampleRow = rows[0] || {};
@@ -8031,61 +8015,92 @@ app.post('/api/admin/upload-linkedin', authenticateToken, requireAdmin, adminUpl
 
     console.log(`Admin LinkedIn upload: detected cols — firstName: "${aFirstNameCol}", lastName: "${aLastNameCol}", url: "${aUrlCol}", company: "${aCompanyCol}"`);
 
-    const stats = { total: rows.length, matched: 0, created: 0, proximity_created: 0, skipped: 0,
-      _debug: { headers: headers.slice(0, 10), detected: { firstName: aFirstNameCol, lastName: aLastNameCol, url: aUrlCol, company: aCompanyCol }, sample_row: rows[0] ? Object.fromEntries(Object.entries(rows[0]).slice(0, 6)) : {} } };
-
-    for (const row of rows) {
-      const firstName = (aFirstNameCol ? row[aFirstNameCol] : '') || '';
-      const lastName = (aLastNameCol ? row[aLastNameCol] : '') || '';
-      const fullName = `${firstName} ${lastName}`.trim();
-      const linkedinUrl = (aUrlCol ? row[aUrlCol] : '') || '';
-      const company = (aCompanyCol ? row[aCompanyCol] : '') || '';
-      const position = (aPositionCol ? row[aPositionCol] : '') || '';
-      const email = (aEmailCol ? row[aEmailCol] : '') || '';
-      if (!fullName || fullName.length < 2) { stats.skipped++; continue; }
-
-      // Match
-      let personId = null;
-      const slug = linkedinUrl ? (linkedinUrl.toLowerCase().match(/linkedin\.com\/in\/([^\/]+)/) || [])[1] : null;
-      if (slug && linkedinIndex.has(slug)) personId = linkedinIndex.get(slug).id;
-      if (!personId) {
-        const norm = fullName.toLowerCase().trim();
-        const cands = nameIndex.get(norm) || [];
-        if (cands.length === 1) personId = cands[0].id;
-      }
-
-      if (personId) {
-        stats.matched++;
-      } else {
-        // Create new person
-        try {
-          const { rows: [newP] } = await pool.query(
-            `INSERT INTO people (full_name, first_name, last_name, current_title, current_company_name, linkedin_url, email, source, created_by, tenant_id)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,'linkedin_import',$8,$9) RETURNING id`,
-            [fullName, firstName, lastName, position || null, company || null, linkedinUrl || null, email || null, targetUserId, req.tenant_id]
-          );
-          personId = newP.id;
-          stats.created++;
-        } catch (e) { stats.skipped++; continue; }
-      }
-
-      // Create team_proximity
-      if (personId) {
-        try {
-          await pool.query(
-            `INSERT INTO team_proximity (person_id, team_member_id, relationship_type, relationship_strength, source, tenant_id)
-             VALUES ($1, $2, 'linkedin_connection', 0.5, 'linkedin_import', $3)
-             ON CONFLICT (person_id, team_member_id) DO UPDATE SET relationship_strength = GREATEST(team_proximity.relationship_strength, 0.5)`,
-            [personId, targetUserId, req.tenant_id]
-          );
-          stats.proximity_created++;
-        } catch (e) { /* proximity may already exist */ }
-      }
+    if (!aFirstNameCol && !aLastNameCol) {
+      try { require('fs').unlinkSync(file.path); } catch (e) {}
+      return res.json({ error: 'Could not detect name columns. Headers found: ' + headers.slice(0, 8).join(', '), total: rows.length, headers: headers.slice(0, 10) });
     }
 
-    try { require('fs').unlinkSync(file.path); } catch (e) {}
-    auditLog(req.user.user_id, 'admin_linkedin_import', 'people', targetUserId, { ...stats, filename: file.originalname });
-    res.json(stats);
+    // Respond immediately — process in background (20K rows takes minutes)
+    const tenantId = req.tenant_id;
+    const adminUserId = req.user.user_id;
+    res.json({ total: rows.length, message: `Processing ${rows.length} connections in background. Check admin dashboard for progress.`, headers: headers.slice(0, 8), detected: { firstName: aFirstNameCol, lastName: aLastNameCol, url: aUrlCol, company: aCompanyCol } });
+
+    // Background processing
+    (async () => {
+      try {
+        const { rows: dbPeople } = await pool.query(
+          `SELECT id, full_name, linkedin_url, current_company_name, email FROM people WHERE tenant_id = $1`, [tenantId]
+        );
+        const linkedinIndex = new Map(), nameIndex = new Map();
+        for (const p of dbPeople) {
+          if (p.linkedin_url) {
+            const slug = (p.linkedin_url.toLowerCase().match(/linkedin\.com\/in\/([^\/]+)/) || [])[1];
+            if (slug) linkedinIndex.set(slug, p);
+          }
+          const norm = (p.full_name || '').toLowerCase().trim();
+          if (norm) { if (!nameIndex.has(norm)) nameIndex.set(norm, []); nameIndex.get(norm).push(p); }
+        }
+
+        const stats = { total: rows.length, matched: 0, created: 0, proximity_created: 0, skipped: 0 };
+
+        // Batch insert — collect all new people first, then bulk insert
+        const toCreate = [];
+        const toProximity = [];
+
+        for (const row of rows) {
+          const firstName = (aFirstNameCol ? row[aFirstNameCol] : '') || '';
+          const lastName = (aLastNameCol ? row[aLastNameCol] : '') || '';
+          const fullName = `${firstName} ${lastName}`.trim();
+          const linkedinUrl = (aUrlCol ? row[aUrlCol] : '') || '';
+          const company = (aCompanyCol ? row[aCompanyCol] : '') || '';
+          const position = (aPositionCol ? row[aPositionCol] : '') || '';
+          const email = (aEmailCol ? row[aEmailCol] : '') || '';
+          if (!fullName || fullName.length < 2) { stats.skipped++; continue; }
+
+          let personId = null;
+          const slug = linkedinUrl ? (linkedinUrl.toLowerCase().match(/linkedin\.com\/in\/([^\/]+)/) || [])[1] : null;
+          if (slug && linkedinIndex.has(slug)) personId = linkedinIndex.get(slug).id;
+          if (!personId) {
+            const cands = nameIndex.get(fullName.toLowerCase().trim()) || [];
+            if (cands.length === 1) personId = cands[0].id;
+          }
+
+          if (personId) {
+            stats.matched++;
+          } else {
+            try {
+              const { rows: [newP] } = await pool.query(
+                `INSERT INTO people (full_name, first_name, last_name, current_title, current_company_name, linkedin_url, email, source, created_by, tenant_id)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,'linkedin_import',$8,$9) RETURNING id`,
+                [fullName, firstName, lastName, position || null, company || null, linkedinUrl || null, email || null, targetUserId, tenantId]
+              );
+              personId = newP.id;
+              stats.created++;
+            } catch (e) { stats.skipped++; continue; }
+          }
+
+          if (personId) {
+            try {
+              await pool.query(
+                `INSERT INTO team_proximity (person_id, team_member_id, relationship_type, relationship_strength, source, tenant_id)
+                 VALUES ($1, $2, 'linkedin_connection', 0.5, 'linkedin_import', $3)
+                 ON CONFLICT (person_id, team_member_id) DO UPDATE SET relationship_strength = GREATEST(team_proximity.relationship_strength, 0.5)`,
+                [personId, targetUserId, tenantId]
+              );
+              stats.proximity_created++;
+            } catch (e) {}
+          }
+
+          if (stats.created % 500 === 0 && stats.created > 0) console.log(`  LinkedIn import: ${stats.created} created, ${stats.matched} matched so far...`);
+        }
+
+        try { require('fs').unlinkSync(file.path); } catch (e) {}
+        auditLog(adminUserId, 'admin_linkedin_import', 'people', targetUserId, { ...stats, filename: file.originalname });
+        console.log(`✅ LinkedIn import complete: ${stats.total} total, ${stats.matched} matched, ${stats.created} created, ${stats.proximity_created} links`);
+      } catch (e) {
+        console.error('LinkedIn background import error:', e.message);
+      }
+    })();
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
