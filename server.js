@@ -6704,7 +6704,7 @@ app.post('/api/chat/upload', authenticateToken, chatUpload.single('file'), async
     const meta = { path: file.path, mimetype: file.mimetype, originalname: file.originalname, size: file.size };
 
     if (file.originalname.endsWith('.csv') || file.mimetype === 'text/csv') {
-      const raw = fsChat.readFileSync(file.path, 'utf8');
+      const raw = fsChat.readFileSync(file.path, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
       const allLines = raw.split('\n');
       // Find header line (skip LinkedIn notes/blank lines at top)
       let headerIdx = 0;
@@ -7739,7 +7739,7 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
 
     // LinkedIn connections
     if (importType === 'linkedin_connections') {
-      const raw = require('fs').readFileSync(file.path, 'utf8');
+      const raw = require('fs').readFileSync(file.path, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
       const allLines = raw.split('\n');
       let headerIdx = 0;
       for (let i = 0; i < Math.min(allLines.length, 10); i++) {
@@ -7747,7 +7747,7 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
       }
       const lines = allLines.slice(headerIdx).filter(l => l.trim());
       function parseCSV(line) { const r=[]; let c='',q=false; for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"')q=!q;else if(ch===','&&!q){r.push(c.trim());c='';}else c+=ch;} r.push(c.trim()); return r; }
-      const headers = parseCSV(lines[0]);
+      const headers = parseCSV(lines[0]).map(h => h.replace(/[^\x20-\x7E]/g, '').trim());
       const rows = [];
       for (let i = 1; i < lines.length; i++) {
         const vals = parseCSV(lines[i]);
@@ -7931,7 +7931,8 @@ app.post('/api/admin/upload-linkedin', authenticateToken, requireAdmin, adminUpl
     const targetUserId = req.body.target_user_id;
     if (!file || !targetUserId) return res.status(400).json({ error: 'File and target_user_id required' });
 
-    const raw = require('fs').readFileSync(file.path, 'utf8');
+    // Strip BOM and normalize line endings
+    const raw = require('fs').readFileSync(file.path, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const allLines = raw.split('\n');
     let headerIdx = 0;
     for (let i = 0; i < Math.min(allLines.length, 10); i++) {
@@ -7941,13 +7942,14 @@ app.post('/api/admin/upload-linkedin', authenticateToken, requireAdmin, adminUpl
     if (!lines.length) return res.json({ error: 'No data found in CSV' });
 
     function parseCSV(line) { const r=[]; let c='',q=false; for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"')q=!q;else if(ch===','&&!q){r.push(c.trim());c='';}else c+=ch;} r.push(c.trim()); return r; }
-    const headers = parseCSV(lines[0]);
-    const lh = headers.map(h => h.toLowerCase().trim());
+    const headers = parseCSV(lines[0]).map(h => h.replace(/[^\x20-\x7E]/g, '').trim()); // Strip non-printable chars
     const rows = [];
     for (let i = 1; i < lines.length; i++) {
       const vals = parseCSV(lines[i]);
       const row = {}; headers.forEach((h, idx) => { row[h] = vals[idx] || ''; }); rows.push(row);
     }
+
+    console.log(`Admin LinkedIn upload: ${rows.length} rows, headers: ${headers.slice(0, 8).join(', ')}`);
 
     // Load existing people for matching
     const { rows: dbPeople } = await pool.query(
