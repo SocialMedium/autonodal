@@ -8485,6 +8485,80 @@ app.listen(PORT, async () => {
     console.log('  ⚠️ Client backfill skipped:', e.message);
   }
 
+  // One-time backfill: link orphaned interactions to people
+  try {
+    // 1. Sent emails — match recipients against people.email
+    const { rowCount: sentLinked } = await pool.query(`
+      UPDATE interactions i
+      SET person_id = p.id
+      FROM people p,
+           unnest(i.email_to) AS recipient
+      WHERE i.person_id IS NULL
+        AND i.source = 'gmail_sync'
+        AND i.direction IN ('outbound', 'sent')
+        AND p.email IS NOT NULL AND p.email != ''
+        AND lower(p.email) = lower(recipient)
+    `).catch(() => ({ rowCount: 0 }));
+    if (sentLinked > 0) console.log(`  ✅ Backfilled ${sentLinked} sent-email interactions → people`);
+
+    // 2. Received emails — match sender against people.email
+    const { rowCount: recvLinked } = await pool.query(`
+      UPDATE interactions i
+      SET person_id = p.id
+      FROM people p
+      WHERE i.person_id IS NULL
+        AND i.source = 'gmail_sync'
+        AND i.direction IN ('inbound', 'received')
+        AND i.email_from IS NOT NULL AND i.email_from != ''
+        AND p.email IS NOT NULL AND p.email != ''
+        AND lower(p.email) = lower(i.email_from)
+    `).catch(() => ({ rowCount: 0 }));
+    if (recvLinked > 0) console.log(`  ✅ Backfilled ${recvLinked} received-email interactions → people`);
+
+    // 3. Also try email_alt
+    const { rowCount: altLinked } = await pool.query(`
+      UPDATE interactions i
+      SET person_id = p.id
+      FROM people p
+      WHERE i.person_id IS NULL
+        AND i.source = 'gmail_sync'
+        AND p.email_alt IS NOT NULL AND p.email_alt != ''
+        AND (
+          (i.direction IN ('outbound','sent') AND lower(p.email_alt) = ANY(SELECT lower(unnest(i.email_to))))
+          OR
+          (i.direction IN ('inbound','received') AND lower(p.email_alt) = lower(i.email_from))
+        )
+    `).catch(() => ({ rowCount: 0 }));
+    if (altLinked > 0) console.log(`  ✅ Backfilled ${altLinked} interactions via email_alt`);
+
+    // 4. Delete noise rows that slipped through before filter
+    const { rowCount: noiseDeleted } = await pool.query(`
+      DELETE FROM interactions
+      WHERE source = 'gmail_sync'
+        AND person_id IS NULL
+        AND (email_from = '' OR email_from IS NULL)
+        AND (email_to IS NULL OR email_to = '{}')
+    `).catch(() => ({ rowCount: 0 }));
+    if (noiseDeleted > 0) console.log(`  🗑️  Cleaned ${noiseDeleted} noise interaction rows`);
+
+    // 5. Link signals to people via company — people at signalling companies
+    const { rowCount: sigLinked } = await pool.query(`
+      UPDATE person_signals ps
+      SET person_id = p.id
+      FROM signal_events se, people p
+      WHERE ps.signal_event_id = se.id
+        AND ps.person_id IS NULL
+        AND p.current_company_id = se.company_id
+        AND p.current_company_id IS NOT NULL
+    `).catch(() => ({ rowCount: 0 }));
+    if (sigLinked > 0) console.log(`  ✅ Backfilled ${sigLinked} person↔signal links via company`);
+
+    const total = sentLinked + recvLinked + altLinked + noiseDeleted + sigLinked;
+    if (total > 0) console.log(`  ✅ Backfill complete: ${total} records updated`);
+  } catch (e) {
+    console.log('  ⚠️ Backfill:', e.message);
+  }
+
   // One-time: force re-auth for all users to pick up new Gmail+Drive scopes
   // Remove this block after everyone has re-authenticated (deploy after 2026-03-27)
   try {
