@@ -38,11 +38,14 @@ async function ensureSchema() {
     `ALTER TABLE placements ADD COLUMN IF NOT EXISTS tenant_id UUID DEFAULT '00000000-0000-0000-0000-000000000001'`,
     `CREATE TABLE IF NOT EXISTS receivables (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID DEFAULT '00000000-0000-0000-0000-000000000001', invoice_number VARCHAR(50), client_name VARCHAR(255), company_id UUID, invoice_date DATE, due_date DATE, invoice_total DECIMAL(12,2), currency VARCHAR(3) DEFAULT 'GBP', status VARCHAR(50), days_overdue INTEGER, notes TEXT, action VARCHAR(100), source VARCHAR(50) DEFAULT 'workbook', created_at TIMESTAMPTZ DEFAULT NOW())`
   ];
-  let applied = 0;
+  let applied = 0, failed = 0;
   for (const sql of alters) {
-    try { await pool.query(sql); applied++; } catch (e) { /* already applied */ }
+    try { await pool.query(sql); applied++; } catch (e) {
+      failed++;
+      console.log(`    ⚠️ Migration failed: ${sql.slice(0, 60)}... → ${e.message.slice(0, 80)}`);
+    }
   }
-  console.log(`  ✅ Schema migration: ${applied}/${alters.length} statements applied`);
+  console.log(`  ✅ Schema migration: ${applied} applied, ${failed} failed out of ${alters.length}`);
 }
 
 const FEE_TYPE_MAP = {
