@@ -517,11 +517,20 @@ async function uploadLinkedIn(input, userId, userName) {
     });
     var data = await resp.json();
     if (data.error) throw new Error(data.error);
-    alert('LinkedIn import for ' + userName + ':\n' +
-      data.total + ' connections processed\n' +
-      data.matched + ' matched to existing people\n' +
-      data.created + ' new people created\n' +
-      data.proximity_created + ' network links created');
+    if (data.message) {
+      // Background processing — show confirmation
+      alert('LinkedIn import for ' + userName + ':\n\n' +
+        data.total + ' connections detected\n' +
+        'Columns: ' + (data.detected ? data.detected.firstName + ', ' + data.detected.lastName + ', ' + data.detected.url : 'auto') + '\n\n' +
+        data.message);
+    } else {
+      // Synchronous result (small files)
+      alert('LinkedIn import for ' + userName + ':\n' +
+        data.total + ' connections processed\n' +
+        (data.matched || 0) + ' matched to existing people\n' +
+        (data.created || 0) + ' new people created\n' +
+        (data.proximity_created || 0) + ' network links created');
+    }
     input.value = '';
     loadAll();
   } catch(e) {
