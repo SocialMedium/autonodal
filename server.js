@@ -8390,11 +8390,11 @@ app.listen(PORT, async () => {
   try {
     const wipFile = require('path').join(__dirname, 'data', 'Global_Billings_and_WIP.xlsx');
     if (require('fs').existsSync(wipFile)) {
-      // Check if already fully ingested (need at least 100 WIP records to consider it done)
+      // Check if already fully ingested (need at least 500 WIP records — invoices + WIP combined)
       const { rows: [check] } = await pool.query(
         `SELECT COUNT(*) AS cnt FROM conversions WHERE source IN ('wip_workbook', 'xero_export') LIMIT 1`
       ).catch(() => ({ rows: [{ cnt: '0' }] }));
-      if (parseInt(check.cnt) < 100) {
+      if (parseInt(check.cnt) < 500) {
         console.log('\n  📊 WIP workbook found — running one-time ingestion...');
         const { execSync } = require('child_process');
         try {
