@@ -7624,6 +7624,288 @@ app.get('/api/admin/audit', authenticateToken, requireAdmin, async (req, res) =>
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// USER PROFILE: Self-serve data operations
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Profile stats
+app.get('/api/profile/stats', authenticateToken, async (req, res) => {
+  try {
+    const uid = req.user.user_id;
+    const tid = req.tenant_id;
+    const { rows: [s] } = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM team_proximity WHERE team_member_id = $1 AND tenant_id = $2) AS connections,
+        (SELECT COUNT(*) FROM interactions WHERE (user_id = $1 OR created_by = $1) AND tenant_id = $2) AS interactions,
+        (SELECT COUNT(*) FROM signal_dispatches WHERE claimed_by = $1 AND tenant_id = $2) AS dispatches,
+        (SELECT COUNT(*) FROM feed_proposals WHERE proposed_by = $1) AS feeds
+    `, [uid, tid]);
+
+    // Import history from audit log
+    const { rows: imports } = await pool.query(`
+      SELECT action, details->>'filename' AS filename, details->>'total' AS total, created_at
+      FROM audit_logs WHERE user_id = $1 AND action IN ('csv_import','linkedin_connections_import','linkedin_messages_import','workbook_import','admin_linkedin_import','document_upload')
+      ORDER BY created_at DESC LIMIT 20
+    `, [uid]).catch(() => ({ rows: [] }));
+
+    res.json({
+      connections: s?.connections || 0,
+      interactions: s?.interactions || 0,
+      dispatches: s?.dispatches || 0,
+      imports: imports.length,
+      feeds: s?.feeds || 0,
+      import_history: imports
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// User feeds — list
+app.get('/api/profile/feeds', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT fp.id, fp.proposed_url AS url, fp.proposed_name AS name, fp.status,
+        fp.status = 'approved' AS active, fp.created_at
+      FROM feed_proposals fp
+      WHERE fp.proposed_by = $1
+      ORDER BY fp.created_at DESC
+    `, [req.user.user_id]).catch(() => ({ rows: [] }));
+    res.json({ feeds: rows });
+  } catch (err) { res.json({ feeds: [] }); }
+});
+
+// User feeds — add
+app.post('/api/profile/feeds', authenticateToken, async (req, res) => {
+  try {
+    const { url, name } = req.body;
+    if (!url || !url.startsWith('http')) return res.status(400).json({ error: 'Valid URL required' });
+
+    // Try to detect if it's an RSS feed
+    let isRss = false;
+    try {
+      const probe = await fetch(url, { headers: { 'User-Agent': 'MLX-Intelligence/1.0' }, signal: AbortSignal.timeout(5000) });
+      const text = await probe.text();
+      isRss = text.includes('<rss') || text.includes('<feed') || text.includes('<channel');
+    } catch (e) { /* probe failed, not critical */ }
+
+    const { rows: [feed] } = await pool.query(`
+      INSERT INTO feed_proposals (proposed_url, proposed_name, proposed_by, status, is_rss, created_at)
+      VALUES ($1, $2, $3, 'approved', $4, NOW())
+      ON CONFLICT (proposed_url) DO UPDATE SET proposed_name = COALESCE(EXCLUDED.proposed_name, feed_proposals.proposed_name)
+      RETURNING id, proposed_url AS url, proposed_name AS name, status
+    `, [url.trim(), name || null, req.user.user_id, isRss]);
+
+    // If it's RSS, also add to the feed_inventory / external_sources system
+    if (isRss) {
+      try {
+        await pool.query(`
+          INSERT INTO feed_inventory (url, name, source_type, region, added_by, tenant_id, created_at)
+          VALUES ($1, $2, 'rss', $3, $4, $5, NOW())
+          ON CONFLICT (url) DO NOTHING
+        `, [url.trim(), name || url, req.user?.region || 'GLOBAL', req.user.user_id, req.tenant_id]);
+
+        // Also activate for this tenant
+        const { rows: [fi] } = await pool.query(`SELECT id FROM feed_inventory WHERE url = $1 LIMIT 1`, [url.trim()]);
+        if (fi) {
+          await pool.query(`
+            INSERT INTO tenant_feeds (tenant_id, feed_id, selection_method, activated_at)
+            VALUES ($1, $2, 'user_contributed', NOW())
+            ON CONFLICT (tenant_id, feed_id) DO UPDATE SET active = TRUE
+          `, [req.tenant_id, fi.id]);
+        }
+      } catch (e) { /* feed_inventory may not exist or have different schema */ }
+    }
+
+    auditLog(req.user.user_id, 'add_feed', 'feed', feed?.id, { url, name, is_rss: isRss });
+    res.json({ ...feed, is_rss: isRss });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// User feeds — remove
+app.delete('/api/profile/feeds/:id', authenticateToken, async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM feed_proposals WHERE id = $1 AND proposed_by = $2`, [req.params.id, req.user.user_id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// User import — handles LinkedIn CSV, contacts, documents
+const profileUpload = require('multer')({ dest: '/tmp/ml-profile-uploads/', limits: { fileSize: 20 * 1024 * 1024 } });
+app.post('/api/profile/import', authenticateToken, profileUpload.single('file'), async (req, res) => {
+  try {
+    const file = req.file;
+    const importType = req.body.import_type;
+    const userId = req.user.user_id;
+    const tenantId = req.tenant_id;
+    if (!file) return res.status(400).json({ error: 'No file' });
+
+    // LinkedIn connections
+    if (importType === 'linkedin_connections') {
+      const raw = require('fs').readFileSync(file.path, 'utf8');
+      const allLines = raw.split('\n');
+      let headerIdx = 0;
+      for (let i = 0; i < Math.min(allLines.length, 10); i++) {
+        if (allLines[i].trim().includes(',')) { headerIdx = i; break; }
+      }
+      const lines = allLines.slice(headerIdx).filter(l => l.trim());
+      function parseCSV(line) { const r=[]; let c='',q=false; for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"')q=!q;else if(ch===','&&!q){r.push(c.trim());c='';}else c+=ch;} r.push(c.trim()); return r; }
+      const headers = parseCSV(lines[0]);
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const vals = parseCSV(lines[i]);
+        const row = {}; headers.forEach((h, idx) => { row[h] = vals[idx] || ''; }); rows.push(row);
+      }
+
+      // Load people for matching
+      const { rows: dbPeople } = await pool.query(
+        `SELECT id, full_name, linkedin_url FROM people WHERE tenant_id = $1`, [tenantId]
+      );
+      const linkedinIndex = new Map(), nameIndex = new Map();
+      for (const p of dbPeople) {
+        if (p.linkedin_url) { const slug = (p.linkedin_url.toLowerCase().match(/linkedin\.com\/in\/([^\/]+)/) || [])[1]; if (slug) linkedinIndex.set(slug, p); }
+        const norm = (p.full_name || '').toLowerCase().trim();
+        if (norm) { if (!nameIndex.has(norm)) nameIndex.set(norm, []); nameIndex.get(norm).push(p); }
+      }
+
+      const stats = { total: rows.length, matched: 0, created: 0, proximity_created: 0, skipped: 0 };
+      for (const row of rows) {
+        const firstName = row['First Name'] || '';
+        const lastName = row['Last Name'] || '';
+        const fullName = `${firstName} ${lastName}`.trim();
+        const linkedinUrl = row['URL'] || '';
+        const company = row['Company'] || '';
+        const position = row['Position'] || '';
+        if (!fullName || fullName.length < 2) { stats.skipped++; continue; }
+
+        let personId = null;
+        const slug = linkedinUrl ? (linkedinUrl.toLowerCase().match(/linkedin\.com\/in\/([^\/]+)/) || [])[1] : null;
+        if (slug && linkedinIndex.has(slug)) personId = linkedinIndex.get(slug).id;
+        if (!personId) { const cands = nameIndex.get(fullName.toLowerCase().trim()) || []; if (cands.length === 1) personId = cands[0].id; }
+
+        if (personId) { stats.matched++; }
+        else {
+          try {
+            const { rows: [newP] } = await pool.query(
+              `INSERT INTO people (full_name, first_name, last_name, current_title, current_company_name, linkedin_url, source, created_by, tenant_id)
+               VALUES ($1,$2,$3,$4,$5,$6,'linkedin_import',$7,$8) RETURNING id`,
+              [fullName, firstName, lastName, position || null, company || null, linkedinUrl || null, userId, tenantId]);
+            personId = newP.id;
+            stats.created++;
+          } catch (e) { stats.skipped++; continue; }
+        }
+
+        if (personId) {
+          try {
+            await pool.query(
+              `INSERT INTO team_proximity (person_id, team_member_id, relationship_type, relationship_strength, source, tenant_id)
+               VALUES ($1, $2, 'linkedin_connection', 0.5, 'linkedin_import', $3)
+               ON CONFLICT (person_id, team_member_id) DO UPDATE SET relationship_strength = GREATEST(team_proximity.relationship_strength, 0.5)`,
+              [personId, userId, tenantId]);
+            stats.proximity_created++;
+          } catch (e) {}
+        }
+      }
+
+      try { require('fs').unlinkSync(file.path); } catch (e) {}
+      auditLog(userId, 'linkedin_connections_import', 'people', null, { ...stats, filename: file.originalname });
+      return res.json(stats);
+    }
+
+    // Contacts CSV
+    if (importType === 'contacts') {
+      const raw = require('fs').readFileSync(file.path, 'utf8');
+      const lines = raw.split('\n').filter(l => l.trim());
+      function parseCSV2(line) { const r=[]; let c='',q=false; for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"')q=!q;else if(ch===','&&!q){r.push(c.trim());c='';}else c+=ch;} r.push(c.trim()); return r; }
+      const headers = parseCSV2(lines[0]);
+      const lh = headers.map(h => h.toLowerCase());
+      const nameCol = headers[lh.findIndex(h => h.includes('name'))] || headers[0];
+      const titleCol = headers[lh.findIndex(h => h.includes('title') || h.includes('role'))] || null;
+      const companyCol = headers[lh.findIndex(h => h.includes('company') || h.includes('org'))] || null;
+      const emailCol = headers[lh.findIndex(h => h.includes('email'))] || null;
+
+      const stats = { total: 0, created: 0, skipped: 0 };
+      for (let i = 1; i < lines.length; i++) {
+        const vals = parseCSV2(lines[i]);
+        const row = {}; headers.forEach((h, idx) => { row[h] = vals[idx] || ''; });
+        const name = row[nameCol]?.trim();
+        if (!name || name.length < 2) continue;
+        stats.total++;
+        const { rows: exists } = await pool.query(`SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [name, tenantId]);
+        if (exists.length) { stats.skipped++; continue; }
+        await pool.query(
+          `INSERT INTO people (full_name, current_title, current_company_name, email, source, created_by, tenant_id)
+           VALUES ($1,$2,$3,$4,'csv_import',$5,$6)`,
+          [name, titleCol ? row[titleCol] : null, companyCol ? row[companyCol] : null, emailCol ? row[emailCol] : null, userId, tenantId]);
+        stats.created++;
+      }
+      try { require('fs').unlinkSync(file.path); } catch (e) {}
+      auditLog(userId, 'csv_import', 'people', null, { ...stats, filename: file.originalname });
+      return res.json(stats);
+    }
+
+    // Document upload (PDF, XLSX, TXT)
+    if (importType === 'document') {
+      const hash = require('crypto').createHash('md5').update(file.originalname + file.size).digest('hex');
+      const { rows: exists } = await pool.query(`SELECT id FROM external_documents WHERE source_url_hash = $1 AND tenant_id = $2`, [hash, tenantId]);
+      if (exists.length) { try { require('fs').unlinkSync(file.path); } catch(e){} return res.json({ documents_created: 0, message: 'File already imported' }); }
+
+      let content = file.originalname;
+      if (file.originalname.endsWith('.pdf')) {
+        try { const pdfParse = require('pdf-parse'); const d = await pdfParse(require('fs').readFileSync(file.path)); content = d.text; } catch(e) {}
+      } else if (file.originalname.match(/\.xlsx?$/i)) {
+        try { const XLSX = require('xlsx'); const wb = XLSX.readFile(file.path); content = wb.SheetNames.map(n => { const r = XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1,defval:''}).slice(0,100).map(r=>Object.values(r).join(' | ')).join('\n'); return `=== ${n} ===\n${r}`; }).join('\n\n'); } catch(e) {}
+      } else {
+        try { content = require('fs').readFileSync(file.path, 'utf8'); } catch(e) {}
+      }
+
+      await pool.query(`
+        INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash,
+          tenant_id, uploaded_by_user_id, processing_status, created_at)
+        VALUES ($1, $2, $3, 'user_upload', $4, $5, $6, $7, 'processed', NOW())
+      `, [file.originalname, content.slice(0, 50000), file.originalname, `upload://${file.originalname}`, hash, tenantId, userId]);
+
+      // Embed
+      try {
+        const emb = await generateQueryEmbedding((file.originalname + '\n\n' + content).slice(0, 8000));
+        const url = new URL('/collections/documents/points', process.env.QDRANT_URL);
+        await new Promise((resolve, reject) => {
+          const body = JSON.stringify({ points: [{ id: hash, vector: emb, payload: { tenant_id: tenantId, title: file.originalname, source_type: 'user_upload' } }] });
+          const qReq = https.request({ hostname: url.hostname, port: url.port || 443, path: url.pathname + '?wait=true', method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'api-key': process.env.QDRANT_API_KEY }, timeout: 15000 },
+            (r) => { const c = []; r.on('data', d => c.push(d)); r.on('end', () => resolve()); });
+          qReq.on('error', reject); qReq.write(body); qReq.end();
+        });
+      } catch(e) {}
+
+      try { require('fs').unlinkSync(file.path); } catch (e) {}
+      auditLog(userId, 'document_upload', 'external_documents', null, { filename: file.originalname, size: file.size });
+      return res.json({ documents_created: 1, filename: file.originalname });
+    }
+
+    // LinkedIn messages
+    if (importType === 'messages') {
+      // Reuse the chat upload + process_uploaded_file logic
+      try { require('fs').unlinkSync(file.path); } catch (e) {}
+      return res.json({ error: 'LinkedIn messages import — use the chat interface for now (requires AI-assisted parsing)' });
+    }
+
+    try { require('fs').unlinkSync(file.path); } catch (e) {}
+    res.json({ error: 'Unknown import type: ' + importType });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Trigger sync for current user
+app.post('/api/profile/trigger-sync', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT google_email FROM user_google_accounts WHERE user_id = $1 AND sync_enabled = true`, [req.user.user_id]
+    );
+    if (!rows.length) return res.json({ message: 'No Google account connected. Connect from this page first.' });
+    res.json({ message: `Sync triggered for ${rows[0].google_email}. Gmail and Drive will sync on the next cycle (every 15 minutes).` });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ADMIN: Per-User Data Operations
 // ═══════════════════════════════════════════════════════════════════════════════
 

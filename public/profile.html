@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Profile — MLX Autonode</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --serif: 'Source Serif 4', 'Georgia', serif;
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+  --bg: #FAF9F7; --surface: #FFFFFF; --surface-warm: #F7F5F2; --surface-cool: #F2F4F8;
+  --ink: #1A1A1A; --ink-2: #4A4A4A; --ink-3: #7A7A7A; --ink-4: #AAAAAA;
+  --rule: #E0DDD8; --rule-bold: #C8C4BE;
+  --blue: #2563EB; --blue-soft: #EBF1FE;
+  --emerald: #0D7A50; --emerald-soft: #E8F5EE;
+  --amber: #B45309; --amber-soft: #FEF7E8;
+  --rose: #C41D3E; --rose-soft: #FDF0F2;
+  --violet: #6D28D9; --violet-soft: #F3EEFE;
+  --radius: 8px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+
+.masthead { background: var(--surface); border-bottom: 2px solid var(--ink); padding: 0 40px; position: sticky; top: 0; z-index: 100; }
+.masthead-top { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+.masthead-brand { display: flex; align-items: baseline; gap: 8px; }
+.masthead-logo { font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+.masthead-logo em { font-style: italic; font-weight: 400; }
+.masthead-nav { display: flex; gap: 2px; }
+.masthead-nav a { font-size: 12px; font-weight: 500; padding: 6px 14px; border-radius: 6px; text-decoration: none; color: var(--ink-3); transition: all 0.15s; }
+.masthead-nav a:hover { color: var(--ink); background: var(--surface-warm); }
+.masthead-nav a.active { color: var(--ink); background: var(--surface-warm); font-weight: 600; }
+.masthead-user { width: 32px; height: 32px; border-radius: 50%; background: var(--ink); color: white; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; cursor: pointer; }
+
+.page { max-width: 900px; margin: 0 auto; padding: 32px 40px; }
+.page-title { font-family: var(--serif); font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+.page-subtitle { font-size: 12px; color: var(--ink-3); margin-bottom: 28px; }
+
+.section { margin-bottom: 36px; }
+.section-title { font-family: var(--serif); font-size: 16px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.section-title .badge { font-family: var(--sans); font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: var(--blue-soft); color: var(--blue); }
+
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 20px; margin-bottom: 12px; box-shadow: var(--shadow-card); }
+.card-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.card-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); margin-bottom: 4px; }
+.card-value { font-size: 14px; font-weight: 500; }
+.card-sub { font-size: 11px; color: var(--ink-4); margin-top: 2px; }
+
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.stat-mini { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 14px; text-align: center; }
+.stat-mini .val { font-family: var(--mono); font-size: 20px; font-weight: 500; }
+.stat-mini .lbl { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); margin-top: 2px; }
+
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; }
+.dot-green { background: var(--emerald); }
+.dot-amber { background: var(--amber); }
+.dot-grey { background: var(--ink-4); }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 8px 16px; border-radius: 6px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink-2); cursor: pointer; transition: all 0.15s; }
+.btn:hover { background: var(--surface-warm); border-color: var(--rule-bold); }
+.btn-primary { background: var(--emerald); color: white; border-color: var(--emerald); }
+.btn-primary:hover { background: #0a6540; }
+.btn-sm { font-size: 11px; padding: 5px 12px; }
+
+.upload-zone { border: 2px dashed var(--rule); border-radius: var(--radius); padding: 24px; text-align: center; cursor: pointer; transition: all 0.15s; }
+.upload-zone:hover { border-color: var(--emerald); background: var(--emerald-soft); }
+.upload-zone .label { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.upload-zone .hint { font-size: 11px; color: var(--ink-4); margin-top: 4px; }
+
+.feed-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.feed-row:last-child { border-bottom: none; }
+.feed-name { font-size: 13px; font-weight: 500; flex: 1; }
+.feed-url { font-size: 11px; color: var(--ink-4); font-family: var(--mono); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-status { font-size: 10px; font-weight: 600; }
+
+.pill { font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 10px; display: inline-block; }
+.pill-green { background: var(--emerald-soft); color: var(--emerald); }
+.pill-amber { background: var(--amber-soft); color: var(--amber); }
+.pill-grey { background: var(--surface-warm); color: var(--ink-3); }
+.pill-blue { background: var(--blue-soft); color: var(--blue); }
+
+.history-row { font-size: 12px; padding: 8px 0; border-bottom: 1px solid var(--rule); display: flex; justify-content: space-between; }
+.history-row:last-child { border-bottom: none; }
+
+.add-feed-form { display: flex; gap: 8px; margin-top: 12px; }
+.add-feed-form input { flex: 1; font-size: 13px; padding: 8px 12px; border: 1px solid var(--rule); border-radius: 6px; font-family: var(--sans); }
+.add-feed-form input:focus { outline: none; border-color: var(--emerald); }
+
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--ink); color: white; padding: 12px 20px; border-radius: 8px; font-size: 13px; z-index: 1000; display: none; }
+.toast.show { display: block; animation: fadeIn 0.2s; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+#loginPrompt { display: none; text-align: center; padding: 80px 40px; }
+#appContent { display: none; }
+</style>
+</head>
+<body>
+
+<div id="loginPrompt">
+  <h2 style="font-family: var(--serif); margin-bottom: 12px">Sign in to continue</h2>
+  <a href="/api/auth/google" class="btn btn-primary">Sign in with Google</a>
+</div>
+
+<div id="appContent">
+<header class="masthead">
+  <div class="masthead-top">
+    <div class="masthead-brand">
+      <div class="masthead-logo">MLX <em>Autonode</em></div>
+    </div>
+    <nav class="masthead-nav">
+      <a href="/index.html">Signals</a>
+      <a href="/people.html">People</a>
+      <a href="/companies.html">Companies</a>
+      <a href="/dispatches.html">Dispatch</a>
+      <a href="/case-studies.html">Case Studies</a>
+      <a href="/profile.html" class="active">My Profile</a>
+    </nav>
+    <div>
+      <div class="masthead-user" id="userAvatar" onclick="doLogout()" title="Sign out"></div>
+    </div>
+  </div>
+</header>
+
+<div class="page">
+  <div class="page-title" id="pageName">My Profile</div>
+  <div class="page-subtitle" id="pageEmail">Loading...</div>
+
+  <!-- Stats -->
+  <div class="stats-row" id="statsRow">
+    <div class="stat-mini"><div class="val" id="sConnections">-</div><div class="lbl">Connections</div></div>
+    <div class="stat-mini"><div class="val" id="sInteractions">-</div><div class="lbl">Interactions</div></div>
+    <div class="stat-mini"><div class="val" id="sDispatches">-</div><div class="lbl">Dispatches</div></div>
+    <div class="stat-mini"><div class="val" id="sImports">-</div><div class="lbl">Imports</div></div>
+    <div class="stat-mini"><div class="val" id="sFeeds">-</div><div class="lbl">Feeds Added</div></div>
+  </div>
+
+  <!-- Google Connection -->
+  <div class="section">
+    <div class="section-title">Connections</div>
+    <div class="card" id="googleCard">
+      <div class="card-row">
+        <div>
+          <div class="card-label">Google Account</div>
+          <div class="card-value" id="googleStatus">Checking...</div>
+          <div class="card-sub" id="googleDetail"></div>
+        </div>
+        <div id="googleAction"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Imports -->
+  <div class="section">
+    <div class="section-title">Import Data <span class="badge" id="importCount">0</span></div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+      <div class="upload-zone" onclick="document.getElementById('linkedinFile').click()">
+        <div class="label">LinkedIn Connections</div>
+        <div class="hint">CSV export from LinkedIn Settings</div>
+        <input type="file" id="linkedinFile" accept=".csv" style="display:none" onchange="uploadFile(this, 'linkedin_connections')">
+      </div>
+      <div class="upload-zone" onclick="document.getElementById('contactsFile').click()">
+        <div class="label">Contacts / People</div>
+        <div class="hint">CSV with Name, Title, Company, Email</div>
+        <input type="file" id="contactsFile" accept=".csv" style="display:none" onchange="uploadFile(this, 'contacts')">
+      </div>
+      <div class="upload-zone" onclick="document.getElementById('messagesFile').click()">
+        <div class="label">LinkedIn Messages</div>
+        <div class="hint">CSV export of message history</div>
+        <input type="file" id="messagesFile" accept=".csv" style="display:none" onchange="uploadFile(this, 'messages')">
+      </div>
+      <div class="upload-zone" onclick="document.getElementById('docsFile').click()">
+        <div class="label">Documents</div>
+        <div class="hint">PDF, Excel, or text files</div>
+        <input type="file" id="docsFile" accept=".pdf,.xlsx,.xls,.txt,.csv" style="display:none" onchange="uploadFile(this, 'document')">
+      </div>
+    </div>
+
+    <!-- Import progress -->
+    <div id="importProgress" style="display:none" class="card">
+      <div class="card-label">Import in progress</div>
+      <div id="importStatus" style="font-size:13px;margin-top:4px">Processing...</div>
+    </div>
+
+    <!-- Import history -->
+    <div class="card">
+      <div class="card-label">Recent Imports</div>
+      <div id="importHistory" style="margin-top:8px">
+        <div style="font-size:12px;color:var(--ink-4)">No imports yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feeds -->
+  <div class="section">
+    <div class="section-title">My Feeds <span class="badge" id="feedCount">0</span></div>
+    <div class="card">
+      <div class="card-label">Add a feed for the signal harvester</div>
+      <div class="add-feed-form">
+        <input type="text" id="feedUrl" placeholder="https://example.com/rss or any page URL">
+        <input type="text" id="feedLabel" placeholder="Label (optional)" style="max-width:180px">
+        <button class="btn btn-primary btn-sm" onclick="addFeed()">Add Feed</button>
+      </div>
+      <div style="margin-top:16px" id="feedList">
+        <div style="font-size:12px;color:var(--ink-4)">Loading feeds...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="section">
+    <div class="section-title">Settings</div>
+    <div class="card">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div class="card-label">Primary Region</div>
+          <select id="regionSelect" onchange="updateRegion(this.value)" style="font-size:13px;padding:6px 10px;border:1px solid var(--rule);border-radius:6px;width:100%">
+            <option value="">Select region</option>
+            <option value="AU">Australia & NZ</option>
+            <option value="SG">Singapore & SEA</option>
+            <option value="UK">United Kingdom & Europe</option>
+            <option value="US">United States & Americas</option>
+          </select>
+        </div>
+        <div>
+          <div class="card-label">Account</div>
+          <button class="btn btn-sm" onclick="doLogout()">Sign Out</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var TOKEN = localStorage.getItem('ml_token');
+var USER = null;
+
+// Check URL for token (from OAuth redirect)
+(function() {
+  var params = new URLSearchParams(location.search);
+  if (params.get('token')) {
+    TOKEN = params.get('token');
+    localStorage.setItem('ml_token', TOKEN);
+    try { USER = JSON.parse(params.get('user')); localStorage.setItem('ml_user', params.get('user')); } catch(e) {}
+    history.replaceState({}, '', '/profile.html');
+  }
+  if (!TOKEN) { document.getElementById('loginPrompt').style.display = 'block'; return; }
+  document.getElementById('appContent').style.display = 'block';
+  loadProfile();
+})();
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+function num(n) { return (parseInt(n) || 0).toLocaleString(); }
+function ago(d) { if (!d) return ''; var ms = Date.now() - new Date(d).getTime(); if (ms < 60000) return 'just now'; if (ms < 3600000) return Math.floor(ms/60000) + 'm ago'; if (ms < 86400000) return Math.floor(ms/3600000) + 'h ago'; return Math.floor(ms/86400000) + 'd ago'; }
+
+async function api(url, opts) {
+  var options = Object.assign({ headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' } }, opts || {});
+  if (opts && opts.body && typeof opts.body === 'object' && !(opts.body instanceof FormData)) options.body = JSON.stringify(opts.body);
+  var resp = await fetch(url, options);
+  if (resp.status === 401 || resp.status === 403) { localStorage.removeItem('ml_token'); location.href = '/api/auth/google'; return; }
+  return resp.json();
+}
+
+function toast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, 3000);
+}
+
+function doLogout() { localStorage.removeItem('ml_token'); localStorage.removeItem('ml_user'); location.href = '/index.html'; }
+
+async function loadProfile() {
+  try {
+    var [me, google, stats, feeds] = await Promise.all([
+      api('/api/auth/me'),
+      api('/api/auth/gmail/status'),
+      api('/api/profile/stats'),
+      api('/api/profile/feeds')
+    ]);
+
+    USER = me.user;
+    document.getElementById('pageName').textContent = USER.name || 'My Profile';
+    document.getElementById('pageEmail').textContent = USER.email + (USER.role ? ' \u00B7 ' + USER.role : '');
+    document.getElementById('userAvatar').textContent = (USER.name || 'U').split(' ').map(function(w) { return w[0]; }).join('').slice(0,2).toUpperCase();
+
+    if (USER.region) document.getElementById('regionSelect').value = USER.region;
+
+    // Google status
+    if (google.connected && google.accounts.length > 0) {
+      var acct = google.accounts[0];
+      var hasScopes = acct.scopes && (Array.isArray(acct.scopes) ? acct.scopes.join(' ') : String(acct.scopes)).includes('drive');
+      document.getElementById('googleStatus').innerHTML = '<span class="dot dot-green"></span>' + esc(acct.google_email);
+      document.getElementById('googleDetail').textContent = hasScopes ? 'Gmail + Drive syncing' : 'Gmail only';
+      document.getElementById('googleAction').innerHTML = '<button class="btn btn-sm" onclick="triggerSync()">Sync Now</button>';
+    } else {
+      document.getElementById('googleStatus').innerHTML = '<span class="dot dot-grey"></span>Not connected';
+      document.getElementById('googleAction').innerHTML = '<a href="/api/auth/gmail/connect?token=' + encodeURIComponent(TOKEN) + '&return_to=/profile.html" class="btn btn-primary btn-sm">Connect Google</a>';
+    }
+
+    // Stats
+    if (stats) {
+      document.getElementById('sConnections').textContent = num(stats.connections);
+      document.getElementById('sInteractions').textContent = num(stats.interactions);
+      document.getElementById('sDispatches').textContent = num(stats.dispatches);
+      document.getElementById('sImports').textContent = num(stats.imports);
+      document.getElementById('sFeeds').textContent = num(stats.feeds);
+    }
+
+    // Import history
+    if (stats && stats.import_history && stats.import_history.length > 0) {
+      document.getElementById('importCount').textContent = stats.import_history.length;
+      document.getElementById('importHistory').innerHTML = stats.import_history.map(function(h) {
+        return '<div class="history-row"><span>' + esc(h.action) + ' \u00B7 ' + esc(h.filename || '') + '</span><span style="color:var(--ink-4)">' + ago(h.created_at) + '</span></div>';
+      }).join('');
+    }
+
+    // Feeds
+    renderFeeds(feeds);
+
+  } catch(e) {
+    console.error('Profile load error:', e);
+  }
+}
+
+function renderFeeds(data) {
+  var feeds = (data && data.feeds) || [];
+  document.getElementById('feedCount').textContent = feeds.length;
+  if (!feeds.length) {
+    document.getElementById('feedList').innerHTML = '<div style="font-size:12px;color:var(--ink-4)">No feeds added yet. Add an RSS URL or page link above.</div>';
+    return;
+  }
+  document.getElementById('feedList').innerHTML = feeds.map(function(f) {
+    return '<div class="feed-row">' +
+      '<span class="dot ' + (f.active ? 'dot-green' : 'dot-grey') + '"></span>' +
+      '<span class="feed-name">' + esc(f.name || f.url) + '</span>' +
+      '<span class="feed-url">' + esc(f.url) + '</span>' +
+      '<span class="pill ' + (f.active ? 'pill-green' : 'pill-grey') + '">' + (f.active ? 'active' : 'pending') + '</span>' +
+      '<button class="btn btn-sm" style="margin-left:8px" onclick="removeFeed(\'' + f.id + '\')">Remove</button>' +
+    '</div>';
+  }).join('');
+}
+
+async function addFeed() {
+  var url = document.getElementById('feedUrl').value.trim();
+  var label = document.getElementById('feedLabel').value.trim();
+  if (!url) { toast('Enter a URL'); return; }
+  try {
+    var data = await api('/api/profile/feeds', { method: 'POST', body: { url: url, name: label } });
+    if (data.error) { toast('Error: ' + data.error); return; }
+    toast('Feed added' + (data.is_rss ? ' (RSS detected)' : ''));
+    document.getElementById('feedUrl').value = '';
+    document.getElementById('feedLabel').value = '';
+    loadProfile();
+  } catch(e) { toast('Failed: ' + e.message); }
+}
+
+async function removeFeed(id) {
+  if (!confirm('Remove this feed?')) return;
+  try {
+    await api('/api/profile/feeds/' + id, { method: 'DELETE' });
+    toast('Feed removed');
+    loadProfile();
+  } catch(e) { toast('Failed'); }
+}
+
+async function uploadFile(input, type) {
+  var file = input.files[0];
+  if (!file) return;
+
+  var progress = document.getElementById('importProgress');
+  var status = document.getElementById('importStatus');
+  progress.style.display = 'block';
+  status.textContent = 'Uploading ' + file.name + '...';
+
+  try {
+    var formData = new FormData();
+    formData.append('file', file);
+    formData.append('import_type', type);
+
+    var resp = await fetch('/api/profile/import', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + TOKEN },
+      body: formData
+    });
+    var data = await resp.json();
+
+    if (data.error) {
+      status.innerHTML = '<span style="color:var(--rose)">Error: ' + esc(data.error) + '</span>';
+    } else {
+      var msg = [];
+      if (data.total) msg.push(data.total + ' rows processed');
+      if (data.matched) msg.push(data.matched + ' matched');
+      if (data.created) msg.push(data.created + ' created');
+      if (data.proximity_created) msg.push(data.proximity_created + ' network links');
+      if (data.skipped) msg.push(data.skipped + ' skipped');
+      if (data.documents_created) msg.push(data.documents_created + ' documents stored');
+      status.innerHTML = '<span style="color:var(--emerald)">' + (msg.join(' \u00B7 ') || 'Import complete') + '</span>';
+      toast('Import complete');
+      setTimeout(loadProfile, 1000);
+    }
+  } catch(e) {
+    status.innerHTML = '<span style="color:var(--rose)">Upload failed: ' + esc(e.message) + '</span>';
+  }
+  input.value = '';
+  setTimeout(function() { progress.style.display = 'none'; }, 5000);
+}
+
+async function triggerSync() {
+  toast('Sync triggered...');
+  try {
+    var data = await api('/api/profile/trigger-sync', { method: 'POST' });
+    toast(data.message || 'Sync triggered');
+  } catch(e) { toast('Failed'); }
+}
+
+async function updateRegion(val) {
+  try {
+    await api('/api/auth/me', { method: 'PATCH', body: { region: val } });
+    toast('Region updated');
+  } catch(e) { toast('Failed'); }
+}
+</script>
+</body>
+</html>
