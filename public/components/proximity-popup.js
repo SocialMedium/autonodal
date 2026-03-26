@@ -61,15 +61,18 @@ const ProximityPopup = (() => {
   }
 
   function position(el) {
+    if (popEl.classList.contains('pp-expanded')) return; // Don't reposition when expanded
     var tr = el.getBoundingClientRect();
+    var pw = popEl.offsetWidth || W;
     var ph = popEl.offsetHeight || 300;
     var vw = window.innerWidth, vh = window.innerHeight;
     var left, top;
-    if (tr.right + W + MARGIN < vw) { left = tr.right + 8; top = tr.top + tr.height / 2 - ph / 2; }
-    else if (tr.left - W - MARGIN > 0) { left = tr.left - W - 8; top = tr.top + tr.height / 2 - ph / 2; }
-    else if (tr.top - ph - MARGIN > 0) { left = tr.left; top = tr.top - ph - 8; }
-    else { left = tr.left; top = tr.bottom + 8; }
-    left = Math.max(MARGIN, Math.min(vw - W - MARGIN, left));
+    // Prefer right of trigger, then left, then below, then above
+    if (tr.right + pw + MARGIN < vw) { left = tr.right + 8; top = tr.top + tr.height / 2 - ph / 2; }
+    else if (tr.left - pw - MARGIN > 0) { left = tr.left - pw - 8; top = tr.top + tr.height / 2 - ph / 2; }
+    else if (tr.bottom + ph + MARGIN < vh) { left = Math.max(MARGIN, tr.left + tr.width / 2 - pw / 2); top = tr.bottom + 8; }
+    else { left = Math.max(MARGIN, tr.left + tr.width / 2 - pw / 2); top = Math.max(MARGIN, tr.top - ph - 8); }
+    left = Math.max(MARGIN, Math.min(vw - pw - MARGIN, left));
     top = Math.max(MARGIN, Math.min(vh - ph - MARGIN, top));
     popEl.style.left = left + 'px'; popEl.style.top = top + 'px';
   }
@@ -159,13 +162,30 @@ const ProximityPopup = (() => {
       circle.style.cursor = 'pointer';
       circle.addEventListener('click', function(e) {
         e.stopPropagation();
-        // Expand popup to fullscreen on click
         if (!popEl.classList.contains('pp-expanded')) {
           popEl.classList.add('pp-expanded');
-          popEl.style.cssText = 'position:fixed;z-index:9999;left:10%;top:10%;width:80vw;height:80vh;background:#06091a;border:0.5px solid rgba(255,255,255,0.14);border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.72);pointer-events:auto;opacity:1;transform:none;overflow:hidden;font-family:var(--sans,system-ui)';
-          svgEl.setAttribute('width', popEl.clientWidth || 800);
-          svgEl.setAttribute('height', (popEl.clientHeight || 600) - 80);
-          if (sim) { sim.alpha(0.8).restart(); }
+          var expW = Math.min(window.innerWidth * 0.85, 900);
+          var expH = Math.min(window.innerHeight * 0.8, 650);
+          popEl.style.cssText = 'position:fixed;z-index:9999;left:' + ((window.innerWidth - expW) / 2) + 'px;top:' + ((window.innerHeight - expH) / 2) + 'px;width:' + expW + 'px;height:' + expH + 'px;background:#06091a;border:0.5px solid rgba(255,255,255,0.14);border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.72);pointer-events:auto;opacity:1;transform:none;overflow:hidden;font-family:var(--sans,system-ui)';
+          var svgW = expW;
+          var svgH = expH - 120; // room for header + footer
+          svgEl.setAttribute('width', svgW);
+          svgEl.setAttribute('height', svgH);
+          W = svgW; H = svgH;
+          // Restart sim with new bounds
+          if (sim) {
+            sim.force('center', d3.forceCenter(svgW / 2, svgH / 2));
+            sim.alpha(0.8).restart();
+          }
+          // Add close button
+          if (!popEl.querySelector('.pp-close-btn')) {
+            var closeBtn = document.createElement('button');
+            closeBtn.className = 'pp-close-btn';
+            closeBtn.textContent = '\u2715 Close';
+            closeBtn.style.cssText = 'position:absolute;top:12px;right:14px;font-size:11px;padding:4px 12px;border-radius:6px;border:0.5px solid rgba(255,255,255,0.2);background:transparent;color:rgba(255,255,255,0.5);cursor:pointer;z-index:10;font-family:var(--sans,system-ui)';
+            closeBtn.onclick = function(ev) { ev.stopPropagation(); hide(); };
+            popEl.appendChild(closeBtn);
+          }
         } else {
           window.location.href = '/network.html?signal=' + currentId;
         }
@@ -296,7 +316,25 @@ const ProximityPopup = (() => {
       } catch (e) { hide(); return; }
     }
     if (currentId !== signalId) return;
-    populateHeader(data); renderGraph(data); populateFooter(data, signalId); position(triggerEl);
+    // Cap nodes to prevent D3 from choking — show top contacts by strength
+    if (data.graph && data.graph.nodes && data.graph.nodes.length > 25) {
+      var companyNode = data.graph.nodes.find(function(n) { return n.type === 'company'; });
+      var teamNodes = data.graph.nodes.filter(function(n) { return n.type === 'team'; });
+      var contactNodes = data.graph.nodes.filter(function(n) { return n.type === 'contact'; })
+        .sort(function(a, b) { return (b.bestStrength || 0) - (a.bestStrength || 0); })
+        .slice(0, 18);
+      data.graph.nodes = [companyNode].concat(teamNodes).concat(contactNodes).filter(Boolean);
+      var nodeIds = new Set(data.graph.nodes.map(function(n) { return n.id; }));
+      data.graph.links = data.graph.links.filter(function(l) {
+        var src = typeof l.source === 'object' ? l.source.id : l.source;
+        var tgt = typeof l.target === 'object' ? l.target.id : l.target;
+        return nodeIds.has(src) && nodeIds.has(tgt);
+      });
+    }
+    populateHeader(data); renderGraph(data); populateFooter(data, signalId);
+    // Reposition AFTER render (popup size may have changed)
+    popEl.classList.remove('pp-expanded');
+    position(triggerEl);
     popEl.style.pointerEvents = 'auto'; popEl.style.opacity = '1'; popEl.style.transform = 'scale(1) translateY(0)';
   }
 
