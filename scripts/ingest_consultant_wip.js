@@ -18,6 +18,18 @@ const pool = new Pool({
   ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false }
 });
 
+async function ensureSchema() {
+  const fs = require('fs');
+  const sqlPath = path.join(__dirname, '..', 'sql', 'migration_wip_workbook.sql');
+  if (!fs.existsSync(sqlPath)) return;
+  const sql = fs.readFileSync(sqlPath, 'utf8');
+  const statements = sql.split(';').map(s => s.trim()).filter(s => s.length > 5 && !s.startsWith('--'));
+  for (const stmt of statements) {
+    try { await pool.query(stmt); } catch (e) { /* already applied */ }
+  }
+  console.log('  ✅ Schema migration applied');
+}
+
 const WIP_SHEETS = [
   'Matt', 'JT', 'Illona', 'Rob', 'SYD-JV', 'Andrew', 'Sam', 'Mark',
   'Jamie G', 'Michael D', 'Solly', 'James', 'Claire', 'Jimmy', 'Rachel',
@@ -246,6 +258,8 @@ async function main() {
   console.log(' Consultant WIP Ingestion — Global Billings & WIP');
   console.log(DRY_RUN ? ' 🔍 DRY RUN — no data will be written' : ' 💾 LIVE RUN');
   console.log('═══════════════════════════════════════════════════════════');
+
+  await ensureSchema();
 
   const workbook = XLSX.readFile(FILE_PATH);
   console.log(`Workbook sheets: ${workbook.SheetNames.join(', ')}\n`);
