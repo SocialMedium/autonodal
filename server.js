@@ -5502,7 +5502,7 @@ const CHAT_TOOLS = [
   { name: 'search_research_notes', description: 'Search internal research notes — comp expectations, timing, preferences.', input_schema: { type: 'object', properties: { query: { type: 'string' }, person_name: { type: 'string' }, limit: { type: 'integer', default: 10 } }, required: ['query'] } },
   { name: 'log_intelligence', description: 'Save intelligence as a research note. Extracts structured data.', input_schema: { type: 'object', properties: { person_name: { type: 'string' }, company_name: { type: 'string' }, intelligence: { type: 'string' }, subject: { type: 'string' }, extracted: { type: 'object', properties: { timing: { type: 'string' }, compensation: { type: 'string' }, location_preference: { type: 'string' }, role_interests: { type: 'string' }, constraints: { type: 'string' }, warm_intros: { type: 'string' }, sentiment: { type: 'string' } } } }, required: ['person_name', 'intelligence', 'subject'] } },
   { name: 'create_person', description: 'Create a new person record.', input_schema: { type: 'object', properties: { full_name: { type: 'string' }, current_title: { type: 'string' }, current_company_name: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' }, location: { type: 'string' }, linkedin_url: { type: 'string' }, seniority_level: { type: 'string' } }, required: ['full_name'] } },
-  { name: 'process_uploaded_file', description: 'Process uploaded CSV/PDF. Actions: preview, import_people, import_companies, extract_text, import_linkedin_connections (match LinkedIn connections against DB, create team_proximity records), import_linkedin_messages (store LinkedIn message history as interactions/intel).', input_schema: { type: 'object', properties: { file_id: { type: 'string' }, action: { type: 'string', enum: ['preview', 'import_people', 'import_companies', 'extract_text', 'import_linkedin_connections', 'import_linkedin_messages'] }, column_mapping: { type: 'object' } }, required: ['file_id', 'action'] } },
+  { name: 'process_uploaded_file', description: 'Process uploaded CSV/PDF/XLSX. Actions: preview, import_people, import_companies, extract_text, import_linkedin_connections, import_linkedin_messages, import_workbook (XLSX multi-tab: stores each sheet as searchable document, embeds in Qdrant). For XLSX files with multiple tabs, use import_workbook to ingest all sheets.', input_schema: { type: 'object', properties: { file_id: { type: 'string' }, action: { type: 'string', enum: ['preview', 'import_people', 'import_companies', 'extract_text', 'import_linkedin_connections', 'import_linkedin_messages', 'import_workbook'] }, column_mapping: { type: 'object' } }, required: ['file_id', 'action'] } },
   { name: 'run_sql_query', description: 'PRIMARY TOOL — Run SQL (SELECT, UPDATE, INSERT, DELETE) against the database. Use this FIRST for any cross-referencing query. JOINs are fast. Always include tenant_id filter. Key tables: people, companies, signal_events, interactions, conversions, accounts, opportunities, team_proximity, person_scores.', input_schema: { type: 'object', properties: { query: { type: 'string', description: 'SQL query. Must include AND tenant_id = \'<tenant_id>\' for data tables.' }, explanation: { type: 'string', description: 'Brief one-line explanation of what this query does' } }, required: ['query', 'explanation'] } },
   { name: 'get_platform_stats', description: 'Current platform statistics.', input_schema: { type: 'object', properties: {} } },
 
@@ -5905,6 +5905,68 @@ async function executeTool(name, input, userId, tenantId) {
 
           auditLog(userId, 'linkedin_messages_import', 'interactions', null, { total_messages: stats.total, conversations: conversations.size, matched: stats.matched, interactions_created: stats.interactions_created, filename: fm.originalname });
           return JSON.stringify({ total_messages: stats.total, conversations: conversations.size, matched_people: stats.matched, interactions_created: stats.interactions_created, unmatched_senders: [...stats.unmatched_senders].slice(0, 20), errors: stats.errors, message: `Processed ${stats.total} LinkedIn messages across ${conversations.size} conversations. Created ${stats.interactions_created} interaction records.` });
+        }
+
+        // Import XLSX workbook — stores each sheet as a document, embeds for search
+        if (action === 'import_workbook' && fm.sheets) {
+          const stats = { sheets_imported: 0, total_rows: 0, documents_created: 0, errors: [] };
+
+          for (const sheetName of (fm.sheetNames || Object.keys(fm.sheets))) {
+            const sheet = fm.sheets[sheetName];
+            if (!sheet || !sheet.row_count) continue;
+
+            try {
+              // Build text content from all rows
+              const headerLine = (sheet.headers || []).join(' | ');
+              const rowLines = (sheet.rows || sheet.preview || []).map(r => Object.values(r).join(' | ')).join('\n');
+              const content = `${headerLine}\n${rowLines}`;
+              const title = `${fm.originalname} — ${sheetName}`;
+              const hash = require('crypto').createHash('md5').update(title + content.slice(0, 500)).digest('hex');
+
+              // Check if already exists
+              const { rows: existing } = await pool.query(
+                'SELECT id FROM external_documents WHERE source_url_hash = $1 AND tenant_id = $2', [hash, tenantId]
+              );
+              if (existing.length) { stats.sheets_imported++; continue; }
+
+              // Store as external document
+              const { rows: [doc] } = await pool.query(`
+                INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash,
+                  tenant_id, uploaded_by_user_id, processing_status, created_at)
+                VALUES ($1, $2, $3, 'xlsx_workbook', $4, $5, $6, $7, 'processed', NOW())
+                RETURNING id
+              `, [title, content.slice(0, 50000), fm.originalname, `xlsx://${fm.originalname}/${sheetName}`, hash, tenantId, userId]);
+
+              // Embed in Qdrant
+              try {
+                const embedText = `Workbook: ${fm.originalname}\nSheet: ${sheetName}\nColumns: ${headerLine}\n\n${content.slice(0, 8000)}`;
+                const emb = await generateQueryEmbedding(embedText);
+                const url = new URL('/collections/documents/points', process.env.QDRANT_URL);
+                await new Promise((resolve, reject) => {
+                  const body = JSON.stringify({ points: [{ id: hash, vector: emb, payload: { tenant_id: tenantId, title, source_type: 'xlsx_workbook', sheet_name: sheetName } }] });
+                  const qReq = https.request({ hostname: url.hostname, port: url.port || 443, path: url.pathname + '?wait=true', method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'api-key': process.env.QDRANT_API_KEY }, timeout: 15000 },
+                    (res) => { const c = []; res.on('data', d => c.push(d)); res.on('end', () => resolve()); });
+                  qReq.on('error', reject); qReq.write(body); qReq.end();
+                });
+                await pool.query('UPDATE external_documents SET embedded_at = NOW() WHERE id = $1', [doc.id]);
+              } catch (e) { /* embed error non-fatal */ }
+
+              stats.documents_created++;
+              stats.total_rows += sheet.row_count;
+              stats.sheets_imported++;
+            } catch (e) {
+              stats.errors.push({ sheet: sheetName, error: e.message });
+            }
+          }
+
+          auditLog(userId, 'workbook_import', 'external_documents', null, { ...stats, filename: fm.originalname });
+          return JSON.stringify({
+            ...stats,
+            filename: fm.originalname,
+            sheet_names: fm.sheetNames,
+            message: `Imported ${stats.sheets_imported} sheets (${stats.total_rows} total rows) from "${fm.originalname}". Each sheet stored as a searchable document and embedded for semantic search.`
+          });
         }
 
         return JSON.stringify({ error: 'Unsupported action' });
@@ -6668,6 +6730,52 @@ app.post('/api/chat/upload', authenticateToken, chatUpload.single('file'), async
         }
       }
     }
+    // XLSX / XLS workbook support — parse all tabs
+    if (file.originalname.match(/\.xlsx?$/i) || file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || file.mimetype === 'application/vnd.ms-excel') {
+      try {
+        const XLSX = require('xlsx');
+        const workbook = XLSX.readFile(file.path);
+        meta.sheets = {};
+        meta.sheetNames = workbook.SheetNames;
+        meta.preview = []; // Combined preview for Claude
+        meta.columns = [];
+
+        for (const sheetName of workbook.SheetNames) {
+          const sheet = workbook.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+          const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
+
+          meta.sheets[sheetName] = {
+            headers,
+            row_count: rows.length,
+            preview: rows.slice(0, 5)
+          };
+
+          // Store all rows (up to 2000 per sheet) for processing
+          if (rows.length > 0) {
+            meta.sheets[sheetName].rows = rows.slice(0, 2000);
+          }
+        }
+
+        // Set top-level columns/preview from first sheet for compatibility
+        const firstSheet = workbook.SheetNames[0];
+        if (meta.sheets[firstSheet]) {
+          meta.columns = meta.sheets[firstSheet].headers;
+          meta.preview = meta.sheets[firstSheet].rows || meta.sheets[firstSheet].preview;
+        }
+
+        // Build full text for embedding
+        meta.text = workbook.SheetNames.map(name => {
+          const s = meta.sheets[name];
+          const headerLine = s.headers.join(' | ');
+          const sampleRows = (s.preview || []).slice(0, 10).map(r => Object.values(r).join(' | ')).join('\n');
+          return `=== Sheet: ${name} (${s.row_count} rows) ===\n${headerLine}\n${sampleRows}`;
+        }).join('\n\n');
+      } catch (e) {
+        meta.text = '[XLSX parse error: ' + e.message + ']';
+      }
+    }
+
     if (file.originalname.endsWith('.pdf') || file.mimetype === 'application/pdf') {
       try {
         const pdfParse = require('pdf-parse');
@@ -6684,7 +6792,17 @@ app.post('/api/chat/upload', authenticateToken, chatUpload.single('file'), async
     uploadedFiles.set(fileId, meta);
     setTimeout(() => { uploadedFiles.delete(fileId); try { fsChat.unlinkSync(file.path); } catch(e){} }, 30*60*1000);
 
-    res.json({ file_id: fileId, filename: file.originalname, size: file.size, type: file.mimetype, columns: meta.columns||null, row_count: meta.preview?.length||null, pages: meta.pages||null, suggested_mapping: meta.suggestedMapping||null, linkedin_type: meta.linkedinType||null });
+    const response = { file_id: fileId, filename: file.originalname, size: file.size, type: file.mimetype, columns: meta.columns||null, row_count: meta.preview?.length||null, pages: meta.pages||null, suggested_mapping: meta.suggestedMapping||null, linkedin_type: meta.linkedinType||null };
+    // Include sheet info for XLSX workbooks
+    if (meta.sheetNames) {
+      response.workbook = true;
+      response.sheet_names = meta.sheetNames;
+      response.sheets = {};
+      for (const name of meta.sheetNames) {
+        response.sheets[name] = { headers: meta.sheets[name].headers, row_count: meta.sheets[name].row_count, preview: (meta.sheets[name].preview || []).slice(0, 3) };
+      }
+    }
+    res.json(response);
   } catch (err) { console.error('Upload error:', err); res.status(500).json({ error: 'Upload failed' }); }
 });
 
