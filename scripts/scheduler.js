@@ -520,7 +520,7 @@ Return ONLY valid JSON array:
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function pipelineEmbedIntelligence() {
-  const stats = { notes: 0, drops: 0, interactions: 0 };
+  const stats = { notes: 0, drops: 0, interactions: 0, signals: 0, case_studies: 0 };
 
   if (!openai || !qdrantClient) {
     console.log('     ⚠️  OpenAI or Qdrant not configured, skipping');
@@ -599,6 +599,105 @@ async function pipelineEmbedIntelligence() {
 
     stats.drops = drops.rows.length;
     console.log(`     ${stats.drops} intelligence drops embedded`);
+  }
+
+  // ─── Signal events ───
+  console.log('   📡 Embedding signal events...');
+
+  const signals = await pool.query(`
+    SELECT id, signal_type, company_name, evidence_summary, source_url, signal_date, confidence_score
+    FROM signal_events
+    WHERE embedded_at IS NULL
+    ORDER BY signal_date DESC NULLS LAST
+    LIMIT 200
+  `).catch(() => ({ rows: [] }));
+
+  if (signals.rows.length > 0) {
+    const texts = signals.rows.map(s =>
+      `Signal: ${s.signal_type} at ${s.company_name || 'Unknown'}\nDate: ${s.signal_date || ''}\nConfidence: ${s.confidence_score || ''}\n\n${s.evidence_summary || ''}`
+    );
+
+    const sigEmbeddings = await embedBatch(texts);
+
+    const sigPoints = signals.rows.map((s, i) => ({
+      id: Date.now() * 1000 + 20000 + i,
+      vector: sigEmbeddings[i],
+      payload: {
+        type: 'signal_event',
+        signal_id: s.id,
+        signal_type: s.signal_type,
+        company_name: s.company_name,
+        signal_date: s.signal_date,
+        confidence: s.confidence_score,
+        content_preview: (s.evidence_summary || '').slice(0, 500)
+      }
+    }));
+
+    await qdrantUpsert('signal_events', sigPoints);
+
+    await pool.query(`
+      UPDATE signal_events SET embedded_at = NOW() WHERE id = ANY($1)
+    `, [signals.rows.map(s => s.id)]);
+
+    stats.signals = signals.rows.length;
+    console.log(`     ${stats.signals} signal events embedded`);
+  }
+
+  // ─── Case studies ───
+  console.log('   📋 Embedding case studies...');
+
+  const cases = await pool.query(`
+    SELECT id, title, client_name, role_title, sector, geography, challenge, approach, outcome,
+           themes, capabilities, change_vectors, engagement_type
+    FROM case_studies
+    WHERE embedded_at IS NULL AND status != 'deleted'
+    LIMIT 200
+  `).catch(() => ({ rows: [] }));
+
+  if (cases.rows.length > 0) {
+    const texts = cases.rows.map(c => {
+      const themes = Array.isArray(c.themes) ? c.themes.join(', ') : '';
+      const caps = Array.isArray(c.capabilities) ? c.capabilities.join(', ') : '';
+      const vectors = Array.isArray(c.change_vectors) ? c.change_vectors.join(', ') : '';
+      return [
+        `Case Study: ${c.title || c.client_name}`,
+        `Client: ${c.client_name || ''}`,
+        `Role: ${c.role_title || ''}`,
+        c.engagement_type ? `Type: ${c.engagement_type}` : '',
+        c.sector ? `Sector: ${c.sector}` : '',
+        c.geography ? `Geography: ${c.geography}` : '',
+        themes ? `Themes: ${themes}` : '',
+        caps ? `Capabilities: ${caps}` : '',
+        vectors ? `Change Vectors: ${vectors}` : '',
+        c.challenge ? `\nContext: ${c.challenge}` : '',
+        c.approach ? `\nApproach: ${c.approach}` : '',
+        c.outcome ? `\nOutcome: ${c.outcome}` : ''
+      ].filter(Boolean).join('\n');
+    });
+
+    const csEmbeddings = await embedBatch(texts);
+
+    const csPoints = cases.rows.map((c, i) => ({
+      id: Date.now() * 1000 + 30000 + i,
+      vector: csEmbeddings[i],
+      payload: {
+        type: 'case_study',
+        case_study_id: c.id,
+        client_name: c.client_name,
+        role_title: c.role_title,
+        title: c.title || c.client_name,
+        content_preview: (c.description || '').slice(0, 500)
+      }
+    }));
+
+    await qdrantUpsert('case_studies', csPoints);
+
+    await pool.query(`
+      UPDATE case_studies SET embedded_at = NOW() WHERE id = ANY($1)
+    `, [cases.rows.map(c => c.id)]);
+
+    stats.case_studies = cases.rows.length;
+    console.log(`     ${stats.case_studies} case studies embedded`);
   }
 
   return stats;

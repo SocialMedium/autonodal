@@ -3963,16 +3963,18 @@ app.get('/api/search/index-status', authenticateToken, async (req, res) => {
         (SELECT COUNT(*) FROM people WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS people,
         (SELECT COUNT(*) FROM companies WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS companies,
         (SELECT COUNT(*) FROM external_documents WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS documents,
-        (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND signals_embedded_at IS NOT NULL) AS signals,
+        (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS signals,
+        (SELECT COUNT(*) FROM case_studies WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS case_studies,
         (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS conversions,
         (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS interactions
     `, [req.tenant_id]);
     res.json({
       people: Number(counts.people), companies: Number(counts.companies),
       documents: Number(counts.documents), signals: Number(counts.signals),
+      case_studies: Number(counts.case_studies),
       conversions: Number(counts.conversions), interactions: Number(counts.interactions),
       total: Number(counts.people) + Number(counts.companies) + Number(counts.documents) +
-             Number(counts.signals) + Number(counts.conversions) + Number(counts.interactions)
+             Number(counts.signals) + Number(counts.case_studies) + Number(counts.conversions) + Number(counts.interactions)
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -7247,17 +7249,31 @@ app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) =
 
     const storage = await pool.query(`
       SELECT
-        (SELECT COUNT(*) FROM embeddings) AS total_embeddings,
-        (SELECT COUNT(*) FROM embeddings WHERE entity_type = 'person') AS person_embeddings,
-        (SELECT COUNT(*) FROM embeddings WHERE entity_type = 'company') AS company_embeddings,
-        (SELECT COUNT(*) FROM embeddings WHERE entity_type = 'document') AS document_embeddings
+        (SELECT COUNT(*) FROM people WHERE embedded_at IS NOT NULL) AS person_embeddings,
+        (SELECT COUNT(*) FROM companies WHERE embedded_at IS NOT NULL) AS company_embeddings,
+        (SELECT COUNT(*) FROM external_documents WHERE embedded_at IS NOT NULL) AS document_embeddings,
+        (SELECT COUNT(*) FROM signal_events WHERE embedded_at IS NOT NULL) AS signal_embeddings,
+        (SELECT COUNT(*) FROM case_studies WHERE embedded_at IS NOT NULL) AS case_study_embeddings,
+        (SELECT COUNT(*) FROM people) AS total_people,
+        (SELECT COUNT(*) FROM companies) AS total_companies,
+        (SELECT COUNT(*) FROM external_documents) AS total_documents,
+        (SELECT COUNT(*) FROM signal_events) AS total_signals,
+        (SELECT COUNT(*) FROM case_studies WHERE status != 'deleted') AS total_case_studies
     `).catch(() => ({ rows: [{}] }));
 
+    const emb = storage.rows[0] || {};
     res.json({
       stats: { ...stats.rows[0], google_syncs_active: googleCount, total_grabs: grabsCount },
       sources: sources.rows,
       pipeline_runs: pipelines.rows,
-      embeddings: storage.rows[0]
+      embeddings: {
+        total_embeddings: Number(emb.person_embeddings || 0) + Number(emb.company_embeddings || 0) + Number(emb.document_embeddings || 0) + Number(emb.signal_embeddings || 0) + Number(emb.case_study_embeddings || 0),
+        person_embeddings: `${emb.person_embeddings || 0} / ${emb.total_people || 0}`,
+        company_embeddings: `${emb.company_embeddings || 0} / ${emb.total_companies || 0}`,
+        document_embeddings: `${emb.document_embeddings || 0} / ${emb.total_documents || 0}`,
+        signal_embeddings: `${emb.signal_embeddings || 0} / ${emb.total_signals || 0}`,
+        case_study_embeddings: `${emb.case_study_embeddings || 0} / ${emb.total_case_studies || 0}`
+      }
     });
   } catch (err) {
     console.error('Admin health error:', err.message);
@@ -7661,6 +7677,17 @@ app.listen(PORT, async () => {
       ALTER TABLE people ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id);
       ALTER TABLE companies ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id);
       ALTER TABLE interactions ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id);
+    `);
+  } catch (e) { /* columns may already exist */ }
+
+  // Embedding tracking columns for all embeddable entities
+  try {
+    await pool.query(`
+      ALTER TABLE signal_events ADD COLUMN IF NOT EXISTS embedded_at TIMESTAMPTZ;
+      ALTER TABLE case_studies ADD COLUMN IF NOT EXISTS embedded_at TIMESTAMPTZ;
+      ALTER TABLE people ADD COLUMN IF NOT EXISTS embedded_at TIMESTAMPTZ;
+      ALTER TABLE companies ADD COLUMN IF NOT EXISTS embedded_at TIMESTAMPTZ;
+      ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS embedded_at TIMESTAMPTZ;
     `);
   } catch (e) { /* columns may already exist */ }
 
