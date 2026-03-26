@@ -1090,7 +1090,7 @@ app.get('/api/stats', authenticateToken, async (req, res) => {
       pool.query('SELECT COUNT(*) AS cnt FROM signal_events WHERE tenant_id = $1', [req.tenant_id]),
       pool.query('SELECT COUNT(*) AS cnt FROM companies WHERE tenant_id = $1', [req.tenant_id]),
       pool.query('SELECT COUNT(*) AS cnt FROM external_documents WHERE tenant_id = $1', [req.tenant_id]),
-      pool.query('SELECT COUNT(*) AS cnt, COALESCE(SUM(placement_fee), 0) AS total_fees FROM conversions WHERE tenant_id = $1', [req.tenant_id]),
+      pool.query('SELECT COUNT(*) AS cnt, COALESCE(SUM(placement_fee), 0) AS total_fees FROM conversions WHERE tenant_id = $1 AND payment_status IN (\'invoiced\', \'paid\') AND placement_fee IS NOT NULL', [req.tenant_id]),
       pool.query('SELECT COUNT(*) AS cnt FROM rss_sources WHERE enabled = true'),
       pool.query(`SELECT COUNT(DISTINCT person_id) AS cnt FROM interactions WHERE interaction_type = 'research_note' AND tenant_id = $1`, [req.tenant_id]),
       pool.query(`SELECT signal_type, COUNT(*) AS cnt FROM signal_events WHERE tenant_id = $1 GROUP BY signal_type ORDER BY cnt DESC`, [req.tenant_id]),
@@ -7385,7 +7385,7 @@ app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) =
         (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1) AS total_interactions,
         (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND interaction_at > NOW() - INTERVAL '7 days') AS interactions_7d,
         (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1) AS total_placements,
-        (SELECT COALESCE(SUM(placement_fee), 0) FROM conversions WHERE tenant_id = $1) AS total_revenue,
+        (SELECT COALESCE(SUM(placement_fee), 0) FROM conversions WHERE tenant_id = $1 AND payment_status IN ('invoiced', 'paid') AND placement_fee IS NOT NULL) AS total_revenue,
         (SELECT COUNT(*) FROM signal_dispatches WHERE tenant_id = $1) AS total_dispatches,
         (SELECT COUNT(*) FROM signal_dispatches WHERE tenant_id = $1 AND status = 'draft') AS dispatches_draft,
         (SELECT COUNT(*) FROM signal_dispatches WHERE tenant_id = $1 AND status = 'sent') AS dispatches_sent
