@@ -5471,10 +5471,36 @@ When using run_sql_query, replace <TENANT> with the actual tenant_id from contex
 CONTEXT:
 - MitchelLake is a retained executive search firm (APAC, UK, global)
 - Database: ~77K people, ~11K companies, ~22K documents, ~9K signals, ~500 placements
-- Table names: people, companies, accounts, opportunities, conversions, engagements, pipeline_contacts, signal_events, interactions, team_proximity, external_documents, signal_dispatches, person_scores, person_signals
+- Table names: people, companies, accounts, opportunities, conversions, engagements, pipeline_contacts, signal_events, interactions, team_proximity, external_documents, signal_dispatches, person_scores, person_signals, case_studies, receivables
 - Signal types: capital_raising, ma_activity, geographic_expansion, strategic_hiring, leadership_change, partnership, product_launch, layoffs, restructuring
 - Key columns: people.current_company_id → companies.id, signal_events.company_id → companies.id, conversions.client_id → accounts.id, accounts.company_id → companies.id
 - team_proximity links people to users (team members) via team_member_id with relationship_strength (0-1)
+
+PLACEMENTS TABLE — key columns for billing/WIP queries:
+id, person_id, client_id, company_id, search_id, placed_by_user_id,
+role_title, role_level, start_date, placement_fee (DECIMAL), currency (AUD|GBP|SGD|USD),
+fee_stage (retainer_stage1|retainer_stage2|placement|project), fee_estimate,
+invoice_number, invoice_date, payment_status (pending|invoiced|paid|overdue),
+opportunity_type (WIP - Placed|WIP - Active|Proposal - Won|Proposal - Lost|Proposal - Draft|Proposal - Sent),
+consultant_name, client_name_raw, source (wip_workbook|xero_export|manual),
+source_sheet, notes, raw_monthly_data (JSONB monthly invoice amounts), created_at
+
+KEY JOINS for billing queries:
+SELECT p.*, c.name as client, u.name as consultant, pe.full_name as candidate
+FROM placements p
+LEFT JOIN companies c ON c.id = p.company_id
+LEFT JOIN users u ON u.id = p.placed_by_user_id
+LEFT JOIN people pe ON pe.id = p.person_id
+
+CONSULTANT NAMES in data (match to users table):
+Matt, JT (Jonathan Tanner), Illona, Mark Sparrow, Jamie Gripton, Michael Solomon (Solly),
+Priyanka Haribhai, Conny Lim, Lexi Lazenby, Richard Farmer, Yoko Senga, Timo Kugler,
+Rachel, Jimmy Grice, Claire Yellowlees, David Gumley, Rob, Sam, James,
+Ananya Amin, Megan Burke, Sophie Cohen, Andrew
+
+RECEIVABLES TABLE (outstanding invoices):
+id, invoice_number, client_name, company_id, invoice_date, due_date,
+invoice_total, currency, status, days_overdue, notes, action
 
 STYLE:
 - Concise. No preamble. Execute then present results.
@@ -5647,7 +5673,7 @@ const CHAT_TOOLS = [
       properties: {
         pipeline_key: {
           type: 'string',
-          description: 'Pipeline key to run. Common ones: harvest_podcasts, sync_gmail, gmail_match, sync_drive, classify_documents, cleanup_broken_podcasts, import_case_studies_bulk, ingest_signals, compute_scores, compute_signal_grabs, signal_dispatch, compute_network_topology, compute_triangulation'
+          description: 'Pipeline key to run. Common ones: harvest_podcasts, sync_gmail, gmail_match, sync_drive, classify_documents, cleanup_broken_podcasts, ingest_signals, compute_scores, compute_signal_grabs, signal_dispatch, compute_network_topology, compute_triangulation, embed_intelligence, migrate_wip_schema, ingest_wip_invoices, ingest_wip_consultants, ingest_receivables'
         }
       },
       required: ['pipeline_key']

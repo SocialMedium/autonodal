@@ -1299,6 +1299,55 @@ const PIPELINES = {
     description: 'Scan connected Google accounts for new/modified Drive documents, ingest as companion data'
   },
 
+  migrate_wip_schema: {
+    name: 'WIP Schema Migration',
+    icon: '🔧',
+    fn: async () => {
+      const fs = require('fs');
+      const sqlPath = require('path').join(__dirname, '..', 'sql', 'migration_wip_workbook.sql');
+      if (!fs.existsSync(sqlPath)) throw new Error('Migration file not found: ' + sqlPath);
+      const sql = fs.readFileSync(sqlPath, 'utf8');
+      // Run each statement separately (some may fail if already applied)
+      const statements = sql.split(';').map(s => s.trim()).filter(s => s.length > 5 && !s.startsWith('--'));
+      let applied = 0, skipped = 0;
+      for (const stmt of statements) {
+        try { await pool.query(stmt); applied++; } catch (e) { skipped++; }
+      }
+      return { applied, skipped, total: statements.length };
+    },
+    description: 'Apply WIP workbook schema changes (relaxed NOT NULL, new columns, receivables table)'
+  },
+
+  ingest_wip_invoices: {
+    name: 'Ingest Invoice Ledgers',
+    icon: '💷',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'ingest_invoice_ledgers.js'), { timeout: 300000, stdio: 'inherit' });
+    },
+    description: 'Ingest Xero invoice exports from ML UK + ML AU sheets in the WIP workbook'
+  },
+
+  ingest_wip_consultants: {
+    name: 'Ingest Consultant WIP',
+    icon: '📊',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'ingest_consultant_wip.js'), { timeout: 600000, stdio: 'inherit' });
+    },
+    description: 'Ingest 25 consultant WIP sheets (~1,300 opportunity/placement records) from the WIP workbook'
+  },
+
+  ingest_receivables: {
+    name: 'Ingest Receivables',
+    icon: '📋',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'ingest_receivables.js'), { timeout: 120000, stdio: 'inherit' });
+    },
+    description: 'Ingest outstanding receivables/debtors from the WIP workbook'
+  },
+
   cleanup_broken_podcasts: {
     name: 'Cleanup Broken Podcasts',
     icon: '🧹',
