@@ -1884,7 +1884,8 @@ async function loadStats() {
 function buildAssistantBrief(stats) {
   // Still use stats for the fallback greeting, but the real brief comes from loadPersonalBrief()
   const body = document.getElementById('assistantBody');
-  body.innerHTML = '<div class="assistant-greeting">Good morning. ' + stats.signals_24h + ' new signals in the last 24 hours across ' + stats.companies_count.toLocaleString() + ' companies.</div>';
+  if (!body) return; // Element may not exist on all pages
+  body.innerHTML = '<div class="assistant-greeting">Good morning. ' + (stats.signals_24h || 0) + ' new signals in the last 24 hours across ' + (stats.companies_count || 0).toLocaleString() + ' companies.</div>';
   loadPersonalBrief();
 }
 
@@ -2895,7 +2896,8 @@ async function loadConvergingThemes() {
     if (data.sector_themes && total < 5) {
       data.sector_themes.slice(0, 5 - total).forEach(t => {
         total++;
-        const types = (t.signal_types || []).map(st => SIG_LABELS[st] || st.replace(/_/g, ' ')).slice(0, 3);
+        const rawTypes = Array.isArray(t.signal_types) ? t.signal_types : (typeof t.signal_types === 'string' ? t.signal_types.split(',').map(s => s.trim()).filter(Boolean) : []);
+        const types = rawTypes.map(st => SIG_LABELS[st] || st.replace(/_/g, ' ')).slice(0, 3);
         const clients = t.client_names ? t.client_names.filter(Boolean).slice(0, 3) : [];
         cards += `<div class="theme-card">
           <div class="theme-top">
