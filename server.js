@@ -1907,13 +1907,13 @@ app.get('/api/signals/:id/proximity-graph', authenticateToken, async (req, res) 
       JOIN team_proximity tp ON tp.person_id = p.id AND tp.tenant_id = $1
       LEFT JOIN person_scores ps ON ps.person_id = p.id AND ps.tenant_id = $1
       WHERE p.tenant_id = $1
-        AND p.current_company_id = $2
-        AND tp.relationship_strength >= 0.20
+        AND (p.current_company_id = $2 OR LOWER(TRIM(p.current_company_name)) = LOWER(TRIM($3)))
+        AND tp.relationship_strength >= 0.15
       GROUP BY p.id, p.full_name, p.current_title, p.current_company_name,
                ps.timing_score, ps.receptivity_score
       ORDER BY MAX(tp.relationship_strength) DESC
-      LIMIT 12
-    `, [tenantId, sig.company_id]);
+      LIMIT 15
+    `, [tenantId, sig.company_id, sig.company_name || '']);
 
     // 4. Check if signal company is an account/client
     const { rows: [account] } = await pool.query(`
