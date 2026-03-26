@@ -8530,13 +8530,9 @@ app.listen(PORT, async () => {
       ).catch(() => ({ rows: [{ cnt: '0' }] }));
       if (parseInt(check.cnt) < 100) {
         console.log('  📋 Sophie LinkedIn CSV found — importing in background...');
-        const { exec } = require('child_process');
-        exec(`node ${require('path').join(__dirname, 'scripts', 'ingest_linkedin_connections.js')}`, { timeout: 1200000 }, (err, stdout, stderr) => {
-          if (stdout) console.log(stdout.slice(-800));
-          if (stderr) console.error('  stderr:', stderr.slice(-300));
-          if (err) console.error('  ⚠️ Sophie LinkedIn import error:', err.message?.slice(0, 200));
-          else console.log('  ✅ Sophie LinkedIn import complete');
-        });
+        const { spawn } = require('child_process');
+        const connProc = spawn('node', [require('path').join(__dirname, 'scripts', 'ingest_linkedin_connections.js')], { stdio: 'inherit', timeout: 1200000 });
+        connProc.on('exit', (code) => console.log(`  ✅ Sophie LinkedIn connections import exited (code ${code})`));
       } else {
         console.log(`  ℹ️  Sophie LinkedIn already imported (${check.cnt} links)`);
       }
