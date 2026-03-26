@@ -175,6 +175,21 @@ async function processThread(gmail, thread, userEmail, userId, dryRun) {
   const isOutbound = fromEmails.includes(userEmail.toLowerCase());
   const direction  = isOutbound ? 'outbound' : 'inbound';
 
+  // ── Noise filter — skip newsletters, notifications, marketing ──
+  const NOISE_PATTERNS = [
+    'noreply', 'no-reply', 'donotreply', 'do-not-reply',
+    'notifications@', 'notification@', 'newsletter',
+    'digest@', 'mailer@', 'mailchimp', 'marketing@',
+    'hello@mail.', 'info@mail.', 'updates@',
+    'bounces@', 'bounce@', 'automated@', 'system@', 'alert@',
+    'linkedin.com', 'pitchbook', 'substack',
+    'mailgun', 'sendgrid', 'sparkpost', 'postmaster@',
+    'feedback@', 'support@noreply', 'calendar-notification'
+  ];
+  const senderAddr = (fromEmails[0] || '').toLowerCase();
+  if (!senderAddr && !isOutbound) return { skipped: true };
+  if (!isOutbound && NOISE_PATTERNS.some(p => senderAddr.includes(p))) return { skipped: true };
+
   // Thread stats
   const inboundCount  = messages.filter(m => {
     const mFrom = getHeader(m.payload?.headers || [], 'From');
@@ -203,9 +218,12 @@ async function processThread(gmail, thread, userEmail, userId, dryRun) {
   // Gmail URL
   const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${threadId}`;
 
-  // Find matched person(s)
+  // Find matched person — for sent emails, prioritise recipients over sender
   let matchedPerson = null;
-  for (const email of externalEmails) {
+  const matchOrder = isOutbound
+    ? [...toEmails.filter(e => e !== userEmail.toLowerCase()), ...ccEmails.filter(e => e !== userEmail.toLowerCase())]
+    : externalEmails;
+  for (const email of matchOrder) {
     const person = await findPersonByEmail(email);
     if (person) {
       matchedPerson = { ...person, email };
@@ -403,6 +421,7 @@ async function syncAccount(account) {
 
   // ── Process threads ─────────────────────────────────────────────────────
   let interactionsCreated = 0;
+  let noiseSkipped = 0;
   const personThreadCounts = new Map(); // personId → { count, lastDate }
 
   for (let i = 0; i < threadIds.length; i++) {
@@ -412,6 +431,11 @@ async function syncAccount(account) {
       const result = await withRetry(() =>
         processThread(gmail, { id: threadIds[i] }, account.google_email, account.user_id, DRY_RUN)
       );
+
+      if (result && result.skipped) {
+        noiseSkipped++;
+        continue;
+      }
 
       if (result) {
         interactionsCreated++;
@@ -435,20 +459,24 @@ async function syncAccount(account) {
     await updateTeamProximity(pool, personId, account.user_id, stats.count, stats.lastDate, DRY_RUN);
   }
 
-  // ── Save new historyId ──────────────────────────────────────────────────
+  // ── Save new historyId + increment emails_synced counter ────────────────
   if (!DRY_RUN && newHistoryId) {
     await pool.query(
       `UPDATE user_google_accounts SET
          gmail_history_id  = $2,
-         gmail_last_sync_at = NOW()
+         gmail_last_sync_at = NOW(),
+         emails_synced = COALESCE(emails_synced, 0) + $3
        WHERE id = $1`,
-      [account.id, newHistoryId]
+      [account.id, newHistoryId, interactionsCreated]
     );
   }
+
+  if (noiseSkipped > 0) console.log(c.dim(`  ⏭  Skipped (noise): ${noiseSkipped}`));
 
   return {
     threadsScanned:     threadIds.length,
     interactionsCreated,
+    noiseSkipped,
     proximityUpdated:   personThreadCounts.size,
   };
 }

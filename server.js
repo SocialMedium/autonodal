@@ -3592,7 +3592,30 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
       case_studies = rows;
     } catch (e) { /* table may not exist */ }
 
-    res.json({ ...company, signals, people, placements, documents, financials, opportunities, pipeline_total: pipelineTotal, case_studies });
+    // Interaction summary — relationship activity across people at this company
+    let interaction_summary = null;
+    try {
+      const { rows: [is] } = await pool.query(`
+        SELECT
+          COUNT(i.id) as total_interactions,
+          COUNT(DISTINCT i.person_id) as contacts_engaged,
+          COUNT(DISTINCT i.user_id) as team_members_involved,
+          MAX(i.interaction_at) as last_interaction,
+          COUNT(i.id) FILTER (WHERE i.interaction_at > NOW() - INTERVAL '90 days') as interactions_90d,
+          COUNT(i.id) FILTER (WHERE i.interaction_at > NOW() - INTERVAL '30 days') as interactions_30d,
+          COUNT(i.id) FILTER (WHERE i.interaction_type IN ('email_sent', 'email_received')) as email_count,
+          COUNT(i.id) FILTER (WHERE i.interaction_type = 'linkedin_message') as linkedin_count,
+          COUNT(i.id) FILTER (WHERE i.direction = 'outbound') as outbound_count,
+          COUNT(i.id) FILTER (WHERE i.direction = 'inbound') as inbound_count
+        FROM interactions i
+        JOIN people p ON p.id = i.person_id
+        WHERE p.current_company_id = $1
+          AND i.interaction_at > NOW() - INTERVAL '2 years'
+      `, [companyId]);
+      if (is && parseInt(is.total_interactions) > 0) interaction_summary = is;
+    } catch (e) {}
+
+    res.json({ ...company, signals, people, placements, documents, financials, opportunities, pipeline_total: pipelineTotal, case_studies, interaction_summary });
   } catch (err) {
     console.error('Company detail error:', err.message);
     res.status(500).json({ error: 'Failed to fetch company' });
@@ -8348,6 +8371,11 @@ app.listen(PORT, async () => {
       ALTER TABLE interactions ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id);
     `);
   } catch (e) { /* columns may already exist */ }
+
+  // Gmail sync counter
+  try {
+    await pool.query(`ALTER TABLE user_google_accounts ADD COLUMN IF NOT EXISTS emails_synced INTEGER DEFAULT 0`);
+  } catch (e) {}
 
   // Embedding tracking columns for all embeddable entities
   try {

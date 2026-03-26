@@ -205,7 +205,10 @@ h+='</div>';
 if(tags.length)h+='<div class="co-tags">'+tags.join('')+'</div>';
 if(c.description)h+='<div class="co-desc">'+esc(c.description)+'</div>';
 h+='</div></div>';
-h+='<div class="co-stats"><div class="co-st"><div class="co-st-v">'+ppl.length+'</div><div class="co-st-l">Contacts</div></div><div class="co-st"><div class="co-st-v">'+opps.length+'</div><div class="co-st-l">Searches</div></div><div class="co-st"><div class="co-st-v">'+pls.length+'</div><div class="co-st-l">Placements</div></div><div class="co-st"><div class="co-st-v">'+pipelineTotal+'</div><div class="co-st-l">Pipeline</div></div><div class="co-st"><div class="co-st-v">'+sigs.length+'</div><div class="co-st-l">Signals</div></div><div class="co-st"><div class="co-st-v">'+docs.length+'</div><div class="co-st-l">Docs</div></div></div>';
+var is=c.interaction_summary;
+h+='<div class="co-stats"><div class="co-st"><div class="co-st-v">'+ppl.length+'</div><div class="co-st-l">Contacts</div></div><div class="co-st"><div class="co-st-v">'+opps.length+'</div><div class="co-st-l">Searches</div></div><div class="co-st"><div class="co-st-v">'+pls.length+'</div><div class="co-st-l">Placements</div></div><div class="co-st"><div class="co-st-v">'+pipelineTotal+'</div><div class="co-st-l">Pipeline</div></div><div class="co-st"><div class="co-st-v">'+sigs.length+'</div><div class="co-st-l">Signals</div></div><div class="co-st"><div class="co-st-v">'+docs.length+'</div><div class="co-st-l">Docs</div></div>';
+if(is){h+='<div class="co-st"><div class="co-st-v">'+num(is.interactions_90d)+'</div><div class="co-st-l">Interactions (90d)</div></div><div class="co-st"><div class="co-st-v">'+num(is.contacts_engaged)+'</div><div class="co-st-l">Engaged</div></div>';}
+h+='</div>';
 h+='<button class="enrich-btn" id="enrichBtn" onclick="enrichCompany()">🔄 Refresh &amp; Enrich</button>';
 h+='</div>';
 
