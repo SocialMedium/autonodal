@@ -19,15 +19,29 @@ const pool = new Pool({
 });
 
 async function ensureSchema() {
-  const fs = require('fs');
-  const sqlPath = path.join(__dirname, '..', 'sql', 'migration_wip_workbook.sql');
-  if (!fs.existsSync(sqlPath)) return;
-  const sql = fs.readFileSync(sqlPath, 'utf8');
-  const statements = sql.split(';').map(s => s.trim()).filter(s => s.length > 5 && !s.startsWith('--'));
-  for (const stmt of statements) {
-    try { await pool.query(stmt); } catch (e) { if (!e.message.includes('already exists') && !e.message.includes('does not exist')) console.log('    Migration note:', e.message.slice(0, 100)); }
+  const alters = [
+    `ALTER TABLE placements ALTER COLUMN person_id DROP NOT NULL`,
+    `ALTER TABLE placements ALTER COLUMN client_id DROP NOT NULL`,
+    `ALTER TABLE placements ALTER COLUMN placed_by_user_id DROP NOT NULL`,
+    `ALTER TABLE placements ALTER COLUMN start_date DROP NOT NULL`,
+    `ALTER TABLE placements ALTER COLUMN placement_fee DROP NOT NULL`,
+    `ALTER TABLE placements ALTER COLUMN role_title DROP NOT NULL`,
+    `ALTER TABLE placements ADD COLUMN IF NOT EXISTS company_id UUID`,
+    `ALTER TABLE placements ADD COLUMN IF NOT EXISTS fee_stage VARCHAR(30)`,
+    `ALTER TABLE placements ADD COLUMN IF NOT EXISTS fee_estimate DECIMAL(12,2)`,
+    `ALTER TABLE placements ADD COLUMN IF NOT EXISTS opportunity_type VARCHAR(50)`,
+    `ALTER TABLE placements ADD COLUMN IF NOT EXISTS source_sheet VARCHAR(100)`,
+    `ALTER TABLE placements ADD COLUMN IF NOT EXISTS raw_monthly_data JSONB`,
+    `ALTER TABLE placements ADD COLUMN IF NOT EXISTS consultant_name VARCHAR(100)`,
+    `ALTER TABLE placements ADD COLUMN IF NOT EXISTS client_name_raw VARCHAR(255)`,
+    `ALTER TABLE placements ADD COLUMN IF NOT EXISTS candidate_salary_raw VARCHAR(50)`,
+    `ALTER TABLE placements ADD COLUMN IF NOT EXISTS tenant_id UUID DEFAULT '00000000-0000-0000-0000-000000000001'`,
+  ];
+  let applied = 0;
+  for (const sql of alters) {
+    try { await pool.query(sql); applied++; } catch (e) { /* already applied */ }
   }
-  console.log('  ✅ Schema migration applied');
+  console.log(`  ✅ Schema migration: ${applied}/${alters.length} statements applied`);
 }
 
 const WIP_SHEETS = [
