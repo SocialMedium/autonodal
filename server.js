@@ -7765,14 +7765,28 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
         if (norm) { if (!nameIndex.has(norm)) nameIndex.set(norm, []); nameIndex.get(norm).push(p); }
       }
 
+      // Flexible header detection — LinkedIn exports vary
+      const sampleRow = rows[0] || {};
+      const colKeys = Object.keys(sampleRow);
+      const findCol = (...patterns) => colKeys.find(k => patterns.some(p => k.toLowerCase().trim().replace(/[^a-z\s]/g, '').includes(p))) || '';
+      const firstNameCol = findCol('first name', 'firstname');
+      const lastNameCol = findCol('last name', 'lastname');
+      const urlCol = findCol('url', 'profile');
+      const companyCol = findCol('company', 'organisation', 'organization');
+      const positionCol = findCol('position', 'title', 'role');
+      const emailCol = findCol('email');
+
+      console.log(`LinkedIn import: detected columns — name: "${firstNameCol}"+"${lastNameCol}", url: "${urlCol}", company: "${companyCol}"`);
+
       const stats = { total: rows.length, matched: 0, created: 0, proximity_created: 0, skipped: 0 };
       for (const row of rows) {
-        const firstName = row['First Name'] || '';
-        const lastName = row['Last Name'] || '';
+        const firstName = (firstNameCol ? row[firstNameCol] : '') || '';
+        const lastName = (lastNameCol ? row[lastNameCol] : '') || '';
         const fullName = `${firstName} ${lastName}`.trim();
-        const linkedinUrl = row['URL'] || '';
-        const company = row['Company'] || '';
-        const position = row['Position'] || '';
+        const linkedinUrl = (urlCol ? row[urlCol] : '') || '';
+        const company = (companyCol ? row[companyCol] : '') || '';
+        const position = (positionCol ? row[positionCol] : '') || '';
+        const email = (emailCol ? row[emailCol] : '') || '';
         if (!fullName || fullName.length < 2) { stats.skipped++; continue; }
 
         let personId = null;
@@ -7949,16 +7963,27 @@ app.post('/api/admin/upload-linkedin', authenticateToken, requireAdmin, adminUpl
       if (norm) { if (!nameIndex.has(norm)) nameIndex.set(norm, []); nameIndex.get(norm).push(p); }
     }
 
+    // Flexible header detection
+    const sampleRow = rows[0] || {};
+    const aColKeys = Object.keys(sampleRow);
+    const aFindCol = (...patterns) => aColKeys.find(k => patterns.some(p => k.toLowerCase().trim().replace(/[^a-z\s]/g, '').includes(p))) || '';
+    const aFirstNameCol = aFindCol('first name', 'firstname');
+    const aLastNameCol = aFindCol('last name', 'lastname');
+    const aUrlCol = aFindCol('url', 'profile');
+    const aCompanyCol = aFindCol('company', 'organisation', 'organization');
+    const aPositionCol = aFindCol('position', 'title', 'role');
+    const aEmailCol = aFindCol('email');
+
     const stats = { total: rows.length, matched: 0, created: 0, proximity_created: 0, skipped: 0 };
 
     for (const row of rows) {
-      const firstName = row['First Name'] || '';
-      const lastName = row['Last Name'] || '';
+      const firstName = (aFirstNameCol ? row[aFirstNameCol] : '') || '';
+      const lastName = (aLastNameCol ? row[aLastNameCol] : '') || '';
       const fullName = `${firstName} ${lastName}`.trim();
-      const linkedinUrl = row['URL'] || '';
-      const company = row['Company'] || '';
-      const position = row['Position'] || '';
-      const email = row['Email Address'] || '';
+      const linkedinUrl = (aUrlCol ? row[aUrlCol] : '') || '';
+      const company = (aCompanyCol ? row[aCompanyCol] : '') || '';
+      const position = (aPositionCol ? row[aPositionCol] : '') || '';
+      const email = (aEmailCol ? row[aEmailCol] : '') || '';
       if (!fullName || fullName.length < 2) { stats.skipped++; continue; }
 
       // Match
