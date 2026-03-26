@@ -8386,6 +8386,13 @@ app.listen(PORT, async () => {
     console.log('  ⚠️ Client backfill skipped:', e.message);
   }
 
+  // One-time: force re-auth for all users to pick up new Gmail+Drive scopes
+  // Remove this block after everyone has re-authenticated (deploy after 2026-03-27)
+  try {
+    const { rowCount } = await pool.query(`DELETE FROM sessions WHERE created_at < '2026-03-26T12:00:00Z'`);
+    if (rowCount > 0) console.log(`  🔑 Cleared ${rowCount} old sessions — users will re-auth with full Gmail+Drive scopes`);
+  } catch (e) { /* ok */ }
+
   // One-time WIP workbook ingestion (runs once, guarded by check)
   try {
     const wipFile = require('path').join(__dirname, 'data', 'Global_Billings_and_WIP.xlsx');
