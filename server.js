@@ -7971,7 +7971,9 @@ app.post('/api/admin/upload-linkedin', authenticateToken, requireAdmin, adminUpl
       const row = {}; headers.forEach((h, idx) => { row[h] = vals[idx] || ''; }); rows.push(row);
     }
 
-    console.log(`Admin LinkedIn upload: ${rows.length} rows, headers: ${headers.slice(0, 8).join(', ')}`);
+    console.log(`Admin LinkedIn upload: ${rows.length} rows, headers: [${headers.slice(0, 8).join('], [')}]`);
+    console.log(`Admin LinkedIn upload: first row keys: [${Object.keys(rows[0] || {}).join('], [')}]`);
+    console.log(`Admin LinkedIn upload: first row sample: ${JSON.stringify(rows[0]).slice(0, 300)}`);
 
     // Load existing people for matching
     const { rows: dbPeople } = await pool.query(
@@ -7998,7 +8000,10 @@ app.post('/api/admin/upload-linkedin', authenticateToken, requireAdmin, adminUpl
     const aPositionCol = aFindCol('position', 'title', 'role');
     const aEmailCol = aFindCol('email');
 
-    const stats = { total: rows.length, matched: 0, created: 0, proximity_created: 0, skipped: 0 };
+    console.log(`Admin LinkedIn upload: detected cols — firstName: "${aFirstNameCol}", lastName: "${aLastNameCol}", url: "${aUrlCol}", company: "${aCompanyCol}"`);
+
+    const stats = { total: rows.length, matched: 0, created: 0, proximity_created: 0, skipped: 0,
+      _debug: { headers: headers.slice(0, 10), detected: { firstName: aFirstNameCol, lastName: aLastNameCol, url: aUrlCol, company: aCompanyCol }, sample_row: rows[0] ? Object.fromEntries(Object.entries(rows[0]).slice(0, 6)) : {} } };
 
     for (const row of rows) {
       const firstName = (aFirstNameCol ? row[aFirstNameCol] : '') || '';
