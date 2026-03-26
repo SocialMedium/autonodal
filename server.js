@@ -6706,11 +6706,19 @@ app.post('/api/chat/upload', authenticateToken, chatUpload.single('file'), async
     if (file.originalname.endsWith('.csv') || file.mimetype === 'text/csv') {
       const raw = fsChat.readFileSync(file.path, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
       const allLines = raw.split('\n');
-      // Find header line (skip LinkedIn notes/blank lines at top)
+      // Find header line — skip LinkedIn preamble/notes at top
       let headerIdx = 0;
-      for (let i = 0; i < Math.min(allLines.length, 10); i++) {
-        const trimmed = allLines[i].trim();
-        if (trimmed && trimmed.includes(',')) { headerIdx = i; break; }
+      for (let i = 0; i < Math.min(allLines.length, 20); i++) {
+        const line = allLines[i].toLowerCase().replace(/[^\x20-\x7E]/g, '');
+        if (line.includes('first name') || line.includes('firstname') || (line.includes('name') && line.includes('company'))) {
+          headerIdx = i; break;
+        }
+      }
+      if (headerIdx === 0) {
+        for (let i = 0; i < Math.min(allLines.length, 20); i++) {
+          const trimmed = allLines[i].trim();
+          if (trimmed && trimmed.split(',').length >= 3 && trimmed.split(',')[0].trim().length < 30) { headerIdx = i; break; }
+        }
       }
       const lines = allLines.slice(headerIdx).filter(l => l.trim());
       if (lines.length) {
@@ -7763,9 +7771,19 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
     if (importType === 'linkedin_connections') {
       const raw = require('fs').readFileSync(file.path, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
       const allLines = raw.split('\n');
+      // Find real header row — skip LinkedIn preamble
       let headerIdx = 0;
-      for (let i = 0; i < Math.min(allLines.length, 10); i++) {
-        if (allLines[i].trim().includes(',')) { headerIdx = i; break; }
+      for (let i = 0; i < Math.min(allLines.length, 20); i++) {
+        const line = allLines[i].toLowerCase().replace(/[^\x20-\x7E]/g, '');
+        if (line.includes('first name') || line.includes('firstname') || (line.includes('name') && line.includes('company'))) {
+          headerIdx = i; break;
+        }
+      }
+      if (headerIdx === 0) {
+        for (let i = 0; i < Math.min(allLines.length, 20); i++) {
+          const parts = allLines[i].split(',');
+          if (parts.length >= 3 && parts[0].trim().length > 0 && parts[0].trim().length < 30) { headerIdx = i; break; }
+        }
       }
       const lines = allLines.slice(headerIdx).filter(l => l.trim());
       function parseCSV(line) { const r=[]; let c='',q=false; for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"')q=!q;else if(ch===','&&!q){r.push(c.trim());c='';}else c+=ch;} r.push(c.trim()); return r; }
@@ -7956,9 +7974,20 @@ app.post('/api/admin/upload-linkedin', authenticateToken, requireAdmin, adminUpl
     // Strip BOM and normalize line endings
     const raw = require('fs').readFileSync(file.path, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const allLines = raw.split('\n');
+    // Find the real header row — LinkedIn CSVs have preamble text before "First Name,Last Name,..."
     let headerIdx = 0;
-    for (let i = 0; i < Math.min(allLines.length, 10); i++) {
-      if (allLines[i].trim().includes(',')) { headerIdx = i; break; }
+    for (let i = 0; i < Math.min(allLines.length, 20); i++) {
+      const line = allLines[i].toLowerCase().replace(/[^\x20-\x7E]/g, '');
+      if (line.includes('first name') || line.includes('firstname') || (line.includes('name') && line.includes('company'))) {
+        headerIdx = i; break;
+      }
+    }
+    // Fallback: first line with 3+ comma-separated fields
+    if (headerIdx === 0) {
+      for (let i = 0; i < Math.min(allLines.length, 20); i++) {
+        const parts = allLines[i].split(',');
+        if (parts.length >= 3 && parts[0].trim().length > 0 && parts[0].trim().length < 30) { headerIdx = i; break; }
+      }
     }
     const lines = allLines.slice(headerIdx).filter(l => l.trim());
     if (!lines.length) return res.json({ error: 'No data found in CSV' });
