@@ -8521,6 +8521,27 @@ app.listen(PORT, async () => {
     console.log('  ⚠️ Client backfill skipped:', e.message);
   }
 
+  // One-time: Sophie's LinkedIn connections import
+  try {
+    const sophieCsv = require('path').join(__dirname, 'data', 'sophie_linkedin_connections.csv');
+    if (require('fs').existsSync(sophieCsv)) {
+      const { rows: [check] } = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM team_proximity WHERE source = 'linkedin_import' AND team_member_id = (SELECT id FROM users WHERE email = 'sophiec@mitchellake.com' LIMIT 1)`
+      ).catch(() => ({ rows: [{ cnt: '0' }] }));
+      if (parseInt(check.cnt) < 100) {
+        console.log('  📋 Sophie LinkedIn CSV found — importing in background...');
+        const { exec } = require('child_process');
+        exec(`node ${require('path').join(__dirname, 'scripts', 'ingest_linkedin_connections.js')}`, { timeout: 1200000 }, (err, stdout) => {
+          if (stdout) console.log(stdout.slice(-600));
+          if (err) console.error('  ⚠️ Sophie LinkedIn import error:', err.message?.slice(0, 200));
+          else console.log('  ✅ Sophie LinkedIn import complete');
+        });
+      } else {
+        console.log(`  ℹ️  Sophie LinkedIn already imported (${check.cnt} links)`);
+      }
+    }
+  } catch (e) {}
+
   // One-time backfill: link orphaned interactions to people
   try {
     // 1. Sent emails — match recipients against people.email
