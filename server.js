@@ -8395,21 +8395,16 @@ app.listen(PORT, async () => {
         `SELECT COUNT(*) AS cnt FROM conversions WHERE source IN ('wip_workbook', 'xero_export') LIMIT 1`
       ).catch(() => ({ rows: [{ cnt: '0' }] }));
       if (parseInt(check.cnt) < 500) {
-        console.log('\n  📊 WIP workbook found — running one-time ingestion...');
-        const { execSync } = require('child_process');
-        try {
-          console.log('  📊 Step 1/3: Invoice ledgers...');
-          execSync('node ' + require('path').join(__dirname, 'scripts', 'ingest_invoice_ledgers.js'), { timeout: 300000, stdio: 'inherit' });
-        } catch (e) { console.error('  ⚠️ Invoice ingestion error:', e.message); }
-        try {
-          console.log('  📊 Step 2/3: Consultant WIP...');
-          execSync('node ' + require('path').join(__dirname, 'scripts', 'ingest_consultant_wip.js'), { timeout: 600000, stdio: 'inherit' });
-        } catch (e) { console.error('  ⚠️ WIP ingestion error:', e.message); }
-        try {
-          console.log('  📊 Step 3/3: Receivables...');
-          execSync('node ' + require('path').join(__dirname, 'scripts', 'ingest_receivables.js'), { timeout: 120000, stdio: 'inherit' });
-        } catch (e) { console.error('  ⚠️ Receivables ingestion error:', e.message); }
-        console.log('  ✅ WIP workbook ingestion complete\n');
+        // Run async — don't block server startup
+        console.log('\n  📊 WIP workbook found — running ingestion in background...');
+        const { exec } = require('child_process');
+        const scriptDir = require('path').join(__dirname, 'scripts');
+        // Chain: invoices → WIP → receivables, non-blocking
+        exec(`node ${scriptDir}/ingest_invoice_ledgers.js && node ${scriptDir}/ingest_consultant_wip.js && node ${scriptDir}/ingest_receivables.js`, { timeout: 900000 }, (err, stdout, stderr) => {
+          if (stdout) console.log(stdout.slice(-500));
+          if (err) console.error('  ⚠️ WIP ingestion error:', err.message?.slice(0, 200));
+          else console.log('  ✅ WIP workbook ingestion complete');
+        });
       } else {
         console.log(`  ℹ️  WIP data already loaded (${check.cnt} records) — skipping ingestion`);
       }

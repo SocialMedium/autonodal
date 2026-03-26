@@ -248,7 +248,7 @@ async function processSheet(workbook, sheetName) {
           payment_status, tenant_id
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
       `, [
-        companyId, companyId, userId,
+        companyId, null, userId,
         roleTitle || 'Unknown', startDate, placementFee, feeEstimate,
         currency === 'NAN' ? 'AUD' : (currency || 'AUD'),
         opportunityType || null, roleSalary || null,
