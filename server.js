@@ -8390,7 +8390,7 @@ app.listen(PORT, async () => {
     if (require('fs').existsSync(wipFile)) {
       // Check if already fully ingested (need at least 100 WIP records to consider it done)
       const { rows: [check] } = await pool.query(
-        `SELECT COUNT(*) AS cnt FROM placements WHERE source IN ('wip_workbook', 'xero_export') LIMIT 1`
+        `SELECT COUNT(*) AS cnt FROM conversions WHERE source IN ('wip_workbook', 'xero_export') LIMIT 1`
       ).catch(() => ({ rows: [{ cnt: '0' }] }));
       if (parseInt(check.cnt) < 100) {
         console.log('\n  📊 WIP workbook found — running one-time ingestion...');
