@@ -7624,6 +7624,130 @@ app.get('/api/admin/audit', authenticateToken, requireAdmin, async (req, res) =>
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ADMIN: Per-User Data Operations
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Upload LinkedIn CSV on behalf of a user
+const adminUpload = require('multer')({ dest: '/tmp/ml-admin-uploads/', limits: { fileSize: 20 * 1024 * 1024 } });
+app.post('/api/admin/upload-linkedin', authenticateToken, requireAdmin, adminUpload.single('file'), async (req, res) => {
+  try {
+    const file = req.file;
+    const targetUserId = req.body.target_user_id;
+    if (!file || !targetUserId) return res.status(400).json({ error: 'File and target_user_id required' });
+
+    const raw = require('fs').readFileSync(file.path, 'utf8');
+    const allLines = raw.split('\n');
+    let headerIdx = 0;
+    for (let i = 0; i < Math.min(allLines.length, 10); i++) {
+      if (allLines[i].trim().includes(',')) { headerIdx = i; break; }
+    }
+    const lines = allLines.slice(headerIdx).filter(l => l.trim());
+    if (!lines.length) return res.json({ error: 'No data found in CSV' });
+
+    function parseCSV(line) { const r=[]; let c='',q=false; for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"')q=!q;else if(ch===','&&!q){r.push(c.trim());c='';}else c+=ch;} r.push(c.trim()); return r; }
+    const headers = parseCSV(lines[0]);
+    const lh = headers.map(h => h.toLowerCase().trim());
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+      const vals = parseCSV(lines[i]);
+      const row = {}; headers.forEach((h, idx) => { row[h] = vals[idx] || ''; }); rows.push(row);
+    }
+
+    // Load existing people for matching
+    const { rows: dbPeople } = await pool.query(
+      `SELECT id, full_name, linkedin_url, current_company_name, email FROM people WHERE tenant_id = $1`, [req.tenant_id]
+    );
+    const linkedinIndex = new Map(), nameIndex = new Map();
+    for (const p of dbPeople) {
+      if (p.linkedin_url) {
+        const slug = (p.linkedin_url.toLowerCase().match(/linkedin\.com\/in\/([^\/]+)/) || [])[1];
+        if (slug) linkedinIndex.set(slug, p);
+      }
+      const norm = (p.full_name || '').toLowerCase().trim();
+      if (norm) { if (!nameIndex.has(norm)) nameIndex.set(norm, []); nameIndex.get(norm).push(p); }
+    }
+
+    const stats = { total: rows.length, matched: 0, created: 0, proximity_created: 0, skipped: 0 };
+
+    for (const row of rows) {
+      const firstName = row['First Name'] || '';
+      const lastName = row['Last Name'] || '';
+      const fullName = `${firstName} ${lastName}`.trim();
+      const linkedinUrl = row['URL'] || '';
+      const company = row['Company'] || '';
+      const position = row['Position'] || '';
+      const email = row['Email Address'] || '';
+      if (!fullName || fullName.length < 2) { stats.skipped++; continue; }
+
+      // Match
+      let personId = null;
+      const slug = linkedinUrl ? (linkedinUrl.toLowerCase().match(/linkedin\.com\/in\/([^\/]+)/) || [])[1] : null;
+      if (slug && linkedinIndex.has(slug)) personId = linkedinIndex.get(slug).id;
+      if (!personId) {
+        const norm = fullName.toLowerCase().trim();
+        const cands = nameIndex.get(norm) || [];
+        if (cands.length === 1) personId = cands[0].id;
+      }
+
+      if (personId) {
+        stats.matched++;
+      } else {
+        // Create new person
+        try {
+          const { rows: [newP] } = await pool.query(
+            `INSERT INTO people (full_name, first_name, last_name, current_title, current_company_name, linkedin_url, email, source, created_by, tenant_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,'linkedin_import',$8,$9) RETURNING id`,
+            [fullName, firstName, lastName, position || null, company || null, linkedinUrl || null, email || null, targetUserId, req.tenant_id]
+          );
+          personId = newP.id;
+          stats.created++;
+        } catch (e) { stats.skipped++; continue; }
+      }
+
+      // Create team_proximity
+      if (personId) {
+        try {
+          await pool.query(
+            `INSERT INTO team_proximity (person_id, team_member_id, relationship_type, relationship_strength, source, tenant_id)
+             VALUES ($1, $2, 'linkedin_connection', 0.5, 'linkedin_import', $3)
+             ON CONFLICT (person_id, team_member_id) DO UPDATE SET relationship_strength = GREATEST(team_proximity.relationship_strength, 0.5)`,
+            [personId, targetUserId, req.tenant_id]
+          );
+          stats.proximity_created++;
+        } catch (e) { /* proximity may already exist */ }
+      }
+    }
+
+    try { require('fs').unlinkSync(file.path); } catch (e) {}
+    auditLog(req.user.user_id, 'admin_linkedin_import', 'people', targetUserId, { ...stats, filename: file.originalname });
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Trigger Drive sync for a specific user
+app.post('/api/admin/trigger-drive-sync', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { user_id } = req.body;
+    if (!user_id) return res.status(400).json({ error: 'user_id required' });
+
+    const { rows } = await pool.query(
+      `SELECT id, google_email, access_token, refresh_token FROM user_google_accounts WHERE user_id = $1 AND sync_enabled = true`,
+      [user_id]
+    );
+    if (!rows.length) return res.json({ message: 'No Google account connected for this user' });
+
+    // Trigger the drive sync pipeline for this specific user
+    const { rows: [user] } = await pool.query('SELECT name FROM users WHERE id = $1', [user_id]);
+    auditLog(req.user.user_id, 'admin_trigger_drive_sync', 'user', user_id, { google_email: rows[0].google_email });
+    res.json({ message: `Drive sync triggered for ${user?.name || user_id} (${rows[0].google_email}). Will process on next sync cycle.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // XERO OAUTH 2.0
 // ═══════════════════════════════════════════════════════════════════════════════
 

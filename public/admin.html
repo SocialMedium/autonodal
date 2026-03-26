@@ -72,6 +72,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .tbl tr:hover td { background: var(--surface-warm); }
 
 .pill { font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 10px; display: inline-block; }
+.btn-sm { font-size: 10px; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--rule); background: var(--bg-2); color: var(--ink-2); cursor: pointer; font-weight: 500; }
+.btn-sm:hover { background: var(--emerald); color: #fff; border-color: var(--emerald); }
 .pill-green { background: var(--emerald-soft); color: var(--emerald); }
 .pill-blue { background: var(--blue-soft); color: var(--blue); }
 .pill-amber { background: var(--amber-soft); color: var(--amber); }
@@ -192,6 +194,7 @@ select.role-select:focus { outline: none; border-color: var(--blue); }
           <th>Activity (30d)</th>
           <th>Network</th>
           <th>Dispatches</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody id="usersBody">
@@ -441,6 +444,11 @@ function renderUsers(users) {
       '<td>' + num(u.proximity_connections) + ' connections</td>' +
       '<td>' + (parseInt(u.dispatches_claimed) > 0 ? num(u.dispatches_claimed) + ' claimed' : '<span class="muted">0</span>') +
         (parseInt(u.dispatches_sent) > 0 ? '<br><span class="small">' + num(u.dispatches_sent) + ' sent</span>' : '') + '</td>' +
+      '<td style="white-space:nowrap">' +
+        '<input type="file" id="linkedin-' + u.id + '" accept=".csv" style="display:none" onchange="uploadLinkedIn(this,\'' + u.id + '\',\'' + esc(u.name) + '\')">' +
+        '<button class="btn-sm" onclick="document.getElementById(\'linkedin-' + u.id + '\').click()" title="Upload LinkedIn connections CSV for this user">LinkedIn CSV</button>' +
+        ' <button class="btn-sm" onclick="triggerDriveSync(\'' + u.id + '\',\'' + esc(u.name) + '\')" title="Trigger Google Drive sync for this user">Sync Drive</button>' +
+      '</td>' +
     '</tr>';
   });
   document.getElementById('usersBody').innerHTML = html;
@@ -456,6 +464,47 @@ async function changeRole(select) {
   } catch(e) {
     alert('Failed: ' + e.message);
     loadAll();
+  }
+}
+
+async function uploadLinkedIn(input, userId, userName) {
+  var file = input.files[0];
+  if (!file) return;
+  if (!confirm('Upload ' + file.name + ' as LinkedIn connections for ' + userName + '?')) { input.value = ''; return; }
+
+  var formData = new FormData();
+  formData.append('file', file);
+  formData.append('target_user_id', userId);
+
+  try {
+    var token = localStorage.getItem('ml_token');
+    var resp = await fetch('/api/admin/upload-linkedin', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: formData
+    });
+    var data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    alert('LinkedIn import for ' + userName + ':\n' +
+      data.total + ' connections processed\n' +
+      data.matched + ' matched to existing people\n' +
+      data.created + ' new people created\n' +
+      data.proximity_created + ' network links created');
+    input.value = '';
+    loadAll();
+  } catch(e) {
+    alert('Upload failed: ' + e.message);
+    input.value = '';
+  }
+}
+
+async function triggerDriveSync(userId, userName) {
+  if (!confirm('Trigger Google Drive sync for ' + userName + '?')) return;
+  try {
+    var data = await api('/api/admin/trigger-drive-sync', { method: 'POST', body: { user_id: userId } });
+    alert(data.message || 'Drive sync triggered for ' + userName);
+  } catch(e) {
+    alert('Failed: ' + e.message);
   }
 }
 
