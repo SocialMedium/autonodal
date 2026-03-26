@@ -1989,7 +1989,9 @@ async function loadPersonalBrief() {
     // Fallback to basic brief
     actions.innerHTML =
       '<div class="action-row" onclick="document.getElementById(\'searchInput\').focus()"><span class="action-icon">🔍</span> Search your network</div>' +
-      '<div class="action-row" onclick="window.location=\'/people.html\'"><span class="action-icon">👥</span> Browse contacts</div>';
+      '<div class="action-row" onclick="window.location=\'/people.html\'"><span class="action-icon">👥</span> Browse contacts</div>' +
+      '<div id="google-connect-row"></div>';
+    checkGoogleConnection();
   }
 }
 

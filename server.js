@@ -149,13 +149,14 @@ app.get('/api/auth/google', (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' });
   const redirectUri = process.env.GOOGLE_REDIRECT_URL || process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
   const returnTo = req.query.return_to || '/index.html';
+  // Request full scopes upfront (Gmail + Drive + Docs) so every sign-in auto-connects
   const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'openid email profile',
+    scope: GOOGLE_CONNECT_SCOPES,
     hd: 'mitchellake.com',
-    prompt: 'select_account',
+    prompt: 'consent',
     access_type: 'offline',
     state: returnTo
   });
@@ -238,6 +239,26 @@ app.get('/api/auth/google/callback', async (req, res) => {
 
     // Clean up expired sessions
     await pool.query('DELETE FROM sessions WHERE expires_at < NOW()');
+
+    // Auto-connect Google (Gmail + Drive) if we received a refresh token
+    if (tokenData.refresh_token) {
+      try {
+        const tenantId = process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+        await pool.query(`
+          INSERT INTO user_google_accounts (id, user_id, google_email, google_name, access_token, refresh_token, scopes, sync_enabled, tenant_id, connected_at)
+          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, true, $7, NOW())
+          ON CONFLICT (user_id, google_email) DO UPDATE SET
+            access_token = EXCLUDED.access_token,
+            refresh_token = COALESCE(EXCLUDED.refresh_token, user_google_accounts.refresh_token),
+            scopes = EXCLUDED.scopes,
+            sync_enabled = true,
+            connected_at = NOW()
+        `, [user.id, userInfo.email, userInfo.name, tokenData.access_token, tokenData.refresh_token, GOOGLE_CONNECT_SCOPES, tenantId]);
+        console.log(`✅ Auto-connected Google for ${userInfo.email} (Gmail + Drive)`);
+      } catch (e) {
+        console.error('Auto-connect Google error:', e.message);
+      }
+    }
 
     // Redirect to app with token (frontend picks it up from URL)
     const sep = returnTo.includes('?') ? '&' : '?';
