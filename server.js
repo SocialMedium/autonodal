@@ -8542,6 +8542,27 @@ app.listen(PORT, async () => {
     }
   } catch (e) {}
 
+  // One-time: Sophie's LinkedIn messages import
+  try {
+    const sophieMsgs = require('path').join(__dirname, 'data', 'sophie_linkedin_messages.csv');
+    if (require('fs').existsSync(sophieMsgs)) {
+      const { rows: [check] } = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM interactions WHERE source = 'linkedin_import' AND user_id = (SELECT id FROM users WHERE email = 'sophiec@mitchellake.com' LIMIT 1)`
+      ).catch(() => ({ rows: [{ cnt: '0' }] }));
+      if (parseInt(check.cnt) < 100) {
+        console.log('  💬 Sophie LinkedIn messages found — importing in background...');
+        const { exec } = require('child_process');
+        exec(`node ${require('path').join(__dirname, 'scripts', 'ingest_linkedin_messages.js')}`, { timeout: 1200000 }, (err, stdout) => {
+          if (stdout) console.log(stdout.slice(-600));
+          if (err) console.error('  ⚠️ Sophie messages import error:', err.message?.slice(0, 200));
+          else console.log('  ✅ Sophie LinkedIn messages import complete');
+        });
+      } else {
+        console.log(`  ℹ️  Sophie LinkedIn messages already imported (${check.cnt} interactions)`);
+      }
+    }
+  } catch (e) {}
+
   // One-time backfill: link orphaned interactions to people
   try {
     // 1. Sent emails — match recipients against people.email
