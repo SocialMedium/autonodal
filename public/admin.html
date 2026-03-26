@@ -175,7 +175,13 @@ select.role-select:focus { outline: none; border-color: var(--blue); }
     <div class="stat-card"><div class="stat-label">Documents</div><div class="stat-value" id="sDocs">-</div></div>
     <div class="stat-card"><div class="stat-label">Dispatches</div><div class="stat-value" id="sDispatches">-</div><div class="stat-sub" id="sDispatchDetail"></div></div>
     <div class="stat-card"><div class="stat-label">Revenue Tracked</div><div class="stat-value" id="sRevenue">-</div><div class="stat-sub" id="sRevenueDetail"></div></div>
-    <div class="stat-card"><div class="stat-label">Google Syncs</div><div class="stat-value" id="sGoogle">-</div></div>
+    <div class="stat-card"><div class="stat-label">Interactions</div><div class="stat-value" id="sInteractions">-</div><div class="stat-sub" id="sInteractionsDetail"></div></div>
+    <div class="stat-card"><div class="stat-label">Gmail Sync</div><div class="stat-value" id="sGmail">-</div><div class="stat-sub" id="sGmailDetail"></div></div>
+    <div class="stat-card"><div class="stat-label">Google Accounts</div><div class="stat-value" id="sGoogle">-</div><div class="stat-sub" id="sGoogleDetail"></div></div>
+    <div class="stat-card"><div class="stat-label">Case Studies</div><div class="stat-value" id="sCaseStudies">-</div></div>
+    <div class="stat-card"><div class="stat-label">WIP / Invoices</div><div class="stat-value" id="sWip">-</div><div class="stat-sub" id="sWipDetail"></div></div>
+    <div class="stat-card"><div class="stat-label">Receivables</div><div class="stat-value" id="sReceivables">-</div></div>
+    <div class="stat-card"><div class="stat-label">User Feeds</div><div class="stat-value" id="sFeeds">-</div></div>
     <div class="stat-card"><div class="stat-label">Embeddings</div><div class="stat-value" id="sEmbeddings">-</div><div class="stat-sub" id="sEmbedDetail"></div></div>
   </div>
 
@@ -401,7 +407,33 @@ function renderStats(s) {
   document.getElementById('sDispatchDetail').textContent = num(s.dispatches_draft) + ' draft \u00B7 ' + num(s.dispatches_sent) + ' sent';
   document.getElementById('sRevenue').textContent = currency(s.total_revenue);
   document.getElementById('sRevenueDetail').textContent = num(s.total_placements) + ' placements';
-  document.getElementById('sGoogle').textContent = num(s.google_syncs_active) + ' active';
+
+  // Interactions
+  document.getElementById('sInteractions').textContent = num(s.total_interactions);
+  document.getElementById('sInteractionsDetail').textContent = num(s.interactions_7d) + ' this week';
+
+  // Gmail sync tallies
+  document.getElementById('sGmail').textContent = num(s.gmail_interactions);
+  document.getElementById('sGmailDetail').textContent =
+    num(s.gmail_24h) + ' today \u00B7 ' + num(s.gmail_7d) + ' this week' +
+    (s.gmail_people_matched ? ' \u00B7 ' + num(s.gmail_people_matched) + ' people' : '');
+
+  // Google accounts
+  document.getElementById('sGoogle').textContent = num(s.google_syncs_active) + ' connected';
+  document.getElementById('sGoogleDetail').textContent = s.last_gmail_sync ? 'Last sync: ' + ago(s.last_gmail_sync) : 'Never synced';
+
+  // Case studies
+  document.getElementById('sCaseStudies').textContent = num(s.total_case_studies);
+
+  // WIP
+  document.getElementById('sWip').textContent = num(parseInt(s.wip_records || 0) + parseInt(s.xero_records || 0));
+  document.getElementById('sWipDetail').textContent = num(s.wip_records) + ' WIP \u00B7 ' + num(s.xero_records) + ' invoices';
+
+  // Receivables
+  document.getElementById('sReceivables').textContent = num(s.total_receivables);
+
+  // User feeds
+  document.getElementById('sFeeds').textContent = num(s.user_feeds);
 }
 
 function renderEmbeddings(e) {

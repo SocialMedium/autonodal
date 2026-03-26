@@ -7397,6 +7397,28 @@ app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) =
     let grabsCount = 0;
     try { const r = await pool.query('SELECT COUNT(*) AS cnt FROM signal_grabs WHERE tenant_id = $1', [req.tenant_id]); grabsCount = r.rows[0]?.cnt || 0; } catch (e) {}
 
+    // Gmail/sync running tallies
+    let gmailStats = {};
+    try {
+      const { rows: [gs] } = await pool.query(`
+        SELECT
+          (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND source = 'gmail_sync') AS gmail_interactions,
+          (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND source = 'gmail_sync' AND interaction_at > NOW() - INTERVAL '7 days') AS gmail_7d,
+          (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND source = 'gmail_sync' AND interaction_at > NOW() - INTERVAL '24 hours') AS gmail_24h,
+          (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1) AS total_interactions,
+          (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND interaction_at > NOW() - INTERVAL '7 days') AS interactions_7d,
+          (SELECT COUNT(DISTINCT person_id) FROM interactions WHERE tenant_id = $1 AND source = 'gmail_sync') AS gmail_people_matched,
+          (SELECT COUNT(*) FROM team_proximity WHERE tenant_id = $1 AND source = 'gmail') AS gmail_proximity_links,
+          (SELECT MAX(last_sync_at) FROM user_google_accounts WHERE sync_enabled = true) AS last_gmail_sync,
+          (SELECT COUNT(*) FROM case_studies WHERE tenant_id = $1 AND status != 'deleted') AS total_case_studies,
+          (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1 AND source = 'wip_workbook') AS wip_records,
+          (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1 AND source = 'xero_export') AS xero_records,
+          (SELECT COUNT(*) FROM receivables WHERE tenant_id = $1) AS total_receivables,
+          (SELECT COUNT(*) FROM feed_proposals) AS user_feeds
+      `, [req.tenant_id]);
+      gmailStats = gs || {};
+    } catch (e) { /* some tables may not exist */ }
+
     const sources = await pool.query(`
       SELECT rs.name, rs.source_type, rs.url, rs.enabled,
              rs.last_fetched_at, rs.last_error, rs.consecutive_errors,
@@ -7428,7 +7450,7 @@ app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) =
 
     const emb = storage.rows[0] || {};
     res.json({
-      stats: { ...stats.rows[0], google_syncs_active: googleCount, total_grabs: grabsCount },
+      stats: { ...stats.rows[0], google_syncs_active: googleCount, total_grabs: grabsCount, ...gmailStats },
       sources: sources.rows,
       pipeline_runs: pipelines.rows,
       embeddings: {
