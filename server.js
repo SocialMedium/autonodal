@@ -8561,6 +8561,21 @@ app.listen(PORT, async () => {
     }
   } catch (e) {}
 
+  // Backfill: create team_proximity for LinkedIn-imported people missing proximity links
+  try {
+    const { rowCount: proxCreated } = await pool.query(`
+      INSERT INTO team_proximity (person_id, team_member_id, relationship_type, relationship_strength, source, tenant_id)
+      SELECT p.id, p.created_by, 'linkedin_connection', 0.5, 'linkedin_import', p.tenant_id
+      FROM people p
+      WHERE p.source = 'linkedin_import'
+        AND p.created_by IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM team_proximity tp WHERE tp.person_id = p.id AND tp.team_member_id = p.created_by
+        )
+    `).catch(() => ({ rowCount: 0 }));
+    if (proxCreated > 0) console.log(`  ✅ Backfilled ${proxCreated} LinkedIn proximity links`);
+  } catch (e) {}
+
   // One-time backfill: link orphaned interactions to people
   try {
     // 1. Sent emails — match recipients against people.email
