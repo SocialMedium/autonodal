@@ -25,7 +25,7 @@ async function ensureSchema() {
   const sql = fs.readFileSync(sqlPath, 'utf8');
   const statements = sql.split(';').map(s => s.trim()).filter(s => s.length > 5 && !s.startsWith('--'));
   for (const stmt of statements) {
-    try { await pool.query(stmt); } catch (e) { /* already applied */ }
+    try { await pool.query(stmt); } catch (e) { if (!e.message.includes('already exists') && !e.message.includes('does not exist')) console.log('    Migration note:', e.message.slice(0, 100)); }
   }
   console.log('  ✅ Schema migration applied');
 }

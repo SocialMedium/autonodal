@@ -15,10 +15,8 @@ ALTER TABLE placements ALTER COLUMN start_date DROP NOT NULL;
 ALTER TABLE placements ALTER COLUMN placement_fee DROP NOT NULL;
 ALTER TABLE placements ALTER COLUMN role_title DROP NOT NULL;
 
--- 2. Change client_id FK from clients to companies (if referencing clients table)
--- The codebase uses 'companies' table, not 'clients' — but the original DDL
--- references clients(id). We add a companies reference if needed.
-ALTER TABLE placements ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+-- 2. Add company_id column (plain UUID, no FK — companies table may use different id type)
+ALTER TABLE placements ADD COLUMN IF NOT EXISTS company_id UUID;
 
 -- 3. New columns for WIP workbook data
 ALTER TABLE placements ADD COLUMN IF NOT EXISTS fee_stage VARCHAR(30);
@@ -53,7 +51,7 @@ CREATE TABLE IF NOT EXISTS receivables (
   tenant_id UUID DEFAULT '00000000-0000-0000-0000-000000000001',
   invoice_number VARCHAR(50),
   client_name VARCHAR(255),
-  company_id UUID REFERENCES companies(id),
+  company_id UUID,
   invoice_date DATE,
   due_date DATE,
   invoice_total DECIMAL(12,2),
