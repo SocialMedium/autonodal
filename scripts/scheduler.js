@@ -700,6 +700,48 @@ async function pipelineEmbedIntelligence() {
     console.log(`     ${stats.case_studies} case studies embedded`);
   }
 
+  // ─── People (unembedded, with enough data to be useful) ───
+  console.log('   👥 Embedding unembedded people...');
+
+  const unembeddedPeople = await pool.query(`
+    SELECT id, full_name, current_title, current_company_name, linkedin_url, location
+    FROM people
+    WHERE embedded_at IS NULL
+      AND full_name IS NOT NULL AND full_name != ''
+      AND (current_title IS NOT NULL OR current_company_name IS NOT NULL)
+    ORDER BY created_at DESC
+    LIMIT 500
+  `).catch(() => ({ rows: [] }));
+
+  if (unembeddedPeople.rows.length > 0) {
+    const texts = unembeddedPeople.rows.map(p =>
+      [p.full_name, p.current_title, p.current_company_name, p.location].filter(Boolean).join(' | ')
+    );
+
+    const pplEmbeddings = await embedBatch(texts);
+
+    const pplPoints = unembeddedPeople.rows.map((p, i) => ({
+      id: Date.now() * 1000 + 40000 + i,
+      vector: pplEmbeddings[i],
+      payload: {
+        type: 'person',
+        person_id: p.id,
+        name: p.full_name,
+        title: p.current_title,
+        company: p.current_company_name
+      }
+    }));
+
+    await qdrantUpsert('people', pplPoints);
+
+    await pool.query(`
+      UPDATE people SET embedded_at = NOW() WHERE id = ANY($1)
+    `, [unembeddedPeople.rows.map(p => p.id)]);
+
+    stats.people = unembeddedPeople.rows.length;
+    console.log(`     ${stats.people} people embedded`);
+  }
+
   return stats;
 }
 
