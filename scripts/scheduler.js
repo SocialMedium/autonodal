@@ -1308,6 +1308,17 @@ const PIPELINES = {
     description: 'Harvest new episodes from all podcast RSS feeds into external_documents'
   },
 
+  compute_signal_index: {
+    name: 'Compute Signal Index',
+    icon: '📈',
+    fn: async () => {
+      const { computeSignalIndex } = require('./compute_signal_index');
+      return computeSignalIndex();
+    },
+    schedule: '5 * * * *',
+    description: 'Compute market health index, signal stocks, sector indices'
+  },
+
   sync_gmail: {
     name: 'Gmail Sync',
     icon: '📧',

@@ -1162,6 +1162,65 @@ app.get('/api/signals/hero', authenticateToken, async (req, res) => {
 // MARKET TEMPERATURE — macro summary from megacap/public company signals
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ── Signal Index — Market Health Ticker ──────────────────────────────
+app.get('/api/signal-index', authenticateToken, async (req, res) => {
+  try {
+    const horizon = req.query.horizon || '7d';
+    const tid = req.tenant_id;
+
+    const [mh, stocks, stats] = await Promise.all([
+      pool.query(`SELECT * FROM market_health_index WHERE tenant_id = $1 AND horizon = $2 LIMIT 1`, [tid, horizon]).catch(() => ({ rows: [] })),
+      pool.query(`SELECT * FROM signal_stocks WHERE tenant_id = $1 AND horizon = $2 ORDER BY weight DESC`, [tid, horizon]).catch(() => ({ rows: [] })),
+      pool.query(`SELECT * FROM signal_index_stats WHERE tenant_id = $1 LIMIT 1`, [tid]).catch(() => ({ rows: [] })),
+    ]);
+
+    const signalStocks = {};
+    for (const s of stocks.rows) {
+      signalStocks[s.stock_name] = {
+        sentiment: s.sentiment, weight: s.weight, delta: s.delta,
+        direction: s.direction, score: s.score,
+        current_count: s.current_count, prior_count: s.prior_count
+      };
+    }
+
+    res.json({
+      horizon,
+      market_health: mh.rows[0] || { score: 50, delta: 0, direction: 'flat' },
+      signal_stocks: signalStocks,
+      stats: stats.rows[0] || { people_tracked: 0, companies_tracked: 0, signals_7d: 0, signals_30d: 0 },
+      computed_at: mh.rows[0]?.computed_at || null
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/signal-index/sectors', authenticateToken, async (req, res) => {
+  try {
+    const horizon = req.query.horizon || '7d';
+    const { rows } = await pool.query(
+      `SELECT * FROM sector_indices WHERE tenant_id = $1 AND horizon = $2 ORDER BY score DESC`,
+      [req.tenant_id, horizon]
+    ).catch(() => ({ rows: [] }));
+
+    const sectors = {};
+    for (const r of rows) {
+      sectors[r.sector] = { score: r.score, delta: r.delta, direction: r.direction, signal_count: r.signal_count, company_count: r.company_count };
+    }
+    res.json({ horizon, sectors });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/signal-index/history', authenticateToken, async (req, res) => {
+  try {
+    const horizon = req.query.horizon || '7d';
+    const limit = Math.min(parseInt(req.query.limit) || 90, 365);
+    const { rows } = await pool.query(
+      `SELECT score, delta, snapshot_at FROM market_health_history WHERE tenant_id = $1 AND horizon = $2 ORDER BY snapshot_at DESC LIMIT $3`,
+      [req.tenant_id, horizon, limit]
+    ).catch(() => ({ rows: [] }));
+    res.json({ horizon, history: rows.reverse() });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/market-temperature', authenticateToken, async (req, res) => {
   try {
     // Aggregate megacap signals by type for the last 7 days
@@ -8587,6 +8646,16 @@ app.listen(PORT, async () => {
       console.log('  ✅ Network topology tables ready');
     }
   } catch (e) { /* tables may already exist */ }
+
+  // Signal Index tables
+  try {
+    const siMigration = require('path').join(__dirname, 'sql', 'signal_index.sql');
+    if (require('fs').existsSync(siMigration)) {
+      const sql = require('fs').readFileSync(siMigration, 'utf8');
+      const stmts = sql.split(';').map(s => s.trim()).filter(s => s.length > 10 && !s.startsWith('--'));
+      for (const stmt of stmts) { try { await pool.query(stmt); } catch (e) {} }
+    }
+  } catch (e) {}
 
   // Ensure signal_dispatches table exists with claim columns
   try {

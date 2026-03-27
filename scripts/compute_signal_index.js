@@ -1,0 +1,193 @@
+#!/usr/bin/env node
+// ============================================================================
+// Signal Index — Market Health Computation
+// Computes signal stocks, composite index, sector indices, history
+// Runs every hour via scheduler or manually
+// ============================================================================
+
+require('dotenv').config();
+const { Pool } = require('pg');
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false }
+});
+
+const TENANT_ID = process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+
+// ── Signal stock configuration ──────────────────────────────────────
+// Maps our 9 actual signal_types to stocks with sentiment and weight
+const SIGNAL_STOCKS = {
+  capital_raising:      { sentiment: 'bullish',  weight: 3.0, label: 'Capital Raise' },
+  ma_activity:          { sentiment: 'neutral',  weight: 2.5, label: 'M&A' },
+  product_launch:       { sentiment: 'bullish',  weight: 2.0, label: 'Product Launch' },
+  leadership_change:    { sentiment: 'neutral',  weight: 1.5, label: 'Leadership' },
+  strategic_hiring:     { sentiment: 'bullish',  weight: 1.0, label: 'Hiring' },
+  geographic_expansion: { sentiment: 'bullish',  weight: 1.5, label: 'Expansion' },
+  partnership:          { sentiment: 'bullish',  weight: 1.2, label: 'Partnership' },
+  layoffs:              { sentiment: 'bearish',  weight: 2.0, label: 'Layoffs' },
+  restructuring:        { sentiment: 'bearish',  weight: 2.5, label: 'Restructuring' },
+};
+
+const HORIZONS = [
+  { key: '7d',  days: 7,   priorDays: 14  },
+  { key: '30d', days: 30,  priorDays: 60  },
+  { key: '90d', days: 90,  priorDays: 180 },
+];
+
+function computeDelta(current, prior) {
+  if (prior > 0) return ((current - prior) / prior) * 100;
+  return current > 0 ? 100 : 0;
+}
+
+function deltaToScore(delta, sentiment) {
+  const dir = sentiment === 'bullish' ? 1 : sentiment === 'bearish' ? -1 : 0.5;
+  const raw = 50 + (dir * delta / 3);
+  return Math.min(100, Math.max(0, Math.round(raw * 10) / 10));
+}
+
+function getDirection(delta) {
+  return delta > 3 ? 'up' : delta < -3 ? 'down' : 'flat';
+}
+
+async function ensureSchema() {
+  const fs = require('fs');
+  const sqlPath = require('path').join(__dirname, '..', 'sql', 'signal_index.sql');
+  if (fs.existsSync(sqlPath)) {
+    const sql = fs.readFileSync(sqlPath, 'utf8');
+    const stmts = sql.split(';').map(s => s.trim()).filter(s => s.length > 10 && !s.startsWith('--'));
+    for (const stmt of stmts) {
+      try { await pool.query(stmt); } catch (e) { /* already exists */ }
+    }
+  }
+}
+
+async function computeSignalIndex() {
+  await ensureSchema();
+  console.log('  📈 Computing signal index...');
+
+  for (const horizon of HORIZONS) {
+    const stockResults = {};
+
+    // 1. Compute each signal stock
+    for (const [signalType, cfg] of Object.entries(SIGNAL_STOCKS)) {
+      const { rows: [counts] } = await pool.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE detected_at > NOW() - ($1 || ' days')::INTERVAL)::int AS current_count,
+          COUNT(*) FILTER (WHERE detected_at BETWEEN NOW() - ($2 || ' days')::INTERVAL AND NOW() - ($1 || ' days')::INTERVAL)::int AS prior_count
+        FROM signal_events
+        WHERE signal_type = $3 AND tenant_id = $4
+      `, [horizon.days, horizon.priorDays, signalType, TENANT_ID]);
+
+      const current = counts?.current_count || 0;
+      const prior = counts?.prior_count || 0;
+      const delta = computeDelta(current, prior);
+      const score = deltaToScore(delta, cfg.sentiment);
+      const dir = getDirection(delta);
+
+      stockResults[signalType] = { delta, score, direction: dir, current_count: current, prior_count: prior };
+
+      await pool.query(`
+        INSERT INTO signal_stocks (tenant_id, stock_name, sentiment, weight, horizon, current_count, prior_count, delta, direction, score, computed_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+        ON CONFLICT (tenant_id, stock_name, horizon) DO UPDATE SET
+          current_count = EXCLUDED.current_count, prior_count = EXCLUDED.prior_count,
+          delta = EXCLUDED.delta, direction = EXCLUDED.direction, score = EXCLUDED.score, computed_at = NOW()
+      `, [TENANT_ID, signalType, cfg.sentiment, cfg.weight, horizon.key, current, prior, Math.round(delta * 10) / 10, dir, score]);
+    }
+
+    // 2. Compute composite Market Health Index
+    let weightedSum = 0, totalWeight = 0, bullishCount = 0, bearishCount = 0;
+    let dominantStock = null, dominantContrib = 0;
+
+    for (const [name, data] of Object.entries(stockResults)) {
+      const cfg = SIGNAL_STOCKS[name];
+      const contrib = data.score * cfg.weight;
+      weightedSum += contrib;
+      totalWeight += cfg.weight;
+
+      const absContrib = Math.abs(data.score - 50) * cfg.weight;
+      if (absContrib > dominantContrib) { dominantContrib = absContrib; dominantStock = name; }
+
+      if (cfg.sentiment === 'bullish' && data.direction === 'up') bullishCount++;
+      if (cfg.sentiment === 'bearish' && data.direction === 'up') bearishCount++;
+    }
+
+    const compositeScore = totalWeight > 0 ? Math.round((weightedSum / totalWeight) * 10) / 10 : 50.0;
+
+    // Prior composite for delta
+    const { rows: priorRows } = await pool.query(`
+      SELECT score FROM market_health_history
+      WHERE tenant_id = $1 AND horizon = $2
+      ORDER BY snapshot_at DESC OFFSET 1 LIMIT 1
+    `, [TENANT_ID, horizon.key]);
+    const compositeDelta = priorRows.length > 0 ? computeDelta(compositeScore, priorRows[0].score) : 0;
+
+    await pool.query(`
+      INSERT INTO market_health_index (tenant_id, horizon, score, delta, direction, bullish_count, bearish_count, dominant_signal, computed_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
+      ON CONFLICT (tenant_id, horizon) DO UPDATE SET
+        score = EXCLUDED.score, delta = EXCLUDED.delta, direction = EXCLUDED.direction,
+        bullish_count = EXCLUDED.bullish_count, bearish_count = EXCLUDED.bearish_count,
+        dominant_signal = EXCLUDED.dominant_signal, computed_at = NOW()
+    `, [TENANT_ID, horizon.key, compositeScore, Math.round(compositeDelta * 10) / 10, getDirection(compositeDelta), bullishCount, bearishCount, dominantStock]);
+
+    // 3. Append to history
+    await pool.query(`INSERT INTO market_health_history (tenant_id, horizon, score, delta, snapshot_at) VALUES ($1,$2,$3,$4,NOW())`,
+      [TENANT_ID, horizon.key, compositeScore, Math.round(compositeDelta * 10) / 10]);
+
+    // 4. Sector indices (by company sector)
+    const { rows: sectors } = await pool.query(`
+      SELECT COALESCE(c.sector, 'Unknown') AS sector,
+        COUNT(*) FILTER (WHERE se.detected_at > NOW() - ($1 || ' days')::INTERVAL)::int AS current_count,
+        COUNT(*) FILTER (WHERE se.detected_at BETWEEN NOW() - ($2 || ' days')::INTERVAL AND NOW() - ($1 || ' days')::INTERVAL)::int AS prior_count,
+        COUNT(DISTINCT se.company_id) AS company_count
+      FROM signal_events se
+      LEFT JOIN companies c ON c.id = se.company_id
+      WHERE se.tenant_id = $3 AND se.detected_at > NOW() - ($2 || ' days')::INTERVAL
+      GROUP BY COALESCE(c.sector, 'Unknown')
+      HAVING COUNT(*) >= 3
+      ORDER BY current_count DESC LIMIT 20
+    `, [horizon.days, horizon.priorDays, TENANT_ID]);
+
+    for (const sec of sectors) {
+      const sd = computeDelta(sec.current_count, sec.prior_count);
+      const ss = Math.min(100, Math.max(0, Math.round((50 + sd / 3) * 10) / 10));
+      await pool.query(`
+        INSERT INTO sector_indices (tenant_id, sector, horizon, score, delta, direction, signal_count, company_count, computed_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
+        ON CONFLICT (tenant_id, sector, horizon) DO UPDATE SET
+          score = EXCLUDED.score, delta = EXCLUDED.delta, direction = EXCLUDED.direction,
+          signal_count = EXCLUDED.signal_count, company_count = EXCLUDED.company_count, computed_at = NOW()
+      `, [TENANT_ID, sec.sector, horizon.key, ss, Math.round(sd * 10) / 10, getDirection(sd), sec.current_count, sec.company_count]);
+    }
+
+    console.log(`     ${horizon.key}: index=${compositeScore} (${getDirection(compositeDelta)}), ${Object.keys(stockResults).length} stocks, ${sectors.length} sectors`);
+  }
+
+  // 5. Platform stats
+  const { rows: [stats] } = await pool.query(`
+    SELECT
+      (SELECT COUNT(*) FROM people WHERE tenant_id = $1) AS people,
+      (SELECT COUNT(*) FROM companies WHERE tenant_id = $1) AS companies,
+      (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '7 days') AS s7d,
+      (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '30 days') AS s30d
+  `, [TENANT_ID]);
+
+  await pool.query(`
+    INSERT INTO signal_index_stats (tenant_id, people_tracked, companies_tracked, signals_7d, signals_30d, computed_at)
+    VALUES ($1,$2,$3,$4,$5,NOW())
+    ON CONFLICT (tenant_id) DO UPDATE SET
+      people_tracked = EXCLUDED.people_tracked, companies_tracked = EXCLUDED.companies_tracked,
+      signals_7d = EXCLUDED.signals_7d, signals_30d = EXCLUDED.signals_30d, computed_at = NOW()
+  `, [TENANT_ID, parseInt(stats.people) || 0, parseInt(stats.companies) || 0, parseInt(stats.s7d) || 0, parseInt(stats.s30d) || 0]);
+
+  console.log(`  ✅ Signal index complete — ${stats.people} people, ${stats.companies} companies, ${stats.s7d} signals/7d`);
+  return { people: stats.people, companies: stats.companies, signals_7d: stats.s7d };
+}
+
+if (require.main === module) {
+  computeSignalIndex().then(() => pool.end()).catch(e => { console.error('Fatal:', e); process.exit(1); });
+}
+
+module.exports = { computeSignalIndex };
