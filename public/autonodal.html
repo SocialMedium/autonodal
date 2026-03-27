@@ -123,10 +123,10 @@ body {
 
 /* ── HERO ── */
 .hero {
-  min-height: 100vh;
+  min-height: 85vh;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  padding: 120px 24px 80px;
+  padding: 100px 24px 60px;
   text-align: center;
   position: relative;
   overflow: hidden;
@@ -549,11 +549,11 @@ section {
     </div>
   </div>
 </nav>
-<div id="signal-ticker"></div>
+<div id="signal-ticker" style="position:fixed;top:64px;left:0;right:0;z-index:99"></div>
 <script src="/signal-ticker.js" data-position="top"></script>
 
 <!-- HERO -->
-<section class="hero" id="hero">
+<section class="hero" id="hero" style="padding-top:140px">
   <div class="hero-words" id="heroWords">
     <div class="hero-word display" id="hw1"><span class="hw-first">L</span>ead <span class="hw-first">O</span>rigination</div>
     <div class="hero-word display amp" id="hw2">&amp;</div>
