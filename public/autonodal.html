@@ -3,19 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Autonodal — Multi-Party Intelligence</title>
-<meta name="description" content="Lead Origination & Relationship Acceleration Concierge. Where market signals, network intelligence and relationship depth converge.">
+<title>Autonodal — Actionable intelligence from networks in motion</title>
+<meta name="description" content="Stop chasing the market. See it move — and know when it matters. Actionable intelligence from networks in motion.">
 <link rel="canonical" href="https://www.autonodal.com">
-<meta property="og:title" content="Autonodal — Multi-Party Intelligence">
-<meta property="og:description" content="Lead Origination & Relationship Acceleration Concierge. Where market signals, network intelligence and relationship depth converge.">
+<meta property="og:title" content="Autonodal — Actionable intelligence from networks in motion">
+<meta property="og:description" content="Stop chasing the market. See it move — and know when it matters.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.autonodal.com">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Autonodal — Multi-Party Intelligence">
-<meta name="twitter:description" content="Lead Origination & Relationship Acceleration Concierge. Where market signals, network intelligence and relationship depth converge.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg: #f5f3ef;
@@ -26,859 +23,331 @@
   --ink-3: #9b948a;
   --accent: #1a56db;
   --accent-2: #0ea472;
-  --accent-warm: #e85d26;
   --border: rgba(15,14,12,0.08);
   --border-strong: rgba(15,14,12,0.16);
   --shadow: 0 2px 8px rgba(15,14,12,0.06), 0 12px 40px rgba(15,14,12,0.08);
-  --shadow-lg: 0 4px 16px rgba(15,14,12,0.08), 0 32px 80px rgba(15,14,12,0.12);
 }
-
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
 html { scroll-behavior: smooth; }
-
-body {
-  font-family: 'IBM Plex Sans', -apple-system, sans-serif;
-  background: var(--bg);
-  color: var(--ink);
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-}
-
+body { font-family: 'IBM Plex Sans', -apple-system, sans-serif; background: var(--bg); color: var(--ink); line-height: 1.6; -webkit-font-smoothing: antialiased; }
 .display { font-family: 'Playfair Display', Georgia, serif; }
 .mono { font-family: 'IBM Plex Mono', monospace; }
 
-/* ── NAV ── */
-.nav {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-  background: rgba(255,255,255,0.95);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid transparent;
-  transition: border-color 0.3s, box-shadow 0.3s;
-  padding: 0 48px;
-  height: 64px;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.nav.scrolled {
-  border-bottom-color: var(--border);
-  box-shadow: 0 1px 12px rgba(15,14,12,0.06);
-}
-.nav-brand { display: flex; align-items: baseline; gap: 12px; }
-.nav-brand-name { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 20px; color: var(--ink); }
-.nav-brand-sub { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 1.5px; }
-.btn-pill {
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-size: 14px; font-weight: 600;
-  padding: 10px 24px; border-radius: 100px;
-  border: none; cursor: pointer;
-  transition: all 0.25s ease;
-  text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
-}
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover { background: #1448b8; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(26,86,219,0.3); }
-.btn-ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--border-strong); }
-.btn-ghost:hover { border-color: var(--ink); background: var(--surface); }
+/* Nav */
+.nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(245,243,239,0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid transparent; transition: border-color 0.3s, box-shadow 0.3s; padding: 0 48px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+.nav.scrolled { border-bottom-color: var(--border-strong); box-shadow: 0 1px 12px rgba(15,14,12,0.06); }
+.nav-brand { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 20px; color: var(--ink); letter-spacing: -0.02em; }
+.nav-user { display: flex; align-items: center; gap: 12px; }
+.nav-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+.btn-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 20px; border-radius: 24px; text-decoration: none; font-size: 13px; font-weight: 500; transition: all 0.2s; border: none; cursor: pointer; }
+.btn-primary { background: var(--ink); color: #fff; }
+.btn-primary:hover { background: #333; }
+.btn-ghost { background: transparent; color: var(--ink-2); border: 1px solid var(--border-strong); }
+.btn-ghost:hover { background: var(--surface); }
+.btn-google { background: var(--surface); color: var(--ink); border: 1px solid var(--border-strong); box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.btn-google:hover { box-shadow: var(--shadow); }
+.google-domain { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ink-3); }
 
-/* Google Sign-in Button */
-.btn-google {
-  background: var(--surface);
-  color: var(--ink);
-  border: 1.5px solid var(--border-strong);
-  display: inline-flex; align-items: center; gap: 10px;
-  font-weight: 600;
-  transition: all 0.25s ease;
-}
-.btn-google:hover {
-  border-color: var(--ink);
-  box-shadow: 0 2px 12px rgba(15,14,12,0.1);
-  transform: translateY(-1px);
-}
-.btn-google svg { flex-shrink: 0; }
-.btn-google .google-domain {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  color: var(--ink-3);
-  margin-left: 2px;
-}
+/* Hero */
+.hero { min-height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 120px 24px 60px; text-align: center; }
+.hero-headline { font-family: 'Playfair Display', serif; font-size: clamp(32px, 5vw, 56px); font-weight: 700; line-height: 1.15; max-width: 800px; margin-bottom: 20px; letter-spacing: -0.02em; }
+.hero-sub { font-size: 18px; color: var(--ink-2); font-weight: 300; margin-bottom: 32px; letter-spacing: 0.01em; }
+.hero-ctas { display: flex; gap: 12px; align-items: center; }
+.hero-scroll { margin-top: 24px; font-size: 13px; color: var(--ink-3); text-decoration: none; }
+.hero-scroll:hover { color: var(--ink-2); }
 
-/* Auth user badge */
-.nav-user {
-  display: flex; align-items: center; gap: 12px;
-}
-.nav-avatar {
-  width: 32px; height: 32px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-size: 13px; font-weight: 600;
-}
-.nav-user-name {
-  font-size: 13px;
-  color: var(--ink-2);
-  font-weight: 500;
-}
+/* Sections */
+.section { max-width: 680px; margin: 0 auto; padding: 80px 24px; }
+.section.wide { max-width: 900px; }
+.section-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 2px; color: var(--ink-3); margin-bottom: 16px; }
+.section h2 { font-family: 'Playfair Display', serif; font-size: clamp(24px, 3.5vw, 40px); font-weight: 700; line-height: 1.2; margin-bottom: 24px; letter-spacing: -0.02em; }
+.section p { font-size: 17px; color: var(--ink-2); margin-bottom: 16px; line-height: 1.7; font-weight: 300; }
+.section p strong { color: var(--ink); font-weight: 500; }
+.section .emphasis { font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 700; color: var(--ink); margin: 32px 0; line-height: 1.3; }
 
-/* ── HERO ── */
-.hero {
-  min-height: 85vh;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  padding: 100px 24px 60px;
-  text-align: center;
-  position: relative;
-  overflow: hidden;
-}
+/* Stacked lines */
+.stack { margin: 24px 0; }
+.stack-line { font-size: 17px; color: var(--ink-2); padding: 6px 0; border-bottom: 1px solid var(--border); font-weight: 300; }
+.stack-line:last-child { border-bottom: none; }
+.stack-line.muted { color: var(--ink-3); }
 
-/* Phase 1: Words */
-.hero-words { position: relative; min-height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.hero-word {
-  font-family: 'Playfair Display', serif;
-  font-size: clamp(36px, 6vw, 64px);
-  line-height: 1.15;
-  opacity: 0;
-  transform: translateY(30px);
-}
-.hero-word.amp {
-  font-size: clamp(24px, 3.5vw, 40px);
-  color: var(--ink-3);
-  margin: 4px 0;
-}
-.hero-word.concierge {
-  font-size: clamp(40px, 6.5vw, 72px);
-  color: var(--accent);
-}
-.hero-word.show {
-  animation: wordIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-@keyframes wordIn {
-  to { opacity: 1; transform: translateY(0); }
-}
+/* Highlight block */
+.highlight { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 32px; margin: 32px 0; }
+.highlight-lines { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+.highlight-item { font-family: 'IBM Plex Mono', monospace; font-size: 13px; padding: 6px 16px; border-radius: 20px; background: var(--bg-2); color: var(--ink-2); }
 
-/* Phase 2-3: LORAC AI assembly */
-.hero-lorac-container {
-  position: absolute; top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  display: flex; align-items: center; gap: 0;
-  opacity: 0; pointer-events: none;
-}
-.hero-lorac-container.active { pointer-events: auto; }
-.lorac-letter {
-  font-family: 'Playfair Display', serif;
-  font-size: clamp(56px, 8vw, 96px);
-  font-weight: 700;
-  color: var(--ink);
-  opacity: 0;
-  display: inline-block;
-}
-.lorac-letter.land {
-  animation: letterLand 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-}
-@keyframes letterLand {
-  0% { opacity: 0; transform: scale(1.4) translateY(-20px); }
-  100% { opacity: 1; transform: scale(1) translateY(0); }
-}
-.lorac-sep {
-  width: 2px; height: 56px;
-  background: var(--border-strong);
-  margin: 0 20px;
-  opacity: 0;
-  transform: scaleY(0);
-}
-.lorac-sep.show {
-  animation: sepIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-@keyframes sepIn {
-  to { opacity: 1; transform: scaleY(1); }
-}
-.lorac-ai {
-  font-family: 'Playfair Display', serif;
-  font-size: clamp(56px, 8vw, 96px);
-  font-weight: 700;
-  color: var(--accent-2);
-  opacity: 0;
-}
-.lorac-ai.show {
-  animation: aiIn 0.5s ease forwards;
-}
-@keyframes aiIn {
-  to { opacity: 1; }
-}
-.lorac-glow {
-  animation: glowPulse 1s ease;
-}
-@keyframes glowPulse {
-  0%, 100% { text-shadow: none; }
-  50% { text-shadow: 0 0 40px rgba(26,86,219,0.3), 0 0 80px rgba(26,86,219,0.15); }
-}
+/* Divider */
+.divider { max-width: 680px; margin: 0 auto; padding: 0 24px; }
+.divider hr { border: none; border-top: 1px solid var(--border-strong); }
 
-/* Phase 4: Expansion + tagline */
-.hero-sub {
-  margin-top: 24px;
-  opacity: 0;
-  transform: translateY(16px);
-}
-.hero-sub.show {
-  animation: fadeUp 0.6s ease forwards;
-}
-.hero-expansion {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: clamp(11px, 1.4vw, 14px);
-  color: var(--ink-3);
-  letter-spacing: 0.5px;
-  margin-bottom: 12px;
-}
-.hero-tagline {
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-size: clamp(16px, 2vw, 20px);
-  color: var(--ink-2);
-  font-weight: 500;
-}
-
-/* Phase 5: CTAs */
-.hero-ctas {
-  display: flex; gap: 16px; margin-top: 40px;
-  opacity: 0; transform: translateY(16px);
-}
-.hero-ctas.show { animation: fadeUp 0.6s ease forwards; }
-
-@keyframes fadeUp {
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* Replay */
-.replay-btn {
-  position: fixed; bottom: 24px; right: 24px; z-index: 50;
-  background: none; border: 1px solid var(--border);
-  border-radius: 8px; padding: 8px 12px;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px; color: var(--ink-3);
-  cursor: pointer; opacity: 0; transition: all 0.3s;
-}
-.replay-btn.show { opacity: 1; }
-.replay-btn:hover { color: var(--ink); border-color: var(--border-strong); }
-
-/* ── TICKER ── */
-.ticker {
-  background: var(--bg-2);
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  overflow: hidden;
-  padding: 14px 0;
-  white-space: nowrap;
-}
-.ticker-track {
-  display: inline-flex;
-  animation: tickerScroll 40s linear infinite;
-}
-.ticker-item {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 13px;
-  color: var(--ink-3);
-  padding: 0 24px;
-  display: inline-flex; align-items: center; gap: 8px;
-  flex-shrink: 0;
-}
-.ticker-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-2); flex-shrink: 0; }
-@keyframes tickerScroll {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
-}
-
-/* ── SECTIONS ── */
-section {
-  padding: 120px 48px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-.section-tag {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  color: var(--accent);
-  margin-bottom: 16px;
-}
-.section-title {
-  font-family: 'Playfair Display', serif;
-  font-size: clamp(32px, 4vw, 48px);
-  line-height: 1.2;
-  margin-bottom: 24px;
-}
-.section-body {
-  font-size: 18px;
-  color: var(--ink-2);
-  max-width: 720px;
-  line-height: 1.7;
-}
-
-/* Scroll reveal */
-.reveal {
-  opacity: 0;
-  transform: translateY(32px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-.reveal.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-/* ── CARDS ── */
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
-  padding: 32px;
-  transition: all 0.25s ease;
-}
-.card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
-  border-color: var(--border-strong);
-}
-
-/* Party cards */
-.party-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 24px;
-  margin-top: 48px;
-}
-.party-card { border-left: 4px solid var(--accent); }
-.party-card.second { border-left-color: var(--accent-2); }
-.party-card.third { border-left-color: var(--accent-warm); }
-.party-card-title {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  margin-bottom: 12px;
-}
-.party-card.first .party-card-title { color: var(--accent); }
-.party-card.second .party-card-title { color: var(--accent-2); }
-.party-card.third .party-card-title { color: var(--accent-warm); }
-.party-card p { font-size: 15px; color: var(--ink-2); line-height: 1.6; }
-
-/* Pillar cards */
-.pillar-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 24px;
-  margin-top: 48px;
-}
-.pillar-bar { height: 4px; border-radius: 2px; margin-bottom: 24px; }
-.pillar-bar.cobalt { background: var(--accent); }
-.pillar-bar.emerald { background: var(--accent-2); }
-.pillar-bar.orange { background: var(--accent-warm); }
-.pillar-icon { margin-bottom: 20px; }
-.pillar-title {
-  font-family: 'Playfair Display', serif;
-  font-size: 24px;
-  margin-bottom: 16px;
-}
-.pillar-body { font-size: 15px; color: var(--ink-2); line-height: 1.7; }
-
-/* Steps */
-.steps { counter-reset: step; }
-.step-item {
-  display: grid;
-  grid-template-columns: 80px 1fr;
-  gap: 32px;
-  padding: 48px 0;
-  border-bottom: 1px solid var(--border);
-  align-items: start;
-}
-.step-item:last-child { border-bottom: none; }
-.step-num {
-  font-family: 'Playfair Display', serif;
-  font-size: 56px;
-  color: var(--border-strong);
-  line-height: 1;
-}
-.step-title {
-  font-family: 'Playfair Display', serif;
-  font-size: 24px;
-  margin-bottom: 12px;
-}
-.step-body { font-size: 16px; color: var(--ink-2); line-height: 1.7; max-width: 560px; }
-
-/* LORAC AI section */
-.lorac-section {
-  background: var(--bg-2);
-  border-radius: 24px;
-  padding: 80px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 64px;
-  align-items: center;
-  margin: 0 48px;
-  max-width: 1200px;
-  margin-left: auto; margin-right: auto;
-}
-.lorac-left-title {
-  font-family: 'Playfair Display', serif;
-  font-size: clamp(48px, 6vw, 72px);
-  font-weight: 700;
-  margin-bottom: 40px;
-}
-.lorac-left-title .ai { color: var(--accent-2); }
-.etymology { list-style: none; }
-.etymology li {
-  display: flex; align-items: baseline; gap: 16px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-}
-.etymology li:last-child { border-bottom: none; }
-.ety-letter {
-  font-family: 'Playfair Display', serif;
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--accent);
-  width: 32px;
-  flex-shrink: 0;
-}
-.ety-word { font-size: 16px; color: var(--ink-2); }
-.lorac-right-tag {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  color: var(--accent-2);
-  margin-bottom: 16px;
-}
-.lorac-right-title {
-  font-family: 'Playfair Display', serif;
-  font-size: 32px;
-  margin-bottom: 20px;
-}
-.lorac-right-body { font-size: 16px; color: var(--ink-2); line-height: 1.8; }
-.lorac-right-body p + p { margin-top: 16px; }
+/* Platform stats */
+.stats-bar { max-width: 900px; margin: 0 auto; padding: 40px 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 16px; text-align: center; }
+.stat-item .stat-value { font-family: 'IBM Plex Mono', monospace; font-size: 24px; font-weight: 500; color: var(--ink); }
+.stat-item .stat-label { font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
 
 /* CTA section */
-.cta-section {
-  text-align: center;
-  padding: 160px 48px;
-}
-.cta-title {
-  font-family: 'Playfair Display', serif;
-  font-size: clamp(36px, 5vw, 64px);
-  line-height: 1.2;
-  margin-bottom: 20px;
-}
-.cta-sub {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 13px;
-  color: var(--ink-3);
-  letter-spacing: 0.5px;
-  margin-bottom: 32px;
-}
-.cta-btn {
-  font-size: 16px;
-  padding: 16px 40px;
-}
+.cta-section { text-align: center; padding: 80px 24px 60px; }
+.cta-section h2 { font-family: 'Playfair Display', serif; font-size: clamp(28px, 4vw, 44px); font-weight: 700; margin-bottom: 24px; line-height: 1.2; }
+.cta-section .cta-buttons { display: flex; gap: 12px; justify-content: center; align-items: center; margin-top: 24px; }
+.restricted { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--ink-3); letter-spacing: 1px; text-transform: uppercase; margin-top: 16px; }
 
 /* Footer */
-.footer {
-  border-top: 1px solid var(--border);
-  padding: 40px 48px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-.footer-left p {
-  font-size: 14px;
-  color: var(--ink-3);
-}
-.footer-left p:first-child {
-  font-weight: 500;
-  color: var(--ink-2);
-  margin-bottom: 4px;
-}
-.footer-right {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 13px;
-  color: var(--ink-3);
-}
+.footer { text-align: center; padding: 40px 24px; font-size: 11px; color: var(--ink-3); border-top: 1px solid var(--border); }
 
-/* ── RESPONSIVE ── */
+/* Reveal animation */
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+
+/* Mobile */
 @media (max-width: 768px) {
-  .nav { padding: 0 20px; }
-  .nav-brand-sub { display: none; }
-  section { padding: 80px 20px; }
-  .lorac-section {
-    grid-template-columns: 1fr;
-    padding: 48px 24px;
-    margin: 0 20px;
-    gap: 40px;
-  }
-  .step-item {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-  .step-num { font-size: 36px; }
-  .footer { flex-direction: column; gap: 16px; text-align: center; }
-  .hero { padding: 100px 20px 60px; }
-  .hero-ctas { flex-direction: column; align-items: center; }
-  .cta-section { padding: 100px 20px; }
+  .nav { padding: 0 20px; height: 50px; }
+  .hero { padding: 90px 20px 40px; min-height: 70vh; }
+  .section { padding: 60px 20px; }
+  .hero-ctas { flex-direction: column; }
+  .stats-bar { grid-template-columns: repeat(3, 1fr); }
 }
 </style>
 </head>
 <body>
 
-<!-- NAV -->
 <nav class="nav" id="nav">
-  <div class="nav-brand">
-    <span class="nav-brand-name">Autonodal</span>
-    <span class="nav-brand-sub">Multi-Party Intelligence</span>
-  </div>
+  <div class="nav-brand">Autonodal</div>
   <div id="navAuth">
-    <a href="/api/auth/google?return_to=/index.html" class="btn-pill btn-google" id="navLogin">
-      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-      Sign in with Google
-      <span class="google-domain">@mitchellake.com</span>
+    <a href="/api/auth/google?return_to=/index.html" class="btn-pill btn-google hero-auth-login" id="navLogin">
+      <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Sign in <span class="google-domain">@mitchellake.com</span>
     </a>
-    <div id="navUser" class="nav-user" style="display:none;">
+    <div id="navUser" class="nav-user" style="display:none">
       <div class="nav-avatar" id="navAvatar"></div>
-      <span class="nav-user-name" id="navName"></span>
-      <a href="/index.html" class="btn-pill btn-primary" style="font-size:13px; padding:8px 20px;">Enter Platform →</a>
+      <span id="navName" style="font-size:13px;font-weight:500"></span>
+      <a href="/index.html" class="btn-pill btn-primary" style="font-size:12px;padding:7px 18px">Enter Platform</a>
     </div>
   </div>
 </nav>
-<div id="signal-ticker" style="position:fixed;top:64px;left:0;right:0;z-index:99"></div>
+
+<div id="signal-ticker" style="position:fixed;top:56px;left:0;right:0;z-index:99"></div>
 <script src="/signal-ticker.js" data-position="top"></script>
 
 <!-- HERO -->
-<section class="hero" id="hero" style="padding-top:140px">
-  <div class="hero-words" id="heroWords">
-    <div class="hero-word display" id="hw1"><span class="hw-first">L</span>ead <span class="hw-first">O</span>rigination</div>
-    <div class="hero-word display amp" id="hw2">&amp;</div>
-    <div class="hero-word display" id="hw3"><span class="hw-first">R</span>elationship <span class="hw-first">A</span>cceleration</div>
-    <div class="hero-word display concierge" id="hw4"><span class="hw-first">C</span>oncierge</div>
+<section class="hero">
+  <h1 class="hero-headline">Stop chasing the market.<br>See it move — and know when it matters.</h1>
+  <p class="hero-sub">Actionable intelligence from networks in motion.</p>
+  <div class="hero-ctas">
+    <a href="/index.html" class="btn-pill btn-primary hero-auth-enter" style="display:none">Enter platform</a>
+    <a href="/api/auth/google?return_to=/index.html" class="btn-pill btn-primary hero-auth-login">Enter platform</a>
   </div>
-
-  <div class="hero-lorac-container" id="loracContainer">
-    <span class="lorac-letter" id="ll-L">L</span>
-    <span class="lorac-letter" id="ll-O">O</span>
-    <span class="lorac-letter" id="ll-R">R</span>
-    <span class="lorac-letter" id="ll-A">A</span>
-    <span class="lorac-letter" id="ll-C">C</span>
-    <span class="lorac-sep" id="loracSep"></span>
-    <span class="lorac-ai display" id="loracAI">AI</span>
-  </div>
-
-  <div class="hero-sub" id="heroSub">
-    <div class="hero-expansion mono">Lead Origination &amp; Relationship Acceleration Concierge</div>
-    <div class="hero-tagline">Your market concierge. Always on.</div>
-  </div>
-
-  <div class="hero-ctas" id="heroCtas">
-    <a href="/api/auth/google?return_to=/index.html" class="btn-pill btn-google hero-auth-login" style="font-size:16px; padding:14px 36px;">
-      <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-      Sign in with Google
-      <span class="google-domain">@mitchellake.com</span>
-    </a>
-    <a href="/index.html" class="btn-pill btn-primary hero-auth-enter" style="font-size:16px; padding:14px 36px; display:none;">Enter Platform →</a>
-    <a href="#what" class="btn-pill btn-ghost">What is LORAC AI ↓</a>
-  </div>
+  <a href="#shift" class="hero-scroll">What this is ↓</a>
 </section>
 
-<!-- REPLAY -->
-<button class="replay-btn" id="replayBtn" title="Replay animation">↻ Replay</button>
-
-<!-- TICKER -->
-<div class="ticker">
-  <div class="ticker-track" id="tickerTrack">
-    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-people">—</span> people tracked</span>
-    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-companies">—</span> companies monitored</span>
-    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-signals7d">—</span> signals this week</span>
-    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-signals24h">—</span> signals last 24h</span>
-    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-sources">—</span> live intelligence sources</span>
-    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-docs">—</span> documents indexed</span>
-    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-searches">—</span> active searches</span>
-    <span class="ticker-item"><span class="ticker-dot"></span>AU · SG · UK · US</span>
-    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-people2">—</span> people tracked</span>
-    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-companies2">—</span> companies monitored</span>
-    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-signals7d2">—</span> signals this week</span>
-    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-signals24h2">—</span> signals last 24h</span>
-    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-sources2">—</span> live intelligence sources</span>
-    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-docs2">—</span> documents indexed</span>
-    <span class="ticker-item"><span class="ticker-dot"></span><span id="t-searches2">—</span> active searches</span>
-    <span class="ticker-item"><span class="ticker-dot"></span>AU · SG · UK · US</span>
-  </div>
+<!-- Platform stats -->
+<div class="stats-bar">
+  <div class="stat-item"><div class="stat-value" id="t-people">--</div><div class="stat-label">People tracked</div></div>
+  <div class="stat-item"><div class="stat-value" id="t-companies">--</div><div class="stat-label">Companies</div></div>
+  <div class="stat-item"><div class="stat-value" id="t-signals7d">--</div><div class="stat-label">Signals / 7d</div></div>
+  <div class="stat-item"><div class="stat-value" id="t-signals24h">--</div><div class="stat-label">Signals / 24h</div></div>
+  <div class="stat-item"><div class="stat-value" id="t-docs">--</div><div class="stat-label">Documents</div></div>
+  <div class="stat-item"><div class="stat-value" id="t-sources">--</div><div class="stat-label">Active feeds</div></div>
 </div>
 
-<!-- WHAT IS MULTI-PARTY INTELLIGENCE -->
-<section id="what">
-  <div class="reveal">
-    <div class="section-tag">The Category</div>
-    <h2 class="section-title">Three data streams.<br>One coordinated signal.</h2>
-    <p class="section-body">Most intelligence platforms work from one angle — news, or your CRM, or your network. Autonodal fuses all three simultaneously: first-party relationship depth, second-party network expertise, and third-party market signals. The result is a coordination scale that human networks always needed but could never reach.</p>
-  </div>
+<div class="divider"><hr></div>
 
-  <div class="party-grid">
-    <div class="card party-card first reveal">
-      <div class="party-card-title">First-party</div>
-      <p>Your placements, interactions, and relationship history. The intelligence that only you hold.</p>
+<!-- SECTION 1 — THE SHIFT -->
+<section class="section reveal" id="shift">
+  <div class="section-label">The shift</div>
+  <h2>Most teams are still doing this the hard way.</h2>
+  <div class="stack">
+    <div class="stack-line">Outbound.</div>
+    <div class="stack-line">Content.</div>
+    <div class="stack-line">Events.</div>
+    <div class="stack-line">Cold outreach.</div>
+  </div>
+  <p>All trying to create opportunity.</p>
+  <p>Sometimes it works. Mostly, it doesn't.</p>
+  <p>Because one thing is missing:</p>
+  <div class="emphasis">timing.</div>
+</section>
+
+<div class="divider"><hr></div>
+
+<!-- SECTION 2 — THE PROBLEM -->
+<section class="section reveal">
+  <div class="section-label">The problem</div>
+  <h2>The moment passes before you know it existed.</h2>
+  <p>A company raises capital. A new initiative launches. A leadership change creates momentum.</p>
+  <p>What usually follows:</p>
+  <div class="stack">
+    <div class="stack-line">Priorities shift</div>
+    <div class="stack-line">Budgets move</div>
+    <div class="stack-line">New conversations begin</div>
+  </div>
+  <p>Most teams respond the same way:</p>
+  <div class="stack">
+    <div class="stack-line muted">Add it to a list</div>
+    <div class="stack-line muted">Send outreach</div>
+    <div class="stack-line muted">Hope it lands</div>
+  </div>
+  <p>By the time it connects, the moment has already passed.</p>
+</section>
+
+<div class="divider"><hr></div>
+
+<!-- SECTION 3 — THE CHANGE -->
+<section class="section reveal">
+  <div class="section-label">The change</div>
+  <h2>Autonodal changes the sequence.</h2>
+  <p>Instead of pushing into the market, you see where the market is already moving — and when it becomes relevant to your people.</p>
+</section>
+
+<!-- SECTION 4 — THE TRUTH -->
+<section class="section reveal">
+  <div class="section-label">The truth</div>
+  <h2>The market already tells you what is happening, and why it matters.</h2>
+  <p>That's not new.</p>
+  <p>What's been missing — until now — is clarity on:</p>
+  <div class="highlight">
+    <div class="highlight-lines">
+      <span class="highlight-item">who it matters to</span>
+      <span class="highlight-item">when it becomes actionable</span>
     </div>
-    <div class="card party-card second reveal">
-      <div class="party-card-title">Second-party</div>
-      <p>Your network's expertise and warm connections — structured and searchable for the first time.</p>
-    </div>
-    <div class="card party-card third reveal">
-      <div class="party-card-title">Third-party</div>
-      <p>Live market signals — funding, hiring, movement, expansion — from 48 sources across 4 markets.</p>
+  </div>
+  <p>At scale. In real time.</p>
+</section>
+
+<div class="divider"><hr></div>
+
+<!-- SECTION 5 — THE FEELING -->
+<section class="section reveal">
+  <div class="section-label">The difference</div>
+  <h2>This is the difference between pushing and positioning.</h2>
+  <div class="stack">
+    <div class="stack-line">Guessing and <strong>knowing</strong>.</div>
+    <div class="stack-line">Pushing and <strong>positioning</strong>.</div>
+    <div class="stack-line">Arriving late and <strong>arriving at the right moment</strong>.</div>
+  </div>
+  <p>Not more activity. Less wasted motion.</p>
+</section>
+
+<div class="divider"><hr></div>
+
+<!-- SECTION 6 — THE EXPERIENCE -->
+<section class="section reveal">
+  <div class="section-label">The experience</div>
+  <h2>You open the platform.</h2>
+  <p>You don't see noise. You don't see lists.</p>
+  <p>You see:</p>
+  <div class="stack">
+    <div class="stack-line">Where activity is building</div>
+    <div class="stack-line">Where attention is shifting</div>
+    <div class="stack-line">Where people in your network are becoming active</div>
+  </div>
+  <p>And a small number of clear moments:</p>
+  <div class="highlight">
+    <div class="highlight-lines">
+      <span class="highlight-item">this matters</span>
+      <span class="highlight-item">this is relevant</span>
+      <span class="highlight-item">act now</span>
     </div>
   </div>
 </section>
 
-<!-- THREE PILLARS -->
-<section>
-  <div class="reveal">
-    <div class="section-tag">The Engine</div>
-    <h2 class="section-title">Three pillars. One concierge.</h2>
-  </div>
+<div class="divider"><hr></div>
 
-  <div class="pillar-grid">
-    <div class="card reveal">
-      <div class="pillar-bar cobalt"></div>
-      <div class="pillar-icon">
-        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="16" stroke="#1a56db" stroke-width="1.5" opacity="0.2"/><path d="M12 20c0-2 2-4 4-3s2 4 4 3 4-3 4-1 2 4 4 3" stroke="#1a56db" stroke-width="2" stroke-linecap="round"/></svg>
-      </div>
-      <h3 class="pillar-title">Lead Origination</h3>
-      <p class="pillar-body">Opportunities generated from market signals — not waiting in a database. Funding rounds, leadership changes, expansion signals detected and surfaced before your competitors know to look.</p>
-    </div>
-    <div class="card reveal">
-      <div class="pillar-bar emerald"></div>
-      <div class="pillar-icon">
-        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="14" cy="16" r="4" stroke="#0ea472" stroke-width="1.5"/><circle cx="26" cy="16" r="4" stroke="#0ea472" stroke-width="1.5"/><circle cx="20" cy="28" r="4" stroke="#0ea472" stroke-width="1.5"/><line x1="17" y1="18" x2="18" y2="25" stroke="#0ea472" stroke-width="1.5"/><line x1="23" y1="18" x2="22" y2="25" stroke="#0ea472" stroke-width="1.5"/><line x1="18" y1="16" x2="22" y2="16" stroke="#0ea472" stroke-width="1.5"/></svg>
-      </div>
-      <h3 class="pillar-title">Relationship Acceleration</h3>
-      <p class="pillar-body">The warmth of an entire professional network's relationships — accessible in a single brief. Proximity scoring, engagement history, and timing intelligence across tens of thousands of people.</p>
-    </div>
-    <div class="card reveal">
-      <div class="pillar-bar orange"></div>
-      <div class="pillar-icon">
-        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><path d="M14 28h12M16 28v-6a4 4 0 018 0v6" stroke="#e85d26" stroke-width="1.5" stroke-linecap="round"/><circle cx="20" cy="16" r="3" stroke="#e85d26" stroke-width="1.5"/><path d="M20 13v-2" stroke="#e85d26" stroke-width="1.5" stroke-linecap="round"/></svg>
-      </div>
-      <h3 class="pillar-title">Concierge Intelligence</h3>
-      <p class="pillar-body">Not a system you operate. A concierge that operates on your behalf. Anticipates timing. Surfaces the right person at the right moment. Acts while you sleep.</p>
-    </div>
-  </div>
+<!-- SECTION 7 — THE CORE IDEA -->
+<section class="section reveal">
+  <div class="section-label">The core idea</div>
+  <h2>Everyone already sees what is happening. And why.</h2>
+  <p>Autonodal adds <strong>who</strong> and <strong>when</strong>.</p>
+  <p>That's what makes it actionable.</p>
 </section>
 
-<!-- HOW IT WORKS -->
-<section>
-  <div class="reveal">
-    <div class="section-tag">How It Works</div>
-    <h2 class="section-title">Three steps. Continuous.</h2>
-  </div>
-
-  <div class="steps">
-    <div class="step-item reveal">
-      <div class="step-num display">01</div>
-      <div>
-        <h3 class="step-title">Signals detected</h3>
-        <p class="step-body">48 live sources across AU, SG, UK and US scan continuously. Every funding round, appointment, and market move — classified the moment it publishes.</p>
-      </div>
-    </div>
-    <div class="step-item reveal">
-      <div class="step-num display">02</div>
-      <div>
-        <h3 class="step-title">Intelligence built</h3>
-        <p class="step-body">Signals cross-referenced against relationship history, network proximity, and engagement patterns. Context that transforms a data point into a decision.</p>
-      </div>
-    </div>
-    <div class="step-item reveal">
-      <div class="step-num display">03</div>
-      <div>
-        <h3 class="step-title">Concierge surfaces</h3>
-        <p class="step-body">The right opportunity, the right person, the right moment — without you having to ask. CRM remembers. LORAC anticipates.</p>
-      </div>
-    </div>
-  </div>
+<!-- SECTION 8 — THE INTELLIGENCE LAYER -->
+<section class="section reveal">
+  <div class="section-label">The intelligence layer</div>
+  <p>This is not about more intelligence. It's about intelligence arriving at the right moment, attached to the right person, with enough context to act.</p>
 </section>
 
-<!-- LORAC AI -->
-<div class="lorac-section reveal">
-  <div class="lorac-left">
-    <div class="lorac-left-title">LORAC <span class="ai">AI</span></div>
-    <ul class="etymology">
-      <li><span class="ety-letter">L</span><span class="ety-word">Lead Origination</span></li>
-      <li><span class="ety-letter">O</span><span class="ety-word">&amp;</span></li>
-      <li><span class="ety-letter">R</span><span class="ety-word">Relationship</span></li>
-      <li><span class="ety-letter">A</span><span class="ety-word">Acceleration</span></li>
-      <li><span class="ety-letter">C</span><span class="ety-word">Concierge</span></li>
-    </ul>
-  </div>
-  <div class="lorac-right">
-    <div class="lorac-right-tag">Multi-Party Intelligence Engine</div>
-    <h3 class="lorac-right-title">Built to coordinate at market scale.</h3>
-    <div class="lorac-right-body">
-      <p>LORAC AI is the intelligence layer beneath Autonodal. It fuses first-party relationship depth with live market signals and network expertise — the three data streams that have never been coordinated at this scale before.</p>
-      <p>Not a tool you use. A concierge that works continuously on your behalf, compounding intelligence with every signal, placement, and interaction.</p>
+<div class="divider"><hr></div>
+
+<!-- SECTION 9 — WHO IT'S FOR -->
+<section class="section reveal">
+  <div class="section-label">Who it's for</div>
+  <h2>Built for organisations that operate through relationships.</h2>
+  <div class="highlight">
+    <div class="highlight-lines">
+      <span class="highlight-item">relationships</span>
+      <span class="highlight-item">communities</span>
+      <span class="highlight-item">ecosystems</span>
+      <span class="highlight-item">networks</span>
     </div>
   </div>
-</div>
+  <p>Where timing matters more than volume.</p>
+  <p>Where relevance matters more than reach.</p>
+  <p>Where being early matters.</p>
+</section>
 
-<!-- CTA -->
+<div class="divider"><hr></div>
+
+<!-- CLOSING CTA -->
 <section class="cta-section">
-  <div class="reveal">
-    <h2 class="cta-title display">The market is<br>already moving.</h2>
-    <p class="cta-sub">Multi-Party Intelligence · Restricted access</p>
-    <a href="/api/auth/google?return_to=/index.html" class="btn-pill btn-google cta-btn cta-auth-login" style="font-size:16px;">
-      <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-      Sign in with Google
-      <span class="google-domain">@mitchellake.com</span>
-    </a>
-    <a href="/index.html" class="btn-pill btn-primary cta-btn cta-auth-enter" style="display:none;">Enter Autonodal Platform <span style="margin-left:4px">→</span></a>
+  <h2>Stop chasing the market.<br>Meet it when it matters.</h2>
+  <div class="cta-buttons">
+    <a href="/index.html" class="btn-pill btn-primary hero-auth-enter cta-auth-enter" style="display:none;font-size:15px;padding:12px 28px">Enter Autonodal</a>
+    <a href="/api/auth/google?return_to=/index.html" class="btn-pill btn-primary hero-auth-login cta-auth-login" style="font-size:15px;padding:12px 28px">Enter Autonodal</a>
   </div>
+  <div class="restricted">Restricted access · By invitation · Powered by LORAC AI</div>
 </section>
 
-<!-- FOOTER -->
-<footer class="footer">
-  <div class="footer-left">
-    <p>Autonodal — powered by LORAC AI</p>
-    <p>Multi-Party Intelligence</p>
-  </div>
-  <div class="footer-right">autonodal.com</div>
-</footer>
+<!-- Footer -->
+<div class="footer">
+  Autonodal — Powered by LORAC AI · Multi-party intelligence
+</div>
 
 <script>
-// ── NAV SCROLL ──
-const nav = document.getElementById('nav');
-window.addEventListener('scroll', () => {
-  nav.classList.toggle('scrolled', window.scrollY > 20);
-});
+// Nav scroll
+var nav = document.getElementById('nav');
+window.addEventListener('scroll', function() { nav.classList.toggle('scrolled', window.scrollY > 20); });
 
-// ── SCROLL REVEAL ──
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
+// Reveal on scroll
+var observer = new IntersectionObserver(function(entries) {
+  entries.forEach(function(e) { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
 }, { threshold: 0.15 });
-document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+document.querySelectorAll('.reveal').forEach(function(el) { observer.observe(el); });
 
-// ── HERO ANIMATION ──
-const heroWords = document.getElementById('heroWords');
-const loracContainer = document.getElementById('loracContainer');
-const heroSub = document.getElementById('heroSub');
-const heroCtas = document.getElementById('heroCtas');
-const replayBtn = document.getElementById('replayBtn');
-
-function runHeroAnimation() {
-  // Reset
-  const words = ['hw1','hw2','hw3','hw4'];
-  words.forEach(id => { const el = document.getElementById(id); el.classList.remove('show'); el.style.opacity = '0'; el.style.transform = 'translateY(30px)'; });
-  heroWords.style.opacity = '1'; heroWords.style.transition = '';
-  loracContainer.style.opacity = '0'; loracContainer.classList.remove('active');
-  ['L','O','R','A','C'].forEach(l => { const el = document.getElementById('ll-'+l); el.classList.remove('land'); el.style.opacity = '0'; });
-  document.getElementById('loracSep').classList.remove('show'); document.getElementById('loracSep').style.opacity = '0'; document.getElementById('loracSep').style.transform = 'scaleY(0)';
-  document.getElementById('loracAI').classList.remove('show'); document.getElementById('loracAI').style.opacity = '0';
-  heroSub.classList.remove('show'); heroSub.style.opacity = '0'; heroSub.style.transform = 'translateY(16px)';
-  heroCtas.classList.remove('show'); heroCtas.style.opacity = '0'; heroCtas.style.transform = 'translateY(16px)';
-  replayBtn.classList.remove('show');
-
-  // Remove glow
-  ['ll-L','ll-O','ll-R','ll-A','ll-C'].forEach(id => document.getElementById(id).classList.remove('lorac-glow'));
-
-  // PHASE 1: Words appear
-  const delays = [200, 500, 800, 1400];
-  words.forEach((id, i) => {
-    setTimeout(() => document.getElementById(id).classList.add('show'), delays[i]);
-  });
-
-  // PHASE 2: Words fade, letters assemble (after concierge + 800ms)
-  const phase2Start = 2200;
-  setTimeout(() => {
-    heroWords.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
-    heroWords.style.opacity = '0';
-    heroWords.style.transform = 'translateY(-20px) scale(0.95)';
-    loracContainer.style.opacity = '1';
-    loracContainer.classList.add('active');
-
-    const letters = ['L','O','R','A','C'];
-    letters.forEach((l, i) => {
-      setTimeout(() => document.getElementById('ll-'+l).classList.add('land'), 200 + i * 80);
-    });
-  }, phase2Start);
-
-  // PHASE 3: LORAC glow + AI appears
-  const phase3Start = phase2Start + 900;
-  setTimeout(() => {
-    ['ll-L','ll-O','ll-R','ll-A','ll-C'].forEach(id => document.getElementById(id).classList.add('lorac-glow'));
-    setTimeout(() => document.getElementById('loracSep').classList.add('show'), 400);
-    setTimeout(() => document.getElementById('loracAI').classList.add('show'), 600);
-  }, phase3Start);
-
-  // PHASE 4: Expansion + tagline
-  const phase4Start = phase3Start + 1200;
-  setTimeout(() => heroSub.classList.add('show'), phase4Start);
-
-  // PHASE 5: CTAs
-  setTimeout(() => heroCtas.classList.add('show'), phase4Start + 400);
-
-  // Show replay
-  setTimeout(() => replayBtn.classList.add('show'), phase4Start + 800);
-}
-
-replayBtn.addEventListener('click', () => {
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-  setTimeout(runHeroAnimation, 400);
-});
-
-// Start on load
-runHeroAnimation();
-
-// ── AUTH STATE ──
+// Auth
 function checkAuth() {
-  // Check URL for fresh login token
-  const params = new URLSearchParams(window.location.search);
+  var params = new URLSearchParams(window.location.search);
   if (params.get('token')) {
     localStorage.setItem('ml_token', params.get('token'));
     try { localStorage.setItem('ml_user', params.get('user')); } catch (e) {}
     window.history.replaceState({}, '', '/autonodal');
   }
-
-  const token = localStorage.getItem('ml_token');
-  const userStr = localStorage.getItem('ml_user');
-
+  var token = localStorage.getItem('ml_token');
+  var userStr = localStorage.getItem('ml_user');
   if (token && userStr) {
     try {
-      const user = JSON.parse(userStr);
-      // Verify token is still valid
+      var user = JSON.parse(userStr);
       fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + token } })
-        .then(r => { if (!r.ok) throw new Error(); return r.json(); })
-        .then(() => showLoggedIn(user))
-        .catch(() => { localStorage.removeItem('ml_token'); localStorage.removeItem('ml_user'); });
+        .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
+        .then(function() { showLoggedIn(user); })
+        .catch(function() { localStorage.removeItem('ml_token'); localStorage.removeItem('ml_user'); });
     } catch (e) {}
   }
 }
 
 function showLoggedIn(user) {
-  const initials = (user.name || user.email || '').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-
-  // Nav
+  var initials = (user.name || user.email || '').split(' ').map(function(w) { return w[0]; }).join('').toUpperCase().slice(0, 2);
   document.getElementById('navLogin').style.display = 'none';
-  const navUser = document.getElementById('navUser');
-  navUser.style.display = 'flex';
+  document.getElementById('navUser').style.display = 'flex';
   document.getElementById('navAvatar').textContent = initials;
   document.getElementById('navName').textContent = user.name || user.email;
-
-  // Hero CTAs
-  document.querySelectorAll('.hero-auth-login').forEach(el => el.style.display = 'none');
-  document.querySelectorAll('.hero-auth-enter').forEach(el => el.style.display = 'inline-flex');
-
-  // Bottom CTA
-  document.querySelectorAll('.cta-auth-login').forEach(el => el.style.display = 'none');
-  document.querySelectorAll('.cta-auth-enter').forEach(el => el.style.display = 'inline-flex');
+  document.querySelectorAll('.hero-auth-login').forEach(function(el) { el.style.display = 'none'; });
+  document.querySelectorAll('.hero-auth-enter').forEach(function(el) { el.style.display = 'inline-flex'; });
+  document.querySelectorAll('.cta-auth-login').forEach(function(el) { el.style.display = 'none'; });
+  document.querySelectorAll('.cta-auth-enter').forEach(function(el) { el.style.display = 'inline-flex'; });
 }
-
 checkAuth();
 
-// Live ticker stats
+// Live stats
 (async function() {
   try {
     var res = await fetch('/api/public/stats');
@@ -886,19 +355,11 @@ checkAuth();
     function fmt(n) { return n >= 1000 ? (n/1000).toFixed(1).replace(/\.0$/, '') + 'K' : String(n); }
     function set(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
     set('t-people', fmt(s.people));
-    set('t-people2', fmt(s.people));
     set('t-companies', fmt(s.companies));
-    set('t-companies2', fmt(s.companies));
     set('t-signals7d', fmt(s.signals_7d));
-    set('t-signals7d2', fmt(s.signals_7d));
     set('t-signals24h', fmt(s.signals_24h));
-    set('t-signals24h2', fmt(s.signals_24h));
     set('t-sources', String(s.sources));
-    set('t-sources2', String(s.sources));
     set('t-docs', fmt(s.documents));
-    set('t-docs2', fmt(s.documents));
-    set('t-searches', String(s.active_searches));
-    set('t-searches2', String(s.active_searches));
   } catch(e) {}
 })();
 </script>
