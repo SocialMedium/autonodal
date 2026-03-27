@@ -27,35 +27,36 @@
     if (document.getElementById('si-css')) return;
     var s = document.createElement('style'); s.id = 'si-css';
     s.textContent = [
-      '#signal-ticker{height:34px;background:var(--surface,#fff);display:flex;align-items:stretch;font-family:var(--sans,system-ui);font-size:11px;overflow:hidden}',
-      '#signal-ticker.si-top{position:relative;width:100%;border-bottom:1px solid var(--rule,#e5e7eb)}',
-      '#signal-ticker.si-bottom{position:fixed;bottom:0;left:0;right:0;border-top:1px solid var(--rule,#e5e7eb);z-index:9999}',
-      '#signal-ticker.si-fixed-top{position:fixed;top:0;left:0;right:0;border-bottom:1px solid var(--rule,#e5e7eb);box-shadow:0 1px 4px rgba(0,0,0,.04);z-index:9999}',
-      'body.si-top-offset{padding-top:34px}',
-      'body.si-bottom-offset{padding-bottom:34px}',
-      '.si-live{display:flex;align-items:center;gap:5px;padding:0 10px;border-right:1px solid var(--rule,#e5e7eb);flex-shrink:0;white-space:nowrap}',
-      '.si-dot{width:5px;height:5px;border-radius:50%;background:#10b981;animation:si-p 2s ease-in-out infinite;flex-shrink:0}',
+      '#signal-ticker{height:32px;background:#0d1117;display:flex;align-items:stretch;font-family:var(--mono,"IBM Plex Mono",monospace);font-size:11px;overflow:hidden;color:#c9d1d9}',
+      '#signal-ticker.si-top{position:relative;width:100%;border-bottom:1px solid #21262d}',
+      '#signal-ticker.si-bottom{position:fixed;bottom:0;left:0;right:0;border-top:1px solid #21262d;z-index:9999}',
+      '#signal-ticker.si-fixed-top{position:fixed;top:0;left:0;right:0;border-bottom:1px solid #21262d;box-shadow:0 1px 4px rgba(0,0,0,.2);z-index:9999}',
+      'body.si-top-offset{padding-top:32px}',
+      'body.si-bottom-offset{padding-bottom:32px}',
+      '.si-live{display:flex;align-items:center;gap:6px;padding:0 12px;border-right:1px solid #21262d;flex-shrink:0;white-space:nowrap}',
+      '.si-dot{width:5px;height:5px;border-radius:50%;background:#3fb950;animation:si-p 2s ease-in-out infinite;flex-shrink:0}',
       '@keyframes si-p{0%,100%{opacity:1}50%{opacity:.3}}',
-      '.si-score{font-size:13px;font-weight:600;cursor:pointer;border-bottom:1px dotted var(--rule,#ddd)}',
-      '.si-score:hover{border-bottom-style:solid}',
-      '.si-bull{color:#059669} .si-bear{color:#dc2626} .si-flat{color:#94a3b8}',
-      '.si-stat{display:flex;align-items:center;gap:3px;padding:0 8px;border-right:1px solid var(--rule,#e5e7eb);flex-shrink:0;color:var(--ink-3,#888);white-space:nowrap}',
-      '.si-stat b{color:var(--ink,#333);font-weight:500}',
+      '.si-label{font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#8b949e}',
+      '.si-score{font-size:14px;font-weight:600;cursor:pointer;letter-spacing:-.02em}',
+      '.si-score:hover{text-decoration:underline}',
+      '.si-bull{color:#3fb950} .si-bear{color:#f85149} .si-flat{color:#8b949e}',
+      '.si-stat{display:flex;align-items:center;gap:3px;padding:0 10px;border-right:1px solid #21262d;flex-shrink:0;color:#8b949e;white-space:nowrap;font-size:10px}',
+      '.si-stat b{color:#c9d1d9;font-weight:500}',
       '.si-scroll{flex:1;overflow:hidden;display:flex;align-items:center;position:relative}',
       '.si-inner{display:flex;align-items:center;animation:si-s 50s linear infinite;white-space:nowrap}',
       '.si-inner:hover{animation-play-state:paused}',
       '@keyframes si-s{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}',
-      '.si-stk{display:inline-flex;align-items:center;gap:4px;padding:0 12px;height:34px;border-right:1px solid var(--rule,#e5e7eb);cursor:default}',
-      '.si-stk-n{color:var(--ink,#333);font-weight:500}',
-      '.si-bar{display:inline-block;width:24px;height:3px;background:var(--rule,#ddd);border-radius:2px;overflow:hidden;vertical-align:middle}',
+      '.si-stk{display:inline-flex;align-items:center;gap:5px;padding:0 14px;height:32px;border-right:1px solid #21262d;cursor:default;font-size:11px}',
+      '.si-stk-n{color:#c9d1d9;font-weight:500}',
+      '.si-bar{display:inline-block;width:28px;height:3px;background:#21262d;border-radius:2px;overflow:hidden;vertical-align:middle}',
       '.si-bar i{display:block;height:100%;border-radius:2px;transition:width .5s}',
-      '.si-ctrl{display:flex;align-items:center;gap:1px;padding:0 6px;border-left:1px solid var(--rule,#e5e7eb);flex-shrink:0}',
-      '.si-btn{padding:3px 6px;border:none;border-radius:4px;background:transparent;font-size:10px;font-family:inherit;color:var(--ink-3,#888);cursor:pointer;transition:background .1s}',
-      '.si-btn:hover{background:var(--rule,#e5e7eb)}',
-      '.si-btn.on{background:var(--rule,#e5e7eb);color:var(--ink,#333);font-weight:600}',
-      '#si-panel{position:fixed;right:0;width:400px;background:var(--surface,#fff);border:1px solid var(--rule,#e5e7eb);padding:14px;z-index:9998;box-shadow:-2px -2px 12px rgba(0,0,0,.06);font-family:var(--sans,system-ui);font-size:11px;display:none}',
-      '#si-panel.si-panel-top{top:34px;border-top:none;border-radius:0 0 0 8px}',
-      '#si-panel.si-panel-bottom{bottom:34px;border-bottom:none;border-radius:8px 0 0 0}',
+      '.si-ctrl{display:flex;align-items:center;gap:1px;padding:0 6px;border-left:1px solid #21262d;flex-shrink:0}',
+      '.si-btn{padding:3px 7px;border:none;border-radius:4px;background:transparent;font-size:10px;font-family:inherit;color:#8b949e;cursor:pointer;transition:all .1s}',
+      '.si-btn:hover{background:#21262d;color:#c9d1d9}',
+      '.si-btn.on{background:#21262d;color:#f0f6fc;font-weight:600}',
+      '#si-panel{position:fixed;right:0;width:400px;background:#0d1117;border:1px solid #21262d;padding:14px;z-index:9998;box-shadow:-4px -4px 20px rgba(0,0,0,.3);font-family:var(--mono,"IBM Plex Mono",monospace);font-size:11px;color:#c9d1d9;display:none}',
+      '#si-panel.si-panel-top{top:32px;border-top:none;border-radius:0 0 0 8px}',
+      '#si-panel.si-panel-bottom{bottom:32px;border-bottom:none;border-radius:8px 0 0 0}',
       '#si-panel.open{display:block}'
     ].join('\n');
     document.head.appendChild(s);
@@ -84,8 +85,9 @@
 
     el.innerHTML =
       '<div class="si-live"><span class="si-dot"></span>'+
-        '<span class="si-score '+cls+'" onclick="window.__siChart()" title="Market Health Index">'+(mh.score?.toFixed?.(1)||'--')+'</span>'+
-        '<span class="'+cls+'">'+arrow(mh.direction)+' '+fmtD(mh.delta)+'</span></div>'+
+        '<span class="si-label">MARKET HEALTH</span>'+
+        '<span class="si-score '+cls+'" onclick="window.__siChart()" title="Click for chart">'+(mh.score?.toFixed?.(1)||'--')+'</span>'+
+        '<span class="'+cls+'" style="font-size:10px">'+arrow(mh.direction)+fmtD(mh.delta)+'</span></div>'+
       '<div class="si-stat"><b>'+fmt(st.people_tracked)+'</b> people</div>'+
       '<div class="si-stat"><b>'+fmt(st.companies_tracked)+'</b> cos</div>'+
       '<div class="si-stat"><b>'+fmt(st.signals_7d)+'</b> 7d</div>'+
@@ -100,11 +102,11 @@
     if (!p) { p = document.createElement('div'); p.id = 'si-panel'; p.classList.add(_isTop ? 'si-panel-top' : 'si-panel-bottom'); document.body.appendChild(p); }
     var rows = Object.entries(sectors?.sectors || {}).sort(function(a,b){return b[1].score-a[1].score;}).map(function(e) {
       var cls = dirCls(e[1].direction, 'bullish');
-      return '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--rule,#eee)">'+
-        '<span style="font-weight:500">'+e[0]+'</span>'+
+      return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #21262d">'+
+        '<span style="font-weight:500;color:#f0f6fc">'+e[0]+'</span>'+
         '<span>'+bar(e[1].score)+' <span class="'+cls+'" style="margin-left:4px">'+arrow(e[1].direction)+' '+fmtD(e[1].delta)+'</span></span></div>';
     }).join('');
-    p.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:6px;font-weight:600"><span>Sectors \u2014 '+HORIZON+'</span><button onclick="window.__siSec()" style="border:none;background:none;cursor:pointer;font-size:14px;color:var(--ink-3,#888)">\u00d7</button></div>'+rows;
+    p.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:8px;font-weight:600;color:#f0f6fc"><span>SECTORS \u2014 '+HORIZON+'</span><button onclick="window.__siSec()" style="border:none;background:none;cursor:pointer;font-size:14px;color:#8b949e">\u00d7</button></div>'+rows;
     return p;
   }
 
@@ -117,7 +119,7 @@
     var W = 370, H = 100;
     var line = pts.map(function(pt,i){return (i/(pts.length-1))*W+','+(H-((pt.score-mn)/(mx-mn))*H);}).join(' ');
     var last = pts[pts.length-1], col = last.delta > 0 ? '#059669' : last.delta < 0 ? '#dc2626' : '#94a3b8';
-    p.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:8px;font-weight:600"><span>Market Health \u2014 '+HORIZON+'</span><button onclick="window.__siChart()" style="border:none;background:none;cursor:pointer;font-size:14px;color:var(--ink-3,#888)">\u00d7</button></div>'+
+    p.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:8px;font-weight:600;color:#f0f6fc"><span>MARKET HEALTH \u2014 '+HORIZON+'</span><button onclick="window.__siChart()" style="border:none;background:none;cursor:pointer;font-size:14px;color:#8b949e">\u00d7</button></div>'+
       '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" style="overflow:visible">'+
         '<line x1="0" y1="'+(H-((50-mn)/(mx-mn))*H)+'" x2="'+W+'" y2="'+(H-((50-mn)/(mx-mn))*H)+'" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3 3"/>'+
         '<polygon points="0,'+H+' '+line+' '+W+','+H+'" fill="'+col+'" fill-opacity="0.1"/>'+

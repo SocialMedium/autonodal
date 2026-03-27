@@ -1554,6 +1554,7 @@ async function startScheduler() {
   console.log('🚀 Running initial pipeline cycle...\n');
   await runPipeline('ingest_signals', 'startup');
   await runPipeline('compute_scores', 'startup');
+  await runPipeline('compute_signal_index', 'startup');
 }
 
 async function runAll() {
