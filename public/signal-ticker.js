@@ -27,7 +27,7 @@
     if (document.getElementById('si-css')) return;
     var s = document.createElement('style'); s.id = 'si-css';
     s.textContent = [
-      '#signal-ticker{height:32px;background:#0d1117;display:flex;align-items:stretch;font-family:var(--mono,"IBM Plex Mono",monospace);font-size:11px;overflow:hidden;color:#c9d1d9}',
+      '#signal-ticker{height:36px;background:#0d1117;display:flex;align-items:stretch;font-family:var(--mono,"IBM Plex Mono",monospace);font-size:11px;overflow:hidden;color:#c9d1d9}',
       '#signal-ticker.si-top{position:relative;width:100%;border-bottom:1px solid #21262d}',
       '#signal-ticker.si-bottom{position:fixed;bottom:0;left:0;right:0;border-top:1px solid #21262d;z-index:9999}',
       '#signal-ticker.si-fixed-top{position:fixed;top:0;left:0;right:0;border-bottom:1px solid #21262d;box-shadow:0 1px 4px rgba(0,0,0,.2);z-index:9999}',
@@ -46,7 +46,7 @@
       '.si-inner{display:flex;align-items:center;animation:si-s 50s linear infinite;white-space:nowrap}',
       '.si-inner:hover{animation-play-state:paused}',
       '@keyframes si-s{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}',
-      '.si-stk{display:inline-flex;align-items:center;gap:5px;padding:0 14px;height:32px;border-right:1px solid #21262d;cursor:default;font-size:11px}',
+      '.si-stk{display:inline-flex;align-items:center;gap:5px;padding:0 14px;height:36px;border-right:1px solid #21262d;cursor:default;font-size:11px}',
       '.si-stk-n{color:#c9d1d9;font-weight:500}',
       '.si-bar{display:inline-block;width:28px;height:3px;background:#21262d;border-radius:2px;overflow:hidden;vertical-align:middle}',
       '.si-bar i{display:block;height:100%;border-radius:2px;transition:width .5s}',
@@ -76,11 +76,22 @@
     var stocks = data.signal_stocks || {};
     var cls = dirCls(mh.direction, 'bullish');
 
-    var items = Object.entries(stocks).map(function(e) {
+    // If no stock data yet, show all signal types as neutral placeholders
+    var stockEntries = Object.entries(stocks);
+    if (stockEntries.length === 0) {
+      stockEntries = Object.entries(LABELS).map(function(e) {
+        return [e[0], { score: 50, delta: 0, direction: 'flat', sentiment: 'neutral', current_count: 0 }];
+      });
+    }
+    var items = stockEntries.map(function(e) {
       var k = e[0], d = e[1];
-      return '<span class="si-stk" title="'+(LABELS[k]||k)+': '+fmt(d.current_count)+' signals, '+fmtD(d.delta)+'">'+
-        '<span class="si-stk-n">'+(LABELS[k]||k)+'</span>'+bar(d.score)+
-        '<span class="'+dirCls(d.direction,d.sentiment)+'">'+arrow(d.direction)+' '+fmtD(d.delta)+'</span></span>';
+      var delta = parseFloat(d.delta) || 0;
+      var countLabel = (d.current_count > 0) ? fmt(d.current_count) : '\u2014';
+      return '<span class="si-stk" title="'+(LABELS[k]||k)+': '+countLabel+' signals, '+fmtD(delta)+'">'+
+        '<span class="si-stk-n">'+(LABELS[k]||k)+'</span>'+
+        '<span class="'+dirCls(d.direction,d.sentiment)+'" style="font-weight:500">'+arrow(d.direction)+fmtD(delta)+'</span>'+
+        bar(d.score)+
+        '<span style="color:#8b949e;font-size:10px">'+countLabel+'</span></span>';
     }).join('');
 
     el.innerHTML =

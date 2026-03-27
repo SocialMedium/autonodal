@@ -8647,14 +8647,16 @@ app.listen(PORT, async () => {
     }
   } catch (e) { /* tables may already exist */ }
 
-  // Signal Index tables
+  // Signal Index tables (inline — SQL file splitting breaks on multi-line CREATE TABLE)
   try {
-    const siMigration = require('path').join(__dirname, 'sql', 'signal_index.sql');
-    if (require('fs').existsSync(siMigration)) {
-      const sql = require('fs').readFileSync(siMigration, 'utf8');
-      const stmts = sql.split(';').map(s => s.trim()).filter(s => s.length > 10 && !s.startsWith('--'));
-      for (const stmt of stmts) { try { await pool.query(stmt); } catch (e) {} }
-    }
+    const siTables = [
+      `CREATE TABLE IF NOT EXISTS signal_stocks (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID, stock_name VARCHAR(100) NOT NULL, sentiment VARCHAR(10) NOT NULL, weight FLOAT NOT NULL DEFAULT 1.0, horizon VARCHAR(10) NOT NULL, current_count INT DEFAULT 0, prior_count INT DEFAULT 0, delta FLOAT NOT NULL DEFAULT 0, direction VARCHAR(10) NOT NULL DEFAULT 'flat', score FLOAT NOT NULL DEFAULT 50, computed_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(tenant_id, stock_name, horizon))`,
+      `CREATE TABLE IF NOT EXISTS market_health_index (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID, horizon VARCHAR(10) NOT NULL, score FLOAT NOT NULL, delta FLOAT NOT NULL DEFAULT 0, direction VARCHAR(10) NOT NULL DEFAULT 'flat', bullish_count INT DEFAULT 0, bearish_count INT DEFAULT 0, dominant_signal VARCHAR(100), computed_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(tenant_id, horizon))`,
+      `CREATE TABLE IF NOT EXISTS sector_indices (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID, sector VARCHAR(100) NOT NULL, horizon VARCHAR(10) NOT NULL, score FLOAT NOT NULL DEFAULT 50, delta FLOAT NOT NULL DEFAULT 0, direction VARCHAR(10) NOT NULL DEFAULT 'flat', signal_count INT DEFAULT 0, company_count INT DEFAULT 0, computed_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(tenant_id, sector, horizon))`,
+      `CREATE TABLE IF NOT EXISTS market_health_history (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID, horizon VARCHAR(10) NOT NULL, score FLOAT NOT NULL, delta FLOAT NOT NULL DEFAULT 0, snapshot_at TIMESTAMPTZ DEFAULT NOW())`,
+      `CREATE TABLE IF NOT EXISTS signal_index_stats (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID UNIQUE, people_tracked INT DEFAULT 0, companies_tracked INT DEFAULT 0, signals_7d INT DEFAULT 0, signals_30d INT DEFAULT 0, computed_at TIMESTAMPTZ DEFAULT NOW())`,
+    ];
+    for (const sql of siTables) { try { await pool.query(sql); } catch (e) {} }
   } catch (e) {}
 
   // Ensure signal_dispatches table exists with claim columns
