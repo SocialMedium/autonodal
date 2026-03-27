@@ -2936,7 +2936,9 @@ function renderPodcastItem(p, i) {
   var thumb = p.image_url
     ? '<img src="' + esc(p.image_url) + '" style="width:36px;height:36px;border-radius:6px;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" loading="lazy">'
     : '<div class="podcast-rank">' + (i + 1) + '</div>';
-  return '<div class="podcast-item" onclick="window.open(\'' + esc(p.source_url || '#') + '\',\'_blank\')">' +
+  var podUrl = p.source_url && p.source_url !== '#' && p.source_url.startsWith('http') ? p.source_url : null;
+  var podClick = podUrl ? 'window.open(\'' + esc(podUrl) + '\',\'_blank\')' : '';
+  return '<div class="podcast-item"' + (podClick ? ' onclick="' + podClick + '"' : '') + ' style="' + (podUrl ? 'cursor:pointer' : 'cursor:default;opacity:0.7') + '">' +
     thumb +
     '<div class="podcast-info">' +
       '<div class="podcast-title">' + esc(p.title || 'Untitled') + '</div>' +
