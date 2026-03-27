@@ -162,18 +162,35 @@
   }
 
   window.__siHz = function(h) { load(h); };
-  window.__siSec = function() {
-    var p = document.getElementById('si-panel');
-    if (_panelMode === 'sectors') { _panelMode = null; if (p) p.classList.remove('open'); return; }
-    _panelMode = 'sectors';
-    if (_sectors) { renderPanel(_sectors); document.getElementById('si-panel').classList.add('open'); }
-  };
   window.__siChart = function() {
     var p = document.getElementById('si-panel');
-    if (_panelMode === 'chart') { _panelMode = null; if (p) p.classList.remove('open'); return; }
+    if (_panelMode === 'chart') { _panelMode = null; if (p) { p.classList.remove('open'); p.style.display = 'none'; } return; }
     _panelMode = 'chart';
     api('/api/signal-index/history?horizon=' + HORIZON + '&limit=90').then(function(h) { if (h) renderChart(h); });
   };
+  window.__siSec = function() {
+    var p = document.getElementById('si-panel');
+    if (_panelMode === 'sectors') { _panelMode = null; if (p) { p.classList.remove('open'); p.style.display = 'none'; } return; }
+    _panelMode = 'sectors';
+    if (_sectors) { renderPanel(_sectors); document.getElementById('si-panel').classList.add('open'); document.getElementById('si-panel').style.display = 'block'; }
+  };
+  // Close panel on click outside
+  document.addEventListener('click', function(e) {
+    if (!_panelMode) return;
+    var panel = document.getElementById('si-panel');
+    var ticker = document.getElementById('signal-ticker');
+    if (panel && !panel.contains(e.target) && (!ticker || !ticker.contains(e.target))) {
+      _panelMode = null; panel.classList.remove('open'); panel.style.display = 'none';
+    }
+  });
+  // Close on Escape
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && _panelMode) {
+      _panelMode = null;
+      var p = document.getElementById('si-panel');
+      if (p) { p.classList.remove('open'); p.style.display = 'none'; }
+    }
+  });
 
   var _script = document.currentScript;
   var _position = _script?.dataset?.position || 'bottom';
