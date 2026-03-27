@@ -138,33 +138,7 @@ body {
 }
 
 /* Agent ticker */
-.agent-ticker {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 7px 0;
-  border-top: 1px solid var(--rule);
-  overflow-x: auto;
-}
-
-.ticker-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  font-size: 11px;
-  color: var(--ink-3);
-  letter-spacing: 0.2px;
-}
-
-.ticker-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--emerald);
-  flex-shrink: 0;
-}
-
-.ticker-dot.pending { background: var(--ink-4); }
+/* Old agent-ticker replaced by signal-ticker.js */
 
 /* ═══════════════════════════════════════
    COMMAND BAR
@@ -1559,13 +1533,8 @@ body {
       <div class="masthead-user" id="userAvatar" onclick="location.href='/profile.html'" title="My Profile">JT</div>
     </div>
   </div>
-  <div class="agent-ticker" id="agentTicker">
-    <div class="ticker-item"><div class="ticker-dot"></div>Signal Scanner · <span id="tickerSources">—</span> feeds</div>
-    <div class="ticker-item"><div class="ticker-dot"></div>Enrichment · <span id="tickerNotes">—</span> notes</div>
-    <div class="ticker-item"><div class="ticker-dot"></div>Documents · <span id="tickerDocs">—</span> embedded</div>
-    <div class="ticker-item"><div class="ticker-dot"></div>MLX Network · <span id="tickerPeople">—</span> people</div>
-    <div class="ticker-item"><div class="ticker-dot"></div>Revenue · <span id="tickerRevenue">—</span> tracked</div>
-  </div>
+  <div id="signal-ticker"></div>
+  <script src="/signal-ticker.js" data-position="top"></script>
 </header>
 
 <!-- ═══ COMMAND ═══ -->
@@ -1869,11 +1838,7 @@ async function loadStats() {
     document.getElementById('metricPlacements').textContent = s.placements_count + ' placements';
 
     // Ticker
-    document.getElementById('tickerSources').textContent = s.sources_active;
-    document.getElementById('tickerNotes').textContent = s.people_with_notes.toLocaleString();
-    document.getElementById('tickerDocs').textContent = s.documents_count.toLocaleString();
-    document.getElementById('tickerPeople').textContent = s.people_count.toLocaleString();
-    document.getElementById('tickerRevenue').textContent = rev >= 1000000 ? '$' + (rev/1000000).toFixed(1) + 'M' : '$' + (rev/1000).toFixed(0) + 'K';
+    // Old agent-ticker elements removed — signal-ticker.js handles this now
 
     // Build assistant brief from signal breakdown
     buildAssistantBrief(s);
@@ -3214,7 +3179,5 @@ setInterval(() => { if (getToken()) loadStats(); }, 5 * 60 * 1000);
 <script src="/components/proximity-popup.js"></script>
 <script src="/terminology.js"></script>
 <script src="/chat.js"></script>
-<div id="signal-ticker"></div>
-<script src="/signal-ticker.js" data-position="top"></script>
 </body>
 </html>
