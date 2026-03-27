@@ -317,12 +317,21 @@ const ProximityPopup = (() => {
     }
     if (currentId !== signalId) return;
     // Cap nodes to prevent D3 from choking — show top contacts by strength
-    if (data.graph && data.graph.nodes && data.graph.nodes.length > 25) {
+    if (data.graph && data.graph.nodes) {
       var companyNode = data.graph.nodes.find(function(n) { return n.type === 'company'; });
-      var teamNodes = data.graph.nodes.filter(function(n) { return n.type === 'team'; });
       var contactNodes = data.graph.nodes.filter(function(n) { return n.type === 'contact'; })
         .sort(function(a, b) { return (b.bestStrength || 0) - (a.bestStrength || 0); })
-        .slice(0, 18);
+        .slice(0, 15);
+      var contactIds = new Set(contactNodes.map(function(n) { return n.id; }));
+      // Only include team nodes that connect to remaining contacts
+      var teamNodes = data.graph.nodes.filter(function(n) {
+        if (n.type !== 'team') return false;
+        return data.graph.links.some(function(l) {
+          var src = typeof l.source === 'object' ? l.source.id : l.source;
+          var tgt = typeof l.target === 'object' ? l.target.id : l.target;
+          return (src === n.id && contactIds.has(tgt)) || (tgt === n.id && contactIds.has(src));
+        });
+      });
       data.graph.nodes = [companyNode].concat(teamNodes).concat(contactNodes).filter(Boolean);
       var nodeIds = new Set(data.graph.nodes.map(function(n) { return n.id; }));
       data.graph.links = data.graph.links.filter(function(l) {
