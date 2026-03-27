@@ -27,8 +27,11 @@
     if (document.getElementById('si-css')) return;
     var s = document.createElement('style'); s.id = 'si-css';
     s.textContent = [
-      '#signal-ticker{position:fixed;bottom:0;left:0;right:0;height:34px;background:var(--surface,#fff);border-top:1px solid var(--rule,#e5e7eb);display:flex;align-items:stretch;z-index:9999;font-family:var(--sans,system-ui);font-size:11px;overflow:hidden}',
-      'body{padding-bottom:34px}',
+      '#signal-ticker{position:fixed;left:0;right:0;height:34px;background:var(--surface,#fff);display:flex;align-items:stretch;z-index:9999;font-family:var(--sans,system-ui);font-size:11px;overflow:hidden}',
+      '#signal-ticker.si-top{top:0;border-bottom:1px solid var(--rule,#e5e7eb);box-shadow:0 1px 4px rgba(0,0,0,.04)}',
+      '#signal-ticker.si-bottom{bottom:0;border-top:1px solid var(--rule,#e5e7eb)}',
+      'body.si-top-offset{padding-top:34px}',
+      'body.si-bottom-offset{padding-bottom:34px}',
       '.si-live{display:flex;align-items:center;gap:5px;padding:0 10px;border-right:1px solid var(--rule,#e5e7eb);flex-shrink:0;white-space:nowrap}',
       '.si-dot{width:5px;height:5px;border-radius:50%;background:#10b981;animation:si-p 2s ease-in-out infinite;flex-shrink:0}',
       '@keyframes si-p{0%,100%{opacity:1}50%{opacity:.3}}',
@@ -49,7 +52,9 @@
       '.si-btn{padding:3px 6px;border:none;border-radius:4px;background:transparent;font-size:10px;font-family:inherit;color:var(--ink-3,#888);cursor:pointer;transition:background .1s}',
       '.si-btn:hover{background:var(--rule,#e5e7eb)}',
       '.si-btn.on{background:var(--rule,#e5e7eb);color:var(--ink,#333);font-weight:600}',
-      '#si-panel{position:fixed;bottom:34px;right:0;width:400px;background:var(--surface,#fff);border:1px solid var(--rule,#e5e7eb);border-bottom:none;border-radius:8px 0 0 0;padding:14px;z-index:9998;box-shadow:-2px -2px 12px rgba(0,0,0,.06);font-family:var(--sans,system-ui);font-size:11px;display:none}',
+      '#si-panel{position:fixed;right:0;width:400px;background:var(--surface,#fff);border:1px solid var(--rule,#e5e7eb);padding:14px;z-index:9998;box-shadow:-2px -2px 12px rgba(0,0,0,.06);font-family:var(--sans,system-ui);font-size:11px;display:none}',
+      '#si-panel.si-panel-top{top:34px;border-top:none;border-radius:0 0 0 8px}',
+      '#si-panel.si-panel-bottom{bottom:34px;border-bottom:none;border-radius:8px 0 0 0}',
       '#si-panel.open{display:block}'
     ].join('\n');
     document.head.appendChild(s);
@@ -91,7 +96,7 @@
 
   function renderPanel(sectors) {
     var p = document.getElementById('si-panel');
-    if (!p) { p = document.createElement('div'); p.id = 'si-panel'; document.body.appendChild(p); }
+    if (!p) { p = document.createElement('div'); p.id = 'si-panel'; p.classList.add(_isTop ? 'si-panel-top' : 'si-panel-bottom'); document.body.appendChild(p); }
     var rows = Object.entries(sectors?.sectors || {}).sort(function(a,b){return b[1].score-a[1].score;}).map(function(e) {
       var cls = dirCls(e[1].direction, 'bullish');
       return '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--rule,#eee)">'+
@@ -104,7 +109,7 @@
 
   function renderChart(history) {
     var p = document.getElementById('si-panel');
-    if (!p) { p = document.createElement('div'); p.id = 'si-panel'; document.body.appendChild(p); }
+    if (!p) { p = document.createElement('div'); p.id = 'si-panel'; p.classList.add(_isTop ? 'si-panel-top' : 'si-panel-bottom'); document.body.appendChild(p); }
     var pts = (history?.history || []).slice(-60);
     if (pts.length < 2) { p.innerHTML = '<p style="color:var(--ink-3,#888)">Not enough history yet</p>'; p.classList.add('open'); return; }
     var scores = pts.map(function(p){return p.score;}), mn = Math.min.apply(null,scores)-3, mx = Math.max.apply(null,scores)+3;
@@ -156,8 +161,21 @@
     api('/api/signal-index/history?horizon=' + HORIZON + '&limit=90').then(function(h) { if (h) renderChart(h); });
   };
 
+  var _script = document.currentScript;
+  var _position = _script?.dataset?.position || 'bottom';
+  var _isTop = _position === 'top';
+
   injectCSS();
-  var init = function() { load(HORIZON); };
+
+  function applyPosition() {
+    var el = document.getElementById('signal-ticker');
+    if (el) {
+      el.classList.add(_isTop ? 'si-top' : 'si-bottom');
+      document.body.classList.add(_isTop ? 'si-top-offset' : 'si-bottom-offset');
+    }
+  }
+
+  var init = function() { applyPosition(); load(HORIZON); };
   document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', init) : init();
-  setInterval(init, 5 * 60 * 1000);
+  setInterval(function() { load(HORIZON); }, 5 * 60 * 1000);
 })();
