@@ -3652,19 +3652,32 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
     const { rows: people } = await pool.query(`
       SELECT p.id, p.full_name, p.current_title, p.seniority_level, p.location,
              p.expertise_tags, p.linkedin_url, p.email, p.source,
-             (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id) AS interaction_count,
-             (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id AND i.interaction_at > NOW() - INTERVAL '90 days') AS interactions_90d,
-             (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id AND i.interaction_type = 'research_note') AS note_count,
-             (SELECT MAX(i.interaction_at) FROM interactions i WHERE i.person_id = p.id) AS last_interaction,
-             (SELECT MAX(tp.relationship_strength) FROM team_proximity tp WHERE tp.person_id = p.id) AS proximity_strength,
-             (SELECT STRING_AGG(DISTINCT u.name, ', ') FROM team_proximity tp JOIN users u ON u.id = tp.team_member_id WHERE tp.person_id = p.id) AS connected_via,
-             (SELECT STRING_AGG(DISTINCT tp.relationship_type, ', ') FROM team_proximity tp WHERE tp.person_id = p.id) AS connection_types
-      FROM people p WHERE p.current_company_id = $1 AND p.tenant_id = $2
-      ORDER BY
-        (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id) DESC,
-        (SELECT MAX(tp.relationship_strength) FROM team_proximity tp WHERE tp.person_id = p.id) DESC NULLS LAST,
-        CASE WHEN p.seniority_level IN ('c_suite','vp','director') THEN 0 ELSE 1 END,
-        p.full_name
+             COALESCE(ix.cnt, 0) AS interaction_count,
+             COALESCE(ix.cnt_90d, 0) AS interactions_90d,
+             COALESCE(ix.note_cnt, 0) AS note_count,
+             ix.last_at AS last_interaction,
+             tp_agg.max_strength AS proximity_strength,
+             tp_agg.connected_via,
+             tp_agg.connection_types
+      FROM people p
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS cnt,
+               COUNT(*) FILTER (WHERE interaction_at > NOW() - INTERVAL '90 days') AS cnt_90d,
+               COUNT(*) FILTER (WHERE interaction_type = 'research_note') AS note_cnt,
+               MAX(interaction_at) AS last_at
+        FROM interactions WHERE person_id = p.id
+      ) ix ON true
+      LEFT JOIN LATERAL (
+        SELECT MAX(relationship_strength) AS max_strength,
+               STRING_AGG(DISTINCT u.name, ', ') AS connected_via,
+               STRING_AGG(DISTINCT tp.relationship_type, ', ') AS connection_types
+        FROM team_proximity tp
+        LEFT JOIN users u ON u.id = tp.team_member_id
+        WHERE tp.person_id = p.id
+      ) tp_agg ON true
+      WHERE p.current_company_id = $1 AND p.tenant_id = $2
+      ORDER BY COALESCE(ix.cnt, 0) DESC, tp_agg.max_strength DESC NULLS LAST,
+        CASE WHEN p.seniority_level IN ('c_suite','vp','director') THEN 0 ELSE 1 END, p.full_name
       LIMIT 10
     `, [companyId, req.tenant_id]);
 
@@ -3686,23 +3699,29 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
     // Documents mentioning this company — by document_companies link OR title/content match
     let documents = [];
     try {
-      // Use word-boundary regex for short names to avoid PAM matching EPAM
-      const namePattern = company.name.length <= 5
-        ? '(^|[^a-zA-Z])' + company.name + '([^a-zA-Z]|$)'
-        : company.name;
-      const isRegex = company.name.length <= 5;
-      const { rows } = await pool.query(`
-        SELECT DISTINCT ed.id, ed.title, ed.source_name, ed.source_type, ed.source_url,
-               ed.published_at
-        FROM external_documents ed
-        LEFT JOIN document_companies dc ON dc.document_id = ed.id
-        WHERE ed.tenant_id = $2 AND (
-          dc.company_id = $1
-          ${isRegex ? "OR ed.title ~* $3" : "OR ed.title ILIKE $3"}
-        )
-        ORDER BY ed.published_at DESC NULLS LAST
-        LIMIT 20
-      `, [companyId, req.tenant_id, isRegex ? namePattern : '%' + company.name + '%']);
+      // For short names (<=3 chars like "EY"), only use document_companies link — no title search
+      // For longer names, use ILIKE title search as well
+      let rows;
+      if (company.name.length <= 3) {
+        ({ rows } = await pool.query(`
+          SELECT DISTINCT ed.id, ed.title, ed.source_name, ed.source_type, ed.source_url, ed.published_at
+          FROM external_documents ed
+          JOIN document_companies dc ON dc.document_id = ed.id
+          WHERE dc.company_id = $1 AND ed.tenant_id = $2
+          ORDER BY ed.published_at DESC NULLS LAST LIMIT 20
+        `, [companyId, req.tenant_id]));
+      } else {
+        const namePattern = company.name.length <= 5
+          ? '% ' + company.name + ' %'
+          : '%' + company.name + '%';
+        ({ rows } = await pool.query(`
+          SELECT DISTINCT ed.id, ed.title, ed.source_name, ed.source_type, ed.source_url, ed.published_at
+          FROM external_documents ed
+          LEFT JOIN document_companies dc ON dc.document_id = ed.id
+          WHERE ed.tenant_id = $2 AND (dc.company_id = $1 OR ed.title ILIKE $3)
+          ORDER BY ed.published_at DESC NULLS LAST LIMIT 20
+        `, [companyId, req.tenant_id, namePattern]));
+      }
       documents = rows;
     } catch (e) { /* table may not exist */ }
 
