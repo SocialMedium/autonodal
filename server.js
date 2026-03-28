@@ -2551,10 +2551,13 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           const d = ezRes.data;
           const updates = {};
 
-          // Profile fields — find the CURRENT position (primary, or most recent by start date)
-          const positions = d.profile?.positions || [];
-          const pos = positions.find(p => p.primary || p.tense || p.current)
-            || positions.sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''))[0];
+          // Profile fields — find the CURRENT position
+          // Sort by startDate DESC first, then pick the most recent that's active
+          // Don't trust primary/tense flags alone — Ezekia data often has stale flags
+          const positions = (d.profile?.positions || [])
+            .sort((a, b) => (b.startDate || '0000').localeCompare(a.startDate || '0000'));
+          const pos = positions.find(p => p.endDate === '9999-12-31' || !p.endDate || p.endDate > new Date().toISOString().slice(0, 10))
+            || positions[0]; // fallback to most recent by start date
 
           // For Ezekia-sourced people: update title/company if Ezekia has a newer primary position
           // For other sources: only fill empty fields
