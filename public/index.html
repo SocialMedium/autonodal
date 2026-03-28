@@ -2931,20 +2931,45 @@ async function loadConvergingThemes() {
 }
 
 // ── Top Podcasts ──
+// Shared audio player
+var _podAudio = null;
+var _podActiveBtn = null;
+function togglePodcast(btn, src) {
+  if (!_podAudio) { _podAudio = new Audio(); _podAudio.addEventListener('ended', function() { if (_podActiveBtn) { _podActiveBtn.innerHTML = '&#9654;'; _podActiveBtn = null; } }); }
+  if (_podAudio.src === src && !_podAudio.paused) {
+    _podAudio.pause();
+    btn.innerHTML = '&#9654;';
+    _podActiveBtn = null;
+  } else {
+    if (_podActiveBtn) _podActiveBtn.innerHTML = '&#9654;';
+    _podAudio.src = src;
+    _podAudio.play().catch(function() {});
+    btn.innerHTML = '&#9646;&#9646;';
+    _podActiveBtn = btn;
+  }
+}
+
 function renderPodcastItem(p, i) {
   var podIcon = typeof icon === 'function' ? '<span style="display:inline-flex;vertical-align:middle;color:var(--ink-3)">' + icon('radio', 14) + '</span>' : '🎧';
   var thumb = p.image_url
     ? '<img src="' + esc(p.image_url) + '" style="width:36px;height:36px;border-radius:6px;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" loading="lazy">'
     : '<div class="podcast-rank">' + (i + 1) + '</div>';
   var podUrl = p.source_url && p.source_url !== '#' && p.source_url.startsWith('http') ? p.source_url : null;
-  var podClick = podUrl ? 'window.open(\'' + esc(podUrl) + '\',\'_blank\')' : '';
-  return '<div class="podcast-item"' + (podClick ? ' onclick="' + podClick + '"' : '') + ' style="' + (podUrl ? 'cursor:pointer' : 'cursor:default;opacity:0.7') + '">' +
+  var audioSrc = p.audio_url || (podUrl && /\.(mp3|m4a|ogg|wav)(\?|$)/i.test(podUrl) ? podUrl : null);
+  var playBtn = audioSrc
+    ? '<button onclick="event.stopPropagation();togglePodcast(this,\'' + esc(audioSrc) + '\')" style="flex-shrink:0;width:28px;height:28px;border-radius:50%;border:1px solid var(--rule);background:var(--surface);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px" title="Play">&#9654;</button>'
+    : '';
+  var linkBtn = podUrl && !(/\.(mp3|m4a|ogg)(\?|$)/i.test(podUrl))
+    ? '<a href="' + esc(podUrl) + '" target="_blank" onclick="event.stopPropagation()" style="flex-shrink:0;font-size:10px;color:var(--blue);text-decoration:none" title="Open episode">&#8599;</a>'
+    : '';
+  return '<div class="podcast-item" style="cursor:default">' +
     thumb +
     '<div class="podcast-info">' +
       '<div class="podcast-title">' + esc(p.title || 'Untitled') + '</div>' +
       '<div class="podcast-meta">' + podIcon + ' ' + esc(p.source_name || '') +
         (p.published_at ? ' · ' + ago(p.published_at) : '') + '</div>' +
     '</div>' +
+    playBtn + linkBtn +
   '</div>';
 }
 

@@ -718,6 +718,8 @@ async function harvestFeeds(sourceFilter = null, dryRun = false) {
         const publishedAt = extractDate(item);
         const author = extractAuthor(item);
         const duration = extractDuration(item);
+        // Extract audio enclosure URL separately for inline player
+        const audioUrl = (item?.enclosure?.[0]?.$?.url) || null;
 
         if (!url) continue;
         const sourceUrlHash = md5(url);
@@ -733,12 +735,12 @@ async function harvestFeeds(sourceFilter = null, dryRun = false) {
         const docResult = await pool.query(
           `INSERT INTO external_documents
              (source_type, source_name, source_url, source_url_hash, title, content,
-              author, published_at, fetched_at, processing_status, source_id, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), 'pending', $9, NOW())
+              author, published_at, fetched_at, processing_status, source_id, audio_url, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), 'pending', $9, $10, NOW())
            ON CONFLICT (source_url_hash) DO NOTHING
            RETURNING id`,
           [source.source_type || 'podcast', source.name, url, sourceUrlHash,
-           title.slice(0, 255), content, author, publishedAt, source.id]
+           title.slice(0, 255), content, author, publishedAt, source.id, audioUrl]
         );
 
         if (docResult.rows.length === 0) continue;

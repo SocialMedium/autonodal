@@ -1484,7 +1484,7 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
     // ── LATEST: most recent podcast episodes (last 7 days), one per source ──
     const { rows: latest } = await pool.query(`
       SELECT DISTINCT ON (source_name)
-        id, title, source_name, source_url, published_at, image_url
+        id, title, source_name, source_url, published_at, image_url, audio_url
       FROM external_documents
       WHERE source_type = 'podcast'
         AND published_at > NOW() - INTERVAL '7 days'
@@ -8606,9 +8606,10 @@ app.listen(PORT, async () => {
     `);
   } catch (e) { /* columns may already exist */ }
 
-  // Gmail sync counter
+  // Gmail sync counter + podcast audio URL
   try {
     await pool.query(`ALTER TABLE user_google_accounts ADD COLUMN IF NOT EXISTS emails_synced INTEGER DEFAULT 0`);
+    await pool.query(`ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS audio_url TEXT`);
   } catch (e) {}
 
   // Embedding tracking columns for all embeddable entities
