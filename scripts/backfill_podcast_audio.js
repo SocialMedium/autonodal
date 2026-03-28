@@ -55,10 +55,12 @@ async function main() {
         const title = (item?.title?.[0]?._ || item?.title?.[0] || '').trim();
         if (!title) continue;
 
+        // Match on first 80 chars with wildcard — titles may be truncated or have encoding diffs
+        const matchTitle = title.slice(0, 80).replace(/[%_]/g, '');
         const { rowCount } = await pool.query(`
           UPDATE external_documents SET audio_url = $1
           WHERE source_name = $2 AND title ILIKE $3 AND audio_url IS NULL AND source_type = 'podcast'
-        `, [encUrl, src.source_name, title.slice(0, 255)]);
+        `, [encUrl, src.source_name, matchTitle + '%']);
 
         updated += rowCount;
       }
