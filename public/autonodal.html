@@ -3,322 +3,413 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Autonodal — Actionable intelligence from networks in motion</title>
+<title>Autonodal — Act when it matters</title>
 <meta name="description" content="Stop chasing the market. See it move — and know when it matters. Actionable intelligence from networks in motion.">
 <link rel="canonical" href="https://www.autonodal.com">
 <meta property="og:title" content="Autonodal — Actionable intelligence from networks in motion">
-<meta property="og:description" content="Stop chasing the market. See it move — and know when it matters.">
+<meta property="og:description" content="Stop chasing the market. Act when it matters.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://www.autonodal.com">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400;1,500&family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root {
-  --bg: #f5f3ef;
-  --bg-2: #edeae3;
-  --surface: #ffffff;
-  --ink: #0f0e0c;
-  --ink-2: #4a4640;
-  --ink-3: #9b948a;
-  --accent: #1a56db;
-  --accent-2: #0ea472;
-  --border: rgba(15,14,12,0.08);
-  --border-strong: rgba(15,14,12,0.16);
-  --shadow: 0 2px 8px rgba(15,14,12,0.06), 0 12px 40px rgba(15,14,12,0.08);
-}
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { font-family: 'IBM Plex Sans', -apple-system, sans-serif; background: var(--bg); color: var(--ink); line-height: 1.6; -webkit-font-smoothing: antialiased; }
-.display { font-family: 'Playfair Display', Georgia, serif; }
-.mono { font-family: 'IBM Plex Mono', monospace; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--cream:#f5f3ef;--cream-dim:#eceae4;--ink:#1a1916;--ink-mid:#4a4841;--ink-muted:#8a8780;--cobalt:#2563eb;--emerald:#059669;--void:#0d0c0a;--void-surface:#161512;--void-border:#2a2820;--void-mid:#1e1c18}
+html{scroll-behavior:smooth}
+body{font-family:'IBM Plex Sans',sans-serif;background:var(--cream);color:var(--ink);font-size:16px;line-height:1.6;overflow-x:hidden}
+.display{font-family:'Playfair Display',Georgia,serif}.mono{font-family:'IBM Plex Mono',monospace}
 
-/* Nav */
-.nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(245,243,239,0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid transparent; transition: border-color 0.3s, box-shadow 0.3s; padding: 0 48px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
-.nav.scrolled { border-bottom-color: var(--border-strong); box-shadow: 0 1px 12px rgba(15,14,12,0.06); }
-.nav-brand { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 20px; color: var(--ink); letter-spacing: -0.02em; }
-.nav-user { display: flex; align-items: center; gap: 12px; }
-.nav-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
-.btn-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 20px; border-radius: 24px; text-decoration: none; font-size: 13px; font-weight: 500; transition: all 0.2s; border: none; cursor: pointer; }
-.btn-primary { background: var(--ink); color: #fff; }
-.btn-primary:hover { background: #333; }
-.btn-ghost { background: transparent; color: var(--ink-2); border: 1px solid var(--border-strong); }
-.btn-ghost:hover { background: var(--surface); }
-.btn-google { background: var(--surface); color: var(--ink); border: 1px solid var(--border-strong); box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-.btn-google:hover { box-shadow: var(--shadow); }
-.google-domain { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ink-3); }
+#nav{position:fixed;top:0;left:0;right:0;z-index:200;padding:22px 48px;display:flex;justify-content:space-between;align-items:center;transition:background .3s,border-color .3s}
+#nav.scrolled{background:rgba(245,243,239,0.96);backdrop-filter:blur(10px);border-bottom:1px solid rgba(26,25,22,0.08)}
+.nav-mark{font-family:'Playfair Display',serif;font-size:19px;font-weight:700;letter-spacing:-0.02em;color:var(--cream);text-decoration:none;transition:color .3s}
+#nav.scrolled .nav-mark{color:var(--ink)}
+.nav-actions{display:flex;align-items:center;gap:12px}
+.nav-entry{font-size:12px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:rgba(245,243,239,0.7);text-decoration:none;border:1px solid rgba(245,243,239,0.25);padding:9px 22px;transition:all .2s}
+#nav.scrolled .nav-entry{color:var(--ink);border-color:rgba(26,25,22,0.2)}
+.nav-entry:hover{opacity:0.7}
+.nav-user{display:flex;align-items:center;gap:10px}
+.nav-avatar{width:30px;height:30px;border-radius:50%;background:var(--cream);color:var(--void);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600}
+#nav.scrolled .nav-avatar{background:var(--ink);color:#fff}
+.nav-user-name{font-size:12px;color:rgba(245,243,239,0.6);font-weight:400}
+#nav.scrolled .nav-user-name{color:var(--ink-mid)}
+.btn-pill-sm{font-size:11px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;padding:7px 18px;background:var(--cream);color:var(--void);text-decoration:none;transition:background .2s}
+#nav.scrolled .btn-pill-sm{background:var(--ink);color:#fff}
 
-/* Hero */
-.hero { min-height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 120px 24px 60px; text-align: center; }
-.hero-headline { font-family: 'Playfair Display', serif; font-size: clamp(32px, 5vw, 56px); font-weight: 700; line-height: 1.15; max-width: 800px; margin-bottom: 20px; letter-spacing: -0.02em; }
-.hero-sub { font-size: 18px; color: var(--ink-2); font-weight: 300; margin-bottom: 32px; letter-spacing: 0.01em; }
-.hero-ctas { display: flex; gap: 12px; align-items: center; }
-.hero-scroll { margin-top: 24px; font-size: 13px; color: var(--ink-3); text-decoration: none; }
-.hero-scroll:hover { color: var(--ink-2); }
+.hero{background:var(--void);min-height:100vh;display:flex;flex-direction:column;justify-content:flex-end;padding:0 48px 72px;position:relative;overflow:hidden}
+.hero-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(37,99,235,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(37,99,235,0.05) 1px,transparent 1px);background-size:56px 56px;mask-image:radial-gradient(ellipse 70% 55% at 60% 35%,black 20%,transparent 100%)}
+.hero-glow{position:absolute;top:18%;right:8%;width:460px;height:460px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,0.11) 0%,transparent 65%);animation:breathe 5s ease-in-out infinite;pointer-events:none}
+.hero-glow::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,0.2) 0%,transparent 70%);animation:breathe 5s ease-in-out infinite .8s}
+@keyframes breathe{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.08);opacity:1}}
+.hero-tag{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--cobalt);margin-bottom:32px;display:flex;align-items:center;gap:14px;position:relative}
+.hero-tag::before{content:'';display:block;width:28px;height:1px;background:var(--cobalt)}
+.hero-h1{font-family:'Playfair Display',serif;font-size:clamp(52px,7.5vw,100px);font-weight:400;line-height:1.0;letter-spacing:-0.025em;color:var(--cream);max-width:860px;margin-bottom:36px;position:relative}
+.hero-h1 em{font-style:italic;color:rgba(245,243,239,0.38)}
+.hero-sub{font-size:17px;font-weight:300;line-height:1.8;color:rgba(245,243,239,0.5);max-width:480px;margin-bottom:52px;position:relative}
+.hero-sub strong{color:rgba(245,243,239,0.85);font-weight:400}
+.hero-actions{display:flex;align-items:center;gap:28px;flex-wrap:wrap;position:relative}
+.btn-enter{display:inline-flex;align-items:center;gap:10px;background:var(--cream);color:var(--void);font-size:13px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;padding:14px 34px;text-decoration:none;transition:background .2s}
+.btn-enter:hover{background:#fff}
+.btn-enter svg{transition:transform .2s}.btn-enter:hover svg{transform:translateX(3px)}
+.btn-down{font-size:13px;font-weight:400;color:rgba(245,243,239,0.38);text-decoration:none;display:flex;align-items:center;gap:8px;transition:color .2s}
+.btn-down:hover{color:rgba(245,243,239,0.75)}
 
-/* Sections */
-.section { max-width: 680px; margin: 0 auto; padding: 80px 24px; }
-.section.wide { max-width: 900px; }
-.section-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 2px; color: var(--ink-3); margin-bottom: 16px; }
-.section h2 { font-family: 'Playfair Display', serif; font-size: clamp(24px, 3.5vw, 40px); font-weight: 700; line-height: 1.2; margin-bottom: 24px; letter-spacing: -0.02em; }
-.section p { font-size: 17px; color: var(--ink-2); margin-bottom: 16px; line-height: 1.7; font-weight: 300; }
-.section p strong { color: var(--ink); font-weight: 500; }
-.section .emphasis { font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 700; color: var(--ink); margin: 32px 0; line-height: 1.3; }
+.ticker-wrap{background:var(--void-surface);border-top:1px solid var(--void-border);border-bottom:1px solid var(--void-border);display:flex;align-items:stretch;overflow:hidden;height:48px}
+.ticker-label{flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 24px;border-right:1px solid var(--void-border);font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--cobalt);white-space:nowrap}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0;animation:blink 2.2s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.ticker-scroll{overflow:hidden;flex:1;display:flex;align-items:center}
+.ticker-track{display:flex;width:max-content;animation:scroll-left 42s linear infinite}
+.ticker-track:hover{animation-play-state:paused}
+@keyframes scroll-left{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+.t-item{display:flex;align-items:center;gap:10px;padding:0 40px;border-right:1px solid var(--void-border);white-space:nowrap}
+.t-val{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:500;color:var(--cream)}
+.t-lbl{font-size:11px;font-weight:300;color:rgba(245,243,239,0.32);letter-spacing:.02em}
 
-/* Stacked lines */
-.stack { margin: 24px 0; }
-.stack-line { font-size: 17px; color: var(--ink-2); padding: 6px 0; border-bottom: 1px solid var(--border); font-weight: 300; }
-.stack-line:last-child { border-bottom: none; }
-.stack-line.muted { color: var(--ink-3); }
+.w{max-width:1160px;margin:0 auto}.pad{padding:112px 48px}
+.tag{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--cobalt);display:flex;align-items:center;gap:12px;margin-bottom:28px}
+.tag::before{content:'';display:block;width:20px;height:1px;background:var(--cobalt)}
+.tag-light{color:rgba(37,99,235,0.6)}.tag-light::before{background:rgba(37,99,235,0.6)}
+h2{font-family:'Playfair Display',serif;font-size:clamp(34px,4vw,56px);font-weight:400;line-height:1.1;letter-spacing:-0.02em;margin-bottom:28px}
+h2 em{font-style:italic}.dark h2{color:var(--cream)}.dark h2 em{color:rgba(245,243,239,0.3)}.light h2 em{color:var(--ink-muted)}
+.body-l{font-size:19px;font-weight:300;line-height:1.8;color:var(--ink-mid);max-width:640px}
+.dark .body-l{color:rgba(245,243,239,0.48)}.dark .body-l strong{color:rgba(245,243,239,0.85);font-weight:400}
+.body-l strong{color:var(--ink);font-weight:500}
+p.body{font-size:16px;font-weight:300;line-height:1.8;color:var(--ink-mid);margin-bottom:18px}
+.dark p.body{color:rgba(245,243,239,0.44)}.dark p.body strong{color:rgba(245,243,239,0.8);font-weight:400}
+.rule{border:none;border-top:1px solid rgba(26,25,22,0.1)}.rule-dark{border:none;border-top:1px solid var(--void-border)}
+.r{opacity:0;transform:translateY(20px);transition:opacity .65s ease,transform .65s ease}.r.on{opacity:1;transform:none}
 
-/* Highlight block */
-.highlight { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 32px; margin: 32px 0; }
-.highlight-lines { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
-.highlight-item { font-family: 'IBM Plex Mono', monospace; font-size: 13px; padding: 6px 16px; border-radius: 20px; background: var(--bg-2); color: var(--ink-2); }
+.snapin{background:var(--void-mid);border-top:1px solid var(--void-border);border-bottom:1px solid var(--void-border)}
+.snapin-inner{max-width:1160px;margin:0 auto;padding:80px 48px;display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:center}
+.snapin-scenario{font-family:'Playfair Display',serif;font-size:clamp(19px,2.2vw,25px);font-weight:400;line-height:1.65;color:rgba(245,243,239,0.55);border-left:2px solid var(--void-border);padding-left:28px}
+.snapin-scenario strong{color:var(--cream);font-weight:500}
+.snapin-contrast{display:grid;grid-template-columns:1fr 1fr;gap:2px}
+.contrast-col{background:var(--void-surface);padding:32px 28px}
+.contrast-col.hl{background:rgba(37,99,235,0.07);border:1px solid rgba(37,99,235,0.15)}
+.contrast-lbl{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:20px;display:block}
+.contrast-col .contrast-lbl{color:var(--ink-muted)}.contrast-col.hl .contrast-lbl{color:var(--cobalt)}
+.contrast-items{list-style:none}.contrast-items li{font-size:14px;font-weight:300;color:rgba(245,243,239,0.38);padding:8px 0;border-bottom:1px solid var(--void-border);line-height:1.4}
+.contrast-items li:last-child{border-bottom:none}.contrast-col.hl .contrast-items li{color:rgba(245,243,239,0.82)}
 
-/* Divider */
-.divider { max-width: 680px; margin: 0 auto; padding: 0 24px; }
-.divider hr { border: none; border-top: 1px solid var(--border-strong); }
+.shift-layout{display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:start;margin-top:56px}
+.shift-list{list-style:none;margin:28px 0}
+.shift-list li{font-size:17px;font-weight:300;color:var(--ink-mid);padding:11px 0;border-bottom:1px solid rgba(26,25,22,0.07)}
+.shift-list li:last-child{border-bottom:none}
+.shift-verdict{font-family:'Playfair Display',serif;font-size:clamp(20px,2.2vw,27px);font-weight:500;font-style:italic;color:var(--ink);border-left:3px solid var(--cobalt);padding-left:24px;line-height:1.55}
 
-/* Platform stats */
-.stats-bar { max-width: 900px; margin: 0 auto; padding: 40px 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 16px; text-align: center; }
-.stat-item .stat-value { font-family: 'IBM Plex Mono', monospace; font-size: 24px; font-weight: 500; color: var(--ink); }
-.stat-item .stat-label { font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+.problem-box{background:var(--void-surface);border:1px solid var(--void-border);padding:56px;margin-top:56px}
+.problem-scene{font-family:'Playfair Display',serif;font-size:clamp(19px,2vw,24px);font-weight:400;line-height:1.75;color:rgba(245,243,239,0.5);margin-bottom:36px;max-width:660px}
+.problem-scene strong{color:rgba(245,243,239,0.88);font-weight:500}
+.problem-late{font-family:'IBM Plex Mono',monospace;font-size:14px;letter-spacing:.06em;color:rgba(245,243,239,0.88);padding:20px 28px;border:1px solid rgba(245,243,239,0.1);display:inline-block}
 
-/* CTA section */
-.cta-section { text-align: center; padding: 80px 24px 60px; }
-.cta-section h2 { font-family: 'Playfair Display', serif; font-size: clamp(28px, 4vw, 44px); font-weight: 700; margin-bottom: 24px; line-height: 1.2; }
-.cta-section .cta-buttons { display: flex; gap: 12px; justify-content: center; align-items: center; margin-top: 24px; }
-.restricted { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--ink-3); letter-spacing: 1px; text-transform: uppercase; margin-top: 16px; }
+.core-wrap{background:var(--void-mid);border-top:1px solid var(--void-border);border-bottom:1px solid var(--void-border)}
+.core-inner{max-width:760px;margin:0 auto;padding:112px 48px;text-align:center}
+.core-main{font-family:'Playfair Display',serif;font-size:clamp(28px,3.5vw,48px);font-weight:400;line-height:1.3;color:var(--cream);letter-spacing:-0.02em;margin-bottom:24px}
+.core-main em{font-style:italic;color:rgba(245,243,239,0.3)}
+.core-anchor{font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.1em;color:var(--cobalt)}
 
-/* Footer */
-.footer { text-align: center; padding: 40px 24px; font-size: 11px; color: var(--ink-3); border-top: 1px solid var(--border); }
+.adv-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-top:64px}
+.adv-col{padding:48px 40px;background:var(--cream-dim)}.adv-col:first-child{background:var(--cream)}
+.adv-lbl{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:24px;display:block}
+.adv-title{font-family:'Playfair Display',serif;font-size:22px;font-weight:500;color:var(--ink);margin-bottom:20px;line-height:1.3}
+.adv-items{list-style:none}.adv-items li{font-size:15px;font-weight:300;color:var(--ink-mid);padding:9px 0;border-bottom:1px solid rgba(26,25,22,0.07);line-height:1.5}
+.adv-items li:last-child{border-bottom:none}.adv-col:last-child .adv-items li{color:var(--cobalt);font-weight:400}
+.adv-callout{font-family:'Playfair Display',serif;font-size:clamp(18px,2vw,24px);color:var(--ink);font-style:italic;border-left:2px solid var(--cobalt);padding-left:24px;max-width:600px;line-height:1.65;margin-top:48px}
 
-/* Reveal animation */
-.reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease, transform 0.6s ease; }
-.reveal.visible { opacity: 1; transform: translateY(0); }
+.exp-layout{display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:start;margin-top:56px}
+.exp-moments{background:var(--void);padding:8px;display:flex;flex-direction:column;gap:2px}
+.exp-moment{padding:24px 28px;background:var(--void-surface);border:1px solid var(--void-border);transition:background .2s,border-color .2s;cursor:default}
+.exp-moment:hover{background:rgba(37,99,235,0.07);border-color:rgba(37,99,235,0.2)}
+.exp-tag{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--cobalt);margin-bottom:8px;display:block}
+.exp-text{font-family:'Playfair Display',serif;font-size:19px;font-weight:400;font-style:italic;color:rgba(245,243,239,0.78);line-height:1.4}
 
-/* Mobile */
-@media (max-width: 768px) {
-  .nav { padding: 0 20px; height: 50px; }
-  .hero { padding: 90px 20px 40px; min-height: 70vh; }
-  .section { padding: 60px 20px; }
-  .hero-ctas { flex-direction: column; }
-  .stats-bar { grid-template-columns: repeat(3, 1fr); }
-}
+.who-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;margin-top:56px}
+.who-cell{background:var(--cream-dim);padding:40px 28px}.who-cell:nth-child(odd){background:var(--cream)}
+.who-word{font-family:'Playfair Display',serif;font-size:22px;font-weight:500;color:var(--ink);margin-bottom:10px}
+.who-desc{font-size:13px;font-weight:300;color:var(--ink-muted);line-height:1.6}
+.who-truths{margin-top:48px;display:grid;grid-template-columns:repeat(3,1fr);gap:32px}
+.who-truth{border-top:2px solid var(--cobalt);padding-top:18px}
+.who-truth p{font-size:15px;font-weight:300;color:var(--ink-mid);line-height:1.7}
+.who-truth p strong{color:var(--ink);font-weight:500}
+
+.close-section{background:var(--void);padding:140px 48px;text-align:center;position:relative;overflow:hidden}
+.close-glow{position:absolute;bottom:-80px;left:50%;transform:translateX(-50%);width:600px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,0.09) 0%,transparent 70%);pointer-events:none}
+.stats-row{display:inline-flex;border:1px solid var(--void-border);margin-bottom:72px;flex-wrap:wrap}
+.stat-block{padding:24px 40px;border-right:1px solid var(--void-border);text-align:center}
+.stat-block:last-child{border-right:none}
+.stat-val{font-family:'IBM Plex Mono',monospace;font-size:26px;font-weight:500;color:var(--cream);display:block}
+.stat-lbl{font-size:11px;font-weight:300;color:rgba(245,243,239,0.32);letter-spacing:.04em;margin-top:4px;display:block}
+.close-h{font-family:'Playfair Display',serif;font-size:clamp(40px,6vw,80px);font-weight:400;line-height:1.05;letter-spacing:-0.025em;color:var(--cream);max-width:680px;margin:0 auto 24px}
+.close-h em{font-style:italic;color:rgba(245,243,239,0.28)}
+.close-sub{font-size:16px;font-weight:300;color:rgba(245,243,239,0.38);max-width:400px;margin:0 auto 52px;line-height:1.75}
+.cta-stack{display:flex;flex-direction:column;align-items:center;gap:16px}
+.restricted{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:rgba(245,243,239,0.18);display:flex;align-items:center;gap:10px}
+.restricted::before,.restricted::after{content:'';display:block;width:24px;height:1px;background:var(--void-border)}
+
+footer{background:var(--void-surface);border-top:1px solid var(--void-border);padding:28px 48px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.footer-mark{font-family:'Playfair Display',serif;font-size:15px;color:rgba(245,243,239,0.28)}
+.footer-note{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:rgba(245,243,239,0.14)}
+
+@media(max-width:900px){#nav,.hero,.pad{padding-left:24px;padding-right:24px}.snapin-inner{grid-template-columns:1fr;gap:40px;padding:56px 24px}.snapin-contrast,.shift-layout,.exp-layout,.adv-grid{grid-template-columns:1fr;gap:32px}.who-grid{grid-template-columns:1fr 1fr}.who-truths{grid-template-columns:1fr;gap:20px}.stats-row{display:grid;grid-template-columns:1fr 1fr;width:100%}.stat-block{border-right:none;border-bottom:1px solid var(--void-border)}.stat-block:nth-child(odd){border-right:1px solid var(--void-border)}.close-section,.core-inner{padding:80px 24px}footer{padding:24px}.problem-box{padding:36px 28px}}
+@media(max-width:560px){.who-grid{grid-template-columns:1fr}.stats-row{grid-template-columns:1fr}.stat-block{border-right:none!important}}
 </style>
 </head>
 <body>
 
-<nav class="nav" id="nav">
-  <div class="nav-brand">Autonodal</div>
-  <div id="navAuth">
-    <a href="/api/auth/google?return_to=/index.html" class="btn-pill btn-google hero-auth-login" id="navLogin">
-      <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-      Sign in <span class="google-domain">@mitchellake.com</span>
-    </a>
+<nav id="nav">
+  <a href="#" class="nav-mark">Autonodal</a>
+  <div class="nav-actions" id="navAuth">
+    <a href="/api/auth/google?return_to=/index.html" class="nav-entry hero-auth-login" id="navLogin">Enter Platform →</a>
     <div id="navUser" class="nav-user" style="display:none">
       <div class="nav-avatar" id="navAvatar"></div>
-      <span id="navName" style="font-size:13px;font-weight:500"></span>
-      <a href="/index.html" class="btn-pill btn-primary" style="font-size:12px;padding:7px 18px">Enter Platform</a>
+      <span class="nav-user-name" id="navName"></span>
+      <a href="/index.html" class="btn-pill-sm hero-auth-enter">Enter Platform</a>
     </div>
   </div>
 </nav>
 
-<div id="signal-ticker" style="position:fixed;top:56px;left:0;right:0;z-index:99"></div>
-<script src="/signal-ticker.js" data-position="top"></script>
-
-<!-- HERO -->
 <section class="hero">
-  <h1 class="hero-headline">Stop chasing the market.<br>See it move — and know when it matters.</h1>
-  <p class="hero-sub">Actionable intelligence from networks in motion.</p>
-  <div class="hero-ctas">
-    <a href="/index.html" class="btn-pill btn-primary hero-auth-enter" style="display:none">Enter platform</a>
-    <a href="/api/auth/google?return_to=/index.html" class="btn-pill btn-primary hero-auth-login">Enter platform</a>
+  <div class="hero-grid"></div>
+  <div class="hero-glow"></div>
+  <div class="hero-tag r">Market Proximity Intelligence</div>
+  <h1 class="hero-h1 r">Stop chasing<br>the market.<br><em>Act when it matters.</em></h1>
+  <p class="hero-sub r">Actionable intelligence from networks in motion —<br><strong>mapped to where you already have advantage.</strong></p>
+  <div class="hero-actions r">
+    <a href="/index.html" class="btn-enter hero-auth-enter" style="display:none">Enter platform <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    <a href="/api/auth/google?return_to=/index.html" class="btn-enter hero-auth-login">Enter platform <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    <a href="#shift" class="btn-down"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg> What this is</a>
   </div>
-  <a href="#shift" class="hero-scroll">What this is ↓</a>
 </section>
 
-<!-- Platform stats -->
-<div class="stats-bar">
-  <div class="stat-item"><div class="stat-value" id="t-people">--</div><div class="stat-label">People tracked</div></div>
-  <div class="stat-item"><div class="stat-value" id="t-companies">--</div><div class="stat-label">Companies</div></div>
-  <div class="stat-item"><div class="stat-value" id="t-signals7d">--</div><div class="stat-label">Signals / 7d</div></div>
-  <div class="stat-item"><div class="stat-value" id="t-signals24h">--</div><div class="stat-label">Signals / 24h</div></div>
-  <div class="stat-item"><div class="stat-value" id="t-docs">--</div><div class="stat-label">Documents</div></div>
-  <div class="stat-item"><div class="stat-value" id="t-sources">--</div><div class="stat-label">Active feeds</div></div>
+<div class="ticker-wrap">
+  <div class="ticker-label"><div class="live-dot"></div>Live</div>
+  <div class="ticker-scroll"><div class="ticker-track" id="ticker"></div></div>
 </div>
 
-<div class="divider"><hr></div>
-
-<!-- SECTION 1 — THE SHIFT -->
-<section class="section reveal" id="shift">
-  <div class="section-label">The shift</div>
-  <h2>Most teams are still doing this the hard way.</h2>
-  <div class="stack">
-    <div class="stack-line">Outbound.</div>
-    <div class="stack-line">Content.</div>
-    <div class="stack-line">Events.</div>
-    <div class="stack-line">Cold outreach.</div>
-  </div>
-  <p>All trying to create opportunity.</p>
-  <p>Sometimes it works. Mostly, it doesn't.</p>
-  <p>Because one thing is missing:</p>
-  <div class="emphasis">timing.</div>
-</section>
-
-<div class="divider"><hr></div>
-
-<!-- SECTION 2 — THE PROBLEM -->
-<section class="section reveal">
-  <div class="section-label">The problem</div>
-  <h2>The moment passes before you know it existed.</h2>
-  <p>A company raises capital. A new initiative launches. A leadership change creates momentum.</p>
-  <p>What usually follows:</p>
-  <div class="stack">
-    <div class="stack-line">Priorities shift</div>
-    <div class="stack-line">Budgets move</div>
-    <div class="stack-line">New conversations begin</div>
-  </div>
-  <p>Most teams respond the same way:</p>
-  <div class="stack">
-    <div class="stack-line muted">Add it to a list</div>
-    <div class="stack-line muted">Send outreach</div>
-    <div class="stack-line muted">Hope it lands</div>
-  </div>
-  <p>By the time it connects, the moment has already passed.</p>
-</section>
-
-<div class="divider"><hr></div>
-
-<!-- SECTION 3 — THE CHANGE -->
-<section class="section reveal">
-  <div class="section-label">The change</div>
-  <h2>Autonodal changes the sequence.</h2>
-  <p>Instead of pushing into the market, you see where the market is already moving — and when it becomes relevant to your people.</p>
-</section>
-
-<!-- SECTION 4 — THE TRUTH -->
-<section class="section reveal">
-  <div class="section-label">The truth</div>
-  <h2>The market already tells you what is happening, and why it matters.</h2>
-  <p>That's not new.</p>
-  <p>What's been missing — until now — is clarity on:</p>
-  <div class="highlight">
-    <div class="highlight-lines">
-      <span class="highlight-item">who it matters to</span>
-      <span class="highlight-item">when it becomes actionable</span>
+<section class="snapin">
+  <div class="snapin-inner">
+    <div class="r">
+      <div class="tag tag-light">A concrete moment</div>
+      <p class="snapin-scenario"><strong>A company in your market raises capital.</strong><br><br>Internally, everything shifts. Priorities move. Budgets unlock. New conversations begin — quietly.<br><br>By the time it surfaces externally, you're already late.</p>
     </div>
-  </div>
-  <p>At scale. In real time.</p>
-</section>
-
-<div class="divider"><hr></div>
-
-<!-- SECTION 5 — THE FEELING -->
-<section class="section reveal">
-  <div class="section-label">The difference</div>
-  <h2>This is the difference between pushing and positioning.</h2>
-  <div class="stack">
-    <div class="stack-line">Guessing and <strong>knowing</strong>.</div>
-    <div class="stack-line">Pushing and <strong>positioning</strong>.</div>
-    <div class="stack-line">Arriving late and <strong>arriving at the right moment</strong>.</div>
-  </div>
-  <p>Not more activity. Less wasted motion.</p>
-</section>
-
-<div class="divider"><hr></div>
-
-<!-- SECTION 6 — THE EXPERIENCE -->
-<section class="section reveal">
-  <div class="section-label">The experience</div>
-  <h2>You open the platform.</h2>
-  <p>You don't see noise. You don't see lists.</p>
-  <p>You see:</p>
-  <div class="stack">
-    <div class="stack-line">Where activity is building</div>
-    <div class="stack-line">Where attention is shifting</div>
-    <div class="stack-line">Where people in your network are becoming active</div>
-  </div>
-  <p>And a small number of clear moments:</p>
-  <div class="highlight">
-    <div class="highlight-lines">
-      <span class="highlight-item">this matters</span>
-      <span class="highlight-item">this is relevant</span>
-      <span class="highlight-item">act now</span>
+    <div class="snapin-contrast r">
+      <div class="contrast-col">
+        <span class="contrast-lbl">Most teams see</span>
+        <ul class="contrast-items"><li>News on a feed</li><li>A name to add to a list</li><li>Cold outreach to send</li><li>Competition for the same moment</li></ul>
+      </div>
+      <div class="contrast-col hl">
+        <span class="contrast-lbl">You see</span>
+        <ul class="contrast-items"><li>Who in your network it touches</li><li>When it becomes relevant to act</li><li>Where you already have a way in</li><li>Whether it's worth acting on</li></ul>
+      </div>
     </div>
   </div>
 </section>
 
-<div class="divider"><hr></div>
-
-<!-- SECTION 7 — THE CORE IDEA -->
-<section class="section reveal">
-  <div class="section-label">The core idea</div>
-  <h2>Everyone already sees what is happening. And why.</h2>
-  <p>Autonodal adds <strong>who</strong> and <strong>when</strong>.</p>
-  <p>That's what makes it actionable.</p>
-</section>
-
-<!-- SECTION 8 — THE INTELLIGENCE LAYER -->
-<section class="section reveal">
-  <div class="section-label">The intelligence layer</div>
-  <p>This is not about more intelligence. It's about intelligence arriving at the right moment, attached to the right person, with enough context to act.</p>
-</section>
-
-<div class="divider"><hr></div>
-
-<!-- SECTION 9 — WHO IT'S FOR -->
-<section class="section reveal">
-  <div class="section-label">Who it's for</div>
-  <h2>Built for organisations that operate through relationships.</h2>
-  <div class="highlight">
-    <div class="highlight-lines">
-      <span class="highlight-item">relationships</span>
-      <span class="highlight-item">communities</span>
-      <span class="highlight-item">ecosystems</span>
-      <span class="highlight-item">networks</span>
+<section class="light" id="shift">
+  <div class="w pad">
+    <div class="tag r">The shift</div>
+    <h2 class="r">Most teams are still doing<br>this <em>the hard way.</em></h2>
+    <div class="shift-layout">
+      <div class="r">
+        <ul class="shift-list"><li>Outbound.</li><li>Content.</li><li>Events.</li><li>Cold outreach.</li></ul>
+        <p class="body-l" style="margin-top:24px">All trying to <em>create</em> opportunity.</p>
+        <p class="body-l" style="margin-top:16px;font-style:italic">Sometimes it works. Mostly, it doesn't.</p>
+        <p class="body-l" style="margin-top:28px;font-family:'Playfair Display',serif;font-size:clamp(18px,2vw,24px);color:var(--ink)">Because one thing is missing: <strong>you never see the moment.</strong></p>
+      </div>
+      <div class="r">
+        <div class="shift-verdict">Autonodal changes the sequence.<br><br>You don't push into the market.<br><br>You see where it's already moving — and where it connects to people you already know.</div>
+      </div>
     </div>
   </div>
-  <p>Where timing matters more than volume.</p>
-  <p>Where relevance matters more than reach.</p>
-  <p>Where being early matters.</p>
 </section>
 
-<div class="divider"><hr></div>
+<hr class="rule">
 
-<!-- CLOSING CTA -->
-<section class="cta-section">
-  <h2>Stop chasing the market.<br>Meet it when it matters.</h2>
-  <div class="cta-buttons">
-    <a href="/index.html" class="btn-pill btn-primary hero-auth-enter cta-auth-enter" style="display:none;font-size:15px;padding:12px 28px">Enter Autonodal</a>
-    <a href="/api/auth/google?return_to=/index.html" class="btn-pill btn-primary hero-auth-login cta-auth-login" style="font-size:15px;padding:12px 28px">Enter Autonodal</a>
+<section class="dark" style="background:var(--void)">
+  <div class="w pad">
+    <div class="tag tag-light r">The problem</div>
+    <h2 class="r">The moment passes before<br><em>you know it existed.</em></h2>
+    <div class="problem-box r">
+      <p class="problem-scene">A signal appears.<br><br><strong>Internally, everything shifts.</strong><br><br>Priorities move. Budgets unlock.<br>New conversations begin — quietly.<br><br>Most teams respond the same way: add it to a list, send outreach, hope it lands.</p>
+      <div class="problem-late">By the time it connects — you're already late.</div>
+    </div>
   </div>
-  <div class="restricted">Restricted access · By invitation · Powered by LORAC AI</div>
 </section>
 
-<!-- Footer -->
-<div class="footer">
-  Autonodal — Powered by LORAC AI · Multi-party intelligence
+<div class="core-wrap">
+  <div class="core-inner r">
+    <div class="core-main">Everyone already sees<br><em>what</em> and <em>why.</em><br><br>Autonodal adds <strong style="color:var(--cream);font-style:normal">who, when —<br>and where you're already connected.</strong></div>
+    <div class="core-anchor">That's what makes it actionable.</div>
+  </div>
 </div>
+
+<hr class="rule-dark">
+
+<section class="light">
+  <div class="w pad">
+    <div class="tag r">The advantage</div>
+    <h2 class="r">You don't start<br>from <em>zero anymore.</em></h2>
+    <p class="body-l r">Most teams start with a list, a target, a cold approach. Autonodal maps every signal to your existing relationships — so you start from a position of strength, not a standing start.</p>
+    <div class="adv-grid r">
+      <div class="adv-col">
+        <span class="adv-lbl">Without Autonodal</span>
+        <div class="adv-title">Starting from scratch</div>
+        <ul class="adv-items"><li>A list to work through</li><li>Cold outreach to send</li><li>Competing for the same moments</li><li>Timing based on luck</li><li>Relevance determined by volume</li></ul>
+      </div>
+      <div class="adv-col">
+        <span class="adv-lbl">With Autonodal</span>
+        <div class="adv-title">Starting from position</div>
+        <ul class="adv-items"><li>Shared history and warm proximity</li><li>Existing context to build from</li><li>Moments others don't see yet</li><li>Timing based on signal</li><li>Relevance determined by relationship</li></ul>
+      </div>
+    </div>
+    <p class="adv-callout r">This is not about more intelligence. It's about intelligence arriving at the right moment, attached to the right person, with enough context to act.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<section class="dark" style="background:var(--void)">
+  <div class="w pad">
+    <div class="tag tag-light r">The experience</div>
+    <h2 class="r">You open the platform.<br><em>Not a dashboard. Not a list.</em></h2>
+    <div class="exp-layout">
+      <div class="r">
+        <p class="body">You see movement.</p>
+        <p class="body">Where activity is building. Where attention is shifting. Where your network is becoming relevant — right now.</p>
+        <p class="body">Not more noise to process. A small number of clear starting points, each mapped to a relationship you already hold.</p>
+        <p class="body" style="margin-top:28px;color:rgba(245,243,239,0.6)">The platform syncs your first-party relationship history against every live signal — so every moment surfaces with the strongest entry point already identified.</p>
+      </div>
+      <div class="exp-moments r">
+        <div class="exp-moment"><span class="exp-tag">Signal detected</span><div class="exp-text">this matters</div></div>
+        <div class="exp-moment"><span class="exp-tag">Connection found</span><div class="exp-text">you know someone here</div></div>
+        <div class="exp-moment"><span class="exp-tag">Moment identified</span><div class="exp-text">start here</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="light">
+  <div class="w pad">
+    <div class="tag r">Who it's for</div>
+    <h2 class="r">Built for organisations that<br>operate through <em>relationships.</em></h2>
+    <div class="who-grid r">
+      <div class="who-cell"><div class="who-word">Relationships</div><div class="who-desc">Executive search, advisory, professional services</div></div>
+      <div class="who-cell"><div class="who-word">Communities</div><div class="who-desc">Networks where trust is the operating currency</div></div>
+      <div class="who-cell"><div class="who-word">Ecosystems</div><div class="who-desc">VC, PE, corporate development, partnerships</div></div>
+      <div class="who-cell"><div class="who-word">Networks</div><div class="who-desc">Where proximity to the right person at the right moment is everything</div></div>
+    </div>
+    <div class="who-truths r">
+      <div class="who-truth"><p>Where <strong>timing matters more than volume.</strong></p></div>
+      <div class="who-truth"><p>Where <strong>relevance matters more than reach.</strong></p></div>
+      <div class="who-truth"><p>Where <strong>being early — and already connected — matters.</strong></p></div>
+    </div>
+  </div>
+</section>
+
+<section class="close-section" id="access">
+  <div class="close-glow"></div>
+  <div style="position:relative">
+    <div style="display:flex;justify-content:center;margin-bottom:72px">
+      <div class="stats-row r" id="stats-row">
+        <div class="stat-block"><span class="stat-val" id="s-people">--</span><span class="stat-lbl">People tracked</span></div>
+        <div class="stat-block"><span class="stat-val" id="s-companies">--</span><span class="stat-lbl">Companies monitored</span></div>
+        <div class="stat-block"><span class="stat-val" id="s-signals">--</span><span class="stat-lbl">Signals this week</span></div>
+        <div class="stat-block"><span class="stat-val" id="s-searches">--</span><span class="stat-lbl">Active feeds</span></div>
+        <div class="stat-block"><span class="stat-val">AU · SG · UK · US</span><span class="stat-lbl">Four markets, continuously</span></div>
+      </div>
+    </div>
+    <h2 class="close-h r">Stop chasing<br>the market.<br><em>Arrive when it matters —<br>already connected.</em></h2>
+    <p class="close-sub r">Every signal mapped to your relationships. Every moment surfaced with a starting point.</p>
+    <div class="cta-stack r">
+      <a href="/index.html" class="btn-enter hero-auth-enter" style="display:none;font-size:14px;padding:16px 44px">Enter Autonodal <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+      <a href="/api/auth/google?return_to=/index.html" class="btn-enter hero-auth-login" style="font-size:14px;padding:16px 44px">Enter Autonodal <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+      <div class="restricted">Restricted access · By invitation · Powered by LORAC AI</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-mark">Autonodal</div>
+  <div class="footer-note">Powered by LORAC AI · Multi-party intelligence</div>
+</footer>
 
 <script>
+var fmt = function(n) { return typeof n === 'number' ? n.toLocaleString() : n; };
+
+// Ticker
+function buildTicker(d) {
+  var items = [
+    { val: fmt(d.people || 0), lbl: 'people tracked' },
+    { val: fmt(d.companies || 0), lbl: 'companies monitored' },
+    { val: fmt(d.signals_7d || 0), lbl: 'signals this week' },
+    { val: fmt(d.sources || 0), lbl: 'active feeds' },
+    { val: 'AU \u00b7 SG \u00b7 UK \u00b7 US', lbl: 'four markets, continuously' },
+  ];
+  var html = items.concat(items).map(function(i) {
+    return '<div class="t-item"><span class="t-val">' + i.val + '</span><span class="t-lbl">' + i.lbl + '</span></div>';
+  }).join('');
+  document.getElementById('ticker').innerHTML = html;
+}
+buildTicker({});
+
+// Live stats
+(async function() {
+  try {
+    var r = await fetch('/api/public/stats');
+    var s = await r.json();
+    buildTicker(s);
+    var el;
+    el = document.getElementById('s-people'); if (el) el.textContent = fmt(s.people);
+    el = document.getElementById('s-companies'); if (el) el.textContent = fmt(s.companies);
+    el = document.getElementById('s-signals'); if (el) el.textContent = fmt(s.signals_7d);
+    el = document.getElementById('s-searches'); if (el) el.textContent = fmt(s.sources);
+  } catch(e) {}
+})();
+
+// Scroll reveal
+var io = new IntersectionObserver(function(entries) {
+  entries.forEach(function(e, i) {
+    if (e.isIntersecting) { setTimeout(function() { e.target.classList.add('on'); }, i * 50); io.unobserve(e.target); }
+  });
+}, { threshold: 0.08, rootMargin: '0px 0px -28px 0px' });
+document.querySelectorAll('.r').forEach(function(el) { io.observe(el); });
+
 // Nav scroll
 var nav = document.getElementById('nav');
-window.addEventListener('scroll', function() { nav.classList.toggle('scrolled', window.scrollY > 20); });
+window.addEventListener('scroll', function() { nav.classList.toggle('scrolled', window.scrollY > window.innerHeight * 0.85); }, { passive: true });
 
-// Reveal on scroll
-var observer = new IntersectionObserver(function(entries) {
-  entries.forEach(function(e) { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
-}, { threshold: 0.15 });
-document.querySelectorAll('.reveal').forEach(function(el) { observer.observe(el); });
+// Stat counter animation
+function animCount(el, target) {
+  var n = parseInt(String(target).replace(/[^0-9]/g, ''));
+  if (!n) return;
+  var dur = 1400, start = performance.now();
+  var tick = function(now) {
+    var p = Math.min((now - start) / dur, 1);
+    var eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = fmt(Math.floor(eased * n));
+    if (p < 1) requestAnimationFrame(tick); else el.textContent = fmt(n);
+  };
+  requestAnimationFrame(tick);
+}
+var statsObs = new IntersectionObserver(function(entries) {
+  entries.forEach(function(e) {
+    if (e.isIntersecting) {
+      ['s-people', 's-companies', 's-signals', 's-searches'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el && el.textContent !== '--') animCount(el, parseInt(el.textContent.replace(/,/g, '')));
+      });
+      statsObs.disconnect();
+    }
+  });
+}, { threshold: 0.4 });
+var sr = document.getElementById('stats-row');
+if (sr) statsObs.observe(sr);
 
 // Auth
-function checkAuth() {
+(function() {
   var params = new URLSearchParams(window.location.search);
   if (params.get('token')) {
     localStorage.setItem('ml_token', params.get('token'));
-    try { localStorage.setItem('ml_user', params.get('user')); } catch (e) {}
+    try { localStorage.setItem('ml_user', params.get('user')); } catch(e) {}
     window.history.replaceState({}, '', '/autonodal');
   }
   var token = localStorage.getItem('ml_token');
@@ -328,39 +419,18 @@ function checkAuth() {
       var user = JSON.parse(userStr);
       fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + token } })
         .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
-        .then(function() { showLoggedIn(user); })
+        .then(function() {
+          var initials = (user.name || user.email || '').split(' ').map(function(w) { return w[0]; }).join('').toUpperCase().slice(0, 2);
+          document.getElementById('navLogin').style.display = 'none';
+          document.getElementById('navUser').style.display = 'flex';
+          document.getElementById('navAvatar').textContent = initials;
+          document.getElementById('navName').textContent = user.name || user.email;
+          document.querySelectorAll('.hero-auth-login').forEach(function(el) { el.style.display = 'none'; });
+          document.querySelectorAll('.hero-auth-enter').forEach(function(el) { el.style.display = 'inline-flex'; });
+        })
         .catch(function() { localStorage.removeItem('ml_token'); localStorage.removeItem('ml_user'); });
-    } catch (e) {}
+    } catch(e) {}
   }
-}
-
-function showLoggedIn(user) {
-  var initials = (user.name || user.email || '').split(' ').map(function(w) { return w[0]; }).join('').toUpperCase().slice(0, 2);
-  document.getElementById('navLogin').style.display = 'none';
-  document.getElementById('navUser').style.display = 'flex';
-  document.getElementById('navAvatar').textContent = initials;
-  document.getElementById('navName').textContent = user.name || user.email;
-  document.querySelectorAll('.hero-auth-login').forEach(function(el) { el.style.display = 'none'; });
-  document.querySelectorAll('.hero-auth-enter').forEach(function(el) { el.style.display = 'inline-flex'; });
-  document.querySelectorAll('.cta-auth-login').forEach(function(el) { el.style.display = 'none'; });
-  document.querySelectorAll('.cta-auth-enter').forEach(function(el) { el.style.display = 'inline-flex'; });
-}
-checkAuth();
-
-// Live stats
-(async function() {
-  try {
-    var res = await fetch('/api/public/stats');
-    var s = await res.json();
-    function fmt(n) { return n >= 1000 ? (n/1000).toFixed(1).replace(/\.0$/, '') + 'K' : String(n); }
-    function set(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
-    set('t-people', fmt(s.people));
-    set('t-companies', fmt(s.companies));
-    set('t-signals7d', fmt(s.signals_7d));
-    set('t-signals24h', fmt(s.signals_24h));
-    set('t-sources', String(s.sources));
-    set('t-docs', fmt(s.documents));
-  } catch(e) {}
 })();
 </script>
 </body>
