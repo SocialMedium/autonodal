@@ -2553,10 +2553,11 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           // Safety: verify the Ezekia name matches our person (prevent wrong ID contamination)
           const ezName = (d.fullName || `${d.firstName || ''} ${d.lastName || ''}`).trim().toLowerCase();
           const ourName = (person.full_name || '').toLowerCase();
+          // Safety: verify the Ezekia name matches our person
           if (ezName && ourName && !ezName.includes(ourName.split(' ')[0]) && !ourName.includes(ezName.split(' ')[0])) {
-            console.warn(`Ezekia name mismatch: "${d.fullName}" vs "${person.full_name}" — clearing source_id`);
+            console.warn(`Ezekia name mismatch: "${d.fullName}" vs "${person.full_name}" — re-searching`);
             await pool.query('UPDATE people SET source_id = NULL WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
-            enrichResults.ezekia_profile = { error: `Name mismatch: Ezekia has "${d.fullName}" — source_id cleared` };
+            enrichResults.ezekia_profile = { error: `Name mismatch: "${d.fullName}" — source_id cleared, will re-match on next enrich` };
           } else {
 
           const updates = {};
