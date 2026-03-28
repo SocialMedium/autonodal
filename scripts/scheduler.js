@@ -1315,8 +1315,8 @@ const PIPELINES = {
       const { computeSignalIndex } = require('./compute_signal_index');
       return computeSignalIndex();
     },
-    schedule: '5 * * * *',
-    description: 'Compute market health index, signal stocks, sector indices'
+    schedule: '5,35 * * * *',
+    description: 'Compute market health index, signal stocks, sector indices (every 30m)'
   },
 
   sync_gmail: {

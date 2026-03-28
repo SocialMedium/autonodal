@@ -80,22 +80,47 @@ async function computeSignalIndex() {
   for (const horizon of HORIZONS) {
     const stockResults = {};
 
-    // 1. Compute each signal stock
+    // 1. Compute each signal stock using multi-bucket trend analysis
+    //    Split the lookback into equal buckets and fit a linear trend
+    const BUCKETS = 6; // 6 buckets for trend calculation
     for (const [signalType, cfg] of Object.entries(SIGNAL_STOCKS)) {
-      const { rows: [counts] } = await pool.query(`
-        SELECT
-          COUNT(*) FILTER (WHERE detected_at > NOW() - ($1 || ' days')::INTERVAL)::int AS current_count,
-          COUNT(*) FILTER (WHERE detected_at BETWEEN NOW() - ($2 || ' days')::INTERVAL AND NOW() - ($1 || ' days')::INTERVAL)::int AS prior_count
-        FROM signal_events
-        WHERE signal_type = $3 AND tenant_id = $4
-      `, [horizon.days, horizon.priorDays, signalType, TENANT_ID]);
+      const bucketDays = Math.ceil(horizon.priorDays / BUCKETS);
 
-      const current = counts?.current_count || 0;
-      const prior = counts?.prior_count || 0;
-      const delta = computeDelta(current, prior);
+      // Get counts per bucket (most recent bucket = bucket 0)
+      const { rows: buckets } = await pool.query(`
+        SELECT
+          FLOOR(EXTRACT(EPOCH FROM (NOW() - detected_at)) / (86400 * $1))::int AS bucket,
+          COUNT(*)::int AS cnt
+        FROM signal_events
+        WHERE signal_type = $2 AND tenant_id = $3
+          AND detected_at > NOW() - ($4 || ' days')::INTERVAL
+        GROUP BY bucket
+        ORDER BY bucket
+      `, [bucketDays, signalType, TENANT_ID, horizon.priorDays]);
+
+      // Build array of counts per bucket (index 0 = oldest, N-1 = most recent)
+      const counts = new Array(BUCKETS).fill(0);
+      for (const b of buckets) {
+        const idx = BUCKETS - 1 - Math.min(b.bucket, BUCKETS - 1);
+        counts[idx] += parseInt(b.cnt);
+      }
+
+      const current = counts[BUCKETS - 1]; // most recent bucket
+      const total = counts.reduce((a, b) => a + b, 0);
+      const avg = total / BUCKETS;
+
+      // Linear regression slope across buckets (normalised)
+      let sumXY = 0, sumX = 0, sumY = 0, sumX2 = 0;
+      for (let i = 0; i < BUCKETS; i++) {
+        sumX += i; sumY += counts[i]; sumXY += i * counts[i]; sumX2 += i * i;
+      }
+      const slope = (BUCKETS * sumXY - sumX * sumY) / (BUCKETS * sumX2 - sumX * sumX);
+      // Normalise slope as % of average (how fast is it changing relative to baseline)
+      const delta = avg > 0 ? Math.min(99, Math.max(-99, (slope / avg) * 100)) : (current > 0 ? 10 : 0);
       const score = deltaToScore(delta, cfg.sentiment);
       const dir = getDirection(delta);
 
+      const prior = counts[BUCKETS - 2] || 0; // second-most-recent bucket
       stockResults[signalType] = { delta, score, direction: dir, current_count: current, prior_count: prior };
 
       await pool.query(`
