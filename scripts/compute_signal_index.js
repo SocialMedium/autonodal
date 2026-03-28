@@ -27,6 +27,7 @@ const SIGNAL_STOCKS = {
   partnership:          { sentiment: 'bullish',  weight: 1.2, label: 'Partnership' },
   layoffs:              { sentiment: 'bearish',  weight: 2.0, label: 'Layoffs' },
   restructuring:        { sentiment: 'bearish',  weight: 2.5, label: 'Restructuring' },
+  media_sentiment:      { sentiment: 'bullish',  weight: 1.5, label: 'Media' },
 };
 
 const HORIZONS = [
@@ -132,6 +133,39 @@ async function computeSignalIndex() {
           delta = EXCLUDED.delta, direction = EXCLUDED.direction, score = EXCLUDED.score, computed_at = NOW()
       `, [TENANT_ID, signalType, cfg.sentiment, cfg.weight, horizon.key, current, prior, Math.round(delta * 10) / 10, dir, score]);
     }
+
+    // 1b. Media Sentiment stock — derived from document_sentiment table
+    try {
+      const { rows: [sentCounts] } = await pool.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE ds.sentiment = 'bullish')::int AS bullish,
+          COUNT(*) FILTER (WHERE ds.sentiment = 'bearish')::int AS bearish,
+          COUNT(*) FILTER (WHERE ds.sentiment = 'neutral')::int AS neutral,
+          COUNT(*)::int AS total
+        FROM document_sentiment ds
+        JOIN external_documents ed ON ed.id = ds.document_id
+        WHERE ds.computed_at > NOW() - ($1 || ' days')::INTERVAL
+      `, [horizon.days]);
+
+      const total = sentCounts?.total || 0;
+      const bullish = sentCounts?.bullish || 0;
+      const bearish = sentCounts?.bearish || 0;
+      // Sentiment score: 100 = all bullish, 0 = all bearish, 50 = balanced
+      const sentScore = total > 0 ? Math.round(((bullish - bearish) / total * 50 + 50) * 10) / 10 : 50;
+      const sentDelta = total > 2 ? Math.round(((bullish - bearish) / Math.max(total, 1)) * 100) : 0;
+
+      stockResults['media_sentiment'] = {
+        delta: sentDelta, score: sentScore, direction: getDirection(sentDelta),
+        current_count: total, prior_count: 0
+      };
+
+      await pool.query(`
+        INSERT INTO signal_stocks (tenant_id, stock_name, sentiment, weight, horizon, current_count, prior_count, delta, direction, score, computed_at)
+        VALUES ($1, 'media_sentiment', 'bullish', 1.5, $2, $3, 0, $4, $5, $6, NOW())
+        ON CONFLICT (tenant_id, stock_name, horizon) DO UPDATE SET
+          current_count = EXCLUDED.current_count, delta = EXCLUDED.delta, direction = EXCLUDED.direction, score = EXCLUDED.score, computed_at = NOW()
+      `, [TENANT_ID, horizon.key, total, sentDelta, getDirection(sentDelta), sentScore]);
+    } catch (e) { /* document_sentiment table may not exist yet */ }
 
     // 2. Compute composite Market Health Index
     // Two components: (a) weighted stock scores, (b) bullish/bearish volume ratio

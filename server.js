@@ -1221,6 +1221,43 @@ app.get('/api/signal-index/history', authenticateToken, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Media Sentiment breakdown
+app.get('/api/signal-index/sentiment', authenticateToken, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const { rows } = await pool.query(`
+      SELECT ds.sentiment, ds.confidence, ds.themes, ds.summary,
+             ed.title, ed.source_name, ed.source_type, ed.published_at
+      FROM document_sentiment ds
+      JOIN external_documents ed ON ed.id = ds.document_id
+      WHERE ds.computed_at > NOW() - ($1 || ' days')::INTERVAL
+      ORDER BY ed.published_at DESC
+      LIMIT 50
+    `, [days]);
+
+    const totals = { bullish: 0, bearish: 0, neutral: 0 };
+    const bySource = {};
+    for (const r of rows) {
+      totals[r.sentiment] = (totals[r.sentiment] || 0) + 1;
+      const src = r.source_type || 'other';
+      if (!bySource[src]) bySource[src] = { bullish: 0, bearish: 0, neutral: 0 };
+      bySource[src][r.sentiment]++;
+    }
+
+    res.json({
+      days,
+      total: rows.length,
+      totals,
+      by_source: bySource,
+      recent: rows.slice(0, 20).map(r => ({
+        title: r.title, source: r.source_name, type: r.source_type,
+        sentiment: r.sentiment, confidence: r.confidence,
+        themes: r.themes, summary: r.summary, published_at: r.published_at
+      }))
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/market-temperature', authenticateToken, async (req, res) => {
   try {
     // Aggregate megacap signals by type for the last 7 days

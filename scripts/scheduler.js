@@ -512,6 +512,88 @@ Return ONLY valid JSON array:
     console.log(`     ${crossRefCount} signals cross-referenced with MLX network`);
   }
 
+  // ─── Step 5: Media Sentiment Analysis ───
+  console.log('   📊 Step 5: Media sentiment analysis...');
+
+  // Ensure table exists
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS document_sentiment (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      document_id UUID NOT NULL,
+      sentiment VARCHAR(10) NOT NULL DEFAULT 'neutral',
+      confidence FLOAT DEFAULT 0.5,
+      themes TEXT[] DEFAULT '{}',
+      summary TEXT,
+      source_type VARCHAR(50),
+      computed_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(document_id)
+    )`);
+  } catch (e) {}
+
+  // Get recent documents without sentiment analysis (podcasts, blogs, newsletters)
+  const unsentiment = await pool.query(`
+    SELECT ed.id, ed.title, ed.content, ed.source_name, ed.source_type, ed.published_at
+    FROM external_documents ed
+    LEFT JOIN document_sentiment ds ON ds.document_id = ed.id
+    WHERE ds.id IS NULL
+      AND ed.source_type IN ('podcast', 'blog', 'newsletter', 'news_enrich', 'rss')
+      AND ed.published_at > NOW() - INTERVAL '7 days'
+      AND ed.title IS NOT NULL
+    ORDER BY ed.published_at DESC
+    LIMIT 30
+  `);
+
+  let sentimentCount = 0;
+  if (unsentiment.rows.length > 0 && ANTHROPIC_API_KEY) {
+    // Batch 10 at a time
+    for (let i = 0; i < unsentiment.rows.length; i += 10) {
+      const batch = unsentiment.rows.slice(i, i + 10);
+
+      const docsText = batch.map((d, idx) =>
+        `[${idx + 1}] "${d.title}" — ${d.source_name} (${d.source_type})\n${(d.content || '').slice(0, 800)}`
+      ).join('\n\n');
+
+      try {
+        const result = await callClaude(
+          `Rate the market sentiment of each document for the executive search / talent intelligence market.
+
+For each document return: sentiment (bullish/bearish/neutral), confidence (0.0-1.0), and up to 3 theme tags.
+
+Bullish = growth signals, hiring, expansion, investment, positive momentum
+Bearish = layoffs, closures, contraction, regulatory pressure, negative momentum
+Neutral = informational, mixed, or irrelevant to market health
+
+Return ONLY a JSON array:
+[{"index":1,"sentiment":"bullish","confidence":0.8,"themes":["AI","hiring"],"summary":"one sentence"}]`,
+          docsText, 2048
+        );
+
+        let parsed = [];
+        try {
+          const cleaned = result.replace(/```json\s*/g, '').replace(/```/g, '').trim();
+          parsed = JSON.parse(cleaned);
+        } catch (e) {}
+
+        for (const item of (Array.isArray(parsed) ? parsed : [])) {
+          const doc = batch[item.index - 1];
+          if (!doc || !['bullish', 'bearish', 'neutral'].includes(item.sentiment)) continue;
+
+          await pool.query(`
+            INSERT INTO document_sentiment (document_id, sentiment, confidence, themes, summary, source_type, computed_at)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW())
+            ON CONFLICT (document_id) DO NOTHING
+          `, [doc.id, item.sentiment, item.confidence || 0.5, item.themes || [], item.summary || '', doc.source_type]);
+          sentimentCount++;
+        }
+      } catch (e) {
+        console.warn(`     ⚠️  Sentiment analysis error: ${e.message}`);
+      }
+      await sleep(500);
+    }
+    console.log(`     ${sentimentCount} documents sentiment-scored`);
+  }
+  stats.sentiment = sentimentCount;
+
   return stats;
 }
 

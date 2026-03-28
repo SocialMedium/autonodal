@@ -10,7 +10,8 @@
     capital_raising: 'Capital', ma_activity: 'M&A', product_launch: 'Product',
     leadership_change: 'Leadership', strategic_hiring: 'Hiring',
     geographic_expansion: 'Expansion', partnership: 'Partnership',
-    layoffs: 'Layoffs', restructuring: 'Restructuring'
+    layoffs: 'Layoffs', restructuring: 'Restructuring',
+    media_sentiment: 'Media'
   };
 
   function fmt(n) { n = parseInt(n) || 0; return n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : n.toString(); }
