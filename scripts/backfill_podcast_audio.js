@@ -65,12 +65,10 @@ async function main() {
         updated += rowCount;
       }
 
-      if (updated > 0) {
-        console.log(`  ${src.source_name}: ${updated} audio URLs set`);
-        totalUpdated += updated;
-      }
+      console.log(`  ${src.source_name}: ${items.length} feed items, ${updated} audio URLs set`);
+      totalUpdated += updated;
     } catch (e) {
-      // Skip failed feeds
+      console.log(`  ${src.source_name}: failed — ${e.message?.slice(0, 60)}`);
     }
   }
 
