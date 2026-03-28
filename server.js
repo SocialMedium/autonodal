@@ -2556,11 +2556,18 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           const pos = positions.find(p => p.primary || p.tense || p.current)
             || positions.sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''))[0];
 
-          // Only update fields that are EMPTY on our record — never overwrite existing data
-          if (!person.headline && (d.headline || d.profile?.headline)) updates.headline = d.headline || d.profile.headline;
-          if (!person.current_title && pos?.title) updates.current_title = pos.title;
-          if (!person.current_company_name && (pos?.company?.name || pos?.company)) {
-            updates.current_company_name = pos.company?.name || pos.company;
+          // For Ezekia-sourced people: update title/company if Ezekia has a newer primary position
+          // For other sources: only fill empty fields
+          const isEzekiaSource = person.source === 'ezekia';
+          if (d.headline || d.profile?.headline) {
+            if (!person.headline || isEzekiaSource) updates.headline = d.headline || d.profile.headline;
+          }
+          if (pos?.title) {
+            if (!person.current_title || (isEzekiaSource && pos.title !== person.current_title)) updates.current_title = pos.title;
+          }
+          if (pos?.company?.name || pos?.company) {
+            const ezCompany = pos.company?.name || pos.company;
+            if (!person.current_company_name || (isEzekiaSource && ezCompany !== person.current_company_name)) updates.current_company_name = ezCompany;
           }
 
           // Contact data from base object (emails[], phones[], links[], addresses[])
