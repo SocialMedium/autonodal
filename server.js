@@ -1494,6 +1494,36 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
     // Sort by recency after dedup
     const latestSorted = latest.sort((a, b) => new Date(b.published_at) - new Date(a.published_at)).slice(0, 5);
 
+    // For episodes missing audio_url, try to resolve from RSS source
+    for (const ep of latestSorted) {
+      if (ep.audio_url) continue;
+      try {
+        const { rows: [rss] } = await pool.query(
+          `SELECT url FROM rss_sources WHERE name ILIKE $1 OR name ILIKE $2 LIMIT 1`,
+          [`%${ep.source_name}%`, `${ep.source_name.split(' ')[0]}%`]
+        );
+        if (!rss) continue;
+        const feedXml = await new Promise((resolve, reject) => {
+          const client = rss.url.startsWith('https') ? https : require('http');
+          client.get(rss.url, { timeout: 5000, headers: { 'User-Agent': 'MLX/1.0' } }, res => {
+            const c = []; res.on('data', d => c.push(d)); res.on('end', () => resolve(Buffer.concat(c).toString()));
+          }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('timeout')); });
+        }).catch(() => '');
+        if (!feedXml) continue;
+        // Find enclosure for this episode by matching title
+        const titleMatch = ep.title.slice(0, 50).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const itemMatch = feedXml.match(new RegExp('<item[^>]*>[\\s\\S]*?' + titleMatch + '[\\s\\S]*?</item>', 'i'));
+        if (itemMatch) {
+          const encMatch = itemMatch[0].match(/enclosure[^>]*url=["']([^"']+)["']/i);
+          if (encMatch) {
+            ep.audio_url = encMatch[1].replace(/&amp;/g, '&');
+            // Cache it in DB for next time
+            pool.query('UPDATE external_documents SET audio_url = $1 WHERE id = $2', [ep.audio_url, ep.id]).catch(() => {});
+          }
+        }
+      } catch (e) { /* non-fatal */ }
+    }
+
     // ── DEEP DIVES: semantic match from full archive via Qdrant ──
     let deepDives = [];
     const searchTerms = trending.map(t => themeLabels[t.signal_type] || t.signal_type.replace(/_/g, ' ')).join(' ');
