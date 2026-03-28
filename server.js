@@ -8610,13 +8610,14 @@ app.listen(PORT, async () => {
   try {
     await pool.query(`ALTER TABLE user_google_accounts ADD COLUMN IF NOT EXISTS emails_synced INTEGER DEFAULT 0`);
     await pool.query(`ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS audio_url TEXT`);
-    // Backfill: set audio_url from source_url for existing podcast episodes with audio file URLs
-    const { rowCount: audioFilled } = await pool.query(`
-      UPDATE external_documents SET audio_url = source_url
-      WHERE source_type = 'podcast' AND audio_url IS NULL
-        AND source_url ~ '\\.(mp3|m4a|ogg|wav)(\\?|$)'
-    `).catch(() => ({ rowCount: 0 }));
-    if (audioFilled > 0) console.log(`  ✅ Backfilled ${audioFilled} podcast audio URLs`);
+    // Backfill podcast audio URLs from RSS feeds (background)
+    const audioCheck = await pool.query(`SELECT COUNT(*) AS cnt FROM external_documents WHERE source_type = 'podcast' AND audio_url IS NULL`).catch(() => ({ rows: [{ cnt: '0' }] }));
+    if (parseInt(audioCheck.rows[0].cnt) > 10) {
+      console.log('  🎧 Backfilling podcast audio URLs in background...');
+      const { spawn } = require('child_process');
+      spawn('node', [require('path').join(__dirname, 'scripts', 'backfill_podcast_audio.js')], { stdio: 'inherit', timeout: 300000 })
+        .on('exit', (code) => console.log(`  ✅ Podcast audio backfill exited (code ${code})`));
+    }
   } catch (e) {}
 
   // Embedding tracking columns for all embeddable entities
