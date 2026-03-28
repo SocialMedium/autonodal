@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MLX Autonode</title>
+<title>Signals</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -1502,7 +1502,7 @@ body {
 <!-- ═══ LOGIN ═══ -->
 <div class="login-overlay" id="loginOverlay">
   <div class="login-panel">
-    <div class="login-logo">MLX <em>Autonode</em></div>
+    <div class="login-logo" id="loginLogo">Signals</div>
     <div class="login-sub">Intelligence platform — sign in with your team account</div>
     <div class="login-error" id="loginError"></div>
     <a class="login-btn" href="/api/auth/google" style="display:flex;align-items:center;justify-content:center;gap:10px;text-decoration:none;color:white">
@@ -1517,7 +1517,7 @@ body {
 <header class="masthead">
   <div class="masthead-top">
     <div class="masthead-brand">
-      <div class="masthead-logo">MLX <em>Autonode</em></div>
+      <div class="masthead-logo" id="mastheadLogo">Signals</div>
       <div class="masthead-edition" id="editionDate"></div>
     </div>
     <nav class="masthead-nav">
@@ -3071,6 +3071,13 @@ async function init() {
     window._currentUser = user;
     const initials = (user.name || user.email || '').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
     document.getElementById('userAvatar').textContent = initials;
+
+    // Set tenant branding
+    var tenantName = user.tenant_name || 'Signals';
+    var brandLabel = tenantName + ' <em>Signals</em>';
+    document.title = tenantName + ' Signals';
+    var logo = document.getElementById('mastheadLogo');
+    if (logo) logo.innerHTML = brandLabel;
 
     // Show onboarding for new users
     if (!user.onboarded || !user.region) {
