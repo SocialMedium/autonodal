@@ -2557,17 +2557,30 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
             || positions.sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''))[0];
 
           // Only update fields that are EMPTY on our record — never overwrite existing data
-          // The user or Lorac can update manually if needed
           if (!person.headline && (d.headline || d.profile?.headline)) updates.headline = d.headline || d.profile.headline;
           if (!person.current_title && pos?.title) updates.current_title = pos.title;
           if (!person.current_company_name && (pos?.company?.name || pos?.company)) {
             updates.current_company_name = pos.company?.name || pos.company;
           }
-          // Only fill empty fields — never overwrite existing contact data
-          if (!person.email && (d.email || d.emails?.[0]?.address)) updates.email = d.email || d.emails[0].address;
-          if (!person.phone && (d.phone || d.phones?.[0]?.number)) updates.phone = d.phone || d.phones[0].number;
-          if (!person.linkedin_url && (d.linkedin_url || d.linkedinUrl)) updates.linkedin_url = d.linkedin_url || d.linkedinUrl;
-          if (!person.location && (d.location || d.address?.city)) updates.location = d.location || [d.address?.city, d.address?.country].filter(Boolean).join(', ');
+
+          // Contact data from base object (emails[], phones[], links[], addresses[])
+          const defaultEmail = d.emails?.find(e => e.isDefault)?.address || d.emails?.[0]?.address;
+          const defaultPhone = d.phones?.find(p => p.isDefault)?.number || d.phones?.[0]?.number;
+          const linkedinLink = d.links?.find(l => l.type === 'linkedin' || l.url?.includes('linkedin'))?.url;
+          const defaultAddr = d.addresses?.find(a => a.isDefault) || d.addresses?.[0];
+
+          if (!person.email && defaultEmail) updates.email = defaultEmail;
+          if (!person.phone && defaultPhone) updates.phone = defaultPhone;
+          if (!person.linkedin_url && linkedinLink) updates.linkedin_url = linkedinLink;
+          if (!person.location && defaultAddr) updates.location = [defaultAddr.city, defaultAddr.state, defaultAddr.country].filter(Boolean).join(', ');
+          if (!person.city && defaultAddr?.city) updates.city = defaultAddr.city;
+          if (!person.country && defaultAddr?.country) updates.country = defaultAddr.country;
+
+          // Store all emails as alt if we have multiple
+          if (d.emails?.length > 1 && !person.email_alt) {
+            const altEmail = d.emails.find(e => !e.isDefault)?.address;
+            if (altEmail) updates.email_alt = altEmail;
+          }
 
           // Career history from positions
           if (d.profile?.positions?.length > 0) {
