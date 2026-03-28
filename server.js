@@ -2645,6 +2645,42 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           enrichResults.ezekia_notes = { research: researchNotes.length, system: systemNotes.length, imported: notesImported };
         }
 
+        // ── Write-back: push Signals intelligence to Ezekia ──
+        try {
+          // Gather any intelligence we have that Ezekia doesn't
+          const { rows: recentSignals } = await pool.query(`
+            SELECT se.signal_type, se.evidence_summary, se.company_name, se.detected_at
+            FROM signal_events se
+            JOIN companies c ON c.id = se.company_id
+            WHERE c.name ILIKE $1 AND se.detected_at > NOW() - INTERVAL '30 days'
+            ORDER BY se.detected_at DESC LIMIT 5
+          `, ['%' + (person.current_company_name || 'NONE') + '%']).catch(() => ({ rows: [] }));
+
+          const { rows: recentInteractions } = await pool.query(`
+            SELECT COUNT(*) AS cnt, MAX(interaction_at) AS last_at
+            FROM interactions WHERE person_id = $1 AND tenant_id = $2 AND interaction_at > NOW() - INTERVAL '90 days'
+          `, [req.params.id, req.tenant_id]).catch(() => ({ rows: [{}] }));
+
+          // Build intel note if we have something worth sharing
+          const signalLines = recentSignals.map(s => `${s.signal_type.replace(/_/g, ' ')}: ${s.evidence_summary?.slice(0, 120) || s.company_name} (${new Date(s.detected_at).toLocaleDateString()})`);
+          const ix = recentInteractions[0];
+
+          if (signalLines.length > 0 || parseInt(ix?.cnt) > 0) {
+            let noteBody = '[Autonodal Signal Intelligence - auto-generated]\n\n';
+            if (signalLines.length) noteBody += 'Recent signals at ' + (person.current_company_name || 'their company') + ':\n' + signalLines.join('\n') + '\n\n';
+            if (parseInt(ix?.cnt) > 0) noteBody += `Interaction activity: ${ix.cnt} touchpoints in 90 days (last: ${ix.last_at ? new Date(ix.last_at).toLocaleDateString() : 'unknown'})\n`;
+
+            await ezekia.addPersonNote(parseInt(ezekiaId), noteBody, {
+              subject: 'Autonodal Intel Update - ' + new Date().toLocaleDateString()
+            });
+            enrichResults.ezekia_writeback = { note_pushed: true, signals: signalLines.length, interactions: parseInt(ix?.cnt) || 0 };
+          } else {
+            enrichResults.ezekia_writeback = { note_pushed: false, reason: 'No new intelligence to push' };
+          }
+        } catch (e) {
+          enrichResults.ezekia_writeback = { error: e.message };
+        }
+
         } // end if (ezekiaId)
       } catch (e) {
         enrichResults.ezekia_profile = { error: e.message };
@@ -3429,6 +3465,31 @@ Only include genuine business signals. Ignore opinion pieces, listicles, or gene
       }
     } catch (e) {
       enrichResults.embedding = { error: e.message };
+    }
+
+    // ── Ezekia write-back: push signal intelligence to CRM ──
+    if (enrichResults.ezekia?.ezekia_id && process.env.EZEKIA_API_TOKEN) {
+      try {
+        const ezekia = require('./lib/ezekia');
+        const { rows: recentSignals } = await pool.query(`
+          SELECT signal_type, evidence_summary, detected_at, confidence_score
+          FROM signal_events WHERE company_id = $1 AND detected_at > NOW() - INTERVAL '30 days'
+          ORDER BY detected_at DESC LIMIT 5
+        `, [req.params.id]).catch(() => ({ rows: [] }));
+
+        if (recentSignals.length > 0) {
+          const noteBody = '[Autonodal Signal Intelligence]\n\n' +
+            recentSignals.map(s =>
+              `${s.signal_type.replace(/_/g, ' ')} (${Math.round(s.confidence_score * 100)}%): ${(s.evidence_summary || '').slice(0, 150)} — ${new Date(s.detected_at).toLocaleDateString()}`
+            ).join('\n');
+
+          // Write as a note on the company (via any linked person, since Ezekia notes attach to people)
+          // For now, log intent — Ezekia doesn't have a company notes endpoint
+          enrichResults.ezekia_writeback = { signals_available: recentSignals.length, note: 'Company notes not supported in Ezekia API — signal intel stored locally' };
+        }
+      } catch (e) {
+        enrichResults.ezekia_writeback = { error: e.message };
+      }
     }
 
     res.json({ company_id: req.params.id, company_name: company.name, results: enrichResults });
@@ -6001,7 +6062,21 @@ async function executeTool(name, input, userId, tenantId) {
         }
         const { rows: [note] } = await pool.query(`INSERT INTO interactions (person_id, user_id, created_by, interaction_type, subject, summary, extracted_intelligence, source, interaction_at, tenant_id) VALUES ($1, $2, $2, 'research_note', $3, $4, $5, 'chat_concierge', NOW(), $6) RETURNING id`, [personId, userId, subject, intelligence, JSON.stringify(extracted), tenantId]);
         auditLog(userId, 'log_intelligence', 'person', personId, { person_name, subject, source: 'chat_concierge' });
-        return JSON.stringify({ success: true, person_id: personId, note_id: note.id, person_name, subject, extracted, message: `Saved on ${person_name}'s record` });
+
+        // Write-back to Ezekia CRM if person has a source_id
+        let ezekiaPushed = false;
+        if (process.env.EZEKIA_API_TOKEN) {
+          try {
+            const { rows: [p] } = await pool.query('SELECT source_id FROM people WHERE id = $1 AND source = $2', [personId, 'ezekia']);
+            if (p?.source_id) {
+              const ezekia = require('./lib/ezekia');
+              await ezekia.addPersonNote(parseInt(p.source_id), `[Autonodal Intel] ${subject}\n\n${intelligence}`, { subject: subject || 'Intelligence Note' });
+              ezekiaPushed = true;
+            }
+          } catch (e) { /* non-fatal */ }
+        }
+
+        return JSON.stringify({ success: true, person_id: personId, note_id: note.id, person_name, subject, extracted, ezekia_synced: ezekiaPushed, message: `Saved on ${person_name}'s record${ezekiaPushed ? ' (also pushed to Ezekia CRM)' : ''}` });
       }
       case 'create_person': {
         const { full_name, current_title, current_company_name, email, phone, location, linkedin_url, seniority_level } = input;
