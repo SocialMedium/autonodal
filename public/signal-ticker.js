@@ -100,9 +100,6 @@
         '<span class="si-label">MARKET HEALTH</span>'+
         '<span class="si-score '+cls+'" onclick="window.__siChart()" title="Click for chart">'+(mh.score?.toFixed?.(1)||'--')+'</span>'+
         '<span class="'+cls+'" style="font-size:10px">'+arrow(mh.direction)+fmtD(mh.delta)+'</span></div>'+
-      '<div class="si-stat"><b>'+fmt(st.people_tracked)+'</b> people</div>'+
-      '<div class="si-stat"><b>'+fmt(st.companies_tracked)+'</b> cos</div>'+
-      '<div class="si-stat"><b>'+fmt(st.signals_7d)+'</b> 7d</div>'+
       '<div class="si-scroll"><div class="si-inner">'+items+items+'</div></div>'+
       '<div class="si-ctrl">'+
         ['7d','30d','90d'].map(function(h){return '<button class="si-btn'+(h===HORIZON?' on':'')+'" onclick="window.__siHz(\''+h+'\')">'+h+'</button>';}).join('')+
