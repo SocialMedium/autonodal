@@ -8610,6 +8610,13 @@ app.listen(PORT, async () => {
   try {
     await pool.query(`ALTER TABLE user_google_accounts ADD COLUMN IF NOT EXISTS emails_synced INTEGER DEFAULT 0`);
     await pool.query(`ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS audio_url TEXT`);
+    // Backfill: set audio_url from source_url for existing podcast episodes with audio file URLs
+    const { rowCount: audioFilled } = await pool.query(`
+      UPDATE external_documents SET audio_url = source_url
+      WHERE source_type = 'podcast' AND audio_url IS NULL
+        AND source_url ~ '\\.(mp3|m4a|ogg|wav)(\\?|$)'
+    `).catch(() => ({ rowCount: 0 }));
+    if (audioFilled > 0) console.log(`  ✅ Backfilled ${audioFilled} podcast audio URLs`);
   } catch (e) {}
 
   // Embedding tracking columns for all embeddable entities

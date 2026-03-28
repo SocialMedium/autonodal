@@ -2956,12 +2956,11 @@ function renderPodcastItem(p, i) {
     : '<div class="podcast-rank">' + (i + 1) + '</div>';
   var podUrl = p.source_url && p.source_url !== '#' && p.source_url.startsWith('http') ? p.source_url : null;
   var audioSrc = p.audio_url || (podUrl && /\.(mp3|m4a|ogg|wav)(\?|$)/i.test(podUrl) ? podUrl : null);
-  var playBtn = audioSrc
-    ? '<button onclick="event.stopPropagation();togglePodcast(this,\'' + esc(audioSrc) + '\')" style="flex-shrink:0;width:28px;height:28px;border-radius:50%;border:1px solid var(--rule);background:var(--surface);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px" title="Play">&#9654;</button>'
-    : '';
-  var linkBtn = podUrl && !(/\.(mp3|m4a|ogg)(\?|$)/i.test(podUrl))
-    ? '<a href="' + esc(podUrl) + '" target="_blank" onclick="event.stopPropagation()" style="flex-shrink:0;font-size:10px;color:var(--blue);text-decoration:none" title="Open episode">&#8599;</a>'
-    : '';
+  var actionBtn = audioSrc
+    ? '<button onclick="event.stopPropagation();togglePodcast(this,\'' + esc(audioSrc) + '\')" style="flex-shrink:0;width:30px;height:30px;border-radius:50%;border:1px solid var(--rule);background:var(--surface);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;transition:all .15s" title="Play episode">&#9654;</button>'
+    : (podUrl
+      ? '<a href="' + esc(podUrl) + '" target="_blank" onclick="event.stopPropagation()" style="flex-shrink:0;width:30px;height:30px;border-radius:50%;border:1px solid var(--rule);background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:11px;text-decoration:none;color:var(--blue);transition:all .15s" title="Open episode">&#8599;</a>'
+      : '');
   return '<div class="podcast-item" style="cursor:default">' +
     thumb +
     '<div class="podcast-info">' +
@@ -2969,7 +2968,7 @@ function renderPodcastItem(p, i) {
       '<div class="podcast-meta">' + podIcon + ' ' + esc(p.source_name || '') +
         (p.published_at ? ' · ' + ago(p.published_at) : '') + '</div>' +
     '</div>' +
-    playBtn + linkBtn +
+    actionBtn +
   '</div>';
 }
 
