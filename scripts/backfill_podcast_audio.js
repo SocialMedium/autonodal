@@ -4,8 +4,6 @@ require('dotenv').config();
 const { Pool } = require('pg');
 const https = require('https');
 const http = require('http');
-const { parseString } = require('xml2js');
-
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false }
@@ -41,21 +39,25 @@ async function main() {
   for (const src of sources) {
     try {
       const xml = await fetchUrl(src.url);
-      const parsed = await new Promise((resolve, reject) => {
-        parseString(xml, { explicitArray: true }, (err, result) => err ? reject(err) : resolve(result));
-      });
+      // Parse items with regex — no xml2js dependency
+      const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>/gi;
+      let match, updated = 0, itemCount = 0;
 
-      const items = parsed?.rss?.channel?.[0]?.item || parsed?.feed?.entry || [];
-      let updated = 0;
+      while ((match = itemRegex.exec(xml)) !== null) {
+        itemCount++;
+        const itemXml = match[1];
 
-      for (const item of items) {
-        const encUrl = item?.enclosure?.[0]?.$?.url;
-        if (!encUrl) continue;
+        // Extract enclosure URL
+        const encMatch = itemXml.match(/enclosure[^>]*url=["']([^"']+)["']/i);
+        if (!encMatch) continue;
+        const encUrl = encMatch[1].replace(/&amp;/g, '&');
 
-        const title = (item?.title?.[0]?._ || item?.title?.[0] || '').trim();
+        // Extract title
+        const titleMatch = itemXml.match(/<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i);
+        if (!titleMatch) continue;
+        const title = titleMatch[1].replace(/<[^>]+>/g, '').trim();
         if (!title) continue;
 
-        // Match on first 80 chars with wildcard — titles may be truncated or have encoding diffs
         const matchTitle = title.slice(0, 80).replace(/[%_]/g, '');
         const { rowCount } = await pool.query(`
           UPDATE external_documents SET audio_url = $1
@@ -65,10 +67,10 @@ async function main() {
         updated += rowCount;
       }
 
-      console.log(`  ${src.source_name}: ${items.length} feed items, ${updated} audio URLs set`);
+      console.log(`  ${src.source_name}: ${itemCount} items, ${updated} audio URLs set`);
       totalUpdated += updated;
     } catch (e) {
-      console.log(`  ${src.source_name}: failed — ${e.message?.slice(0, 60)}`);
+      console.log(`  ${src.source_name}: failed — ${(e.message || '').slice(0, 60)}`);
     }
   }
 
