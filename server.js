@@ -3851,11 +3851,12 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
         LEFT JOIN users u ON u.id = tp.team_member_id
         WHERE tp.person_id = p.id
       ) tp_agg ON true
-      WHERE p.current_company_id = $1 AND p.tenant_id = $2
+      WHERE (p.current_company_id = $1 OR LOWER(TRIM(p.current_company_name)) = LOWER(TRIM($3)))
+        AND p.tenant_id = $2
       ORDER BY COALESCE(ix.cnt, 0) DESC, tp_agg.max_strength DESC NULLS LAST,
         CASE WHEN p.seniority_level IN ('c_suite','vp','director') THEN 0 ELSE 1 END, p.full_name
-      LIMIT 10
-    `, [companyId, req.tenant_id]);
+      LIMIT 50
+    `, [companyId, req.tenant_id, company.name]);
 
     // Placements at this company
     let placements = [];
