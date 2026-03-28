@@ -2934,19 +2934,42 @@ async function loadConvergingThemes() {
 // Shared audio player
 var _podAudio = null;
 var _podActiveBtn = null;
+var _podCurrentSrc = null;
 function togglePodcast(btn, src) {
-  if (!_podAudio) { _podAudio = new Audio(); _podAudio.addEventListener('ended', function() { if (_podActiveBtn) { _podActiveBtn.innerHTML = '&#9654;'; _podActiveBtn = null; } }); }
-  if (_podAudio.src === src && !_podAudio.paused) {
-    _podAudio.pause();
-    btn.innerHTML = '&#9654;';
-    _podActiveBtn = null;
-  } else {
-    if (_podActiveBtn) _podActiveBtn.innerHTML = '&#9654;';
-    _podAudio.src = src;
-    _podAudio.play().catch(function() {});
-    btn.innerHTML = '&#9646;&#9646;';
-    _podActiveBtn = btn;
+  if (!_podAudio) {
+    _podAudio = new Audio();
+    _podAudio.addEventListener('ended', function() {
+      if (_podActiveBtn) { _podActiveBtn.innerHTML = '&#9654;'; _podActiveBtn = null; _podCurrentSrc = null; }
+    });
+    // Update progress on button
+    _podAudio.addEventListener('timeupdate', function() {
+      if (_podActiveBtn && _podAudio.duration) {
+        var pct = Math.round((_podAudio.currentTime / _podAudio.duration) * 100);
+        var mins = Math.floor(_podAudio.currentTime / 60);
+        var secs = Math.floor(_podAudio.currentTime % 60);
+        _podActiveBtn.title = mins + ':' + (secs < 10 ? '0' : '') + secs;
+        _podActiveBtn.style.background = 'conic-gradient(var(--blue) ' + pct + '%, var(--surface) ' + pct + '%)';
+      }
+    });
   }
+  // Same track — toggle pause/resume without resetting
+  if (_podCurrentSrc === src) {
+    if (_podAudio.paused) {
+      _podAudio.play().catch(function() {});
+      btn.innerHTML = '&#9646;&#9646;';
+    } else {
+      _podAudio.pause();
+      btn.innerHTML = '&#9654;';
+    }
+    return;
+  }
+  // Different track — stop old, start new
+  if (_podActiveBtn) { _podActiveBtn.innerHTML = '&#9654;'; _podActiveBtn.style.background = 'var(--surface)'; }
+  _podCurrentSrc = src;
+  _podAudio.src = src;
+  _podAudio.play().catch(function() {});
+  btn.innerHTML = '&#9646;&#9646;';
+  _podActiveBtn = btn;
 }
 
 function renderPodcastItem(p, i) {
