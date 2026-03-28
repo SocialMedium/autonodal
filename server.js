@@ -2645,6 +2645,71 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           enrichResults.ezekia_notes = { research: researchNotes.length, system: systemNotes.length, imported: notesImported };
         }
 
+        // ── Pull aspirations, status, and documents from Ezekia ──
+        try {
+          const [aspirations, status, docs] = await Promise.all([
+            ezekia.getPersonAspirations(parseInt(ezekiaId)).catch(() => null),
+            ezekia.getPersonStatus(parseInt(ezekiaId)).catch(() => null),
+            ezekia.getPersonDocuments(parseInt(ezekiaId)).catch(() => null),
+          ]);
+
+          if (aspirations?.data) {
+            enrichResults.ezekia_aspirations = aspirations.data;
+            // Store aspirations as extracted intelligence
+            const aspText = JSON.stringify(aspirations.data);
+            if (aspText.length > 10) {
+              await pool.query(`UPDATE people SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('aspirations', $1::jsonb) WHERE id = $2 AND tenant_id = $3`,
+                [aspText, req.params.id, req.tenant_id]).catch(() => {});
+            }
+          }
+
+          if (status?.data) {
+            enrichResults.ezekia_status = status.data;
+          }
+
+          if (docs?.data && Array.isArray(docs.data)) {
+            enrichResults.ezekia_documents = {
+              count: docs.data.length,
+              files: docs.data.slice(0, 10).map(d => ({ name: d.name || d.filename, type: d.type || d.mimeType, id: d.id }))
+            };
+
+            // Extract companies from CV/document filenames and career history
+            // Career history companies are already pulled from positions
+            // But CV content could have more — flag for manual review
+            const cvDocs = docs.data.filter(d => {
+              const name = (d.name || d.filename || '').toLowerCase();
+              return name.includes('cv') || name.includes('resume') || name.includes('curriculum');
+            });
+            if (cvDocs.length > 0) {
+              enrichResults.ezekia_cv = {
+                found: cvDocs.length,
+                files: cvDocs.map(d => ({ name: d.name || d.filename, id: d.id })),
+                message: 'CV files available — download for company extraction if needed'
+              };
+            }
+          }
+        } catch (e) {
+          // Non-fatal — aspirations/status/docs may not be available
+        }
+
+        // Extract companies from career history positions (already pulled)
+        if (enrichResults.ezekia_profile?.updated_fields?.includes('career_history') || person.career_history) {
+          try {
+            const career = JSON.parse(person.career_history || enrichResults.ezekia_profile?.career_raw || '[]');
+            const companyNames = [...new Set(career.map(c => c.company).filter(Boolean))];
+            let companiesCreated = 0;
+            for (const name of companyNames) {
+              if (!name || name.length < 2) continue;
+              const { rows: exists } = await pool.query('SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1', [name, req.tenant_id]);
+              if (!exists.length) {
+                await pool.query('INSERT INTO companies (name, source, tenant_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [name, 'ezekia_career', req.tenant_id]);
+                companiesCreated++;
+              }
+            }
+            if (companiesCreated > 0) enrichResults.companies_from_career = { created: companiesCreated, total: companyNames.length };
+          } catch (e) { /* career history parse error */ }
+        }
+
         // ── Write-back: push Signals intelligence to Ezekia ──
         try {
           // Gather any intelligence we have that Ezekia doesn't
