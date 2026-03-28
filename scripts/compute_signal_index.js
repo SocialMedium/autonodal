@@ -45,10 +45,11 @@ function computeDelta(current, prior) {
 }
 
 function deltaToScore(delta, sentiment) {
-  // Sigmoid-like compression: ±50% delta maps to roughly ±15 score points
-  const dir = sentiment === 'bullish' ? 1 : sentiment === 'bearish' ? -1 : 0.5;
-  const compressed = delta / (1 + Math.abs(delta) / 50); // softer compression
-  const raw = 50 + (dir * compressed / 2);
+  // Map delta to a 0-100 score:
+  // Bullish rising → high score. Bearish rising → low score.
+  // Scale: ±30% delta moves score by ±20 points from 50
+  const dir = sentiment === 'bullish' ? 1 : sentiment === 'bearish' ? -1 : 0.3;
+  const raw = 50 + (dir * delta * 0.65);
   return Math.min(100, Math.max(0, Math.round(raw * 10) / 10));
 }
 
@@ -133,7 +134,9 @@ async function computeSignalIndex() {
     }
 
     // 2. Compute composite Market Health Index
+    // Two components: (a) weighted stock scores, (b) bullish/bearish volume ratio
     let weightedSum = 0, totalWeight = 0, bullishCount = 0, bearishCount = 0;
+    let bullishVolume = 0, bearishVolume = 0;
     let dominantStock = null, dominantContrib = 0;
 
     for (const [name, data] of Object.entries(stockResults)) {
@@ -142,6 +145,10 @@ async function computeSignalIndex() {
       weightedSum += contrib;
       totalWeight += cfg.weight;
 
+      // Track volume-weighted sentiment
+      if (cfg.sentiment === 'bullish') bullishVolume += (data.current_count || 0) * cfg.weight;
+      else if (cfg.sentiment === 'bearish') bearishVolume += (data.current_count || 0) * cfg.weight;
+
       const absContrib = Math.abs(data.score - 50) * cfg.weight;
       if (absContrib > dominantContrib) { dominantContrib = absContrib; dominantStock = name; }
 
@@ -149,7 +156,11 @@ async function computeSignalIndex() {
       if (cfg.sentiment === 'bearish' && data.direction === 'up') bearishCount++;
     }
 
-    const compositeScore = totalWeight > 0 ? Math.round((weightedSum / totalWeight) * 10) / 10 : 50.0;
+    // Blend: 60% from delta-based scores, 40% from bullish/bearish volume ratio
+    const deltaScore = totalWeight > 0 ? weightedSum / totalWeight : 50;
+    const totalVolume = bullishVolume + bearishVolume;
+    const volumeRatio = totalVolume > 0 ? (bullishVolume / totalVolume) * 100 : 50; // 0-100, 50 = balanced
+    const compositeScore = Math.round((deltaScore * 0.6 + volumeRatio * 0.4) * 10) / 10;
 
     // Prior composite for delta
     const { rows: priorRows } = await pool.query(`
