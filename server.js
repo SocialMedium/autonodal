@@ -2549,6 +2549,16 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 
         if (ezRes && ezRes.data) {
           const d = ezRes.data;
+
+          // Safety: verify the Ezekia name matches our person (prevent wrong ID contamination)
+          const ezName = (d.fullName || `${d.firstName || ''} ${d.lastName || ''}`).trim().toLowerCase();
+          const ourName = (person.full_name || '').toLowerCase();
+          if (ezName && ourName && !ezName.includes(ourName.split(' ')[0]) && !ourName.includes(ezName.split(' ')[0])) {
+            console.warn(`Ezekia name mismatch: "${d.fullName}" vs "${person.full_name}" — clearing source_id`);
+            await pool.query('UPDATE people SET source_id = NULL WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
+            enrichResults.ezekia_profile = { error: `Name mismatch: Ezekia has "${d.fullName}" — source_id cleared` };
+          } else {
+
           const updates = {};
 
           // Profile fields — find the CURRENT position
@@ -2667,6 +2677,8 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           }
           enrichResults.ezekia_notes = { research: researchNotes.length, system: systemNotes.length, imported: notesImported };
         }
+
+        } // end name match safety check
 
         // ── Pull aspirations, status, and documents from Ezekia ──
         try {
