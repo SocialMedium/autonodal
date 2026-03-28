@@ -4149,6 +4149,26 @@ app.get('/api/search', authenticateToken, async (req, res) => {
           .filter(Boolean);
         }
       }
+
+      // SQL fallback: exact name match (catches people that Qdrant missed or ranked low)
+      const existingIds = new Set(results.people.map(p => p.id));
+      const { rows: nameFallback } = await pool.query(`
+        SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.headline,
+               p.location, p.seniority_level, p.source, p.email, p.linkedin_url, p.current_company_id,
+               c.is_client AS at_client_company
+        FROM people p
+        LEFT JOIN companies c ON c.id = p.current_company_id
+        WHERE p.tenant_id = $1 AND p.full_name ILIKE $2
+          AND (p.current_title IS NOT NULL OR p.headline IS NOT NULL OR p.source = 'ezekia')
+        LIMIT 10
+      `, [req.tenant_id, `%${q}%`]).catch(() => ({ rows: [] }));
+
+      for (const p of nameFallback) {
+        if (!existingIds.has(p.id)) {
+          results.people.push({ ...p, match_score: 95, match_type: 'name' });
+          existingIds.add(p.id);
+        }
+      }
     }
 
     // Search companies
@@ -4335,6 +4355,13 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     results.people = (results.people || []).map(p => ({ ...p, score: (p.match_score || 50) / 100 }));
     results.companies = (results.companies || []).map(c => ({ ...c, score: (c.match_score || 50) / 100 }));
     results.documents = (results.documents || []).map(d => ({ ...d, score: (d.match_score || 50) / 100 }));
+
+    // Sort all result arrays by match_score descending
+    if (results.people) results.people.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
+    if (results.companies) results.companies.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
+    if (results.documents) results.documents.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
+    if (results.signals) results.signals.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
+    if (results.case_studies) results.case_studies.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
 
     res.json({
       query: q,
