@@ -58,11 +58,12 @@ async function main() {
         const title = titleMatch[1].replace(/<[^>]+>/g, '').trim();
         if (!title) continue;
 
-        const matchTitle = title.slice(0, 80).replace(/[%_]/g, '');
+        const matchTitle = title.slice(0, 60).replace(/[%_]/g, '');
+        if (matchTitle.length < 10) continue;
         const { rowCount } = await pool.query(`
           UPDATE external_documents SET audio_url = $1
-          WHERE source_name = $2 AND title ILIKE $3 AND audio_url IS NULL AND source_type = 'podcast'
-        `, [encUrl, src.source_name, matchTitle + '%']);
+          WHERE title ILIKE $2 AND audio_url IS NULL AND source_type = 'podcast'
+        `, [encUrl, matchTitle + '%']);
 
         updated += rowCount;
       }
