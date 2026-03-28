@@ -8643,6 +8643,32 @@ app.post('/api/admin/trigger-drive-sync', authenticateToken, requireAdmin, async
   }
 });
 
+// Trigger CRM (Ezekia) sync
+app.post('/api/admin/trigger-crm-sync', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    if (!process.env.EZEKIA_API_TOKEN) return res.json({ message: 'Ezekia API not configured. Set EZEKIA_API_TOKEN in environment.' });
+
+    // Check current Ezekia people count
+    const { rows: [ezCount] } = await pool.query(
+      `SELECT COUNT(*) AS cnt FROM people WHERE source = 'ezekia' AND tenant_id = $1`, [req.tenant_id]
+    ).catch(() => ({ rows: [{ cnt: 0 }] }));
+
+    // Trigger sync in background
+    const { exec } = require('child_process');
+    exec(`node ${require('path').join(__dirname, 'scripts', 'sync_ezekia.js')}`, { timeout: 600000 }, (err, stdout, stderr) => {
+      if (stdout) console.log(stdout.slice(-500));
+      if (stderr) console.error('CRM sync stderr:', stderr.slice(-200));
+      if (err) console.error('CRM sync error:', err.message?.slice(0, 200));
+      else console.log('✅ Ezekia CRM sync complete');
+    });
+
+    auditLog(req.user.user_id, 'trigger_crm_sync', 'system', null, { current_ezekia_count: ezCount.cnt });
+    res.json({ message: `Ezekia CRM sync triggered. Currently ${parseInt(ezCount.cnt).toLocaleString()} people from Ezekia. Sync running in background.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // XERO OAUTH 2.0
 // ═══════════════════════════════════════════════════════════════════════════════

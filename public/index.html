@@ -136,6 +136,25 @@ body {
   align-items: center;
   gap: 16px;
 }
+.user-menu-wrap { position: relative; }
+.user-menu-wrap:hover .user-dropdown { display: block; }
+.user-dropdown {
+  display: none; position: absolute; top: 100%; right: 0; margin-top: 6px;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1); min-width: 200px; z-index: 200;
+  padding: 6px 0; font-size: 13px;
+}
+.user-dropdown-header { padding: 10px 16px; border-bottom: 1px solid var(--rule); }
+.user-dropdown-name { font-weight: 600; font-size: 13px; }
+.user-dropdown-email { font-size: 11px; color: var(--ink-3); }
+.user-dropdown-role { font-size: 10px; color: var(--blue); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+.user-dropdown a, .user-dropdown button {
+  display: block; width: 100%; text-align: left; padding: 8px 16px;
+  font-size: 12px; color: var(--ink-2); text-decoration: none;
+  border: none; background: none; cursor: pointer; font-family: inherit;
+}
+.user-dropdown a:hover, .user-dropdown button:hover { background: var(--surface-warm); color: var(--ink); }
+.user-dropdown .sep { border-top: 1px solid var(--rule); margin: 4px 0; }
 
 /* Agent ticker */
 /* Old agent-ticker replaced by signal-ticker.js */
@@ -1530,7 +1549,22 @@ body {
       <a href="/case-studies.html">Case Studies</a>
     </nav>
     <div class="masthead-right">
-      <div class="masthead-user" id="userAvatar" onclick="location.href='/profile.html'" title="My Profile">JT</div>
+      <div class="user-menu-wrap">
+        <div class="masthead-user" id="userAvatar">JT</div>
+        <div class="user-dropdown" id="userDropdown">
+          <div class="user-dropdown-header">
+            <div class="user-dropdown-name" id="dropdownName">—</div>
+            <div class="user-dropdown-email" id="dropdownEmail">—</div>
+            <div class="user-dropdown-role" id="dropdownRole"></div>
+          </div>
+          <a href="/profile.html">My Profile & Data</a>
+          <a href="/profile.html#feeds">My Feeds</a>
+          <div class="sep"></div>
+          <a href="/admin.html" id="adminLink" style="display:none">Admin Dashboard</a>
+          <div class="sep" id="adminSep" style="display:none"></div>
+          <button onclick="doLogout()">Sign Out</button>
+        </div>
+      </div>
     </div>
   </div>
   <div id="signal-ticker"></div>
@@ -3071,6 +3105,15 @@ async function init() {
     window._currentUser = user;
     const initials = (user.name || user.email || '').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
     document.getElementById('userAvatar').textContent = initials;
+
+    // Populate user dropdown
+    var dn = document.getElementById('dropdownName'); if (dn) dn.textContent = user.name || user.email;
+    var de = document.getElementById('dropdownEmail'); if (de) de.textContent = user.email || '';
+    var dr = document.getElementById('dropdownRole'); if (dr) dr.textContent = user.role || '';
+    if (user.role === 'admin') {
+      var al = document.getElementById('adminLink'); if (al) al.style.display = 'block';
+      var as = document.getElementById('adminSep'); if (as) as.style.display = 'block';
+    }
 
     // Set tenant branding
     var tenantName = user.tenant_name || 'Signals';
