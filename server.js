@@ -2780,6 +2780,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 
         } // end if (ezekiaId)
       } catch (e) {
+        console.error('Ezekia enrichment error:', e.message);
         enrichResults.ezekia_profile = { error: e.message };
       }
     } else {
@@ -3134,6 +3135,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
       enrichResults.gmail_linked = { error: e.message };
     }
 
+    console.log(`Person enrich ${person.full_name}: ${JSON.stringify(Object.keys(enrichResults).map(k => k + '=' + (enrichResults[k]?.error || enrichResults[k]?.message || enrichResults[k]?.updated_fields?.join(',') || 'ok')))}`);
     res.json({ person_id: req.params.id, person_name: person.full_name, results: enrichResults });
   } catch (err) {
     console.error('Enrich error:', err.message);
