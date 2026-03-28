@@ -14,7 +14,7 @@
   };
 
   function fmt(n) { n = parseInt(n) || 0; return n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : n.toString(); }
-  function fmtD(d) { d = parseFloat(d) || 0; return (d > 0 ? '+' : '') + d.toFixed(1) + '%'; }
+  function fmtD(d) { d = Math.min(99, Math.max(-99, parseFloat(d) || 0)); return (d > 0 ? '+' : '') + d.toFixed(1) + '%'; }
   function arrow(d) { return d === 'up' ? '\u2191' : d === 'down' ? '\u2193' : '\u2192'; }
   function dirCls(d, s) {
     if (d === 'flat') return 'si-flat';

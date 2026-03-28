@@ -36,18 +36,24 @@ const HORIZONS = [
 ];
 
 function computeDelta(current, prior) {
-  if (prior > 0) return ((current - prior) / prior) * 100;
-  return current > 0 ? 100 : 0;
+  // Use smoothed comparison to avoid extreme swings from small bases
+  // Add a floor of 5 to the denominator so 0→50 doesn't show as +∞
+  const smoothedPrior = Math.max(prior, 5);
+  const raw = ((current - prior) / smoothedPrior) * 100;
+  // Cap at ±99% — prevents absurd numbers from young data
+  return Math.min(99, Math.max(-99, raw));
 }
 
 function deltaToScore(delta, sentiment) {
+  // Sigmoid-like compression: ±50% delta maps to roughly ±15 score points
   const dir = sentiment === 'bullish' ? 1 : sentiment === 'bearish' ? -1 : 0.5;
-  const raw = 50 + (dir * delta / 3);
+  const compressed = delta / (1 + Math.abs(delta) / 50); // softer compression
+  const raw = 50 + (dir * compressed / 2);
   return Math.min(100, Math.max(0, Math.round(raw * 10) / 10));
 }
 
 function getDirection(delta) {
-  return delta > 3 ? 'up' : delta < -3 ? 'down' : 'flat';
+  return delta > 5 ? 'up' : delta < -5 ? 'down' : 'flat';
 }
 
 async function ensureSchema() {
