@@ -7974,10 +7974,155 @@ app.delete('/api/profile/feeds/:id', authenticateToken, async (req, res) => {
 
 // User import — handles LinkedIn CSV, contacts, documents
 const profileUpload = require('multer')({ dest: '/tmp/ml-profile-uploads/', limits: { fileSize: 20 * 1024 * 1024 } });
-app.post('/api/profile/import', authenticateToken, profileUpload.single('file'), async (req, res) => {
+// Import preview — dry run analysis without writing
+app.post('/api/profile/import/preview', authenticateToken, profileUpload.single('file'), async (req, res) => {
   try {
     const file = req.file;
     const importType = req.body.import_type;
+    const tenantId = req.tenant_id;
+    if (!file) return res.status(400).json({ error: 'No file' });
+
+    const raw = require('fs').readFileSync(file.path, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+    // Parse CSV
+    function parseCSV(line) { const r=[]; let c='',q=false; for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"')q=!q;else if(ch===','&&!q){r.push(c.trim());c='';}else c+=ch;} r.push(c.trim()); return r; }
+
+    // Find header row (skip LinkedIn preamble)
+    const allLines = raw.split('\n');
+    let headerIdx = 0;
+    for (let i = 0; i < Math.min(allLines.length, 20); i++) {
+      const line = allLines[i].toLowerCase().replace(/[^\x20-\x7E]/g, '');
+      if (line.includes('first name') || line.includes('firstname') || (line.includes('name') && line.includes('company'))) { headerIdx = i; break; }
+    }
+    if (headerIdx === 0) {
+      for (let i = 0; i < Math.min(allLines.length, 20); i++) {
+        const parts = allLines[i].split(',');
+        if (parts.length >= 3 && parts[0].trim().length > 0 && parts[0].trim().length < 30) { headerIdx = i; break; }
+      }
+    }
+
+    const lines = allLines.slice(headerIdx).filter(l => l.trim());
+    const headers = parseCSV(lines[0]).map(h => h.replace(/[^\x20-\x7E]/g, '').trim());
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+      const vals = parseCSV(lines[i]);
+      const row = {}; headers.forEach((h, idx) => { row[h] = vals[idx] || ''; }); rows.push(row);
+    }
+
+    // Detect columns
+    const colKeys = Object.keys(rows[0] || {});
+    const findCol = (...patterns) => colKeys.find(k => patterns.some(p => k.toLowerCase().trim().replace(/[^a-z\s]/g, '').includes(p))) || '';
+    const firstNameCol = findCol('first name', 'firstname');
+    const lastNameCol = findCol('last name', 'lastname');
+    const nameCol = findCol('name', 'full name');
+    const urlCol = findCol('url', 'profile', 'linkedin');
+    const companyCol = findCol('company', 'organisation', 'organization');
+    const titleCol = findCol('position', 'title', 'role');
+    const emailCol = findCol('email');
+
+    // Determine file type
+    let detectedType = importType || 'unknown';
+    if (firstNameCol && lastNameCol && urlCol) detectedType = 'linkedin_connections';
+    else if (nameCol || firstNameCol) detectedType = 'contacts';
+
+    // Load existing people for matching
+    const { rows: dbPeople } = await pool.query(
+      `SELECT id, full_name, linkedin_url, email FROM people WHERE tenant_id = $1`, [tenantId]
+    );
+    const linkedinIndex = new Map(), nameIndex = new Map(), emailIndex = new Map();
+    for (const p of dbPeople) {
+      if (p.linkedin_url) { const slug = (p.linkedin_url.toLowerCase().match(/linkedin\.com\/in\/([^\/]+)/) || [])[1]; if (slug) linkedinIndex.set(slug, p); }
+      const norm = (p.full_name || '').toLowerCase().trim();
+      if (norm) { if (!nameIndex.has(norm)) nameIndex.set(norm, []); nameIndex.get(norm).push(p); }
+      if (p.email) emailIndex.set(p.email.toLowerCase(), p);
+    }
+
+    // Dry-run analysis
+    const preview = { total: rows.length, valid: 0, new_records: 0, matched: 0, ambiguous: 0, skipped: 0,
+      detected_type: detectedType,
+      columns: { firstName: firstNameCol, lastName: lastNameCol, name: nameCol, url: urlCol, company: companyCol, title: titleCol, email: emailCol },
+      headers: headers,
+      sample_rows: rows.slice(0, 5),
+      issues: [],
+      matches_preview: [],
+      new_preview: []
+    };
+
+    for (const row of rows) {
+      const firstName = (firstNameCol ? row[firstNameCol] : '') || '';
+      const lastName = (lastNameCol ? row[lastNameCol] : '') || '';
+      const fullName = (nameCol ? row[nameCol] : `${firstName} ${lastName}`).trim();
+      const linkedinUrl = (urlCol ? row[urlCol] : '') || '';
+      const company = (companyCol ? row[companyCol] : '') || '';
+      const title = (titleCol ? row[titleCol] : '') || '';
+      const email = (emailCol ? row[emailCol] : '') || '';
+
+      if (!fullName || fullName.length < 2) { preview.skipped++; continue; }
+      preview.valid++;
+
+      // Match check
+      let matched = false, matchType = null;
+      const slug = linkedinUrl ? (linkedinUrl.toLowerCase().match(/linkedin\.com\/in\/([^\/]+)/) || [])[1] : null;
+      if (slug && linkedinIndex.has(slug)) { matched = true; matchType = 'linkedin_url'; }
+      else if (email && emailIndex.has(email.toLowerCase())) { matched = true; matchType = 'email'; }
+      else {
+        const cands = nameIndex.get(fullName.toLowerCase().trim()) || [];
+        if (cands.length === 1) { matched = true; matchType = 'name_unique'; }
+        else if (cands.length > 1) { preview.ambiguous++; matchType = 'name_ambiguous'; }
+      }
+
+      if (matched) {
+        preview.matched++;
+        if (preview.matches_preview.length < 5) preview.matches_preview.push({ name: fullName, company, title, match_type: matchType });
+      } else if (matchType !== 'name_ambiguous') {
+        preview.new_records++;
+        if (preview.new_preview.length < 5) preview.new_preview.push({ name: fullName, company, title });
+      }
+    }
+
+    // Issues
+    if (preview.skipped > 0) preview.issues.push({ type: 'warning', message: preview.skipped + ' rows have no name — will be skipped' });
+    if (preview.ambiguous > 0) preview.issues.push({ type: 'warning', message: preview.ambiguous + ' rows match multiple existing people — will create new records' });
+    if (!firstNameCol && !lastNameCol && !nameCol) preview.issues.push({ type: 'error', message: 'No name column detected — cannot import' });
+    if (preview.total === 0) preview.issues.push({ type: 'error', message: 'File appears empty' });
+    if (preview.matched > preview.total * 0.95) preview.issues.push({ type: 'info', message: 'Most records already exist — this may be a re-import' });
+
+    // Save file for confirmed import
+    const fileId = require('crypto').randomUUID();
+    const savedPath = `/tmp/ml-preview-${fileId}`;
+    require('fs').copyFileSync(file.path, savedPath);
+    try { require('fs').unlinkSync(file.path); } catch(e) {}
+
+    // Clean up after 30 minutes
+    setTimeout(() => { try { require('fs').unlinkSync(savedPath); } catch(e) {} }, 30 * 60 * 1000);
+
+    preview.file_id = fileId;
+    preview.can_import = !preview.issues.some(i => i.type === 'error');
+
+    res.json(preview);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Import confirmed — write to DB (accepts file upload OR file_id from preview)
+app.post('/api/profile/import', authenticateToken, profileUpload.single('file'), async (req, res) => {
+  try {
+    // Support both: new file upload OR confirmed import from preview
+    const fileId = req.query.file_id || req.body?.file_id;
+    let file = req.file;
+    let importType = req.body?.import_type || req.query.import_type;
+
+    if (!file && fileId) {
+      // Load from preview save
+      const savedPath = `/tmp/ml-preview-${fileId}`;
+      if (require('fs').existsSync(savedPath)) {
+        file = { path: savedPath, originalname: 'preview-import' };
+        // Parse import_type from body if JSON
+        if (req.body && typeof req.body === 'object') importType = req.body.import_type || importType;
+      }
+    }
+
     const userId = req.user.user_id;
     const tenantId = req.tenant_id;
     if (!file) return res.status(400).json({ error: 'No file' });

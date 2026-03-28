@@ -179,7 +179,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
       </div>
     </div>
 
-    <!-- Import progress -->
+    <!-- Import preview + progress -->
+    <div id="importPreview" style="display:none" class="card">
+      <div class="card-label">Import Preview</div>
+      <div id="previewContent" style="margin-top:8px;font-size:13px"></div>
+      <div id="previewActions" style="margin-top:12px;display:flex;gap:8px"></div>
+    </div>
+
     <div id="importProgress" style="display:none" class="card">
       <div class="card-label">Import in progress</div>
       <div id="importStatus" style="font-size:13px;margin-top:4px">Processing...</div>
@@ -370,21 +376,26 @@ async function removeFeed(id) {
   } catch(e) { toast('Failed'); }
 }
 
+var _pendingImport = null;
+
 async function uploadFile(input, type) {
   var file = input.files[0];
   if (!file) return;
 
-  var progress = document.getElementById('importProgress');
-  var status = document.getElementById('importStatus');
-  progress.style.display = 'block';
-  status.textContent = 'Uploading ' + file.name + '...';
+  var preview = document.getElementById('importPreview');
+  var previewContent = document.getElementById('previewContent');
+  var previewActions = document.getElementById('previewActions');
+  preview.style.display = 'block';
+  previewContent.innerHTML = '<span style="color:var(--ink-3)">Analysing ' + esc(file.name) + '...</span>';
+  previewActions.innerHTML = '';
 
   try {
+    // Step 1: Upload for preview (dry run)
     var formData = new FormData();
     formData.append('file', file);
     formData.append('import_type', type);
 
-    var resp = await fetch('/api/profile/import', {
+    var resp = await fetch('/api/profile/import/preview', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + TOKEN },
       body: formData
@@ -392,23 +403,122 @@ async function uploadFile(input, type) {
     var data = await resp.json();
 
     if (data.error) {
+      previewContent.innerHTML = '<span style="color:var(--rose)">Error: ' + esc(data.error) + '</span>';
+      previewActions.innerHTML = '<button class="btn btn-sm" onclick="dismissPreview()">Close</button>';
+      input.value = '';
+      return;
+    }
+
+    _pendingImport = { file: file, type: data.detected_type || type, fileId: data.file_id };
+
+    // Render preview
+    var html = '<div style="margin-bottom:12px;font-size:12px;color:var(--ink-3)">File: <strong>' + esc(file.name) + '</strong> \u00b7 Detected: ' + esc(data.detected_type || type) + '</div>';
+
+    // Stats grid
+    html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;text-align:center">';
+    html += '<div style="background:var(--surface-warm);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600">' + data.total + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Total rows</div></div>';
+    html += '<div style="background:var(--emerald-soft);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--emerald)">' + data.new_records + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">New</div></div>';
+    html += '<div style="background:var(--blue-soft);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--blue)">' + data.matched + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Matched</div></div>';
+    html += '<div style="background:var(--amber-soft);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--amber)">' + data.ambiguous + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Ambiguous</div></div>';
+    html += '<div style="background:var(--surface-warm);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--ink-3)">' + data.skipped + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Skipped</div></div>';
+    html += '</div>';
+
+    // Column mapping
+    var cols = data.columns || {};
+    var colHtml = Object.entries(cols).filter(function(e) { return e[1]; }).map(function(e) {
+      return '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--blue-soft);color:var(--blue);font-weight:500">' + esc(e[0]) + ' \u2192 ' + esc(e[1]) + '</span>';
+    }).join(' ');
+    if (colHtml) html += '<div style="margin-bottom:10px">' + colHtml + '</div>';
+
+    // Issues
+    if (data.issues && data.issues.length) {
+      html += '<div style="margin-bottom:10px">';
+      data.issues.forEach(function(issue) {
+        var color = issue.type === 'error' ? 'var(--rose)' : issue.type === 'warning' ? 'var(--amber)' : 'var(--blue)';
+        var icon = issue.type === 'error' ? '\u274c' : issue.type === 'warning' ? '\u26a0\ufe0f' : '\u2139\ufe0f';
+        html += '<div style="font-size:12px;color:' + color + ';margin-bottom:4px">' + icon + ' ' + esc(issue.message) + '</div>';
+      });
+      html += '</div>';
+    }
+
+    // Sample matches
+    if (data.matches_preview && data.matches_preview.length) {
+      html += '<div style="font-size:10px;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Sample matches</div>';
+      html += '<div style="margin-bottom:10px;font-size:12px">';
+      data.matches_preview.forEach(function(m) {
+        html += '<div style="padding:3px 0;border-bottom:1px solid var(--rule);color:var(--ink-2)">' + esc(m.name) + ' <span style="color:var(--ink-4)">' + esc(m.company || '') + '</span> <span style="font-size:10px;color:var(--blue)">(' + esc(m.match_type) + ')</span></div>';
+      });
+      html += '</div>';
+    }
+
+    // Sample new records
+    if (data.new_preview && data.new_preview.length) {
+      html += '<div style="font-size:10px;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Sample new records</div>';
+      html += '<div style="margin-bottom:10px;font-size:12px">';
+      data.new_preview.forEach(function(m) {
+        html += '<div style="padding:3px 0;border-bottom:1px solid var(--rule);color:var(--emerald)">' + esc(m.name) + ' <span style="color:var(--ink-4)">' + esc(m.company || '') + ' \u00b7 ' + esc(m.title || '') + '</span></div>';
+      });
+      html += '</div>';
+    }
+
+    previewContent.innerHTML = html;
+
+    // Actions
+    if (data.can_import) {
+      previewActions.innerHTML =
+        '<button class="btn btn-primary btn-sm" onclick="confirmImport()">Confirm Import (' + data.new_records + ' new, ' + data.matched + ' matched)</button>' +
+        '<button class="btn btn-sm" onclick="dismissPreview()">Cancel</button>';
+    } else {
+      previewActions.innerHTML = '<button class="btn btn-sm" onclick="dismissPreview()">Close</button>';
+    }
+  } catch(e) {
+    previewContent.innerHTML = '<span style="color:var(--rose)">Analysis failed: ' + esc(e.message) + '</span>';
+    previewActions.innerHTML = '<button class="btn btn-sm" onclick="dismissPreview()">Close</button>';
+  }
+  input.value = '';
+}
+
+function dismissPreview() {
+  document.getElementById('importPreview').style.display = 'none';
+  _pendingImport = null;
+}
+
+async function confirmImport() {
+  if (!_pendingImport) return;
+  var preview = document.getElementById('importPreview');
+  var progress = document.getElementById('importProgress');
+  var status = document.getElementById('importStatus');
+  preview.style.display = 'none';
+  progress.style.display = 'block';
+  status.textContent = 'Importing...';
+
+  try {
+    // Re-upload the original file for actual import
+    // The file input is already cleared, so we use the saved file on the server
+    var resp = await fetch('/api/profile/import?file_id=' + _pendingImport.fileId, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ import_type: _pendingImport.type, file_id: _pendingImport.fileId })
+    });
+    var data = await resp.json();
+
+    if (data.error) {
       status.innerHTML = '<span style="color:var(--rose)">Error: ' + esc(data.error) + '</span>';
     } else {
       var msg = [];
-      if (data.total) msg.push(data.total + ' rows processed');
+      if (data.total) msg.push(data.total + ' rows');
       if (data.matched) msg.push(data.matched + ' matched');
       if (data.created) msg.push(data.created + ' created');
-      if (data.proximity_created) msg.push(data.proximity_created + ' network links');
-      if (data.skipped) msg.push(data.skipped + ' skipped');
-      if (data.documents_created) msg.push(data.documents_created + ' documents stored');
-      status.innerHTML = '<span style="color:var(--emerald)">' + (msg.join(' \u00B7 ') || 'Import complete') + '</span>';
+      if (data.proximity_created) msg.push(data.proximity_created + ' links');
+      if (data.documents_created) msg.push(data.documents_created + ' documents');
+      status.innerHTML = '<span style="color:var(--emerald)">\u2705 ' + (msg.join(' \u00b7 ') || 'Import complete') + '</span>';
       toast('Import complete');
       setTimeout(loadProfile, 1000);
     }
   } catch(e) {
-    status.innerHTML = '<span style="color:var(--rose)">Upload failed: ' + esc(e.message) + '</span>';
+    status.innerHTML = '<span style="color:var(--rose)">Import failed: ' + esc(e.message) + '</span>';
   }
-  input.value = '';
+  _pendingImport = null;
   setTimeout(function() { progress.style.display = 'none'; }, 5000);
 }
 
