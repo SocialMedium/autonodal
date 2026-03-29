@@ -259,6 +259,14 @@ const PODCAST_SOURCES = [
     poll_interval_minutes: 180,
   },
   {
+    name: 'Impolitic with John Heilemann',
+    url: 'https://feeds.megaphone.fm/hell-high-water',
+    region: 'us',
+    credibility_score: 0.80,
+    signal_types: ['leadership_change', 'restructuring', 'ma_activity'],
+    poll_interval_minutes: 180,
+  },
+  {
     name: 'Prof G Markets',
     url: 'https://feeds.megaphone.fm/PPY4661100530',
     region: 'us',
