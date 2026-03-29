@@ -1401,6 +1401,16 @@ const PIPELINES = {
     description: 'Compute market health index, signal stocks, sector indices (every 30m)'
   },
 
+  backfill_newsletters: {
+    name: 'Backfill Newsletters',
+    icon: '📰',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'backfill_newsletters.js'), { timeout: 600000, stdio: 'inherit' });
+    },
+    description: 'Backfill newsletter emails from Gmail (last 6 months) into signal pipeline'
+  },
+
   sync_gmail: {
     name: 'Gmail Sync',
     icon: '📧',
