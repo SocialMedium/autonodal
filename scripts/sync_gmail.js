@@ -175,19 +175,66 @@ async function processThread(gmail, thread, userEmail, userId, dryRun) {
   const isOutbound = fromEmails.includes(userEmail.toLowerCase());
   const direction  = isOutbound ? 'outbound' : 'inbound';
 
-  // ── Noise filter — skip newsletters, notifications, marketing ──
+  // ── Noise filter — skip system notifications, transactional senders ──
+  // Newsletters are NOT noise — they're ingested as signal content
   const NOISE_PATTERNS = [
     'noreply', 'no-reply', 'donotreply', 'do-not-reply',
-    'notifications@', 'notification@', 'newsletter',
-    'digest@', 'mailer@', 'mailchimp', 'marketing@',
-    'hello@mail.', 'info@mail.', 'updates@',
+    'notifications@', 'notification@',
+    'mailer@', 'mailchimp', 'marketing@',
+    'hello@mail.', 'info@mail.',
     'bounces@', 'bounce@', 'automated@', 'system@', 'alert@',
-    'linkedin.com', 'pitchbook', 'substack',
+    'linkedin.com',
     'mailgun', 'sendgrid', 'sparkpost', 'postmaster@',
     'feedback@', 'support@noreply', 'calendar-notification'
   ];
+  // Newsletter sender patterns — these get ingested as documents for signal detection
+  const NEWSLETTER_PATTERNS = [
+    'newsletter', 'digest@', 'updates@', 'substack',
+    'pitchbook', 'cbinsights', 'morningbrew', 'theinformation',
+    'briefing@', 'daily@', 'weekly@'
+  ];
   const senderAddr = (fromEmails[0] || '').toLowerCase();
   if (!senderAddr && !isOutbound) return { skipped: true };
+
+  // Check if this is a newsletter — ingest as document for signal detection
+  const isNewsletter = !isOutbound && NEWSLETTER_PATTERNS.some(p => senderAddr.includes(p));
+  if (isNewsletter) {
+    // Extract email body text for signal processing
+    const bodyText = messages.map(m => {
+      const parts = m.payload?.parts || [m.payload];
+      for (const part of parts) {
+        if (part?.mimeType === 'text/plain' && part?.body?.data) {
+          return Buffer.from(part.body.data, 'base64').toString('utf8');
+        }
+      }
+      return '';
+    }).join('\n').slice(0, 30000);
+
+    const senderName = fromRaw.replace(/<.*>/, '').replace(/"/g, '').trim() || senderAddr.split('@')[0];
+
+    if (bodyText.length > 100 && !dryRun) {
+      const sourceHash = require('crypto').createHash('md5').update(threadId).digest('hex');
+      try {
+        await pool.query(`
+          INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash,
+            tenant_id, uploaded_by_user_id, published_at, processing_status, created_at)
+          VALUES ($1, $2, $3, 'newsletter', $4, $5, $6, $7, $8, 'pending', NOW())
+          ON CONFLICT (source_url_hash) DO NOTHING
+        `, [
+          subject.slice(0, 255) || 'Newsletter',
+          bodyText.slice(0, 50000),
+          senderName,
+          gmailUrl,
+          sourceHash,
+          userId ? (await pool.query('SELECT tenant_id FROM users WHERE id = $1', [userId])).rows[0]?.tenant_id : null,
+          userId,
+          interactionAt.toISOString()
+        ]);
+      } catch (e) { /* duplicate or error — non-fatal */ }
+    }
+    return { skipped: true, newsletter_ingested: true };
+  }
+
   if (!isOutbound && NOISE_PATTERNS.some(p => senderAddr.includes(p))) return { skipped: true };
 
   // Thread stats
@@ -422,6 +469,7 @@ async function syncAccount(account) {
   // ── Process threads ─────────────────────────────────────────────────────
   let interactionsCreated = 0;
   let noiseSkipped = 0;
+  let newslettersIngested = 0;
   const personThreadCounts = new Map(); // personId → { count, lastDate }
 
   for (let i = 0; i < threadIds.length; i++) {
@@ -433,7 +481,8 @@ async function syncAccount(account) {
       );
 
       if (result && result.skipped) {
-        noiseSkipped++;
+        if (result.newsletter_ingested) newslettersIngested++;
+        else noiseSkipped++;
         continue;
       }
 
@@ -472,6 +521,7 @@ async function syncAccount(account) {
   }
 
   if (noiseSkipped > 0) console.log(c.dim(`  ⏭  Skipped (noise): ${noiseSkipped}`));
+  if (newslettersIngested > 0) console.log(c.green(`  📰 Newsletters ingested: ${newslettersIngested}`));
 
   return {
     threadsScanned:     threadIds.length,
