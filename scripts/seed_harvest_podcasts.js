@@ -41,7 +41,7 @@ const PODCAST_SOURCES = [
   // ══════════ US / GLOBAL ══════════
   {
     name: '20VC - Twenty Minute VC',
-    url: 'https://feeds.megaphone.fm/20minutevc',
+    url: 'https://rss.libsyn.com/shows/61840/destinations/240976.xml',
     region: 'us',
     credibility_score: 0.90,
     signal_types: ['capital_raising', 'leadership_change', 'ma_activity'],
@@ -59,7 +59,7 @@ const PODCAST_SOURCES = [
   },
   {
     name: 'All-In Podcast',
-    url: 'https://feeds.megaphone.fm/all-in-with-chamath-jason-sacks-and-friedberg',
+    url: 'https://rss.libsyn.com/shows/254861/destinations/1928300.xml',
     region: 'us',
     credibility_score: 0.85,
     signal_types: ['capital_raising', 'ma_activity', 'restructuring'],
@@ -67,7 +67,7 @@ const PODCAST_SOURCES = [
   },
   {
     name: 'This Week in Startups',
-    url: 'https://feeds.megaphone.fm/thisweekinstartups',
+    url: 'https://anchor.fm/s/7c624c84/podcast/rss',
     region: 'us',
     credibility_score: 0.80,
     signal_types: ['capital_raising', 'product_launch', 'leadership_change'],
@@ -77,7 +77,7 @@ const PODCAST_SOURCES = [
 
   {
     name: 'How I Built This',
-    url: 'https://feeds.npr.org/510313/podcast.xml',
+    url: 'https://rss.art19.com/how-i-built-this',
     region: 'us',
     credibility_score: 0.85,
     signal_types: ['leadership_change', 'capital_raising', 'product_launch'],
@@ -101,7 +101,7 @@ const PODCAST_SOURCES = [
   },
   {
     name: 'Acquired',
-    url: 'https://feeds.megaphone.fm/acquired',
+    url: 'https://feeds.transistor.fm/acquired',
     region: 'us',
     credibility_score: 0.85,
     signal_types: ['ma_activity', 'capital_raising', 'leadership_change'],
@@ -109,7 +109,7 @@ const PODCAST_SOURCES = [
   },
   {
     name: "Lenny's Podcast",
-    url: 'https://feeds.megaphone.fm/lennys-podcast',
+    url: 'https://api.substack.com/feed/podcast/10845.rss',
     region: 'us',
     credibility_score: 0.80,
     signal_types: ['product_launch', 'leadership_change', 'strategic_hiring'],
@@ -117,7 +117,7 @@ const PODCAST_SOURCES = [
   },
   {
     name: 'The Knowledge Project',
-    url: 'https://theknowledgeproject.libsyn.com/rss',
+    url: 'https://feeds.megaphone.fm/FSMI7575968096',
     region: 'us',
     credibility_score: 0.80,
     signal_types: ['leadership_change', 'product_launch'],
@@ -133,7 +133,7 @@ const PODCAST_SOURCES = [
   },
   {
     name: 'The Full Ratchet',
-    url: 'https://fullratchet.libsyn.com/rss',
+    url: 'https://rss.libsyn.com/shows/55312/destinations/204448.xml',
     region: 'us',
     credibility_score: 0.80,
     signal_types: ['capital_raising', 'ma_activity'],
@@ -268,7 +268,7 @@ const PODCAST_SOURCES = [
   },
   {
     name: 'Prof G Markets',
-    url: 'https://feeds.megaphone.fm/PPY4661100530',
+    url: 'https://feeds.megaphone.fm/profgmarkets',
     region: 'us',
     credibility_score: 0.85,
     signal_types: ['capital_raising', 'ma_activity', 'product_launch', 'leadership_change'],
