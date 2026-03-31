@@ -782,23 +782,60 @@ async function pipelineEmbedIntelligence() {
     console.log(`     ${stats.case_studies} case studies embedded`);
   }
 
-  // ─── People (unembedded, with enough data to be useful) ───
+  // ─── People (unembedded or updated since last embedding) ───
   console.log('   👥 Embedding unembedded people...');
 
   const unembeddedPeople = await pool.query(`
-    SELECT id, full_name, current_title, current_company_name, linkedin_url, location
+    SELECT id, full_name, current_title, current_company_name, location,
+           headline, bio, seniority_level, functional_area,
+           expertise_tags, industries, career_history, education,
+           years_experience, tenant_id
     FROM people
-    WHERE embedded_at IS NULL
+    WHERE (embedded_at IS NULL OR updated_at > embedded_at)
       AND full_name IS NOT NULL AND full_name != ''
-      AND (current_title IS NOT NULL OR current_company_name IS NOT NULL)
-    ORDER BY created_at DESC
-    LIMIT 500
+    ORDER BY
+      CASE WHEN embedded_at IS NULL THEN 0 ELSE 1 END,
+      CASE WHEN current_title IS NOT NULL AND current_company_name IS NOT NULL THEN 0
+           WHEN current_title IS NOT NULL OR current_company_name IS NOT NULL THEN 1
+           ELSE 2 END,
+      updated_at DESC
+    LIMIT 2000
   `).catch(() => ({ rows: [] }));
 
   if (unembeddedPeople.rows.length > 0) {
-    const texts = unembeddedPeople.rows.map(p =>
-      [p.full_name, p.current_title, p.current_company_name, p.location].filter(Boolean).join(' | ')
-    );
+    // Richer text composition
+    const texts = unembeddedPeople.rows.map(p => {
+      const parts = [];
+      if (p.full_name) parts.push(p.full_name);
+      if (p.current_title) parts.push(p.current_title);
+      if (p.current_company_name) parts.push(`at ${p.current_company_name}`);
+      if (p.location) parts.push(p.location);
+      if (p.headline) parts.push(p.headline);
+      if (p.bio) parts.push(p.bio.slice(0, 500));
+      if (p.seniority_level) parts.push(`Seniority: ${p.seniority_level}`);
+      if (p.functional_area) parts.push(`Function: ${p.functional_area}`);
+      if (Array.isArray(p.expertise_tags) && p.expertise_tags.length) parts.push(`Expertise: ${p.expertise_tags.join(', ')}`);
+      if (Array.isArray(p.industries) && p.industries.length) parts.push(`Industries: ${p.industries.join(', ')}`);
+      if (p.career_history) {
+        try {
+          const hist = typeof p.career_history === 'string' ? JSON.parse(p.career_history) : p.career_history;
+          if (Array.isArray(hist) && hist.length) {
+            const ct = hist.slice(0, 5).map(r => [r.title||r.role, r.company||r.company_name].filter(Boolean).join(' at ')).filter(Boolean).join(', ');
+            if (ct) parts.push(`Career: ${ct}`);
+          }
+        } catch {}
+      }
+      if (p.education) {
+        try {
+          const edu = typeof p.education === 'string' ? JSON.parse(p.education) : p.education;
+          if (Array.isArray(edu) && edu.length) {
+            const et = edu.slice(0, 2).map(e => [e.degree, e.field_of_study||e.field, e.institution||e.school].filter(Boolean).join(' ')).filter(Boolean).join(', ');
+            if (et) parts.push(`Education: ${et}`);
+          }
+        } catch {}
+      }
+      return parts.filter(Boolean).join('\n').slice(0, 8000);
+    });
 
     const pplEmbeddings = await embedBatch(texts);
 
@@ -809,8 +846,14 @@ async function pipelineEmbedIntelligence() {
         type: 'person',
         person_id: p.id,
         name: p.full_name,
+        full_name: p.full_name,
         title: p.current_title,
-        company: p.current_company_name
+        current_title: p.current_title,
+        company: p.current_company_name,
+        location: p.location,
+        seniority: p.seniority_level,
+        tenant_id: p.tenant_id,
+        content_preview: texts[i].slice(0, 500)
       }
     }));
 
