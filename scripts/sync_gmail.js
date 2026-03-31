@@ -94,12 +94,28 @@ async function getOAuthClient(account) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const emailCache = new Map();
+let teamEmailSet = null; // lazily loaded set of internal team emails
+
+async function loadTeamEmails() {
+  if (teamEmailSet) return teamEmailSet;
+  const { rows } = await pool.query(`SELECT DISTINCT lower(email) AS email FROM users WHERE email IS NOT NULL`);
+  teamEmailSet = new Set(rows.map(r => r.email));
+  // Also add google account emails
+  const { rows: gRows } = await pool.query(`SELECT DISTINCT lower(google_email) AS email FROM user_google_accounts WHERE google_email IS NOT NULL`);
+  gRows.forEach(r => teamEmailSet.add(r.email));
+  return teamEmailSet;
+}
+
+function isTeamEmail(email) {
+  return teamEmailSet && teamEmailSet.has(email.toLowerCase());
+}
 
 async function findPersonByEmail(email) {
   if (!email) return null;
   const key = email.toLowerCase();
   if (emailCache.has(key)) return emailCache.get(key);
 
+  // Check people table (primary match)
   const { rows } = await pool.query(
     `SELECT id, full_name FROM people
      WHERE lower(email) = $1 OR lower(email_alt) = $1
@@ -107,9 +123,30 @@ async function findPersonByEmail(email) {
     [key]
   );
 
-  const result = rows[0] || null;
-  emailCache.set(key, result);
-  return result;
+  if (rows[0]) {
+    emailCache.set(key, rows[0]);
+    return rows[0];
+  }
+
+  // Check by domain + name fuzzy match (for contacts whose email we don't have exactly)
+  const domain = key.split('@')[1];
+  if (domain && !domain.includes('gmail.') && !domain.includes('yahoo.') && !domain.includes('hotmail.') && !domain.includes('outlook.')) {
+    const { rows: domainRows } = await pool.query(
+      `SELECT p.id, p.full_name FROM people p
+       LEFT JOIN companies c ON c.id = p.current_company_id
+       WHERE c.domain = $1
+       LIMIT 1`,
+      [domain]
+    );
+    // Only cache domain matches if found — don't pollute cache with nulls for domains
+    if (domainRows[0]) {
+      emailCache.set(key, domainRows[0]);
+      return domainRows[0];
+    }
+  }
+
+  emailCache.set(key, null);
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -196,6 +233,9 @@ async function processThread(gmail, thread, userEmail, userId, dryRun) {
   const senderAddr = (fromEmails[0] || '').toLowerCase();
   if (!senderAddr && !isOutbound) return { skipped: true };
 
+  // Gmail URL (define early so newsletter code can use it)
+  const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${threadId}`;
+
   // Check if this is a newsletter — ingest as document for signal detection
   const isNewsletter = !isOutbound && NEWSLETTER_PATTERNS.some(p => senderAddr.includes(p));
   if (isNewsletter) {
@@ -262,8 +302,7 @@ async function processThread(gmail, thread, userEmail, userId, dryRun) {
     interactionAt = new Date();
   }
 
-  // Gmail URL
-  const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${threadId}`;
+
 
   // Find matched person — for sent emails, prioritise recipients over sender
   let matchedPerson = null;
@@ -293,8 +332,29 @@ async function processThread(gmail, thread, userEmail, userId, dryRun) {
            name             = COALESCE(new_contacts_review.name, EXCLUDED.name)`,
         [primaryEmail, displayName, interactionAt, userId]
       );
+
+      // Still log the interaction with person_id=NULL so gmail_match.js can retroactively link it
+      await pool.query(
+        `INSERT INTO interactions
+           (person_id, user_id, interaction_type, direction, subject,
+            channel, source, external_id, interaction_at, metadata,
+            email_from, email_to)
+         VALUES (NULL, $1, $2, $3, $4, 'email', 'gmail_sync', $5, $6, $7, $8, $9)
+         ON CONFLICT (external_id) WHERE external_id IS NOT NULL DO NOTHING`,
+        [
+          userId,
+          isOutbound ? 'email_sent' : 'email_received',
+          direction,
+          subject,
+          threadId,
+          interactionAt,
+          JSON.stringify({ gmail_url: gmailUrl, message_count: messages.length, has_reply: hasReply, external_emails: externalEmails, unmatched: true }),
+          senderAddr,
+          toEmails,
+        ]
+      );
     }
-    return null; // Don't log interaction for unmatched people
+    return { personId: null, unmatched: true, interactionAt };
   }
 
   if (!matchedPerson) return null;
@@ -488,12 +548,14 @@ async function syncAccount(account) {
 
       if (result) {
         interactionsCreated++;
-        const existing = personThreadCounts.get(result.personId) || { count: 0, lastDate: null };
-        existing.count++;
-        if (!existing.lastDate || result.interactionAt > existing.lastDate) {
-          existing.lastDate = result.interactionAt;
+        if (result.personId) {
+          const existing = personThreadCounts.get(result.personId) || { count: 0, lastDate: null };
+          existing.count++;
+          if (!existing.lastDate || result.interactionAt > existing.lastDate) {
+            existing.lastDate = result.interactionAt;
+          }
+          personThreadCounts.set(result.personId, existing);
         }
-        personThreadCounts.set(result.personId, existing);
       }
     } catch (err) {
       console.log(c.dim(`  ⚠ Thread ${threadIds[i]} failed: ${err.message}`));
@@ -549,6 +611,10 @@ async function main() {
   if (!process.env.GOOGLE_CLIENT_SECRET) { console.log(c.red('✗ GOOGLE_CLIENT_SECRET not set')); process.exit(1); }
 
   await runJob(pool, 'gmail_sync', async () => {
+    // Pre-load team emails for internal email detection
+    await loadTeamEmails();
+    console.log(c.dim(`  Team emails loaded: ${teamEmailSet.size}`));
+
     // Get accounts to sync
     let query = `SELECT * FROM user_google_accounts WHERE access_token IS NOT NULL`;
     const params = [];
