@@ -104,14 +104,14 @@ CREATE POLICY tenant_isolation_event_sources ON event_sources
 
 -- Seed EventMedium sources
 INSERT INTO event_sources (tenant_id, name, feed_url, theme, region) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'EventMedium — All Events',              'https://eventmedium.ai/api/events/rss',                                     NULL,            NULL),
-  ('00000000-0000-0000-0000-000000000001', 'EventMedium — AI',                      'https://eventmedium.ai/api/events/rss?theme=AI',                            'AI',            NULL),
-  ('00000000-0000-0000-0000-000000000001', 'EventMedium — FinTech',                 'https://eventmedium.ai/api/events/rss?theme=FinTech',                       'FinTech',       NULL),
-  ('00000000-0000-0000-0000-000000000001', 'EventMedium — Climate Tech',            'https://eventmedium.ai/api/events/rss?theme=Climate%20Tech',                'Climate Tech',  NULL),
-  ('00000000-0000-0000-0000-000000000001', 'EventMedium — Cybersecurity',           'https://eventmedium.ai/api/events/rss?theme=Cybersecurity',                 'Cybersecurity', NULL),
-  ('00000000-0000-0000-0000-000000000001', 'EventMedium — UK',                      'https://eventmedium.ai/api/events/rss?region=UK',                           NULL,            'UK'),
-  ('00000000-0000-0000-0000-000000000001', 'EventMedium — Australia',               'https://eventmedium.ai/api/events/rss?region=Australia',                    NULL,            'Australia'),
-  ('00000000-0000-0000-0000-000000000001', 'EventMedium — Singapore',               'https://eventmedium.ai/api/events/rss?region=Singapore',                    NULL,            'Singapore'),
-  ('00000000-0000-0000-0000-000000000001', 'EventMedium — US',                      'https://eventmedium.ai/api/events/rss?region=US',                           NULL,            'US'),
-  ('00000000-0000-0000-0000-000000000001', 'EventMedium — Cybersecurity Singapore', 'https://eventmedium.ai/api/events/rss?theme=Cybersecurity&region=Singapore','Cybersecurity', 'Singapore')
+  ('00000000-0000-0000-0000-000000000001', 'EventMedium — All Events',              'https://www.eventmedium.ai/api/events/rss',                                     NULL,            NULL),
+  ('00000000-0000-0000-0000-000000000001', 'EventMedium — AI',                      'https://www.eventmedium.ai/api/events/rss?theme=AI',                            'AI',            NULL),
+  ('00000000-0000-0000-0000-000000000001', 'EventMedium — FinTech',                 'https://www.eventmedium.ai/api/events/rss?theme=FinTech',                       'FinTech',       NULL),
+  ('00000000-0000-0000-0000-000000000001', 'EventMedium — Climate Tech',            'https://www.eventmedium.ai/api/events/rss?theme=Climate%20Tech',                'Climate Tech',  NULL),
+  ('00000000-0000-0000-0000-000000000001', 'EventMedium — Cybersecurity',           'https://www.eventmedium.ai/api/events/rss?theme=Cybersecurity',                 'Cybersecurity', NULL),
+  ('00000000-0000-0000-0000-000000000001', 'EventMedium — UK',                      'https://www.eventmedium.ai/api/events/rss?region=UK',                           NULL,            'UK'),
+  ('00000000-0000-0000-0000-000000000001', 'EventMedium — Australia',               'https://www.eventmedium.ai/api/events/rss?region=Australia',                    NULL,            'Australia'),
+  ('00000000-0000-0000-0000-000000000001', 'EventMedium — Singapore',               'https://www.eventmedium.ai/api/events/rss?region=Singapore',                    NULL,            'Singapore'),
+  ('00000000-0000-0000-0000-000000000001', 'EventMedium — US',                      'https://www.eventmedium.ai/api/events/rss?region=US',                           NULL,            'US'),
+  ('00000000-0000-0000-0000-000000000001', 'EventMedium — Cybersecurity Singapore', 'https://www.eventmedium.ai/api/events/rss?theme=Cybersecurity&region=Singapore','Cybersecurity', 'Singapore')
 ON CONFLICT (feed_url) DO NOTHING;

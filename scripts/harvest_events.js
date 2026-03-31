@@ -289,7 +289,7 @@ async function fetchFeed(source) {
 async function harvestJsonFeed(tenantId) {
   console.log('📡 Fetching EventMedium JSON feed...');
   try {
-    const response = await axios.get('https://eventmedium.ai/api/events/feed.json?status=upcoming&limit=500', {
+    const response = await axios.get('https://www.eventmedium.ai/api/events', {
       timeout: REQUEST_TIMEOUT,
       headers: { 'User-Agent': 'MitchelLake Signal Intelligence/1.0' }
     });
@@ -307,12 +307,15 @@ async function harvestJsonFeed(tenantId) {
     let updatedItems = 0;
 
     for (const ev of events) {
-      const eventUrl = ev.url || ev.external_url || '';
+      // Build canonical event URL: prefer source_url, fall back to EventMedium slug link
+      const eventUrl = ev.source_url || ev.url || ev.external_url
+        || (ev.slug ? `https://www.eventmedium.ai/event.html?slug=${ev.slug}` : '');
       if (!eventUrl) continue;
 
       const urlHash = hashUrl(eventUrl);
       const combined = `${ev.name || ''} ${ev.description || ''}`;
-      const theme = Array.isArray(ev.themes) ? ev.themes[0] : null;
+      const themes = Array.isArray(ev.themes) ? ev.themes : [];
+      const primaryTheme = themes[0] || null;
 
       try {
         const result = await db.query(
@@ -331,22 +334,22 @@ async function harvestJsonFeed(tenantId) {
           RETURNING (xmax = 0) AS is_new`,
           [
             tenantId,
-            extractExternalId(eventUrl),
+            ev.id ? String(ev.id) : extractExternalId(eventUrl),
             ev.name || ev.title || 'Untitled Event',
             cleanText(ev.description),
             eventUrl,
             urlHash,
-            theme,
+            primaryTheme,
             ev.region || (ev.country ? bucketRegion(ev.country) : null),
             ev.city || null,
             ev.country || null,
-            detectFormat(combined),
-            ev.date || ev.event_date || null,
-            detectVirtual(combined),
+            ev.event_type || detectFormat(combined),
+            ev.event_date || ev.date || null,
+            ev.venue_type === 'virtual' || detectVirtual(combined),
             extractSpeakers(ev.description || '').length > 0 ? extractSpeakers(ev.description || '') : null,
-            SIGNAL_RELEVANCE_MAP[theme] || SIGNAL_RELEVANCE_MAP['default'],
-            ev.theme_score || scoreThemeRelevance(ev.themes || []),
-            ev.date || ev.event_date || null,
+            SIGNAL_RELEVANCE_MAP[primaryTheme] || SIGNAL_RELEVANCE_MAP['default'],
+            scoreThemeRelevance(themes),
+            ev.event_date || ev.date || null,
           ]
         );
         if (result.rows[0]?.is_new) newItems++;
