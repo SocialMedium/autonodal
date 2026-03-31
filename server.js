@@ -2073,9 +2073,9 @@ app.get('/api/signals/:id/proximity-graph', authenticateToken, async (req, res) 
     );
     if (!sig) return res.status(404).json({ error: 'Signal not found' });
 
-    // 2. Get team members
+    // 2. Get team members (include all roles — viewers with proximity data should appear in graph)
     const { rows: team } = await pool.query(
-      `SELECT id, name FROM users WHERE tenant_id = $1 AND role != 'viewer'`,
+      `SELECT id, name FROM users WHERE tenant_id = $1`,
       [tenantId]
     );
 
@@ -5294,7 +5294,7 @@ app.get('/api/network/graph', authenticateToken, async (req, res) => {
     // Firm-wide network graph
     const [teamResult, contactsResult, clientsResult, sectorsResult, signalsResult] = await Promise.all([
       // Team members
-      pool.query(`SELECT id, name, email, role FROM users WHERE tenant_id = $1 AND role != 'viewer' ORDER BY name`, [tenantId]),
+      pool.query(`SELECT id, name, email, role FROM users WHERE tenant_id = $1 ORDER BY name`, [tenantId]),
 
       // Top contacts by proximity strength (limit to strongest connections)
       pool.query(`
