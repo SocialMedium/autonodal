@@ -283,6 +283,110 @@ async function fetchFeed(source) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// JSON FEED INGESTION (primary — more reliable than RSS)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function harvestJsonFeed(tenantId) {
+  console.log('📡 Fetching EventMedium JSON feed...');
+  try {
+    const response = await axios.get('https://eventmedium.ai/api/events/feed.json?status=upcoming&limit=500', {
+      timeout: REQUEST_TIMEOUT,
+      headers: { 'User-Agent': 'MitchelLake Signal Intelligence/1.0' }
+    });
+
+    const data = response.data;
+    const events = data.events ?? data;
+    if (!Array.isArray(events)) {
+      console.log('   ⚠️  JSON feed did not return an array');
+      return { fetched: 0, new: 0, updated: 0 };
+    }
+
+    console.log(`   📄 Fetched ${events.length} events from JSON feed`);
+
+    let newItems = 0;
+    let updatedItems = 0;
+
+    for (const ev of events) {
+      const eventUrl = ev.url || ev.external_url || '';
+      if (!eventUrl) continue;
+
+      const urlHash = hashUrl(eventUrl);
+      const combined = `${ev.name || ''} ${ev.description || ''}`;
+      const theme = Array.isArray(ev.themes) ? ev.themes[0] : null;
+
+      try {
+        const result = await db.query(
+          `INSERT INTO events (
+            tenant_id, external_id, title, description,
+            event_url, url_hash, theme, region, city, country,
+            format, event_date, is_virtual,
+            speaker_names, signal_relevance,
+            relevance_score, published_at, fetched_at
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW())
+          ON CONFLICT (url_hash) DO UPDATE SET
+            title = EXCLUDED.title,
+            description = EXCLUDED.description,
+            relevance_score = EXCLUDED.relevance_score,
+            updated_at = NOW()
+          RETURNING (xmax = 0) AS is_new`,
+          [
+            tenantId,
+            extractExternalId(eventUrl),
+            ev.name || ev.title || 'Untitled Event',
+            cleanText(ev.description),
+            eventUrl,
+            urlHash,
+            theme,
+            ev.region || (ev.country ? bucketRegion(ev.country) : null),
+            ev.city || null,
+            ev.country || null,
+            detectFormat(combined),
+            ev.date || ev.event_date || null,
+            detectVirtual(combined),
+            extractSpeakers(ev.description || '').length > 0 ? extractSpeakers(ev.description || '') : null,
+            SIGNAL_RELEVANCE_MAP[theme] || SIGNAL_RELEVANCE_MAP['default'],
+            ev.theme_score || scoreThemeRelevance(ev.themes || []),
+            ev.date || ev.event_date || null,
+          ]
+        );
+        if (result.rows[0]?.is_new) newItems++;
+        else updatedItems++;
+      } catch (itemErr) {
+        // skip individual item errors
+      }
+    }
+
+    console.log(`   ✅ JSON feed: ${newItems} new, ${updatedItems} updated`);
+    return { fetched: events.length, new: newItems, updated: updatedItems };
+  } catch (err) {
+    console.log(`   ⚠️  JSON feed error: ${err.message}`);
+    return { fetched: 0, new: 0, updated: 0, error: err.message };
+  }
+}
+
+/**
+ * Region bucketing helper (matching lib/events.js)
+ */
+function bucketRegion(country) {
+  const map = {
+    'UK':        ['United Kingdom'],
+    'Australia': ['Australia','New Zealand'],
+    'Singapore': ['Singapore'],
+    'US':        ['United States','Canada'],
+  };
+  for (const [region, countries] of Object.entries(map)) {
+    if (countries.includes(country)) return region;
+  }
+  return null;
+}
+
+function scoreThemeRelevance(eventThemes = []) {
+  const ML_THEMES = ['AI','Fintech','FinTech','SaaS','Cybersecurity','Climate Tech','Climate'];
+  const matches = eventThemes.filter(t => ML_THEMES.includes(t)).length;
+  return parseFloat((matches / Math.max(ML_THEMES.length, 1)).toFixed(3));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN HARVEST FUNCTION
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -294,6 +398,11 @@ async function harvestEvents() {
 
   const startTime = Date.now();
 
+  // Step 1: Try the JSON feed first (more reliable, richer data)
+  const jsonResult = await harvestJsonFeed(ML_TENANT_ID);
+  console.log();
+
+  // Step 2: Also try RSS feeds for additional coverage
   const sources = await db.queryAll(
     'SELECT * FROM event_sources WHERE is_active = true ORDER BY name'
   );
@@ -410,15 +519,16 @@ async function harvestEvents() {
   console.log();
   console.log(`   📊 Summary:`);
   console.log(`   ─────────────────────────────────────────`);
-  console.log(`   Sources processed: ${sources.length}`);
-  console.log(`   Items fetched:     ${totalFetched}`);
-  console.log(`   New events:        ${totalNew}`);
-  console.log(`   Updated events:    ${totalUpdated}`);
+  console.log(`   JSON feed:         ${jsonResult.new} new, ${jsonResult.updated || 0} updated`);
+  console.log(`   RSS sources:       ${sources.length}`);
+  console.log(`   RSS items fetched: ${totalFetched}`);
+  console.log(`   RSS new events:    ${totalNew}`);
+  console.log(`   RSS updated:       ${totalUpdated}`);
   console.log(`   Errors:            ${totalErrors}`);
   console.log(`   Duration:          ${duration}s`);
   console.log();
 
-  return { sources: sources.length, fetched: totalFetched, new: totalNew, updated: totalUpdated, errors: totalErrors };
+  return { sources: sources.length, fetched: totalFetched + jsonResult.fetched, new: totalNew + jsonResult.new, updated: totalUpdated + (jsonResult.updated || 0), errors: totalErrors };
 }
 
 // Run if called directly

@@ -1284,45 +1284,9 @@ async function pipelineWaitlistDigest() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function pipelineIngestEvents() {
-  const { bucketRegion, scoreThemeRelevance } = require('../lib/events');
-
-  console.log('   Fetching EventMedium feed...');
-  const res = await fetch(
-    'https://eventmedium.ai/api/events/feed.json?status=upcoming&limit=500'
-  );
-  const data = await res.json();
-  const events = data.events ?? data;
-
-  let upserted = 0;
-  for (const ev of events) {
-    const region = bucketRegion(ev.country);
-    const themeScore = scoreThemeRelevance(ev.themes);
-
-    await pool.query(`
-      INSERT INTO event_listings
-        (tenant_id, external_url, name, description, event_date,
-         city, country, region, themes, rsvp_count,
-         expected_attendees, status, theme_score, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
-      ON CONFLICT (external_url, tenant_id)
-      DO UPDATE SET
-        rsvp_count        = EXCLUDED.rsvp_count,
-        expected_attendees= EXCLUDED.expected_attendees,
-        status            = EXCLUDED.status,
-        theme_score       = EXCLUDED.theme_score,
-        updated_at        = NOW()
-    `, [
-      '00000000-0000-0000-0000-000000000001',
-      ev.url, ev.name, ev.description, ev.date,
-      ev.city, ev.country, region, ev.themes,
-      ev.rsvp_count ?? 0, ev.expected_attendees ?? null,
-      ev.status ?? 'upcoming', themeScore
-    ]);
-    upserted++;
-  }
-
-  console.log(`   EventMedium: ${upserted} events upserted`);
-  return { upserted };
+  // Delegate to the unified harvest_events script
+  const { harvestEvents } = require('./harvest_events');
+  return harvestEvents();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

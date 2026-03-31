@@ -5109,24 +5109,37 @@ app.get('/api/public/market-temperature', ...publicEmbed, async (req, res) => {
 app.get('/api/public/events', ...publicEmbed, async (req, res) => {
   res.set('Cache-Control', 'public, max-age=3600');
   try {
-    const regions = ['ANZ','Asia','Europe','US','Africa','Global'];
+    const regions = ['UK','Australia','Singapore','US'];
     const result = {};
 
     for (const region of regions) {
       const { rows } = await pool.query(`
         SELECT
-          id, name, description, event_date, city, country,
-          region, themes, rsvp_count, expected_attendees, external_url
-        FROM event_listings
+          id, title AS name, description, event_date, city, country,
+          region, theme, event_url AS external_url, relevance_score,
+          signal_relevance, format, is_virtual
+        FROM events
         WHERE tenant_id = $1
           AND region = $2
-          AND status = 'upcoming'
           AND event_date >= CURRENT_DATE
-        ORDER BY theme_score DESC, event_date ASC
-        LIMIT 2
+        ORDER BY relevance_score DESC, event_date ASC
+        LIMIT 3
       `, [PUBLIC_EMBED_TENANT, region]);
       result[region] = rows.map(r => ({ ...r, image_url: null }));
     }
+
+    // Also get events without region set
+    const { rows: globalRows } = await pool.query(`
+      SELECT id, title AS name, description, event_date, city, country,
+             region, theme, event_url AS external_url, relevance_score
+      FROM events
+      WHERE tenant_id = $1
+        AND region IS NULL
+        AND event_date >= CURRENT_DATE
+      ORDER BY relevance_score DESC, event_date ASC
+      LIMIT 3
+    `, [PUBLIC_EMBED_TENANT]);
+    result['Global'] = globalRows.map(r => ({ ...r, image_url: null }));
 
     res.json({
       events: result,
