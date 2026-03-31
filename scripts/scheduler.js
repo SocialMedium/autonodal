@@ -1216,6 +1216,70 @@ Be specific. Name names. Suggest concrete actions. Keep it under 500 words.`,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// WAITLIST DAILY DIGEST
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function pipelineWaitlistDigest() {
+  console.log('   📋 Checking waitlist activity...');
+
+  const { rows: [counts] } = await pool.query(`
+    SELECT
+      COUNT(*) as total,
+      COUNT(*) FILTER (WHERE status = 'pending') as pending,
+      COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as new_24h
+    FROM waitlist
+  `);
+
+  const { rows: recent } = await pool.query(`
+    SELECT name, email, company, created_at
+    FROM waitlist
+    WHERE created_at > NOW() - INTERVAL '24 hours'
+    ORDER BY created_at DESC
+  `);
+
+  if (recent.length === 0) {
+    console.log('     No new waitlist signups in the last 24h');
+    return { new_signups: 0, total: parseInt(counts.total), pending: parseInt(counts.pending) };
+  }
+
+  const digestLines = recent.map(r =>
+    `  • ${r.name || 'Anonymous'} (${r.email})${r.company ? ' — ' + r.company : ''}`
+  );
+
+  const digest = [
+    `WAITLIST DAILY DIGEST — ${new Date().toISOString().split('T')[0]}`,
+    ``,
+    `New signups (24h): ${recent.length}`,
+    `Total pending: ${counts.pending}`,
+    `Total waitlist: ${counts.total}`,
+    ``,
+    `NEW REGISTRATIONS:`,
+    ...digestLines,
+    ``,
+    `Review at: /waitlist.html`
+  ].join('\n');
+
+  console.log('\n' + digest + '\n');
+
+  // Store as intelligence drop for visibility in daily brief
+  await pool.query(`
+    INSERT INTO intelligence_drops (
+      user_id, input_type, raw_input, drop_category, status,
+      extraction, acknowledgment
+    ) VALUES (
+      (SELECT id FROM users WHERE role = 'admin' LIMIT 1),
+      'system', $1, 'daily_brief', 'complete',
+      $2, 'Waitlist digest generated'
+    )
+  `, [
+    digest,
+    JSON.stringify({ type: 'waitlist_digest', new_signups: recent.length, total: parseInt(counts.total), pending: parseInt(counts.pending), entries: recent })
+  ]).catch(e => console.error('     Failed to store waitlist digest:', e.message));
+
+  return { new_signups: recent.length, total: parseInt(counts.total), pending: parseInt(counts.pending) };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // EVENTMEDIUM EVENTS INGESTION
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1307,6 +1371,34 @@ const PIPELINES = {
     fn: pipelineDailyBrief,
     schedule: '0 6 * * *',
     description: 'Generate daily intelligence briefing via Claude'
+  },
+  waitlist_digest: {
+    name: 'Waitlist Digest',
+    icon: '📝',
+    fn: pipelineWaitlistDigest,
+    schedule: '0 7 * * *',
+    description: 'Daily waitlist activity digest — new signups, pending count'
+  },
+  harvest_events: {
+    name: 'Harvest Events',
+    icon: '📅',
+    fn: async () => {
+      const { harvestEvents } = require('./harvest_events');
+      const result = await harvestEvents();
+      // Run entity linking after harvest
+      try {
+        const { linkEvents } = require('./link_events');
+        await linkEvents();
+      } catch (e) { console.warn('Event linking skipped:', e.message); }
+      // Run embedding after linking
+      try {
+        const { embedEvents } = require('./embed_events');
+        await embedEvents();
+      } catch (e) { console.warn('Event embedding skipped:', e.message); }
+      return result;
+    },
+    schedule: '0 */2 * * *',
+    description: 'Fetch EventMedium RSS feeds → Link entities → Embed to Qdrant'
   },
   sync_xero: {
     name: 'Sync Xero Invoices',

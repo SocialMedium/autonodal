@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Signals — MLX Autonode</title>
+  <title>Signals — MitchelLake Signals</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -17,7 +17,7 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
         <div class="flex items-center gap-8">
-          <a href="index.html" class="text-xl font-bold text-slate-900">MLX Autonode</a>
+          <a href="index.html" class="text-xl font-bold text-slate-900">MitchelLake Signals</a>
           <nav class="hidden md:flex items-center gap-6">
             <a href="index.html" class="text-slate-600 hover:text-slate-900">Dashboard</a>
             <a href="signals.html" class="text-blue-600 font-medium">Signals</a>
@@ -43,6 +43,14 @@
       <p class="text-slate-500 mt-1">Triage and act on market signals detected from news and data sources</p>
     </div>
 
+    <!-- Tab Navigation -->
+    <div class="flex gap-2 mb-6">
+      <button onclick="switchTab('signals')" id="tabSignals" class="px-4 py-2 rounded-lg font-medium text-sm bg-blue-600 text-white transition">Market Signals</button>
+      <button onclick="switchTab('events')" id="tabEvents" class="px-4 py-2 rounded-lg font-medium text-sm bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 transition">Events</button>
+    </div>
+
+    <!-- SIGNALS TAB CONTENT -->
+    <div id="signalsTabContent">
     <!-- Filters -->
     <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
       <div class="flex flex-wrap items-center gap-4">
@@ -130,6 +138,69 @@
         </div>
       </div>
     </div>
+    </div><!-- /signalsTabContent -->
+
+    <!-- EVENTS TAB CONTENT -->
+    <div id="eventsTabContent" class="hidden">
+      <!-- Trends Strip -->
+      <div id="eventsTrends" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Trending</span>
+          <div id="trendChips" class="flex items-center gap-2 flex-wrap">
+            <span class="text-sm text-slate-400">Loading trends...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Event Filters -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+        <div class="flex flex-wrap items-center gap-4">
+          <select id="eventThemeFilter" class="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm" onchange="loadEvents()">
+            <option value="">All Themes</option>
+          </select>
+          <select id="eventRegionFilter" class="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm" onchange="loadEvents()">
+            <option value="">All Regions</option>
+          </select>
+          <select id="eventFormatFilter" class="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm" onchange="loadEvents()">
+            <option value="">All Formats</option>
+            <option value="conference">Conference</option>
+            <option value="summit">Summit</option>
+            <option value="meetup">Meetup</option>
+            <option value="workshop">Workshop</option>
+            <option value="webinar">Webinar</option>
+            <option value="roundtable">Roundtable</option>
+            <option value="panel">Panel</option>
+            <option value="demo_day">Demo Day</option>
+            <option value="pitch_event">Pitch Event</option>
+            <option value="awards">Awards</option>
+            <option value="networking">Networking</option>
+          </select>
+          <div class="flex-1 min-w-[200px]">
+            <div class="relative">
+              <input type="text" id="eventSearchInput" placeholder="Search events..."
+                class="w-full px-4 py-2 pl-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                onkeyup="if(event.key==='Enter') loadEvents()">
+              <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Event Cards -->
+      <div id="eventsList" class="space-y-4">
+        <div class="text-center text-slate-500 py-12">Loading events...</div>
+      </div>
+
+      <!-- Pagination -->
+      <div id="eventsPagination" class="flex items-center justify-between mt-6 hidden">
+        <span id="eventsShowing" class="text-sm text-slate-500"></span>
+        <div class="flex gap-2">
+          <button onclick="loadEvents(eventsOffset - 20)" id="eventsPrev" class="px-4 py-2 text-sm border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50" disabled>Previous</button>
+          <button onclick="loadEvents(eventsOffset + 20)" id="eventsNext" class="px-4 py-2 text-sm border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50" disabled>Next</button>
+        </div>
+      </div>
+    </div><!-- /eventsTabContent -->
+
   </main>
 
   <!-- Signal Detail Modal -->
@@ -418,6 +489,194 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeModal();
     });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // EVENTS TAB
+    // ═══════════════════════════════════════════════════════════════════
+
+    let eventsOffset = 0;
+    let eventsLoaded = false;
+
+    function switchTab(tab) {
+      if (tab === 'signals') {
+        document.getElementById('signalsTabContent').classList.remove('hidden');
+        document.getElementById('eventsTabContent').classList.add('hidden');
+        document.getElementById('tabSignals').className = 'px-4 py-2 rounded-lg font-medium text-sm bg-blue-600 text-white transition';
+        document.getElementById('tabEvents').className = 'px-4 py-2 rounded-lg font-medium text-sm bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 transition';
+      } else {
+        document.getElementById('signalsTabContent').classList.add('hidden');
+        document.getElementById('eventsTabContent').classList.remove('hidden');
+        document.getElementById('tabSignals').className = 'px-4 py-2 rounded-lg font-medium text-sm bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 transition';
+        document.getElementById('tabEvents').className = 'px-4 py-2 rounded-lg font-medium text-sm bg-blue-600 text-white transition';
+        if (!eventsLoaded) {
+          loadEventTrends();
+          loadEvents();
+          eventsLoaded = true;
+        }
+      }
+      // Update URL for deep linking
+      const url = new URL(window.location);
+      url.searchParams.set('tab', tab);
+      history.replaceState(null, '', url);
+    }
+
+    async function loadEventTrends() {
+      try {
+        const res = await fetch('/api/events/trends', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const themeIcons = { 'AI': '🤖', 'FinTech': '💰', 'Climate Tech': '🌱', 'Cybersecurity': '🔒' };
+        let chips = '';
+
+        data.by_theme.forEach(t => {
+          const icon = themeIcons[t.theme] || '📌';
+          chips += `<button onclick="setEventFilter('theme','${t.theme}')" class="px-3 py-1 text-sm rounded-full bg-slate-100 hover:bg-blue-100 text-slate-700 transition whitespace-nowrap">${icon} ${t.theme} (${t.count})</button>`;
+        });
+        data.by_region.forEach(r => {
+          chips += `<button onclick="setEventFilter('region','${r.region}')" class="px-3 py-1 text-sm rounded-full bg-slate-100 hover:bg-blue-100 text-slate-700 transition whitespace-nowrap">📍 ${r.region} (${r.count})</button>`;
+        });
+
+        document.getElementById('trendChips').innerHTML = chips || '<span class="text-sm text-slate-400">No trends yet</span>';
+
+        // Populate filter dropdowns
+        const themeSelect = document.getElementById('eventThemeFilter');
+        const regionSelect = document.getElementById('eventRegionFilter');
+        data.by_theme.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t.theme;
+          opt.textContent = t.theme;
+          themeSelect.appendChild(opt);
+        });
+        data.by_region.forEach(r => {
+          const opt = document.createElement('option');
+          opt.value = r.region;
+          opt.textContent = r.region;
+          regionSelect.appendChild(opt);
+        });
+      } catch (err) {
+        console.error('Failed to load event trends:', err);
+      }
+    }
+
+    function setEventFilter(type, value) {
+      if (type === 'theme') document.getElementById('eventThemeFilter').value = value;
+      if (type === 'region') document.getElementById('eventRegionFilter').value = value;
+      loadEvents();
+    }
+
+    async function loadEvents(offset = 0) {
+      eventsOffset = Math.max(0, offset);
+      const theme = document.getElementById('eventThemeFilter').value;
+      const region = document.getElementById('eventRegionFilter').value;
+      const format = document.getElementById('eventFormatFilter').value;
+      const search = document.getElementById('eventSearchInput').value;
+
+      const params = new URLSearchParams({ limit: 20, offset: eventsOffset });
+      if (theme) params.set('theme', theme);
+      if (region) params.set('region', region);
+      if (format) params.set('format', format);
+      if (search) params.set('search', search);
+
+      try {
+        const res = await fetch(`/api/events?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Failed');
+        const data = await res.json();
+        renderEvents(data.events, data.total);
+      } catch (err) {
+        document.getElementById('eventsList').innerHTML = '<div class="text-center text-red-500 py-8">Failed to load events</div>';
+      }
+    }
+
+    function renderEvents(events, total) {
+      const container = document.getElementById('eventsList');
+      if (!events || events.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-12">
+            <div class="text-4xl mb-3">📅</div>
+            <p class="text-slate-500">No upcoming events match your filters.</p>
+            <p class="text-slate-400 text-sm mt-1">Try expanding the date range or changing themes.</p>
+          </div>`;
+        document.getElementById('eventsPagination').classList.add('hidden');
+        return;
+      }
+
+      const today = new Date();
+      const weekFromNow = new Date(today.getTime() + 7 * 86400000);
+
+      container.innerHTML = events.map(e => {
+        const eventDate = e.event_date ? new Date(e.event_date) : null;
+        const isThisWeek = eventDate && eventDate >= today && eventDate <= weekFromNow;
+        const dateStr = eventDate ? eventDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'TBD';
+        const location = [e.city, e.region].filter(Boolean).join(', ') || (e.is_virtual ? 'Virtual' : '');
+        const formatLabel = (e.format || 'other').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+        // Relevance dots
+        const score = e.relevance_score || 0;
+        const dots = score >= 0.75 ? '●●●●' : score >= 0.5 ? '●●●○' : score >= 0.25 ? '●●○○' : '●○○○';
+
+        // Signal badges
+        const signalBadges = (e.signal_relevance || []).map(s => {
+          const badgeColors = {
+            'product_launch': 'bg-cyan-100 text-cyan-700',
+            'strategic_hiring': 'bg-blue-100 text-blue-700',
+            'partnership': 'bg-indigo-100 text-indigo-700',
+            'capital_raising': 'bg-emerald-100 text-emerald-700',
+            'geographic_expansion': 'bg-purple-100 text-purple-700'
+          };
+          return `<span class="text-xs px-2 py-0.5 rounded-full ${badgeColors[s] || 'bg-slate-100 text-slate-700'}">${s.replace(/_/g, ' ')}</span>`;
+        }).join(' ');
+
+        // Company links
+        const companies = (Array.isArray(e.company_links) ? e.company_links : [])
+          .map(c => `<a href="/company.html?id=${c.id}" class="text-blue-600 hover:underline text-sm">🔗 ${c.name}</a>`)
+          .join(' &middot; ');
+
+        return `
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md transition">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 text-sm text-slate-500 mb-2">
+                  <span>📅 ${dateStr}</span>
+                  ${location ? `<span>&middot;</span><span>${location}</span>` : ''}
+                  <span>&middot;</span><span>${formatLabel}</span>
+                  ${e.is_virtual ? '<span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs">Virtual</span>' : ''}
+                  ${isThisWeek ? '<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">THIS WEEK</span>' : ''}
+                </div>
+                <h3 class="font-semibold text-slate-900 text-lg mb-2">
+                  <a href="${e.event_url}" target="_blank" rel="noopener noreferrer" class="hover:text-blue-600 transition">${e.title}</a>
+                </h3>
+                <div class="flex flex-wrap gap-1.5 mb-3">${signalBadges}</div>
+                ${e.description_excerpt ? `<p class="text-sm text-slate-600 mb-3">"${e.description_excerpt}"</p>` : ''}
+                ${companies ? `<div class="text-sm mb-2">${companies}</div>` : ''}
+              </div>
+              <div class="text-right shrink-0">
+                <a href="${e.event_url}" target="_blank" rel="noopener noreferrer"
+                   class="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-600 transition">
+                  View <span class="text-xs">↗</span>
+                </a>
+                <div class="text-xs text-slate-400 mt-2" title="Relevance">Relevance: ${dots}</div>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+
+      // Pagination
+      const pag = document.getElementById('eventsPagination');
+      pag.classList.remove('hidden');
+      document.getElementById('eventsShowing').textContent = `Showing ${eventsOffset + 1}–${Math.min(eventsOffset + events.length, total)} of ${total}`;
+      document.getElementById('eventsPrev').disabled = eventsOffset === 0;
+      document.getElementById('eventsNext').disabled = eventsOffset + 20 >= total;
+
+      lucide.createIcons();
+    }
+
+    // Check URL params for tab
+    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    if (urlTab === 'events') {
+      // Defer to after init
+      setTimeout(() => switchTab('events'), 100);
+    }
 
     init();
   </script>

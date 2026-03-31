@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin — MLX Autonode</title>
+<title>Admin — MitchelLake Signals</title>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -144,7 +144,7 @@ select.role-select:focus { outline: none; border-color: var(--blue); }
 <header class="masthead">
   <div class="masthead-top">
     <div class="masthead-brand">
-      <div class="masthead-logo">MLX <em>Autonode</em></div>
+      <div class="masthead-logo">MitchelLake <em>Signals</em></div>
     </div>
     <nav class="masthead-nav">
       <a href="/index.html">Signals</a>
@@ -154,6 +154,7 @@ select.role-select:focus { outline: none; border-color: var(--blue); }
       <a href="/placements.html">Revenue</a>
       <a href="/case-studies.html">Case Studies</a>
       <a href="/admin.html" class="active">Admin</a>
+      <a href="/waitlist.html">Waitlist</a>
     </nav>
     <div>
       <div class="masthead-user" id="userAvatar" onclick="doLogout()" title="Sign out">JT</div>
@@ -207,6 +208,32 @@ select.role-select:focus { outline: none; border-color: var(--blue); }
         <tr><td colspan="9" class="loading">Loading team data...</td></tr>
       </tbody>
     </table>
+  </div>
+
+  <!-- Sales CSV Import -->
+  <div class="section">
+    <div class="section-title">Import Sales Data</div>
+    <p style="font-size:13px;color:var(--ink-3);margin-bottom:16px;max-width:640px">
+      Import placement and revenue data from a CSV file exported from <strong>Xero</strong>, <strong>MYOB</strong>, or <strong>QuickBooks</strong>. Xero Sales Invoice and MYOB Sales Customer Detail exports are auto-detected. MYOB invoices are grouped by ID with amounts aggregated and candidate/role info extracted from descriptions. Invoices are matched to existing clients and deduped by invoice number.
+    </p>
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">
+      <input type="file" id="salesCsvFile" accept=".csv" style="display:none" onchange="previewSalesCsv(this)">
+      <button class="btn-sm" onclick="document.getElementById('salesCsvFile').click()" style="font-size:12px;padding:6px 16px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--surface);cursor:pointer">Choose CSV File</button>
+      <span id="salesFileName" style="font-size:12px;color:var(--ink-3)">No file selected</span>
+    </div>
+    <div id="salesPreview" style="display:none">
+      <div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:20px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:600;margin-bottom:12px;color:var(--ink-2)">Preview <span class="badge" id="salesPreviewCount">0</span></div>
+        <div style="overflow-x:auto;max-height:300px;overflow-y:auto">
+          <table class="tbl" id="salesPreviewTable"><tbody></tbody></table>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <button id="salesImportBtn" onclick="importSalesCsv()" style="font-size:12px;padding:8px 24px;background:var(--ink);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;font-weight:500">Import</button>
+        <button onclick="cancelSalesImport()" style="font-size:12px;padding:8px 16px;background:none;border:1px solid var(--rule);border-radius:var(--radius);cursor:pointer;color:var(--ink-3)">Cancel</button>
+        <span id="salesImportStatus" style="font-size:12px;color:var(--ink-3)"></span>
+      </div>
+    </div>
   </div>
 
   <!-- Data Ingestion -->
@@ -297,6 +324,33 @@ select.role-select:focus { outline: none; border-color: var(--blue); }
     </div>
   </div>
 
+  <!-- Event Sources -->
+  <div class="section">
+    <div class="section-title">Event Sources <span class="badge" id="eventSourceCount">0</span></div>
+    <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+      <div class="stat-card" style="display:inline-block;padding:8px 14px"><span class="stat-label">Events Ingested</span> <span class="mono" id="sEventsTotal">-</span></div>
+      <div class="stat-card" style="display:inline-block;padding:8px 14px"><span class="stat-label">This Week</span> <span class="mono" id="sEventsWeek">-</span></div>
+    </div>
+    <table class="tbl" id="eventSourcesTable">
+      <thead>
+        <tr><th>Name</th><th>Theme</th><th>Region</th><th>Events</th><th>Last Fetched</th><th>Fetch Count</th><th>Status</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="eventSourcesBody">
+        <tr><td colspan="8" class="loading">Loading event sources...</td></tr>
+      </tbody>
+    </table>
+    <div style="margin-top:12px;padding:14px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius)">
+      <div style="font-size:11px;font-weight:600;margin-bottom:8px">Add Event Source</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="esName" placeholder="Name" style="font-size:11px;padding:4px 8px;border:1px solid var(--rule);border-radius:4px;flex:1;min-width:140px">
+        <input id="esFeedUrl" placeholder="Feed URL" style="font-size:11px;padding:4px 8px;border:1px solid var(--rule);border-radius:4px;flex:2;min-width:200px">
+        <input id="esTheme" placeholder="Theme (optional)" style="font-size:11px;padding:4px 8px;border:1px solid var(--rule);border-radius:4px;width:120px">
+        <input id="esRegion" placeholder="Region (optional)" style="font-size:11px;padding:4px 8px;border:1px solid var(--rule);border-radius:4px;width:120px">
+        <button class="btn-sm" onclick="addEventSource()" style="background:var(--emerald);color:#fff;border-color:var(--emerald)">Add</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Audit -->
   <div class="section">
     <div class="section-title">Recent Audit Log <span class="badge" id="auditCount">0</span></div>
@@ -381,6 +435,7 @@ async function loadAll() {
     renderSources(health.sources);
     renderAudit(audit.logs);
     renderEmbeddings(health.embeddings);
+    loadEventSources();
 
     // Tenant info
     try {
@@ -481,6 +536,7 @@ function renderUsers(users) {
         '<button class="btn-sm" onclick="document.getElementById(\'linkedin-' + u.id + '\').click()" title="Upload LinkedIn connections CSV">LinkedIn CSV</button>' +
         ' <button class="btn-sm" onclick="triggerDriveSync(\'' + u.id + '\',\'' + esc(u.name) + '\')" title="Google Drive + Gmail sync">Sync Drive</button>' +
         ' <button class="btn-sm" onclick="triggerCrmSync()" title="Sync from Ezekia CRM" style="background:var(--violet-soft);color:var(--violet);border-color:var(--violet)">CRM Sync</button>' +
+        ' <button class="btn-sm" onclick="document.getElementById(\'salesCsvFile\').click();document.getElementById(\'salesCsvFile\').scrollIntoView({behavior:\'smooth\'})" title="Import sales CSV from Xero/MYOB/QuickBooks" style="background:var(--emerald-soft);color:var(--emerald);border-color:var(--emerald)">Sales CSV</button>' +
       '</td>' +
     '</tr>';
   });
@@ -500,10 +556,374 @@ async function changeRole(select) {
   }
 }
 
+// ── Sales CSV Import ──
+var _salesRows = [];
+var _salesHeaders = [];
+var _myobInvoices = [];
+var _isMyobFormat = false;
+
+function parseCSVLine(line) {
+  var r = [], c = '', q = false;
+  for (var i = 0; i < line.length; i++) {
+    var ch = line[i];
+    if (ch === '"') q = !q;
+    else if (ch === ',' && !q) { r.push(c.trim()); c = ''; }
+    else c += ch;
+  }
+  r.push(c.trim());
+  return r;
+}
+
+function parseMyobAmount(raw) {
+  if (!raw) return 0;
+  var s = String(raw).trim();
+  // Negative: ($18,000.00) or -$18,000.00
+  var neg = false;
+  if (s.match(/^\(/) && s.match(/\)$/)) { neg = true; s = s.replace(/[()]/g, ''); }
+  if (s.charAt(0) === '-') { neg = true; s = s.substring(1); }
+  s = s.replace(/[$,\s]/g, '');
+  var val = parseFloat(s);
+  if (isNaN(val)) return 0;
+  return neg ? -val : val;
+}
+
+function parseMyobDate(raw) {
+  if (!raw) return null;
+  var s = String(raw).trim();
+  var m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    var dd = parseInt(m[1]), mm = parseInt(m[2]), yyyy = parseInt(m[3]);
+    if (yyyy > 2000 && yyyy < 2100 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+      return yyyy + '-' + (mm < 10 ? '0' + mm : mm) + '-' + (dd < 10 ? '0' + dd : dd);
+    }
+  }
+  return null;
+}
+
+function parseMyobCsv(rawText) {
+  var allLines = rawText.split(/\r?\n/);
+  var invoices = {};
+  var currentClient = null;
+
+  for (var i = 0; i < allLines.length; i++) {
+    var line = allLines[i];
+    if (!line.trim()) continue;
+    var cols = parseCSVLine(line);
+
+    // Skip header rows (company info, report title, date range, column headers)
+    // Header rows: first few lines before data, or contain "Sales [Customer Detail]", "ID No.", etc.
+    var joined = cols.join(' ').toLowerCase();
+    if (joined.indexOf('sales [customer detail]') >= 0) continue;
+    if (joined.indexOf('customer detail') >= 0 && joined.indexOf('id no') < 0) continue;
+    if (cols.length > 1 && (cols[1] === 'ID No.' || cols[1] === 'Date')) continue;
+    if (joined.indexOf('grand total:') >= 0) continue;
+    if (joined.indexOf('mitchellake') >= 0 && joined.indexOf('total:') < 0) continue;
+    if (joined.indexOf('wentworth') >= 0 || joined.indexOf('sydney') >= 0) continue;
+    if (joined.indexOf('period from') >= 0 || joined.indexOf(' to ') >= 0 && joined.indexOf('/20') >= 0 && joined.length < 60) continue;
+
+    // Client total row — skip
+    if (joined.indexOf(' total:') >= 0 && joined.indexOf('$') >= 0) continue;
+
+    // MYOB CSV has leading comma — data is offset by 1
+    // Client header: ",ClientName,ClientCode,,,,,,,"  → cols[0]='', cols[1]=name, cols[2]=code
+    // Invoice line:  ",115199-1,07/12/2015,,4-1001,Description,$34375.01,GST,Open"
+    //                → cols[0]='', cols[1]=ID, cols[2]=date, cols[3]=qty, cols[4]=item, cols[5]=desc, cols[6]=amt, cols[7]=tax, cols[8]=status
+
+    // Client header row: col[0] empty, col[1] has name, col[2] has code, rest empty
+    var nonEmptyCols = cols.filter(function(c) { return c.trim() !== ''; });
+    var col1 = cols[1] ? cols[1].trim() : '';
+    var col2 = cols[2] ? cols[2].trim() : '';
+
+    // Detect client header: col1 has text, col2 has short code, no date-like col2, rest mostly empty
+    if (nonEmptyCols.length <= 2 && cols.length >= 5 && cols[0].trim() === '' && col1 && col2
+        && !col1.match(/^[0-9\-]+$/) && !col2.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/) && col1.indexOf('Total:') < 0) {
+      currentClient = col1;
+      continue;
+    }
+    // Also catch client headers without code: just name in col1
+    if (nonEmptyCols.length === 1 && cols[0].trim() === '' && col1 && !col1.match(/^[0-9\$\(\-]/) && col1.indexOf('Total:') < 0 && col1 !== 'MitchelLake' && col1.length > 2) {
+      currentClient = col1;
+      continue;
+    }
+
+    // Invoice line item row
+    var invoiceId = col1;
+    var dateStr = col2;
+    var quantity = cols[3] ? cols[3].trim() : '';
+    var itemCode = cols[4] ? cols[4].trim() : '';
+    var description = cols[5] ? cols[5].trim() : '';
+    var amount = cols[6] ? cols[6].trim() : '';
+    var tax = cols[7] ? cols[7].trim() : '';
+    var status = cols[8] ? cols[8].trim() : '';
+
+    // Must have an invoice ID to be a valid line
+    if (!invoiceId || !invoiceId.match(/^[A-Za-z0-9\-]+$/)) continue;
+
+    // Parse the amount
+    var amtVal = parseMyobAmount(amount);
+
+    // Extract metadata from description
+    var candidateName = null;
+    var roleTitle = null;
+    if (description) {
+      // Candidate name extraction
+      var candMatch = description.match(/(?:Candidate Name|Candidate|Placement of)[:\s]+(.+)/i);
+      if (candMatch) candidateName = candMatch[1].trim();
+
+      // Role title extraction
+      var roleMatch = description.match(/(?:Retained Search|Project|Permanent Placement)\s*[-:]\s*(.+)/i);
+      if (roleMatch) roleTitle = roleMatch[1].trim();
+    }
+
+    // Group by invoice ID
+    if (!invoices[invoiceId]) {
+      invoices[invoiceId] = {
+        invoice_number: invoiceId,
+        client_name: currentClient,
+        date: parseMyobDate(dateStr),
+        fee: 0,
+        candidate_name: null,
+        role_title: null,
+        description: '',
+        payment_status: 'pending',
+        currency: 'AUD',
+        line_count: 0
+      };
+    }
+
+    var inv = invoices[invoiceId];
+    inv.fee += amtVal;
+    inv.line_count++;
+    if (candidateName && !inv.candidate_name) inv.candidate_name = candidateName;
+    if (roleTitle && !inv.role_title) inv.role_title = roleTitle;
+    if (description && inv.description.indexOf(description) < 0) {
+      inv.description = inv.description ? (inv.description + ' | ' + description) : description;
+    }
+    // Use the date from the first line item with a date
+    if (!inv.date && dateStr) inv.date = parseMyobDate(dateStr);
+    // Pick up status from any line that has one
+    if (status) {
+      var sl = status.toLowerCase();
+      if (sl === 'closed') inv.payment_status = 'paid';
+      else if (sl === 'open') inv.payment_status = 'pending';
+    }
+    // If client changed mid-block, update (shouldn't happen but be safe)
+    if (currentClient && !inv.client_name) inv.client_name = currentClient;
+  }
+
+  // Convert to array, round fees
+  var result = [];
+  for (var key in invoices) {
+    if (invoices.hasOwnProperty(key)) {
+      var item = invoices[key];
+      item.fee = Math.round(item.fee * 100) / 100;
+      // Truncate description for preview
+      if (item.description && item.description.length > 200) {
+        item.description = item.description.substring(0, 200) + '...';
+      }
+      result.push(item);
+    }
+  }
+  return result;
+}
+
+function detectMyobFormat(rawText) {
+  var lines = rawText.split(/\r?\n/).slice(0, 10);
+  for (var i = 0; i < lines.length; i++) {
+    var lower = lines[i].toLowerCase();
+    if (lower.indexOf('sales [customer detail]') >= 0 || lower.indexOf('customer detail') >= 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function previewSalesCsv(input) {
+  var file = input.files[0];
+  if (!file) return;
+  document.getElementById('salesFileName').textContent = file.name + ' — reading...';
+  document.getElementById('salesImportStatus').textContent = '';
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var rawText = e.target.result;
+    _isMyobFormat = detectMyobFormat(rawText);
+
+    if (_isMyobFormat) {
+      // MYOB Sales Customer Detail format
+      _myobInvoices = parseMyobCsv(rawText);
+      _salesRows = [];
+      _salesHeaders = [];
+
+      if (!_myobInvoices.length) {
+        alert('No invoices could be parsed from this MYOB file. Check the format.');
+        document.getElementById('salesFileName').textContent = file.name;
+        return;
+      }
+
+      document.getElementById('salesFileName').textContent = file.name;
+
+      // Count totals
+      var totalFee = 0;
+      var paidCount = 0;
+      _myobInvoices.forEach(function(inv) {
+        totalFee += inv.fee;
+        if (inv.payment_status === 'paid') paidCount++;
+      });
+      var mappingInfo = '<strong style="color:var(--emerald)">MYOB Sales Customer Detail format detected</strong> — ';
+      mappingInfo += _myobInvoices.length + ' invoices, $' + totalFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' total';
+      mappingInfo += ' (' + paidCount + ' paid, ' + (_myobInvoices.length - paidCount) + ' pending)';
+      document.getElementById('salesPreviewCount').innerHTML = _myobInvoices.length + ' invoices<br><span style="font-size:11px;font-weight:400;color:var(--ink-3)">' + mappingInfo + '</span>';
+
+      // Render MYOB preview table
+      var esc2 = function(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;') : ''; };
+      var showCols = ['invoice_number', 'client_name', 'date', 'fee', 'role_title', 'candidate_name', 'payment_status'];
+      var colLabels = { invoice_number: 'Invoice #', client_name: 'Client', date: 'Date', fee: 'Fee', role_title: 'Role', candidate_name: 'Candidate', payment_status: 'Status' };
+      var html = '<thead><tr>' + showCols.map(function(h) { return '<th>' + colLabels[h] + '</th>'; }).join('') + '</tr></thead><tbody>';
+      var preview = _myobInvoices.slice(0, 15);
+      preview.forEach(function(inv) {
+        html += '<tr>';
+        showCols.forEach(function(h) {
+          var val = inv[h];
+          if (h === 'fee') val = val !== null && val !== undefined ? '$' + Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+          html += '<td style="font-size:12px">' + esc2(String(val || '')) + '</td>';
+        });
+        html += '</tr>';
+      });
+      if (_myobInvoices.length > 15) html += '<tr><td colspan="' + showCols.length + '" style="color:var(--ink-4);font-size:11px">... and ' + (_myobInvoices.length - 15) + ' more invoices</td></tr>';
+      html += '</tbody>';
+      document.getElementById('salesPreviewTable').innerHTML = html;
+      document.getElementById('salesPreview').style.display = 'block';
+
+      setTimeout(function() { document.getElementById('salesPreview').scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+      return;
+    }
+
+    // Standard CSV path (Xero, generic)
+    var lines = rawText.split(/\r?\n/).filter(function(l) { return l.trim(); });
+    if (lines.length < 2) { alert('CSV must have a header row and at least one data row'); document.getElementById('salesFileName').textContent = file.name; return; }
+
+    _salesHeaders = parseCSVLine(lines[0]).map(function(h) { return h.toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''); });
+    _salesRows = [];
+    _myobInvoices = [];
+    for (var i = 1; i < lines.length; i++) {
+      var vals = parseCSVLine(lines[i]);
+      if (vals.length < 2) continue;
+      var row = {};
+      _salesHeaders.forEach(function(h, j) { row[h] = vals[j] || ''; });
+      _salesRows.push(row);
+    }
+
+    document.getElementById('salesFileName').textContent = file.name;
+
+    // Detect column mapping
+    var isXero = _salesHeaders.includes('contactname') && _salesHeaders.includes('invoicenumber');
+    var mappingInfo = isXero ? '<strong style="color:var(--emerald)">Xero Sales Invoice format detected</strong> — ' : '';
+    var knownAliases = {
+      contactname: 'Client', client_name: 'Client', client: 'Client', company: 'Client',
+      reference: 'Role', role_title: 'Role', role: 'Role',
+      lineamount: 'Fee', fee: 'Fee', total: 'Fee', amount: 'Fee',
+      invoicedate: 'Date', date: 'Date', invoice_date: 'Date',
+      invoicenumber: 'Invoice #', invoice_number: 'Invoice #',
+      status: 'Status', payment_status: 'Status',
+      trackingoption2: 'Consultant', consultant: 'Consultant',
+    };
+    var mapped = [];
+    _salesHeaders.forEach(function(h) { if (knownAliases[h]) mapped.push(knownAliases[h] + ' (' + h + ')'); });
+    mappingInfo += mapped.length ? 'Mapped: ' + mapped.join(', ') : 'No recognised columns';
+    document.getElementById('salesPreviewCount').innerHTML = _salesRows.length + ' rows<br><span style="font-size:11px;font-weight:400;color:var(--ink-3)">' + mappingInfo + '</span>';
+
+    // Render preview table
+    var esc2 = function(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;') : ''; };
+    var showCols = _salesHeaders.slice(0, 8);
+    var html = '<thead><tr>' + showCols.map(function(h) { return '<th>' + esc2(h) + '</th>'; }).join('') + '</tr></thead><tbody>';
+    var preview = _salesRows.slice(0, 10);
+    preview.forEach(function(row) {
+      html += '<tr>' + showCols.map(function(h) { return '<td style="font-size:12px">' + esc2(row[h]) + '</td>'; }).join('') + '</tr>';
+    });
+    if (_salesRows.length > 10) html += '<tr><td colspan="' + showCols.length + '" style="color:var(--ink-4);font-size:11px">... and ' + (_salesRows.length - 10) + ' more rows</td></tr>';
+    html += '</tbody>';
+    document.getElementById('salesPreviewTable').innerHTML = html;
+    document.getElementById('salesPreview').style.display = 'block';
+
+    // Scroll into view
+    setTimeout(function() { document.getElementById('salesPreview').scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+  };
+  reader.readAsText(file);
+}
+
+function cancelSalesImport() {
+  _salesRows = [];
+  _salesHeaders = [];
+  _myobInvoices = [];
+  _isMyobFormat = false;
+  document.getElementById('salesPreview').style.display = 'none';
+  document.getElementById('salesCsvFile').value = '';
+  document.getElementById('salesFileName').textContent = 'No file selected';
+  document.getElementById('salesImportStatus').textContent = '';
+}
+
+async function importSalesCsv() {
+  var isMyob = _isMyobFormat && _myobInvoices.length > 0;
+  var count = isMyob ? _myobInvoices.length : _salesRows.length;
+  if (!count) return;
+
+  var label = isMyob ? (count + ' MYOB invoices') : (count + ' rows');
+  if (!confirm('Import ' + label + '? Existing invoices (matched by invoice number) will be updated.')) return;
+
+  var btn = document.getElementById('salesImportBtn');
+  var status = document.getElementById('salesImportStatus');
+  btn.disabled = true;
+  btn.textContent = 'Importing ' + label + '...';
+  status.textContent = 'Sending data to server...';
+  status.style.color = 'var(--ink-3)';
+
+  var startTime = Date.now();
+
+  try {
+    var token = localStorage.getItem('ml_token');
+    var endpoint = isMyob ? '/api/admin/import-sales-myob' : '/api/admin/import-sales';
+    var payload = isMyob ? JSON.stringify({ invoices: _myobInvoices }) : JSON.stringify({ headers: _salesHeaders, rows: _salesRows });
+
+    var resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: payload
+    });
+    var data = await resp.json();
+    if (data.error) throw new Error(data.error);
+
+    var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    var parts = [];
+    if (data.created) parts.push(data.created + ' created');
+    if (data.updated) parts.push(data.updated + ' updated');
+    if (data.skipped) parts.push(data.skipped + ' skipped');
+    if (data.errors) parts.push(data.errors + ' errors');
+    status.innerHTML = '<strong style="color:var(--emerald)">Import complete</strong> (' + elapsed + 's) — ' + parts.join(', ') + ' of ' + data.total + (isMyob ? ' invoices' : ' rows');
+    status.style.color = 'var(--ink-2)';
+    _salesRows = [];
+    _myobInvoices = [];
+    _isMyobFormat = false;
+    document.getElementById('salesPreviewTable').innerHTML = '';
+    document.getElementById('salesPreviewCount').textContent = '';
+  } catch (err) {
+    status.innerHTML = '<strong style="color:var(--rose)">Import failed</strong> — ' + err.message;
+    status.style.color = 'var(--rose)';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Import';
+}
+
 async function uploadLinkedIn(input, userId, userName) {
   var file = input.files[0];
   if (!file) return;
   if (!confirm('Upload ' + file.name + ' as LinkedIn connections for ' + userName + '?')) { input.value = ''; return; }
+
+  // Find and disable the button
+  var btn = input.previousElementSibling || input.parentElement.querySelector('button');
+  var origText = '';
+  try { var btns = input.parentElement.querySelectorAll('button'); btns.forEach(function(b) { if (b.textContent.indexOf('LinkedIn') >= 0) { btn = b; } }); } catch(e) {}
+  if (btn) { origText = btn.textContent; btn.textContent = 'Uploading...'; btn.disabled = true; }
 
   var formData = new FormData();
   formData.append('file', file);
@@ -517,6 +937,7 @@ async function uploadLinkedIn(input, userId, userName) {
       body: formData
     });
     var data = await resp.json();
+    if (btn) { btn.textContent = origText; btn.disabled = false; }
     if (data.error) throw new Error(data.error);
     if (data.message) {
       // Background processing — show confirmation
@@ -535,6 +956,7 @@ async function uploadLinkedIn(input, userId, userName) {
     input.value = '';
     loadAll();
   } catch(e) {
+    if (btn) { btn.textContent = origText; btn.disabled = false; }
     alert('Upload failed: ' + e.message);
     input.value = '';
   }
@@ -544,7 +966,11 @@ async function triggerDriveSync(userId, userName) {
   if (!confirm('Trigger Google Drive + Gmail sync for ' + userName + '?')) return;
   try {
     var data = await api('/api/admin/trigger-drive-sync', { method: 'POST', body: { user_id: userId } });
-    alert(data.message || 'Drive sync triggered for ' + userName);
+    if (data.message && data.message.indexOf('No Google account') >= 0) {
+      alert(userName + ' has signed in but has not connected Gmail/Drive.\n\nThey need to click "Connect Gmail" from their profile in the platform to authorise extended access (Gmail, Drive, Docs).\n\nSign-in only grants basic authentication — Gmail/Drive sync requires a separate connection step.');
+    } else {
+      alert(data.message || 'Drive sync triggered for ' + userName);
+    }
   } catch(e) {
     alert('Failed: ' + e.message);
   }
@@ -757,6 +1183,87 @@ function renderAudit(logs) {
     '</tr>';
   });
   document.getElementById('auditBody').innerHTML = html;
+}
+
+// ── Event Sources ──
+async function loadEventSources() {
+  try {
+    var data = await api('/api/admin/event-sources');
+    var sources = data.sources || [];
+    document.getElementById('eventSourceCount').textContent = sources.length;
+
+    var totalEvents = 0;
+    sources.forEach(function(s) { totalEvents += parseInt(s.event_count || 0); });
+    document.getElementById('sEventsTotal').textContent = num(totalEvents);
+
+    if (!sources.length) {
+      document.getElementById('eventSourcesBody').innerHTML = '<tr><td colspan="8" class="muted">No event sources configured</td></tr>';
+      return;
+    }
+
+    var html = '';
+    sources.forEach(function(s) {
+      var statusClass = s.is_active ? 'dot-green' : 'dot-grey';
+      var statusText = s.is_active ? 'Active' : 'Inactive';
+      if (s.last_error) { statusClass = 'dot-red'; statusText = 'Error'; }
+
+      html += '<tr>' +
+        '<td><strong>' + esc(s.name) + '</strong></td>' +
+        '<td>' + (s.theme ? '<span class="pill pill-blue">' + esc(s.theme) + '</span>' : '<span class="muted">All</span>') + '</td>' +
+        '<td>' + (s.region ? '<span class="pill pill-violet">' + esc(s.region) + '</span>' : '<span class="muted">Global</span>') + '</td>' +
+        '<td class="mono">' + num(s.event_count) + '</td>' +
+        '<td class="small">' + (s.last_fetched_at ? ago(s.last_fetched_at) : '<span class="muted">never</span>') + '</td>' +
+        '<td class="mono">' + num(s.fetch_count) + '</td>' +
+        '<td><span class="dot ' + statusClass + '"></span>' + statusText +
+          (s.last_error ? '<br><span class="small muted" title="' + esc(s.last_error) + '">Error</span>' : '') + '</td>' +
+        '<td style="white-space:nowrap">' +
+          '<button class="btn-sm" onclick="toggleEventSource(\'' + s.id + '\',' + !s.is_active + ')">' + (s.is_active ? 'Disable' : 'Enable') + '</button> ' +
+          '<button class="btn-sm" onclick="fetchEventSource(\'' + s.id + '\')" style="background:var(--blue-soft);color:var(--blue);border-color:var(--blue)">Fetch Now</button>' +
+        '</td>' +
+      '</tr>';
+    });
+    document.getElementById('eventSourcesBody').innerHTML = html;
+
+    // Update week stat from main stats if available
+    try {
+      var stats = await api('/api/stats');
+      if (stats.events_this_week !== undefined) {
+        document.getElementById('sEventsWeek').textContent = num(stats.events_this_week);
+      }
+    } catch(e) {}
+  } catch(e) {
+    document.getElementById('eventSourcesBody').innerHTML = '<tr><td colspan="8" class="muted">Failed to load event sources</td></tr>';
+  }
+}
+
+async function toggleEventSource(id, active) {
+  try {
+    await api('/api/admin/event-sources/' + id, { method: 'PATCH', body: { is_active: active } });
+    loadEventSources();
+  } catch(e) { alert('Failed: ' + e.message); }
+}
+
+async function fetchEventSource(id) {
+  try {
+    var r = await api('/api/admin/events/fetch/' + id, { method: 'POST' });
+    alert(r.message || 'Fetch triggered');
+  } catch(e) { alert('Failed: ' + e.message); }
+}
+
+async function addEventSource() {
+  var name = document.getElementById('esName').value.trim();
+  var feedUrl = document.getElementById('esFeedUrl').value.trim();
+  var theme = document.getElementById('esTheme').value.trim();
+  var region = document.getElementById('esRegion').value.trim();
+  if (!name || !feedUrl) { alert('Name and Feed URL are required'); return; }
+  try {
+    await api('/api/admin/event-sources', { method: 'POST', body: { name: name, feed_url: feedUrl, theme: theme || null, region: region || null } });
+    document.getElementById('esName').value = '';
+    document.getElementById('esFeedUrl').value = '';
+    document.getElementById('esTheme').value = '';
+    document.getElementById('esRegion').value = '';
+    loadEventSources();
+  } catch(e) { alert('Failed: ' + e.message); }
 }
 </script>
 <div id="signal-ticker"></div>
