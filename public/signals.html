@@ -354,6 +354,11 @@
                     ${signal.lead_score} Lead Score
                  </span>
                 ` : ''}
+                ${signal.source_url ? `
+                  <a href="${signal.source_url}" target="_blank" rel="noopener noreferrer"
+                     class="text-xs text-blue-500 hover:text-blue-700 ml-auto"
+                     onclick="event.stopPropagation()" title="${signal.source_name || 'Source'}">↗ Source</a>
+                ` : ''}
               </div>
             </div>
           </div>

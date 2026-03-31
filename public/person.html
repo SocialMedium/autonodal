@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Person — MLX Autonode</title>
+<title>Person — MitchelLake Signals</title>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -167,7 +167,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 </head>
 <body>
 <header class="masthead"><div class="masthead-inner">
-  <a href="/index.html" class="mast-logo">MLX <em>Autonode</em></a>
+  <a href="/index.html" class="mast-logo">MitchelLake <em>Signals</em></a>
   <nav class="mast-nav"><a href="/index.html">Signals</a><a href="/people.html" class="active">People</a><a href="/companies.html">Companies</a><a href="/dispatches.html">Dispatch</a><a href="/placements.html">Revenue</a><a href="/case-studies.html">Case Studies</a></nav>
   <div style="width:34px;height:34px;border-radius:50%;background:var(--ink);color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600">JT</div>
 </div></header>
@@ -192,11 +192,13 @@ const II={email:'✉️',call:'📞',meeting:'🤝',linkedin_message:'💼',what
 const SIC={capital_raising:'#EF9F27',ma_activity:'#AFA9EC',product_launch:'#97C459',partnership:'#85B7EB',geographic_expansion:'#378ADD',restructuring:'#E24B4A',leadership_change:'#D4537E',layoffs:'#E24B4A',strategic_hiring:'#5DCAA5'};
 const IIC={email:'#378ADD',call:'#5DCAA5',meeting:'#AFA9EC',linkedin_message:'#0A66C2',whatsapp:'#25D366',sms:'#888'};
 if(typeof signalIcon==='function'){Object.keys(SI).forEach(k=>{SI[k]='<span style="display:inline-flex;color:'+(SIC[k]||'#888')+'">'+signalIcon(k,18)+'</span>'});Object.keys(II).forEach(k=>{II[k]='<span style="display:inline-flex;color:'+(IIC[k]||'#888')+'">'+interactionIcon(k,18)+'</span>'})}
-const id=new URLSearchParams(location.search).get('id');if(!id)location.href='/people.html';
+const _params=new URLSearchParams(location.search);
+const id=_params.get('id');if(!id)location.href='/people.html';
+const _from=_params.get('from'),_fromId=_params.get('from_id'),_fromName=decodeURIComponent(_params.get('from_name')||'');
 
 (async()=>{
 const p=await api('/api/people/'+id);if(!p)return;
-document.title=(p.full_name||'Person')+' — MLX Autonode';
+document.title=(p.full_name||'Person')+' — MitchelLake Signals';
 const ini=(p.full_name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
 const notes=p.research_notes||[];const ixs=p.interactions||[];const csig=p.company_signals||[];const psig=p.person_signals||[];const colls=p.colleagues||[];const s=p.interaction_stats||{};
 
@@ -213,7 +215,12 @@ const ct=[];
 if(p.email)ct.push('<div class="ci">✉️ <a href="mailto:'+esc(p.email)+'">'+esc(p.email)+'</a></div>');
 if(p.linkedin_url)ct.push('<div class="ci">🔗 <a href="'+esc(p.linkedin_url)+'" target="_blank">LinkedIn</a></div>');
 if(p.phone)ct.push('<div class="ci">📞 '+esc(p.phone)+'</div>');
-let h='<div class="profile">';
+let h='';
+if(_from&&_fromId){
+  var _link=_from==='company'?'/company.html?id='+_fromId:'/person.html?id='+_fromId;
+  h+='<div style="margin-bottom:8px;font-size:12px"><a href="'+_link+'" style="color:var(--blue);text-decoration:none">← Back to '+esc(_fromName||_from)+'</a></div>';
+}
+h+='<div class="profile">';
 h+='<div class="avatar'+(notes.length?' noted':'')+'">'+ini+'</div>';
 h+='<div class="pinfo">';
 h+='<div class="pname"><span class="editable" onclick="editField(this,\'full_name\',\''+esc(p.full_name)+'\')">'+esc(p.full_name)+'</span></div>';
@@ -233,9 +240,9 @@ else h+='<div class="ci">🔗 <span class="editable" onclick="editField(this,\'l
 if(p.phone)h+='<div class="ci">📞 <span class="editable" onclick="editField(this,\'phone\',\''+esc(p.phone)+'\')">'+esc(p.phone)+'</span></div>';
 h+='</div>';
 h+='<div class="pheader-actions">';
-h+='<button class="enrich-btn" id="enrichBtn" onclick="enrichPerson()">🔄 Refresh &amp; Enrich</button>';
+h+='<button class="enrich-btn" id="enrichBtn" onclick="enrichPerson()">'+icon('refresh-cw')+' Refresh &amp; Enrich</button>';
 const isPrivate = p.visibility === 'private';
-h+='<button class="enrich-btn'+(isPrivate?' done':'')+'" id="privacyBtn" onclick="togglePrivacy()">'+(isPrivate?'🔒 Private':'🌐 Visible to team')+'</button>';
+h+='<button class="enrich-btn'+(isPrivate?' done':'')+'" id="privacyBtn" onclick="togglePrivacy()">'+(isPrivate?icon('lock')+' Private':icon('globe')+' Visible to team')+'</button>';
 h+='</div>';
 h+='</div>';
 
@@ -260,7 +267,8 @@ h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-botto
 if(csig.length){
   h+='<div class="card" style="margin-bottom:0"><div class="card-head"><div class="card-title">Signals</div><div class="card-count">'+csig.length+'</div></div>';
   csig.slice(0,6).forEach(function(x){
-    h+='<div class="sig" style="cursor:pointer" onclick="location.href=\'/company.html?id='+coId+'\'"><div class="sig-icon">'+(SI[x.signal_type]||'📡')+'</div><div class="sig-info"><div class="sig-hl">'+esc((x.evidence_summary||x.signal_type.replace(/_/g,' ')).slice(0,80))+'</div><div class="sig-det">'+esc(x.signal_type.replace(/_/g,' '))+' · '+ago(x.detected_at)+'</div></div><div class="sig-conf">'+Math.round((x.confidence_score||0)*100)+'%</div></div>';
+    var sigClick=x.source_url?'onclick="window.open(\''+esc(x.source_url)+'\',\'_blank\')"':'onclick="location.href=\'/company.html?id='+coId+'\'"';
+    h+='<div class="sig" style="cursor:pointer" '+sigClick+'><div class="sig-icon">'+(SI[x.signal_type]||'📡')+'</div><div class="sig-info"><div class="sig-hl">'+esc((x.evidence_summary||x.signal_type.replace(/_/g,' ')).slice(0,80))+(x.source_url?' <span style="font-size:10px;color:var(--blue)">↗</span>':'')+'</div><div class="sig-det">'+esc(x.signal_type.replace(/_/g,' '))+' · '+ago(x.detected_at)+(x.source_name?' · '+esc(x.source_name):'')+'</div></div><div class="sig-conf">'+Math.round((x.confidence_score||0)*100)+'%</div></div>';
   });
   if(csig.length>6)h+='<div style="font-size:11px;color:var(--blue);padding:4px 0;cursor:pointer" onclick="location.href=\'/company.html?id='+coId+'\'">+'+(csig.length-6)+' more →</div>';
   h+='</div>';
@@ -332,7 +340,8 @@ if(psig.length){
   if(psig.length>6){
     h+='<div id="psigMore" style="display:none">';
     psig.slice(6).forEach(function(x){
-      h+='<div style="padding:6px 0;border-bottom:1px solid var(--rule);font-size:12px"><div style="font-weight:500">'+esc(x.title||x.signal_type.replace(/_/g,' '))+'</div><div style="font-size:10px;color:var(--ink-4)">'+esc(x.signal_type.replace(/_/g,' '))+(x.signal_date?' · '+fmtD(x.signal_date):'')+'</div></div>';
+      const clickable2=x.source_url?'cursor:pointer" onclick="window.open(\''+esc(x.source_url)+'\',\'_blank\')':'';
+      h+='<div style="padding:6px 0;border-bottom:1px solid var(--rule);font-size:12px;'+clickable2+'"><div style="font-weight:500">'+esc(x.title||x.signal_type.replace(/_/g,' '))+(x.source_url?' <span style="font-size:10px;color:var(--blue)">↗</span>':'')+'</div>'+(x.description?'<div style="color:var(--ink-3);font-size:11px;margin-top:1px;overflow-wrap:break-word">'+esc(String(x.description).slice(0,120))+'</div>':'')+'<div style="font-size:10px;color:var(--ink-4);margin-top:2px">'+esc(x.signal_type.replace(/_/g,' '))+(x.signal_date?' · '+fmtD(x.signal_date):'')+'</div></div>';
     });
     h+='</div>';
     h+='<button onclick="document.getElementById(\'psigMore\').style.display=\'block\';this.style.display=\'none\'" style="width:100%;padding:5px;margin-top:4px;font-size:11px;color:var(--blue);background:var(--surface-cool);border:1px solid var(--rule);border-radius:6px;cursor:pointer;font-family:var(--sans)">Show '+(psig.length-6)+' more</button>';
@@ -347,14 +356,14 @@ if(colls.length){
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">';
   collVis.forEach(function(c){
     var ci=(c.full_name||'').split(' ').map(function(w){return w[0]}).join('').slice(0,2).toUpperCase();
-    h+='<div class="coll" onclick="location.href=\'/person.html?id='+c.id+'\'" style="padding:4px 0;border-bottom:none"><div class="coll-av" style="width:24px;height:24px;font-size:9px">'+ci+'</div><div class="coll-info"><div class="coll-name" style="font-size:12px">'+esc(c.full_name)+'</div><div class="coll-title" style="font-size:10px">'+esc((c.current_title||'').slice(0,30))+'</div></div></div>';
+    h+='<div class="coll" onclick="location.href=\'/person.html?id='+c.id+'&from=person&from_id='+p.id+'&from_name='+encodeURIComponent(p.full_name||'')+'\'" style="padding:4px 0;border-bottom:none"><div class="coll-av" style="width:24px;height:24px;font-size:9px">'+ci+'</div><div class="coll-info"><div class="coll-name" style="font-size:12px">'+esc(c.full_name)+'</div><div class="coll-title" style="font-size:10px">'+esc((c.current_title||'').slice(0,30))+'</div></div></div>';
   });
   h+='</div>';
   if(collHid.length){
     h+='<div id="collMore" style="display:none;margin-top:4px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">';
     collHid.forEach(function(c){
       var ci=(c.full_name||'').split(' ').map(function(w){return w[0]}).join('').slice(0,2).toUpperCase();
-      h+='<div class="coll" onclick="location.href=\'/person.html?id='+c.id+'\'" style="padding:4px 0;border-bottom:none"><div class="coll-av" style="width:24px;height:24px;font-size:9px">'+ci+'</div><div class="coll-info"><div class="coll-name" style="font-size:12px">'+esc(c.full_name)+'</div><div class="coll-title" style="font-size:10px">'+esc((c.current_title||'').slice(0,30))+'</div></div></div>';
+      h+='<div class="coll" onclick="location.href=\'/person.html?id='+c.id+'&from=person&from_id='+p.id+'&from_name='+encodeURIComponent(p.full_name||'')+'\'" style="padding:4px 0;border-bottom:none"><div class="coll-av" style="width:24px;height:24px;font-size:9px">'+ci+'</div><div class="coll-info"><div class="coll-name" style="font-size:12px">'+esc(c.full_name)+'</div><div class="coll-title" style="font-size:10px">'+esc((c.current_title||'').slice(0,30))+'</div></div></div>';
     });
     h+='</div></div>';
     h+='<button onclick="document.getElementById(\'collMore\').style.display=\'block\';this.style.display=\'none\'" style="width:100%;padding:5px;margin-top:4px;font-size:11px;color:var(--blue);background:var(--surface-cool);border:1px solid var(--rule);border-radius:6px;cursor:pointer;font-family:var(--sans)">Show '+collHid.length+' more</button>';
@@ -370,7 +379,7 @@ async function enrichPerson() {
   const btn = document.getElementById('enrichBtn');
   if (!btn) return;
   btn.className = 'enrich-btn loading';
-  btn.textContent = '⏳ Enriching…';
+  btn.innerHTML = icon('clock') + ' Enriching\u2026';
   try {
     const id = new URLSearchParams(location.search).get('id');
     const r = await fetch('/api/people/' + id + '/enrich', {
@@ -421,10 +430,10 @@ async function togglePrivacy() {
     if (!res.ok) throw new Error('Failed');
 
     if (newVisibility === 'private') {
-      btn.textContent = '🔒 Private';
+      btn.innerHTML = icon('lock') + ' Private';
       btn.className = 'enrich-btn done';
     } else {
-      btn.textContent = '🌐 Visible to team';
+      btn.innerHTML = icon('globe') + ' Visible to team';
       btn.className = 'enrich-btn';
     }
   } catch (e) {
