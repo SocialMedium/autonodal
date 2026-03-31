@@ -941,7 +941,7 @@ async function pipelineComputeScores() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function pipelineMatchSearches() {
-  const stats = { searches: 0, matches: 0 };
+  const stats = { searches: 0, matches: 0, embedded: 0 };
 
   if (!openai || !qdrantClient) {
     console.log('     ⚠️  OpenAI or Qdrant not configured, skipping');
@@ -950,60 +950,118 @@ async function pipelineMatchSearches() {
 
   console.log('   🎯 Matching candidates to active searches...');
 
+  // Active searches = sourcing, interviewing, or offer
   const searches = await pool.query(`
-    SELECT id, title, brief_summary, role_overview, required_experience, 
-           ideal_background, location, seniority_level, target_companies
-    FROM opportunities WHERE status = 'active'
-  `).catch(() => ({ rows: [] }));
+    SELECT id, title, brief_summary, role_overview, required_experience,
+           preferred_experience, ideal_background, key_responsibilities,
+           location, seniority_level, target_companies, target_industries,
+           must_have_keywords, tenant_id
+    FROM opportunities
+    WHERE status IN ('sourcing', 'interviewing', 'offer')
+  `).catch(e => { console.log('     ⚠️  Query error:', e.message); return { rows: [] }; });
+
+  console.log(`     Found ${searches.rows.length} active searches`);
 
   for (const search of searches.rows) {
-    // Build search embedding from brief
+    // Build rich embedding text from all brief fields
     const briefText = [
-      search.title,
+      search.title ? `Role: ${search.title}` : '',
       search.brief_summary,
       search.role_overview,
-      search.required_experience,
-      search.ideal_background,
+      search.key_responsibilities ? `Responsibilities: ${search.key_responsibilities}` : '',
+      search.required_experience ? `Required: ${search.required_experience}` : '',
+      search.preferred_experience ? `Preferred: ${search.preferred_experience}` : '',
+      search.ideal_background ? `Ideal background: ${search.ideal_background}` : '',
       search.location ? `Location: ${search.location}` : '',
-      search.seniority_level ? `Seniority: ${search.seniority_level}` : ''
+      search.seniority_level ? `Seniority: ${search.seniority_level}` : '',
+      Array.isArray(search.target_industries) && search.target_industries.length
+        ? `Industries: ${search.target_industries.join(', ')}` : '',
+      Array.isArray(search.must_have_keywords) && search.must_have_keywords.length
+        ? `Keywords: ${search.must_have_keywords.join(', ')}` : '',
     ].filter(Boolean).join('\n');
 
-    if (!briefText.trim()) continue;
-
-    const searchVector = await embed(briefText);
-
-    // Search Qdrant people collection
-    const results = await qdrantSearch('people', searchVector, 50);
-
-    for (const result of results) {
-      if (result.score < 0.3) continue; // Minimum similarity threshold
-
-      const personId = result.payload?.person_id;
-      if (!personId) continue;
-
-      await pool.query(`
-        INSERT INTO search_matches (search_id, person_id, overall_match_score, match_reasons, updated_at)
-        VALUES ($1, $2, $3, $4, NOW())
-        ON CONFLICT (search_id, person_id) DO UPDATE SET
-          overall_match_score = $3, match_reasons = $4, updated_at = NOW()
-      `, [
-        search.id,
-        personId,
-        result.score,
-        JSON.stringify({
-          similarity: result.score,
-          source: result.payload?.type || 'person',
-          content_preview: result.payload?.content_preview?.slice(0, 200)
-        })
-      ]).catch(() => {});
-
-      stats.matches++;
+    if (briefText.trim().length < 20) {
+      console.log(`     ⏭  ${search.title} — insufficient brief text, skipping`);
+      continue;
     }
 
-    stats.searches++;
+    try {
+      const searchVector = await embed(briefText);
+
+      // Also upsert search embedding into Qdrant for future use
+      await qdrantClient.upsert('searches', {
+        wait: true,
+        points: [{
+          id: Date.now() * 1000 + stats.searches,
+          vector: searchVector,
+          payload: {
+            type: 'search_brief',
+            search_id: search.id,
+            title: search.title,
+            tenant_id: search.tenant_id,
+            status: 'active',
+            embedded_at: new Date().toISOString()
+          }
+        }]
+      });
+      stats.embedded++;
+
+      // Mark as embedded in DB
+      await pool.query(
+        `UPDATE opportunities SET embedded = true, embedded_at = NOW() WHERE id = $1`,
+        [search.id]
+      ).catch(() => {});
+
+      // Search Qdrant people collection for matching candidates
+      const results = await qdrantSearch('people', searchVector, 50);
+
+      let searchMatches = 0;
+      for (const result of results) {
+        if (result.score < 0.25) continue; // Minimum similarity threshold
+
+        const personId = result.payload?.person_id || result.payload?.id;
+        if (!personId) continue;
+
+        await pool.query(`
+          INSERT INTO search_matches (search_id, person_id, overall_match_score, match_reasons,
+            tenant_id, status, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, 'suggested', NOW(), NOW())
+          ON CONFLICT (search_id, person_id) DO UPDATE SET
+            overall_match_score = EXCLUDED.overall_match_score,
+            match_reasons = EXCLUDED.match_reasons,
+            updated_at = NOW()
+        `, [
+          search.id,
+          personId,
+          result.score,
+          JSON.stringify({
+            similarity: parseFloat(result.score.toFixed(3)),
+            source: result.payload?.type || 'person',
+            name: result.payload?.full_name || result.payload?.name || null,
+            title: result.payload?.title || result.payload?.current_title || null,
+            content_preview: (result.payload?.content_preview || '').slice(0, 200)
+          }),
+          search.tenant_id,
+        ]).catch(e => {
+          if (!e.message.includes('violates')) console.log(`     ⚠️  Match insert error: ${e.message}`);
+        });
+
+        searchMatches++;
+      }
+
+      if (searchMatches > 0) {
+        console.log(`     ✅ ${search.title}: ${searchMatches} matches (top score: ${results[0]?.score?.toFixed(3)})`);
+      }
+      stats.matches += searchMatches;
+      stats.searches++;
+    } catch (e) {
+      console.log(`     ⚠️  ${search.title}: ${e.message}`);
+    }
+
+    await sleep(200); // Rate limit between OpenAI calls
   }
 
-  console.log(`     ${stats.searches} searches processed, ${stats.matches} matches found`);
+  console.log(`     ${stats.searches} searches processed, ${stats.matches} matches found, ${stats.embedded} briefs embedded`);
   return stats;
 }
 

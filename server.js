@@ -9644,6 +9644,147 @@ try {
   console.log('  ⚠️  MCP endpoint skipped:', e.message);
 }
 // ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// OPPORTUNITIES (Search Briefs / Pipeline)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/opportunities', authenticateToken, async (req, res) => {
+  try {
+    const { status } = req.query;
+    let where = 'o.tenant_id = $1';
+    const params = [req.tenant_id];
+    if (status && status !== 'all') {
+      if (status === 'active') {
+        where += ` AND o.status IN ('sourcing', 'interviewing', 'offer')`;
+      } else {
+        params.push(status);
+        where += ` AND o.status = $${params.length}`;
+      }
+    }
+    const { rows } = await pool.query(`
+      SELECT o.id, o.title, o.status, o.location, o.seniority_level,
+             o.priority, o.kick_off_date, o.target_shortlist_date,
+             o.brief_summary, o.created_at, o.updated_at,
+             o.target_industries, o.target_geography,
+             p.name AS project_name, c.name AS client_name,
+             (SELECT COUNT(*) FROM pipeline_contacts pc WHERE pc.search_id = o.id) AS candidate_count
+      FROM opportunities o
+      LEFT JOIN projects p ON p.id = o.project_id
+      LEFT JOIN clients cl ON cl.id = p.client_id
+      LEFT JOIN companies c ON c.id = cl.company_id
+      WHERE ${where}
+      ORDER BY
+        CASE o.status WHEN 'sourcing' THEN 1 WHEN 'interviewing' THEN 2 WHEN 'offer' THEN 3 ELSE 4 END,
+        o.updated_at DESC
+    `, params);
+    res.json(rows);
+  } catch (err) {
+    console.error('Opportunities list error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch opportunities' });
+  }
+});
+
+app.get('/api/opportunities/:id', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT o.*,
+             p.name AS project_name, c.name AS client_name
+      FROM opportunities o
+      LEFT JOIN projects p ON p.id = o.project_id
+      LEFT JOIN clients cl ON cl.id = p.client_id
+      LEFT JOIN companies c ON c.id = cl.company_id
+      WHERE o.id = $1 AND o.tenant_id = $2
+    `, [req.params.id, req.tenant_id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/opportunities/:id/candidates', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT pc.id, pc.status, pc.created_at,
+             p.id AS person_id, p.full_name AS person_name,
+             p.current_title AS person_title, p.current_company_name,
+             p.email, p.linkedin_url
+      FROM pipeline_contacts pc
+      JOIN people p ON p.id = pc.person_id
+      WHERE pc.search_id = $1 AND pc.tenant_id = $2
+      ORDER BY pc.status, pc.created_at DESC
+    `, [req.params.id, req.tenant_id]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/opportunities/:id/matches', authenticateToken, async (req, res) => {
+  try {
+    const { limit = 20, status = 'all' } = req.query;
+    let where = 'sm.search_id = $1 AND sm.tenant_id = $2';
+    const params = [req.params.id, req.tenant_id];
+    if (status !== 'all') {
+      params.push(status);
+      where += ` AND sm.status = $${params.length}`;
+    }
+    const { rows } = await pool.query(`
+      SELECT sm.id, sm.overall_match_score AS match_score, sm.match_reasons,
+             sm.status, sm.created_at AS matched_at,
+             p.id AS person_id, p.full_name AS person_name,
+             p.current_title AS person_title, p.current_company_name,
+             p.location, p.email, p.linkedin_url,
+             ps.engagement_score, ps.receptivity_score, ps.timing_score
+      FROM search_matches sm
+      JOIN people p ON p.id = sm.person_id
+      LEFT JOIN person_scores ps ON ps.person_id = p.id
+      WHERE ${where}
+      ORDER BY sm.overall_match_score DESC
+      LIMIT $${params.length + 1}
+    `, [...params, Math.min(parseInt(limit) || 20, 100)]);
+    res.json(rows);
+  } catch (err) {
+    console.error('Matches error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch matches' });
+  }
+});
+
+app.patch('/api/opportunities/:id/matches/:matchId', authenticateToken, async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!['suggested', 'accepted', 'rejected', 'shortlisted'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    await pool.query(
+      `UPDATE search_matches SET status = $1, reviewed_by = $2, reviewed_at = NOW()
+       WHERE id = $3 AND tenant_id = $4`,
+      [status, req.user.user_id, req.params.matchId, req.tenant_id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/people/:id/matches', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT sm.search_id, sm.overall_match_score AS match_score,
+             sm.match_reasons, sm.status,
+             o.title AS search_title, o.status AS search_status,
+             o.location, o.seniority_level
+      FROM search_matches sm
+      JOIN opportunities o ON o.id = sm.search_id
+      WHERE sm.person_id = $1 AND sm.tenant_id = $2
+      ORDER BY sm.overall_match_score DESC LIMIT 10
+    `, [req.params.id, req.tenant_id]);
+    res.json({ matches: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // EVENTS — EventMedium event feed intelligence
 // ═══════════════════════════════════════════════════════════════════════════════
 
