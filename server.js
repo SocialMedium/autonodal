@@ -9867,6 +9867,14 @@ app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
         (SELECT COUNT(DISTINCT tp.person_id) FROM team_proximity tp
          JOIN people p2 ON p2.id = tp.person_id AND p2.current_company_id = d.company_id AND p2.tenant_id = d.tenant_id
          WHERE tp.tenant_id = d.tenant_id AND tp.relationship_strength >= 0.25) AS prox_count,
+        (SELECT json_agg(sub) FROM (
+          SELECT u3.name, MAX(tp3.relationship_strength) AS strength
+          FROM team_proximity tp3
+          JOIN people p3 ON p3.id = tp3.person_id AND p3.current_company_id = d.company_id AND p3.tenant_id = d.tenant_id
+          JOIN users u3 ON u3.id = tp3.team_member_id
+          WHERE tp3.tenant_id = d.tenant_id AND tp3.relationship_strength >= 0.25
+          GROUP BY u3.name ORDER BY MAX(tp3.relationship_strength) DESC LIMIT 3
+        ) sub) AS top_connectors,
         -- Lead score: best signal type + client + network + confidence
         MAX(
           CASE d.signal_type

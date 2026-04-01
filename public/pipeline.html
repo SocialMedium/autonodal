@@ -240,11 +240,20 @@ async function loadBoard(){
         if(signalCount>1)html+='<span style="font-size:8px;color:var(--ink-4);align-self:center">'+signalCount+' signals</span>';
         html+='<span style="font-size:9px;color:var(--ink-4);margin-left:auto;align-self:center">'+Math.round((d.confidence_score||0)*100)+'%</span>';
         html+='</div>';
-        // Network context
-        var ctx=[];
-        if(proxCount>0)ctx.push('<span class="pill" style="background:var(--blue-soft);color:var(--blue)">'+proxCount+' connected</span>');
-        else if(contacts>0)ctx.push('<span class="pill" style="background:var(--surface-cool);color:var(--ink-3)">'+contacts+' contacts</span>');
-        if(ctx.length)html+='<div style="display:flex;gap:4px;margin-bottom:4px">'+ctx.join('')+'</div>';
+        // Top connectors + network context
+        var connectors=d.top_connectors||[];
+        if(connectors.length>0){
+          html+='<div style="display:flex;gap:3px;margin-bottom:4px;align-items:center">';
+          connectors.forEach(function(tc){
+            var ini=(tc.name||'').split(' ').map(function(w){return w[0]}).join('').slice(0,2);
+            var pct=Math.round((tc.strength||0)*100);
+            html+='<span title="'+esc(tc.name)+' ('+pct+'%)" style="width:20px;height:20px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:600;flex-shrink:0">'+ini+'</span>';
+          });
+          html+='<span style="font-size:9px;color:var(--ink-4);margin-left:2px">'+proxCount+' connected</span>';
+          html+='</div>';
+        } else if(contacts>0){
+          html+='<div style="display:flex;gap:4px;margin-bottom:4px"><span class="pill" style="background:var(--surface-cool);color:var(--ink-3)">'+contacts+' contacts</span></div>';
+        }
         if(d.opportunity_angle)html+='<div class="card-summary">'+esc(d.opportunity_angle)+'</div>';
         html+='<div class="card-meta">';
         if(d.sector)html+='<span class="pill" style="background:var(--surface-cool);color:var(--ink-3)">'+esc(d.sector)+'</span>';

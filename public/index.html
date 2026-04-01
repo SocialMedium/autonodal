@@ -2148,24 +2148,47 @@ async function loadRegionCards() {
       const clientCount = data.signals.filter(s => s.is_client).length;
       const networkCount = data.signals.filter(s => parseInt(s.contact_count) > 0).length;
 
+      // Group signals by company — one row per company, aggregate signal types
+      const companyMap = new Map();
+      data.signals.forEach(s => {
+        const key = s.company_id || s.company_name;
+        if (!companyMap.has(key)) {
+          companyMap.set(key, {
+            company_name: s.company_name,
+            company_id: s.company_id,
+            is_client: s.is_client,
+            contact_count: parseInt(s.contact_count) || 0,
+            best_connector_name: s.best_connector_name,
+            signal_types: new Set(),
+            signal_count: 0,
+            best_confidence: 0,
+          });
+        }
+        const co = companyMap.get(key);
+        co.signal_types.add(s.signal_type);
+        co.signal_count++;
+        co.best_confidence = Math.max(co.best_confidence, s.confidence_score || 0);
+        if (s.is_client) co.is_client = true;
+        co.contact_count = Math.max(co.contact_count, parseInt(s.contact_count) || 0);
+        if (s.best_connector_name && !co.best_connector_name) co.best_connector_name = s.best_connector_name;
+      });
+
       let signalRows = '';
-      data.signals.slice(0, 4).forEach(s => {
-        const isClient = s.is_client;
-        const hasContacts = parseInt(s.contact_count) > 0;
-        const contacts = parseInt(s.contact_count) || 0;
-        const sigIco = SIGNAL_ICONS[s.signal_type] || signalIcon(s.signal_type, 16);
-        const companyLink = s.company_id
-          ? '/company.html?id=' + s.company_id
-          : '/companies.html?q=' + encodeURIComponent(s.company_name || '');
-        const peopleLink = '/people.html?q=' + encodeURIComponent(s.company_name || '');
-        const sourceLink = s.source_url || '';
+      [...companyMap.values()].slice(0, 4).forEach(co => {
+        const isClient = co.is_client;
+        const hasContacts = co.contact_count > 0;
+        const companyLink = co.company_id
+          ? '/company.html?id=' + co.company_id
+          : '/companies.html?q=' + encodeURIComponent(co.company_name || '');
+        const topType = [...co.signal_types][0] || '';
+        const sigIco = SIGNAL_ICONS[topType] || signalIcon(topType, 16);
         signalRows += '<div class="region-signal-row">' +
           '<span style="font-size:12px">' + sigIco + '</span>' +
-          '<a href="' + companyLink + '" class="region-signal-company" onclick="event.stopPropagation()" style="text-decoration:none;color:var(--ink)">' + esc(s.company_name) + '</a>' +
+          '<a href="' + companyLink + '" class="region-signal-company" onclick="event.stopPropagation()" style="text-decoration:none;color:var(--ink)">' + esc(co.company_name) + '</a>' +
           (isClient ? '<span class="region-signal-type client">CLIENT</span>' : '') +
-          (hasContacts ? '<a href="' + peopleLink + '" class="region-signal-type network" onclick="event.stopPropagation()" style="text-decoration:none">' + contacts + ' contacts</a>' : '') +
-          '<span class="region-signal-type">' + esc((s.signal_type || '').replace(/_/g, ' ')) + '</span>' +
-          (sourceLink ? '<a href="' + esc(sourceLink) + '" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:var(--blue);text-decoration:none">\u2197</a>' : '') +
+          (hasContacts ? '<span class="region-signal-type network">' + co.contact_count + ' contacts</span>' : '') +
+          '<span class="region-signal-type">' + esc(topType.replace(/_/g, ' ')) + '</span>' +
+          (co.signal_count > 1 ? '<span style="font-size:9px;color:var(--ink-4)">+' + (co.signal_count - 1) + '</span>' : '') +
         '</div>';
       });
 
