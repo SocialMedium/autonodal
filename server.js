@@ -155,7 +155,6 @@ app.get('/api/auth/google', (req, res) => {
     redirect_uri: redirectUri,
     response_type: 'code',
     scope: GOOGLE_CONNECT_SCOPES,
-    hd: 'mitchellake.com',
     prompt: 'consent',
     access_type: 'offline',
     state: returnTo
@@ -200,8 +199,11 @@ app.get('/api/auth/google/callback', async (req, res) => {
     });
     const userInfo = await userInfoRes.json();
 
-    // Enforce mitchellake.com domain
-    if (!userInfo.email || !userInfo.email.endsWith('@mitchellake.com')) {
+    // Enforce mitchellake.com domain + approved external emails
+    const APPROVED_EXTERNAL_EMAILS = [
+      'kikanoyen@gmail.com',
+    ];
+    if (!userInfo.email || (!userInfo.email.endsWith('@mitchellake.com') && !APPROVED_EXTERNAL_EMAILS.includes(userInfo.email.toLowerCase()))) {
       return res.redirect('/index.html?auth_error=domain_restricted');
     }
 
@@ -466,7 +468,6 @@ app.get('/api/auth/gmail/connect', async (req, res) => {
     scope: GOOGLE_CONNECT_SCOPES,
     access_type: 'offline',
     prompt: 'consent',
-    hd: 'mitchellake.com',
     state
   });
   res.redirect(authUrl);
@@ -10299,6 +10300,155 @@ app.post('/api/webhooks/crm/:connectionId', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEED CATALOG & BUNDLES (Platform-level curation + tenant subscriptions)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/feeds/bundles', authenticateToken, async (req, res) => {
+  try {
+    const { type, sector, geo, search, featured } = req.query;
+    let where = ['fb.is_active = true'];
+    const params = [req.tenant_id]; let idx = 2;
+    if (type) { where.push(`fb.bundle_type = $${idx++}`); params.push(type); }
+    if (sector) { where.push(`$${idx++} = ANY(fb.sectors)`); params.push(sector); }
+    if (geo) { where.push(`$${idx++} = ANY(fb.geographies)`); params.push(geo); }
+    if (featured === 'true') where.push('fb.is_featured = true');
+    if (search) { where.push(`(fb.name ILIKE $${idx} OR fb.description ILIKE $${idx})`); params.push(`%${search}%`); idx++; }
+    const { rows } = await pool.query(`
+      SELECT fb.*,
+        EXISTS(SELECT 1 FROM tenant_feed_subscriptions tfs WHERE tfs.bundle_id = fb.id AND tfs.tenant_id = $1 AND tfs.is_enabled = true) AS is_subscribed,
+        ROUND(AVG(fc.quality_score), 2) AS avg_quality_score
+      FROM feed_bundles fb
+      LEFT JOIN feed_bundle_sources fbs ON fbs.bundle_id = fb.id
+      LEFT JOIN feed_catalog fc ON fc.id = fbs.source_id AND fc.is_active = true
+      WHERE ${where.join(' AND ')}
+      GROUP BY fb.id ORDER BY fb.is_featured DESC, fb.display_order ASC
+    `, params);
+    res.json({ bundles: rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/feeds/bundles/:slug', authenticateToken, async (req, res) => {
+  try {
+    const { rows: [bundle] } = await pool.query('SELECT * FROM feed_bundles WHERE slug = $1', [req.params.slug]);
+    if (!bundle) return res.status(404).json({ error: 'Bundle not found' });
+    const { rows: sources } = await pool.query(`
+      SELECT fc.*, fqm.signal_yield, fqm.articles_fetched, fqm.high_conf_signals
+      FROM feed_bundle_sources fbs JOIN feed_catalog fc ON fc.id = fbs.source_id
+      LEFT JOIN LATERAL (SELECT signal_yield, articles_fetched, high_conf_signals FROM feed_quality_metrics WHERE source_id = fc.id ORDER BY measured_at DESC LIMIT 1) fqm ON true
+      WHERE fbs.bundle_id = $1 ORDER BY fc.quality_score DESC NULLS LAST
+    `, [bundle.id]);
+    const isSub = (await pool.query('SELECT 1 FROM tenant_feed_subscriptions WHERE bundle_id = $1 AND tenant_id = $2 AND is_enabled = true', [bundle.id, req.tenant_id])).rows.length > 0;
+    res.json({ ...bundle, sources, is_subscribed: isSub });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/feeds/catalog', authenticateToken, async (req, res) => {
+  try {
+    const { search, sector, geo, category } = req.query;
+    const params = []; let where = ['fc.is_active = true', 'fc.is_deprecated = false']; let idx = 1;
+    if (search) { where.push(`(fc.name ILIKE $${idx} OR fc.description ILIKE $${idx})`); params.push(`%${search}%`); idx++; }
+    if (sector) { where.push(`$${idx} = ANY(fc.sectors)`); params.push(sector); idx++; }
+    if (geo) { where.push(`$${idx} = ANY(fc.geographies)`); params.push(geo); idx++; }
+    if (category) { where.push(`fc.primary_category = $${idx}`); params.push(category); idx++; }
+    const { rows } = await pool.query(`
+      SELECT fc.*, fqm.signal_yield, fqm.articles_fetched
+      FROM feed_catalog fc
+      LEFT JOIN LATERAL (SELECT signal_yield, articles_fetched FROM feed_quality_metrics WHERE source_id = fc.id ORDER BY measured_at DESC LIMIT 1) fqm ON true
+      WHERE ${where.join(' AND ')} ORDER BY fc.quality_score DESC NULLS LAST
+    `, params);
+    res.json({ sources: rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/feeds/my', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT tfs.*, fb.name AS bundle_name, fb.icon, fb.bundle_type, fb.source_count,
+             fc.name AS source_name, fc.primary_category AS source_category
+      FROM tenant_feed_subscriptions tfs
+      LEFT JOIN feed_bundles fb ON fb.id = tfs.bundle_id
+      LEFT JOIN feed_catalog fc ON fc.id = tfs.source_id
+      WHERE tfs.tenant_id = $1 AND tfs.is_enabled = true ORDER BY tfs.subscribed_at DESC
+    `, [req.tenant_id]);
+    res.json({ subscriptions: rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/feeds/subscribe', authenticateToken, async (req, res) => {
+  try {
+    const { bundle_ids, source_id } = req.body;
+    if (bundle_ids && bundle_ids.length) {
+      for (const bid of bundle_ids) {
+        await pool.query(`INSERT INTO tenant_feed_subscriptions (tenant_id, bundle_id, is_enabled) VALUES ($1, $2, true)
+          ON CONFLICT (tenant_id, bundle_id) DO UPDATE SET is_enabled = true, disabled_at = NULL`, [req.tenant_id, bid]);
+        // Materialise sources into rss_sources
+        const { rows: sources } = await pool.query(`
+          SELECT fc.id, fc.name, fc.url, fc.fetch_interval_min FROM feed_bundle_sources fbs
+          JOIN feed_catalog fc ON fc.id = fbs.source_id AND fc.is_active = true WHERE fbs.bundle_id = $1
+        `, [bid]);
+        for (const src of sources) {
+          await pool.query(`INSERT INTO rss_sources (name, url, source_type, enabled, poll_interval_minutes, catalog_source_id, tenant_id)
+            VALUES ($1, $2, 'rss', true, $3, $4, $5) ON CONFLICT DO NOTHING`,
+            [src.name, src.url, src.fetch_interval_min, src.id, req.tenant_id]).catch(() => {});
+        }
+      }
+      res.json({ status: 'subscribed', bundle_ids });
+    } else if (source_id) {
+      await pool.query(`INSERT INTO tenant_feed_subscriptions (tenant_id, source_id, is_enabled) VALUES ($1, $2, true)
+        ON CONFLICT (tenant_id, source_id) DO UPDATE SET is_enabled = true, disabled_at = NULL`, [req.tenant_id, source_id]);
+      const { rows: [src] } = await pool.query('SELECT * FROM feed_catalog WHERE id = $1', [source_id]);
+      if (src) {
+        await pool.query(`INSERT INTO rss_sources (name, url, source_type, enabled, poll_interval_minutes, catalog_source_id, tenant_id)
+          VALUES ($1, $2, 'rss', true, $3, $4, $5) ON CONFLICT DO NOTHING`,
+          [src.name, src.url, src.fetch_interval_min, src.id, req.tenant_id]).catch(() => {});
+      }
+      res.json({ status: 'subscribed', source_id });
+    } else { res.status(400).json({ error: 'Provide bundle_ids or source_id' }); }
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/feeds/subscribe/:bundleId', authenticateToken, async (req, res) => {
+  try {
+    await pool.query(`UPDATE tenant_feed_subscriptions SET is_enabled = false, disabled_at = NOW() WHERE tenant_id = $1 AND bundle_id = $2`, [req.tenant_id, req.params.bundleId]);
+    await pool.query(`
+      UPDATE rss_sources rs SET enabled = false FROM feed_bundle_sources fbs
+      WHERE fbs.bundle_id = $1 AND rs.catalog_source_id = fbs.source_id AND rs.tenant_id = $2
+        AND NOT EXISTS (SELECT 1 FROM tenant_feed_subscriptions tfs2 JOIN feed_bundle_sources fbs2 ON fbs2.bundle_id = tfs2.bundle_id
+          WHERE tfs2.tenant_id = $2 AND tfs2.is_enabled = true AND fbs2.source_id = rs.catalog_source_id AND tfs2.bundle_id != $1)
+    `, [req.params.bundleId, req.tenant_id]);
+    res.json({ status: 'unsubscribed' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/feeds/stats', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT rs.name, rs.catalog_source_id,
+        COUNT(ed.id) FILTER (WHERE ed.created_at > NOW() - INTERVAL '7 days') AS articles_7d,
+        COUNT(DISTINCT se.id) FILTER (WHERE se.detected_at > NOW() - INTERVAL '7 days') AS signals_7d
+      FROM rss_sources rs
+      LEFT JOIN external_documents ed ON ed.source_name = rs.name AND ed.tenant_id = $1
+      LEFT JOIN signal_events se ON se.source_document_id = ed.id AND se.tenant_id = $1
+      WHERE rs.tenant_id = $1 AND rs.enabled = true
+      GROUP BY rs.id, rs.name, rs.catalog_source_id
+      ORDER BY COUNT(DISTINCT se.id) FILTER (WHERE se.detected_at > NOW() - INTERVAL '7 days') DESC LIMIT 50
+    `, [req.tenant_id]);
+    res.json({ stats: rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/feeds/catalog', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { name, slug, url, tier, primary_category, tags, sectors, geographies, description, fetch_interval_min, quality_score } = req.body;
+    const { rows } = await pool.query(`
+      INSERT INTO feed_catalog (name, slug, url, tier, primary_category, tags, sectors, geographies, description, fetch_interval_min, quality_score)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [name, slug, url, tier || 'curated', primary_category, tags || [], sectors || [], geographies || [], description, fetch_interval_min || 60, quality_score]);
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // EVENTS — EventMedium event feed intelligence
