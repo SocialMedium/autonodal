@@ -23,6 +23,9 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
+// Tenant-isolated DB client — use for all tenant-scoped queries
+const { TenantDB, platformPool } = require('./lib/TenantDB');
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -81,7 +84,7 @@ async function authenticateToken(req, res, next) {
   if (!token) return res.status(401).json({ error: 'No token provided' });
 
   try {
-    const { rows } = await pool.query(
+    const { rows } = await platformPool.query(
       `SELECT s.user_id, u.email, u.name, u.role, u.tenant_id,
               t.vertical, t.name as tenant_name, t.slug as tenant_slug
        FROM sessions s
@@ -110,7 +113,7 @@ async function optionalAuth(req, res, next) {
   const token = authHeader && authHeader.replace('Bearer ', '');
   if (token) {
     try {
-      const { rows } = await pool.query(
+      const { rows } = await platformPool.query(
         `SELECT s.user_id, u.email, u.name, u.role, u.tenant_id
          FROM sessions s JOIN users u ON s.user_id = u.id
          WHERE s.token = $1 AND s.expires_at > NOW()`,
@@ -132,7 +135,7 @@ async function optionalAuth(req, res, next) {
 
 async function auditLog(userId, action, targetType, targetId, details, ip) {
   try {
-    await pool.query(
+    await platformPool.query(
       `INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details, ip_address, created_at)
        VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW())`,
       [userId, action, targetType || null, targetId || null, details ? JSON.stringify(details) : null, ip || null]
@@ -208,19 +211,19 @@ app.get('/api/auth/google/callback', async (req, res) => {
     }
 
     // Find or create user
-    let { rows } = await pool.query('SELECT id, email, name, role FROM users WHERE email = $1', [userInfo.email]);
+    let { rows } = await platformPool.query('SELECT id, email, name, role FROM users WHERE email = $1', [userInfo.email]);
     let user;
 
     if (rows.length > 0) {
       user = rows[0];
       // Update name/avatar if changed
-      await pool.query(
+      await platformPool.query(
         'UPDATE users SET name = COALESCE(NULLIF($1, \'\'), name), updated_at = NOW() WHERE id = $2',
         [userInfo.name, user.id]
       );
     } else {
       // Auto-create MitchelLake team member (password_hash set to placeholder — OAuth users don't use passwords)
-      const { rows: [newUser] } = await pool.query(
+      const { rows: [newUser] } = await platformPool.query(
         `INSERT INTO users (id, email, name, role, password_hash, tenant_id, created_at, updated_at)
          VALUES (gen_random_uuid(), $1, $2, 'consultant', 'oauth_google', $3, NOW(), NOW())
          RETURNING id, email, name, role`,
@@ -233,20 +236,20 @@ app.get('/api/auth/google/callback', async (req, res) => {
 
     // Create session
     const sessionToken = crypto.randomBytes(48).toString('hex');
-    await pool.query(
+    await platformPool.query(
       `INSERT INTO sessions (id, user_id, token, expires_at, created_at)
        VALUES (gen_random_uuid(), $1, $2, NOW() + INTERVAL '30 days', NOW())`,
       [user.id, sessionToken]
     );
 
     // Clean up expired sessions
-    await pool.query('DELETE FROM sessions WHERE expires_at < NOW()');
+    await platformPool.query('DELETE FROM sessions WHERE expires_at < NOW()');
 
     // Auto-connect Google (Gmail + Drive) — always upsert tokens
     const tenantId = process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
     if (tokenData.refresh_token) {
       try {
-        await pool.query(`
+        await platformPool.query(`
           INSERT INTO user_google_accounts (id, user_id, google_email, google_name, access_token, refresh_token, scopes, sync_enabled, tenant_id, connected_at)
           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, true, $7, NOW())
           ON CONFLICT (user_id, google_email) DO UPDATE SET
@@ -262,14 +265,14 @@ app.get('/api/auth/google/callback', async (req, res) => {
       }
     } else if (tokenData.access_token) {
       // No refresh token (returning user) — update access_token if account exists
-      await pool.query(`
+      await platformPool.query(`
         UPDATE user_google_accounts SET access_token = $1, connected_at = NOW()
         WHERE user_id = $2 AND google_email = $3
       `, [tokenData.access_token, user.id, userInfo.email]).catch(() => {});
     }
 
     // Verify Gmail/Drive connection exists — if not, force re-consent to get refresh_token
-    const { rows: [googleAccount] } = await pool.query(
+    const { rows: [googleAccount] } = await platformPool.query(
       'SELECT id FROM user_google_accounts WHERE user_id = $1 AND refresh_token IS NOT NULL LIMIT 1',
       [user.id]
     );
@@ -291,7 +294,8 @@ app.get('/api/auth/google/callback', async (req, res) => {
 
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
-    const { rows: [user] } = await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [user] } = await db.query(
       'SELECT id, email, name, role, region, onboarded, preferences FROM users WHERE id = $1',
       [req.user.user_id]
     );
@@ -304,6 +308,7 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
 // Update user profile (region, preferences, onboarding)
 app.patch('/api/auth/me', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const allowed = ['region', 'onboarded', 'preferences'];
     const updates = [];
     const params = [];
@@ -317,7 +322,7 @@ app.patch('/api/auth/me', authenticateToken, async (req, res) => {
     }
     if (updates.length === 0) return res.json({ ok: true });
     params.unshift(req.user.user_id);
-    await pool.query(`UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $1`, params);
+    await db.query(`UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $1`, params);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -327,10 +332,11 @@ app.patch('/api/auth/me', authenticateToken, async (req, res) => {
 // ─── Personalized Morning Brief ───
 app.get('/api/brief/personal', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const userId = req.user.user_id;
 
     // Get user's region
-    const { rows: [userRow] } = await pool.query('SELECT region FROM users WHERE id = $1', [userId]);
+    const { rows: [userRow] } = await db.query('SELECT region FROM users WHERE id = $1', [userId]);
     const userRegion = userRow?.region || 'APAC';
 
     // Run all 4 queries in parallel
@@ -340,7 +346,7 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
 
     const [contactResult, clientResult, dispatchResult, statsResult] = await Promise.all([
       // 1. My contacts in recent signals
-      pool.query(`
+      db.query(`
         SELECT DISTINCT ON (p.id)
           p.id as person_id, p.full_name, p.current_title, p.current_company_name,
           se.signal_type, se.company_name as signal_company, se.confidence_score,
@@ -361,7 +367,7 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
         LIMIT 5
       `, [userId, req.tenant_id]),
       // 2. Client signals
-      pool.query(`
+      db.query(`
         SELECT DISTINCT ON (se.company_id)
           se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
           se.evidence_summary, se.detected_at,
@@ -375,7 +381,7 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
         LIMIT 5
       `, [req.tenant_id]),
       // 3. Top dispatches for user's region
-      pool.query(`
+      db.query(`
         SELECT sd.id, sd.company_name, sd.signal_type, sd.signal_summary,
                sd.opportunity_angle, sd.blog_title, sd.status, sd.claimed_by,
                c.geography, c.is_client,
@@ -392,7 +398,7 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
         LIMIT 3
       `, geoParams),
       // 4. Quick stats
-      pool.query(`
+      db.query(`
         SELECT
           (SELECT COUNT(*) FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND tenant_id = $1) as signals_24h,
           (SELECT COUNT(*) FROM signal_dispatches WHERE status = 'draft' AND claimed_by IS NULL AND tenant_id = $1) as unclaimed_dispatches,
@@ -420,8 +426,9 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
 
 app.post('/api/auth/logout', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const token = req.headers.authorization.replace('Bearer ', '');
-    await pool.query('DELETE FROM sessions WHERE token = $1', [token]);
+    await db.query('DELETE FROM sessions WHERE token = $1', [token]);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Logout failed' });
@@ -449,7 +456,7 @@ app.get('/api/auth/gmail/connect', async (req, res) => {
   if (!token) return res.redirect('/index.html?auth_error=login_required');
 
   // Validate token
-  const { rows } = await pool.query(
+  const { rows } = await platformPool.query(
     'SELECT s.user_id FROM sessions s WHERE s.token = $1 AND s.expires_at > NOW()', [token]
   );
   if (rows.length === 0) return res.redirect('/index.html?auth_error=session_expired');
@@ -511,7 +518,7 @@ app.get('/api/auth/gmail/callback', async (req, res) => {
     const userInfo = await userInfoRes.json();
 
     // Store in user_google_accounts
-    await pool.query(`
+    await platformPool.query(`
       INSERT INTO user_google_accounts (user_id, google_email, access_token, refresh_token, token_expires_at, scopes, sync_enabled, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW())
       ON CONFLICT (user_id, google_email) DO UPDATE SET
@@ -561,7 +568,7 @@ app.get('/api/auth/gmail/callback', async (req, res) => {
 
             for (const file of files) {
               const hash = crypto.createHash('md5').update('gdrive:' + file.id).digest('hex');
-              const { rows: existing } = await pool.query('SELECT id FROM external_documents WHERE source_url_hash = $1', [hash]);
+              const { rows: existing } = await platformPool.query('SELECT id FROM external_documents WHERE source_url_hash = $1', [hash]);
               if (existing.length) continue;
 
               // Extract content
@@ -584,7 +591,7 @@ app.get('/api/auth/gmail/callback', async (req, res) => {
               if (!content || content.length < 20) continue;
               const truncated = content.length > 50000 ? content.substring(0, 50000) : content;
 
-              await pool.query(
+              await platformPool.query(
                 `INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash, tenant_id, uploaded_by_user_id, published_at, processing_status, created_at)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'context_only', NOW()) ON CONFLICT (source_url_hash) DO NOTHING`,
                 [file.name, truncated, sourceName, typeLabel, file.webViewLink || '', hash, tenantId, userId, file.modifiedTime]
@@ -621,7 +628,7 @@ app.get('/api/auth/gmail/callback', async (req, res) => {
     const sep = returnTo.includes('?') ? '&' : '?';
     if (stateData.token) {
       // Coming from login flow — pass session token so frontend can authenticate
-      const { rows: [sessionUser] } = await pool.query(
+      const { rows: [sessionUser] } = await platformPool.query(
         'SELECT u.id, u.email, u.name, u.role FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = $1 AND s.expires_at > NOW()',
         [stateData.token]
       );
@@ -643,7 +650,8 @@ app.get('/api/auth/gmail/callback', async (req, res) => {
 // Check Gmail connection status
 app.get('/api/auth/gmail/status', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(
       `SELECT google_email, sync_enabled, token_expires_at, scopes, updated_at
        FROM user_google_accounts WHERE user_id = $1`,
       [req.user.user_id]
@@ -660,7 +668,7 @@ app.get('/api/auth/gmail/status', authenticateToken, async (req, res) => {
 
 // Helper: get a fresh Google access token for the current user
 async function getGoogleToken(userId) {
-  const { rows: [acct] } = await pool.query(
+  const { rows: [acct] } = await platformPool.query(
     'SELECT id, access_token, refresh_token, token_expires_at FROM user_google_accounts WHERE user_id = $1 AND sync_enabled = true LIMIT 1',
     [userId]
   );
@@ -682,7 +690,7 @@ async function getGoogleToken(userId) {
         });
         if (refreshRes.ok) {
           const tokens = await refreshRes.json();
-          await pool.query(
+          await platformPool.query(
             'UPDATE user_google_accounts SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3',
             [tokens.access_token, new Date(Date.now() + tokens.expires_in * 1000), acct.id]
           );
@@ -737,8 +745,9 @@ app.get('/api/drive/files', authenticateToken, async (req, res) => {
 
     // Tag which files are already ingested
     const fileHashes = (data.files || []).map(f => require('crypto').createHash('md5').update('gdrive:' + f.id).digest('hex'));
+    const db = new TenantDB(req.tenant_id);
     const { rows: ingested } = fileHashes.length > 0
-      ? await pool.query(
+      ? await db.query(
           `SELECT source_url_hash FROM external_documents WHERE source_url_hash = ANY($1) AND tenant_id = $2`,
           [fileHashes, req.tenant_id]
         )
@@ -778,7 +787,8 @@ app.post('/api/drive/ingest/:fileId', authenticateToken, async (req, res) => {
     const sourceUrlHash = require('crypto').createHash('md5').update('gdrive:' + fileId).digest('hex');
 
     // Check if already ingested
-    const { rows: existing } = await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    const { rows: existing } = await db.query(
       `SELECT id FROM external_documents WHERE source_url_hash = $1 AND tenant_id = $2`,
       [sourceUrlHash, tenantId]
     );
@@ -848,7 +858,7 @@ app.post('/api/drive/ingest/:fileId', authenticateToken, async (req, res) => {
     let docId;
     if (existing.length > 0) {
       docId = existing[0].id;
-      await pool.query(
+      await db.query(
         `UPDATE external_documents SET title = $1, content = $2, source_url = $3, updated_at = NOW() WHERE id = $4`,
         [title, content, meta.webViewLink, docId]
       );
@@ -856,7 +866,7 @@ app.post('/api/drive/ingest/:fileId', authenticateToken, async (req, res) => {
       // ALL Drive docs are context_only — they're internal knowledge, not market signal sources
       // They're still embedded and searchable, just never fed to the signal extraction pipeline
       const isOld = true; // Always context_only for Drive
-      const { rows: [newDoc] } = await pool.query(
+      const { rows: [newDoc] } = await db.query(
         `INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash, tenant_id, uploaded_by_user_id, published_at, processing_status, created_at)
          VALUES ($1, $2, 'Google Drive', $3, $4, $5, $6, $7, $8, $9, NOW())
          RETURNING id`,
@@ -970,8 +980,9 @@ app.post('/api/drive/ingest-bulk', authenticateToken, async (req, res) => {
 
 app.get('/api/config/tenant', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const tenantId = req.user.tenant_id || process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       'SELECT id, name, slug, vertical, logo_url, primary_color, plan, onboarding_complete, focus_geographies, focus_sectors FROM tenants WHERE id = $1',
       [tenantId]
     );
@@ -983,8 +994,9 @@ app.get('/api/config/tenant', authenticateToken, async (req, res) => {
 
 app.get('/api/config/terminology', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const tenantId = req.user.tenant_id || process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
-    const { rows } = await pool.query('SELECT vertical FROM tenants WHERE id = $1', [tenantId]);
+    const { rows } = await db.query('SELECT vertical FROM tenants WHERE id = $1', [tenantId]);
     if (!rows.length) return res.status(404).json({ error: 'Tenant not found' });
 
     const { getTerminology, SIGNAL_LABELS } = require('./lib/terminology');
@@ -1004,7 +1016,8 @@ app.get('/api/config/terminology', authenticateToken, async (req, res) => {
 // Tenant's active feeds
 app.get('/api/feeds', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT fi.*, tf.active, tf.local_signal_yield, tf.tenant_rating, tf.selection_method, tf.activated_at
       FROM feed_inventory fi
       JOIN tenant_feeds tf ON tf.feed_id = fi.id
@@ -1020,8 +1033,9 @@ app.get('/api/feeds', authenticateToken, async (req, res) => {
 // Full platform feed inventory (for feed selection UI)
 app.get('/api/feeds/inventory', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const vertical = req.user.vertical || 'talent';
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT fi.*,
         EXISTS(
           SELECT 1 FROM tenant_feeds tf
@@ -1041,7 +1055,8 @@ app.get('/api/feeds/inventory', authenticateToken, async (req, res) => {
 // Activate a feed for tenant
 app.post('/api/feeds/:id/activate', authenticateToken, async (req, res) => {
   try {
-    await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    await db.query(`
       INSERT INTO tenant_feeds (tenant_id, feed_id, selection_method)
       VALUES ($1, $2, 'manual')
       ON CONFLICT (tenant_id, feed_id) DO UPDATE SET active = TRUE, activated_at = NOW()
@@ -1055,7 +1070,8 @@ app.post('/api/feeds/:id/activate', authenticateToken, async (req, res) => {
 // Deactivate a feed for tenant
 app.delete('/api/feeds/:id/deactivate', authenticateToken, async (req, res) => {
   try {
-    await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    await db.query(
       'UPDATE tenant_feeds SET active = FALSE WHERE tenant_id = $1 AND feed_id = $2',
       [req.tenant_id, req.params.id]
     );
@@ -1068,15 +1084,16 @@ app.delete('/api/feeds/:id/deactivate', authenticateToken, async (req, res) => {
 // Rate a feed
 app.post('/api/feeds/:id/rate', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { rating } = req.body;
     if (!rating || rating < 1 || rating > 5) return res.status(400).json({ error: 'Rating must be 1-5' });
 
-    await pool.query(
+    await db.query(
       'UPDATE tenant_feeds SET tenant_rating = $1, last_rated_at = NOW() WHERE tenant_id = $2 AND feed_id = $3',
       [rating, req.tenant_id, req.params.id]
     );
     // Update platform aggregate
-    await pool.query(`
+    await db.query(`
       UPDATE feed_inventory SET
         total_ratings = total_ratings + 1,
         avg_rating = (SELECT AVG(tenant_rating)::NUMERIC(3,2) FROM tenant_feeds WHERE feed_id = $1 AND tenant_rating IS NOT NULL)
@@ -1091,14 +1108,15 @@ app.post('/api/feeds/:id/rate', authenticateToken, async (req, res) => {
 // Propose a new feed
 app.post('/api/feeds/propose', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { proposed_url, proposed_name, proposed_geographies, proposed_sectors, proposed_signal_types, rationale } = req.body;
     if (!proposed_url) return res.status(400).json({ error: 'URL required' });
 
     // Check for duplicate
-    const { rows: existing } = await pool.query('SELECT id FROM feed_inventory WHERE url = $1', [proposed_url]);
+    const { rows: existing } = await db.query('SELECT id FROM feed_inventory WHERE url = $1', [proposed_url]);
     if (existing.length) return res.status(409).json({ error: 'Feed already exists', feed_id: existing[0].id });
 
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       INSERT INTO feed_proposals (tenant_id, proposed_url, proposed_name, proposed_geographies, proposed_sectors, proposed_signal_types, rationale)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING id
@@ -1115,25 +1133,26 @@ app.post('/api/feeds/propose', authenticateToken, async (req, res) => {
 
 app.get('/api/stats', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const [
       people, signals24h, signalsTotal, companies,
       documents, placements, activeSources,
       peopleWithNotes, signalsByType, docsByType,
       eventsThisWeek, events30d, activeEventSources
     ] = await Promise.all([
-      pool.query('SELECT COUNT(*) AS cnt FROM people WHERE tenant_id = $1', [req.tenant_id]),
-      pool.query(`SELECT COUNT(*) AS cnt FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND tenant_id = $1`, [req.tenant_id]),
-      pool.query('SELECT COUNT(*) AS cnt FROM signal_events WHERE tenant_id = $1', [req.tenant_id]),
-      pool.query('SELECT COUNT(*) AS cnt FROM companies WHERE tenant_id = $1', [req.tenant_id]),
-      pool.query('SELECT COUNT(*) AS cnt FROM external_documents WHERE tenant_id = $1', [req.tenant_id]),
-      pool.query('SELECT COUNT(*) AS cnt, COALESCE(SUM(placement_fee), 0) AS total_fees FROM conversions WHERE tenant_id = $1 AND source IN (\'xero_export\', \'xero\', \'manual\') AND placement_fee IS NOT NULL', [req.tenant_id]),
-      pool.query('SELECT COUNT(*) AS cnt FROM rss_sources WHERE enabled = true'),
-      pool.query(`SELECT COUNT(DISTINCT person_id) AS cnt FROM interactions WHERE interaction_type = 'research_note' AND tenant_id = $1`, [req.tenant_id]),
-      pool.query(`SELECT signal_type, COUNT(*) AS cnt FROM signal_events WHERE tenant_id = $1 GROUP BY signal_type ORDER BY cnt DESC`, [req.tenant_id]),
-      pool.query(`SELECT source_type, COUNT(*) AS cnt FROM external_documents WHERE tenant_id = $1 GROUP BY source_type ORDER BY cnt DESC`, [req.tenant_id]),
-      pool.query(`SELECT COUNT(*) AS cnt FROM events WHERE tenant_id = $1 AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 7`, [req.tenant_id]).catch(() => ({ rows: [{ cnt: 0 }] })),
-      pool.query(`SELECT COUNT(*) AS cnt FROM events WHERE tenant_id = $1 AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 30`, [req.tenant_id]).catch(() => ({ rows: [{ cnt: 0 }] })),
-      pool.query(`SELECT COUNT(*) AS cnt FROM event_sources WHERE tenant_id = $1 AND is_active = true`, [req.tenant_id]).catch(() => ({ rows: [{ cnt: 0 }] })),
+      db.query('SELECT COUNT(*) AS cnt FROM people WHERE tenant_id = $1', [req.tenant_id]),
+      db.query(`SELECT COUNT(*) AS cnt FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND tenant_id = $1`, [req.tenant_id]),
+      db.query('SELECT COUNT(*) AS cnt FROM signal_events WHERE tenant_id = $1', [req.tenant_id]),
+      db.query('SELECT COUNT(*) AS cnt FROM companies WHERE tenant_id = $1', [req.tenant_id]),
+      db.query('SELECT COUNT(*) AS cnt FROM external_documents WHERE tenant_id = $1', [req.tenant_id]),
+      db.query('SELECT COUNT(*) AS cnt, COALESCE(SUM(placement_fee), 0) AS total_fees FROM conversions WHERE tenant_id = $1 AND source IN (\'xero_export\', \'xero\', \'manual\') AND placement_fee IS NOT NULL', [req.tenant_id]),
+      db.query('SELECT COUNT(*) AS cnt FROM rss_sources WHERE enabled = true'),
+      db.query(`SELECT COUNT(DISTINCT person_id) AS cnt FROM interactions WHERE interaction_type = 'research_note' AND tenant_id = $1`, [req.tenant_id]),
+      db.query(`SELECT signal_type, COUNT(*) AS cnt FROM signal_events WHERE tenant_id = $1 GROUP BY signal_type ORDER BY cnt DESC`, [req.tenant_id]),
+      db.query(`SELECT source_type, COUNT(*) AS cnt FROM external_documents WHERE tenant_id = $1 GROUP BY source_type ORDER BY cnt DESC`, [req.tenant_id]),
+      db.query(`SELECT COUNT(*) AS cnt FROM events WHERE tenant_id = $1 AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 7`, [req.tenant_id]).catch(() => ({ rows: [{ cnt: 0 }] })),
+      db.query(`SELECT COUNT(*) AS cnt FROM events WHERE tenant_id = $1 AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 30`, [req.tenant_id]).catch(() => ({ rows: [{ cnt: 0 }] })),
+      db.query(`SELECT COUNT(*) AS cnt FROM event_sources WHERE tenant_id = $1 AND is_active = true`, [req.tenant_id]).catch(() => ({ rows: [{ cnt: 0 }] })),
     ]);
 
     res.json({
@@ -1164,7 +1183,8 @@ app.get('/api/stats', authenticateToken, async (req, res) => {
 
 app.get('/api/signals/hero', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
              se.evidence_summary, se.detected_at, se.source_url, se.image_url,
              c.sector, c.geography, c.is_client, c.domain,
@@ -1207,13 +1227,14 @@ app.get('/api/signals/hero', authenticateToken, async (req, res) => {
 // ── Signal Index — Market Health Ticker ──────────────────────────────
 app.get('/api/signal-index', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const horizon = req.query.horizon || '7d';
     const tid = req.tenant_id;
 
     const [mh, stocks, stats] = await Promise.all([
-      pool.query(`SELECT * FROM market_health_index WHERE tenant_id = $1 AND horizon = $2 LIMIT 1`, [tid, horizon]).catch(() => ({ rows: [] })),
-      pool.query(`SELECT * FROM signal_stocks WHERE tenant_id = $1 AND horizon = $2 ORDER BY weight DESC`, [tid, horizon]).catch(() => ({ rows: [] })),
-      pool.query(`SELECT * FROM signal_index_stats WHERE tenant_id = $1 LIMIT 1`, [tid]).catch(() => ({ rows: [] })),
+      db.query(`SELECT * FROM market_health_index WHERE tenant_id = $1 AND horizon = $2 LIMIT 1`, [tid, horizon]).catch(() => ({ rows: [] })),
+      db.query(`SELECT * FROM signal_stocks WHERE tenant_id = $1 AND horizon = $2 ORDER BY weight DESC`, [tid, horizon]).catch(() => ({ rows: [] })),
+      db.query(`SELECT * FROM signal_index_stats WHERE tenant_id = $1 LIMIT 1`, [tid]).catch(() => ({ rows: [] })),
     ]);
 
     const signalStocks = {};
@@ -1237,8 +1258,9 @@ app.get('/api/signal-index', authenticateToken, async (req, res) => {
 
 app.get('/api/signal-index/sectors', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const horizon = req.query.horizon || '7d';
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT * FROM sector_indices WHERE tenant_id = $1 AND horizon = $2 ORDER BY score DESC`,
       [req.tenant_id, horizon]
     ).catch(() => ({ rows: [] }));
@@ -1253,9 +1275,10 @@ app.get('/api/signal-index/sectors', authenticateToken, async (req, res) => {
 
 app.get('/api/signal-index/history', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const horizon = req.query.horizon || '7d';
     const limit = Math.min(parseInt(req.query.limit) || 90, 365);
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT score, delta, snapshot_at FROM market_health_history WHERE tenant_id = $1 AND horizon = $2 ORDER BY snapshot_at DESC LIMIT $3`,
       [req.tenant_id, horizon, limit]
     ).catch(() => ({ rows: [] }));
@@ -1266,8 +1289,9 @@ app.get('/api/signal-index/history', authenticateToken, async (req, res) => {
 // Media Sentiment breakdown
 app.get('/api/signal-index/sentiment', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const days = parseInt(req.query.days) || 7;
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT ds.sentiment, ds.confidence, ds.themes, ds.summary,
              ed.title, ed.source_name, ed.source_type, ed.published_at
       FROM document_sentiment ds
@@ -1302,8 +1326,9 @@ app.get('/api/signal-index/sentiment', authenticateToken, async (req, res) => {
 
 app.get('/api/market-temperature', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     // Aggregate megacap signals by type for the last 7 days
-    const { rows: byType } = await pool.query(`
+    const { rows: byType } = await db.query(`
       SELECT se.signal_type, COUNT(*) as cnt,
              array_agg(DISTINCT se.company_name ORDER BY se.company_name) FILTER (WHERE se.company_name IS NOT NULL) as companies
       FROM signal_events se
@@ -1312,7 +1337,7 @@ app.get('/api/market-temperature', authenticateToken, async (req, res) => {
     `, [req.tenant_id]);
 
     // Headline signals — the most notable recent megacap moves
-    const { rows: headlines } = await pool.query(`
+    const { rows: headlines } = await db.query(`
       SELECT se.company_name, se.signal_type, se.evidence_summary, se.detected_at, se.confidence_score
       FROM signal_events se
       WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1
@@ -1374,10 +1399,11 @@ app.get('/api/market-temperature', authenticateToken, async (req, res) => {
 
 app.get('/api/talent-in-motion', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const limit = Math.min(parseInt(req.query.limit) || 10, 30);
 
     // 1. People at companies with restructuring/layoff signals (flight risk)
-    const { rows: flightRisk } = await pool.query(`
+    const { rows: flightRisk } = await db.query(`
       SELECT DISTINCT ON (p.id)
         p.id, p.full_name, p.current_title, p.current_company_name, p.current_company_id,
         p.seniority_level, p.linkedin_url,
@@ -1402,7 +1428,7 @@ app.get('/api/talent-in-motion', authenticateToken, async (req, res) => {
     `, [limit, req.tenant_id]);
 
     // 2. People with high activity / timing scores (activity spikes & re-engage)
-    const { rows: activeProfiles } = await pool.query(`
+    const { rows: activeProfiles } = await db.query(`
       SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.current_company_id,
              p.seniority_level, p.linkedin_url,
              ps.activity_score, ps.timing_score, ps.receptivity_score, ps.flight_risk_score,
@@ -1420,7 +1446,7 @@ app.get('/api/talent-in-motion', authenticateToken, async (req, res) => {
     `, [limit, req.tenant_id]);
 
     // 3. Recent person signals (flight_risk_alert, activity_spike, timing_opportunity)
-    const { rows: personSignals } = await pool.query(`
+    const { rows: personSignals } = await db.query(`
       SELECT psg.id, psg.signal_type, psg.title, psg.description, psg.confidence_score, psg.detected_at,
              p.id as person_id, p.full_name, p.current_title, p.current_company_name, p.seniority_level
       FROM person_signals psg
@@ -1445,8 +1471,9 @@ app.get('/api/talent-in-motion', authenticateToken, async (req, res) => {
 
 app.get('/api/converging-themes', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     // Find signal_type clusters with high activity, cross-reference with clients and candidates
-    const { rows: themes } = await pool.query(`
+    const { rows: themes } = await db.query(`
       WITH candidate_counts AS (
         SELECT se2.signal_type, COUNT(DISTINCT p.id) as cnt
         FROM people p
@@ -1478,7 +1505,7 @@ app.get('/api/converging-themes', authenticateToken, async (req, res) => {
     `, [req.tenant_id]);
 
     // Find sector-based convergences
-    const { rows: sectorThemes } = await pool.query(`
+    const { rows: sectorThemes } = await db.query(`
       SELECT
         c.sector,
         COUNT(DISTINCT se.company_id) as company_count,
@@ -1505,7 +1532,7 @@ app.get('/api/converging-themes', authenticateToken, async (req, res) => {
     // Placement pipeline potential — searches with matching signals
     let pipeline = [];
     try {
-      const { rows } = await pool.query(`
+      const { rows } = await db.query(`
         SELECT s.title as search_title, s.status, a.name as client_name,
                COUNT(DISTINCT se.id) as matching_signals,
                COUNT(DISTINCT se.company_id) as signalling_companies
@@ -1539,8 +1566,9 @@ app.get('/api/converging-themes', authenticateToken, async (req, res) => {
 
 app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     // 1. Get trending signal themes for deep-dive matching
-    const { rows: trending } = await pool.query(`
+    const { rows: trending } = await db.query(`
       SELECT signal_type, COUNT(*) as cnt
       FROM signal_events
       WHERE detected_at > NOW() - INTERVAL '7 days' AND signal_type IS NOT NULL
@@ -1561,7 +1589,7 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
     const themeNames = trending.map(t => (t.signal_type || '').replace(/_/g, ' '));
 
     // ── LATEST: most recent podcast episodes (last 7 days), one per source ──
-    const { rows: latest } = await pool.query(`
+    const { rows: latest } = await db.query(`
       SELECT DISTINCT ON (source_name)
         id, title, source_name, source_url, published_at, image_url, audio_url
       FROM external_documents
@@ -1577,7 +1605,7 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
     for (const ep of latestSorted) {
       if (ep.audio_url) continue;
       try {
-        const { rows: [rss] } = await pool.query(
+        const { rows: [rss] } = await db.query(
           `SELECT url FROM rss_sources WHERE name ILIKE $1 OR name ILIKE $2 LIMIT 1`,
           [`%${ep.source_name}%`, `${ep.source_name.split(' ')[0]}%`]
         );
@@ -1597,7 +1625,7 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
           if (encMatch) {
             ep.audio_url = encMatch[1].replace(/&amp;/g, '&');
             // Cache it in DB for next time
-            pool.query('UPDATE external_documents SET audio_url = $1 WHERE id = $2', [ep.audio_url, ep.id]).catch(() => {});
+            db.query('UPDATE external_documents SET audio_url = $1 WHERE id = $2', [ep.audio_url, ep.id]).catch(() => {});
           }
         }
       } catch (e) { /* non-fatal */ }
@@ -1617,7 +1645,7 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
           const docIds = qdrantResults.map(r => String(r.id)).filter(id => uuidRx.test(id));
 
           if (docIds.length > 0) {
-            const { rows } = await pool.query(`
+            const { rows } = await db.query(`
               SELECT id, title, source_name, source_url, published_at, image_url, audio_url
               FROM external_documents
               WHERE id = ANY($1::uuid[]) AND source_type = 'podcast'
@@ -1649,7 +1677,7 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
       const latestIds = latestSorted.map(l => l.id);
       const deepIds = deepDives.map(d => d.id);
       const exclude = [...latestIds, ...deepIds];
-      const { rows: fallback } = await pool.query(`
+      const { rows: fallback } = await db.query(`
         SELECT DISTINCT ON (source_name)
           id, title, source_name, source_url, published_at, image_url, audio_url
         FROM external_documents
@@ -1665,7 +1693,7 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
     for (const ep of deepDives) {
       if (ep.audio_url) continue;
       try {
-        const { rows: [rss] } = await pool.query(
+        const { rows: [rss] } = await db.query(
           `SELECT url FROM rss_sources WHERE name ILIKE $1 OR name ILIKE $2 LIMIT 1`,
           [`%${ep.source_name}%`, `${ep.source_name.split(' ')[0]}%`]
         );
@@ -1683,7 +1711,7 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
           const encMatch = itemMatch[0].match(/enclosure[^>]*url=["']([^"']+)["']/i);
           if (encMatch) {
             ep.audio_url = encMatch[1].replace(/&amp;/g, '&');
-            pool.query('UPDATE external_documents SET audio_url = $1 WHERE id = $2', [ep.audio_url, ep.id]).catch(() => {});
+            db.query('UPDATE external_documents SET audio_url = $1 WHERE id = $2', [ep.audio_url, ep.id]).catch(() => {});
           }
         }
       } catch (e) { /* non-fatal */ }
@@ -1702,7 +1730,8 @@ app.get('/api/top-podcasts', authenticateToken, async (req, res) => {
 
 app.get('/api/reengage-windows', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT DISTINCT ON (p.id)
         p.id, p.full_name, p.current_title, p.current_company_name,
         se.signal_type, se.company_name AS signal_company, se.confidence_score,
@@ -1753,6 +1782,7 @@ app.get('/api/reengage-windows', authenticateToken, async (req, res) => {
 
 app.get('/api/signals/brief', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const offset = parseInt(req.query.offset) || 0;
     const type = req.query.type;
@@ -1861,7 +1891,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
     params.push(offset);
 
     const [signalsResult, countResult] = await Promise.all([
-      pool.query(`
+      db.query(`
         SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
                se.evidence_summary, se.evidence_snippet, se.triage_status,
                se.detected_at, se.signal_date, se.source_url, se.signal_category,
@@ -1907,13 +1937,13 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
           se.detected_at DESC NULLS LAST
         LIMIT $${limitParam} OFFSET $${offsetParam}
       `, params),
-      pool.query(`SELECT COUNT(*) AS cnt FROM signal_events se LEFT JOIN companies c ON se.company_id = c.id LEFT JOIN external_documents ed ON se.source_document_id = ed.id ${where}`, params.slice(0, -2)),
+      db.query(`SELECT COUNT(*) AS cnt FROM signal_events se LEFT JOIN companies c ON se.company_id = c.id LEFT JOIN external_documents ed ON se.source_document_id = ed.id ${where}`, params.slice(0, -2)),
     ]);
 
     // Compute region stats for the header — search across company geo, evidence, doc title
     let regionStats = null;
     try {
-      const { rows: rStats } = await pool.query(`
+      const { rows: rStats } = await db.query(`
         SELECT
           COUNT(*) FILTER (WHERE
             c.geography ILIKE '%Australia%' OR c.country_code = 'AU'
@@ -1966,7 +1996,8 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
 
 app.get('/api/signals/:id', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT se.*, c.name AS company_name_full, c.sector, c.geography,
              c.description AS company_description, c.is_client,
              ed.title AS doc_title, ed.source_name, ed.source_url AS doc_url,
@@ -2014,7 +2045,7 @@ app.get('/api/signals/:id', authenticateToken, async (req, res) => {
 
       if (scoreTerms.length > 0) {
         const scoreExpr = scoreTerms.join(' + ');
-        const { rows: csRows } = await pool.query(`
+        const { rows: csRows } = await db.query(`
           SELECT cs.id, cs.title, cs.sector, cs.geography, cs.engagement_type, cs.year,
                  cs.themes, cs.capabilities, cs.public_approved, cs.visibility,
                  cs.public_title, cs.public_summary,
@@ -2036,13 +2067,14 @@ app.get('/api/signals/:id', authenticateToken, async (req, res) => {
 
 app.patch('/api/signals/:id/triage', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { status, notes } = req.body;
     const validStatuses = ['new', 'reviewing', 'qualified', 'irrelevant', 'actioned'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
     }
 
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       UPDATE signal_events
       SET triage_status = $1::triage_status,
           triage_notes = COALESCE($2, triage_notes),
@@ -2064,24 +2096,25 @@ app.patch('/api/signals/:id/triage', authenticateToken, async (req, res) => {
 // ─── Signal Proximity Graph (for popup mini-graph) ───
 app.get('/api/signals/:id/proximity-graph', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const tenantId = req.tenant_id;
     const signalId = req.params.id;
 
     // 1. Get the signal
-    const { rows: [sig] } = await pool.query(
+    const { rows: [sig] } = await db.query(
       'SELECT * FROM signal_events WHERE id = $1 AND tenant_id = $2',
       [signalId, tenantId]
     );
     if (!sig) return res.status(404).json({ error: 'Signal not found' });
 
     // 2. Get team members (include all roles — viewers with proximity data should appear in graph)
-    const { rows: team } = await pool.query(
+    const { rows: team } = await db.query(
       `SELECT id, name FROM users WHERE tenant_id = $1`,
       [tenantId]
     );
 
     // 3. Get contacts with proximity to signal company + their scores
-    const { rows: contacts } = await pool.query(`
+    const { rows: contacts } = await db.query(`
       SELECT
         p.id, p.full_name, p.current_title, p.current_company_name,
         ps.timing_score, ps.receptivity_score,
@@ -2113,7 +2146,7 @@ app.get('/api/signals/:id/proximity-graph', authenticateToken, async (req, res) 
     `, [tenantId, sig.company_id, sig.company_name || '']);
 
     // 4. Check if signal company is an account/client
-    const { rows: [account] } = await pool.query(`
+    const { rows: [account] } = await db.query(`
       SELECT a.id, a.name, a.relationship_tier
       FROM accounts a
       WHERE a.tenant_id = $1
@@ -2208,6 +2241,7 @@ app.get('/api/signals/:id/proximity-graph', authenticateToken, async (req, res) 
 
 app.get('/api/people', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     const offset = parseInt(req.query.offset) || 0;
     const q = req.query.q;
@@ -2268,7 +2302,7 @@ app.get('/api/people', authenticateToken, async (req, res) => {
     const offsetIdx = paramIdx;
 
     const [peopleResult, countResult] = await Promise.all([
-      pool.query(`
+      db.query(`
         SELECT p.id, p.full_name, p.current_title, p.current_company_name,
                p.headline, p.location, p.source, p.seniority_level,
                p.expertise_tags, p.industries, p.email, p.linkedin_url,
@@ -2282,7 +2316,7 @@ app.get('/api/people', authenticateToken, async (req, res) => {
           p.full_name
         LIMIT $${limitIdx} OFFSET $${offsetIdx}
       `, params),
-      pool.query(`SELECT COUNT(*) AS cnt FROM people p ${where}`, params.slice(0, -2)),
+      db.query(`SELECT COUNT(*) AS cnt FROM people p ${where}`, params.slice(0, -2)),
     ]);
 
     res.json({
@@ -2300,8 +2334,9 @@ app.get('/api/people', authenticateToken, async (req, res) => {
 // Recent interactions stream — who MitchelLake team contacted recently
 app.get('/api/people/stream/recent-contacts', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const limit = Math.min(parseInt(req.query.limit) || 20, 50);
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT DISTINCT ON (i.person_id)
         i.person_id, i.interaction_type, i.subject, i.summary,
         i.interaction_at, i.direction, i.channel, i.source,
@@ -2326,8 +2361,9 @@ app.get('/api/people/stream/recent-contacts', authenticateToken, async (req, res
 // Signal-connected candidates — people at companies with recent signals
 app.get('/api/people/stream/signal-connected', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const limit = Math.min(parseInt(req.query.limit) || 20, 50);
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT p.id, p.full_name, p.current_title, p.current_company_name,
              p.location, p.seniority_level, p.linkedin_url,
              se.signal_type, se.evidence_summary, se.confidence_score,
@@ -2356,7 +2392,8 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
     if (!id || id === 'null' || id === 'undefined' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
       return res.status(400).json({ error: 'Invalid person ID' });
     }
-    const { rows: [person] } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [person] } = await db.query(`
       SELECT p.*, c.name AS company_name_full, c.sector AS company_sector,
              c.geography AS company_geography, c.id AS company_id_linked,
              c.domain AS company_domain, c.is_client AS company_is_client
@@ -2373,7 +2410,7 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
     }
 
     // Research notes
-    const { rows: notes } = await pool.query(`
+    const { rows: notes } = await db.query(`
       SELECT id, summary, subject, email_snippet, interaction_at, created_at,
              note_quality, extracted_intelligence, source, interaction_type
       FROM interactions
@@ -2383,7 +2420,7 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
     `, [req.params.id, req.tenant_id]);
 
     // All other interactions (emails, calls, meetings)
-    const { rows: interactions } = await pool.query(`
+    const { rows: interactions } = await db.query(`
       SELECT id, interaction_type, summary, subject, email_snippet,
              interaction_at, created_at, channel, direction, source,
              visibility, is_internal, sensitivity,
@@ -2397,7 +2434,7 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
     `, [req.params.id, req.user?.user_id, req.tenant_id]);
 
     // Person signals
-    const { rows: signals } = await pool.query(`
+    const { rows: signals } = await db.query(`
       SELECT id, signal_type, signal_category, title, description,
              confidence_score, signal_date, detected_at
       FROM person_signals
@@ -2408,7 +2445,7 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
     // Company signals (if person has a linked company)
     let companySignals = [];
     if (person.current_company_id) {
-      const { rows } = await pool.query(`
+      const { rows } = await db.query(`
         SELECT id, signal_type, confidence_score, evidence_summary, detected_at, triage_status
         FROM signal_events WHERE company_id = $1 AND tenant_id = $2
         ORDER BY detected_at DESC LIMIT 10
@@ -2417,7 +2454,7 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
     }
 
     // Interaction stats — count all types
-    const { rows: [stats] } = await pool.query(`
+    const { rows: [stats] } = await db.query(`
       SELECT COUNT(*) AS total,
              COUNT(*) FILTER (WHERE interaction_type = 'research_note') AS notes,
              COUNT(*) FILTER (WHERE interaction_type IN ('email', 'gmail', 'enrich_gmail')) AS emails,
@@ -2431,7 +2468,7 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
     `, [req.params.id, req.tenant_id]);
 
     // Also get type breakdown for debugging
-    const { rows: typeCounts } = await pool.query(
+    const { rows: typeCounts } = await db.query(
       `SELECT interaction_type, COUNT(*) AS cnt FROM interactions WHERE person_id = $1 AND tenant_id = $2 GROUP BY interaction_type ORDER BY cnt DESC`,
       [req.params.id, req.tenant_id]
     );
@@ -2440,7 +2477,7 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
     // Colleagues at same company
     let colleagues = [];
     if (person.current_company_id) {
-      const { rows } = await pool.query(`
+      const { rows } = await db.query(`
         SELECT id, full_name, current_title, seniority_level
         FROM people
         WHERE current_company_id = $1 AND id != $2 AND tenant_id = $3
@@ -2466,7 +2503,8 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
 
 app.get('/api/people/:id/notes', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT id, summary, subject, interaction_at, created_at, note_quality,
              extracted_intelligence, source
       FROM interactions
@@ -2484,6 +2522,7 @@ app.get('/api/people/:id/notes', authenticateToken, async (req, res) => {
 // ─── Edit Person ───
 app.patch('/api/people/:id', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const allowedFields = ['full_name', 'current_title', 'current_company_name', 'email', 'phone',
                            'linkedin_url', 'location', 'headline', 'seniority_level', 'functional_area', 'bio',
                            'visibility', 'email_alt'];
@@ -2513,7 +2552,7 @@ app.patch('/api/people/:id', authenticateToken, async (req, res) => {
 
     // If company name changed, try to link to company record
     if (req.body.current_company_name) {
-      const { rows: [match] } = await pool.query(
+      const { rows: [match] } = await db.query(
         `SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1`,
         [req.body.current_company_name, req.tenant_id]
       );
@@ -2526,7 +2565,7 @@ app.patch('/api/people/:id', authenticateToken, async (req, res) => {
 
     idx++;
     params.push(req.tenant_id);
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `UPDATE people SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $1 AND tenant_id = $${idx} RETURNING *`,
       params
     );
@@ -2542,7 +2581,8 @@ app.patch('/api/people/:id', authenticateToken, async (req, res) => {
 // ─── Person Enrichment ───
 app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
   try {
-    const { rows: [person] } = await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [person] } = await db.query(
       `SELECT id, full_name, email, source_id, source, current_title,
               current_company_name, current_company_id, linkedin_url, location
        FROM people WHERE id = $1 AND tenant_id = $2`, [req.params.id, req.tenant_id]
@@ -2563,7 +2603,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           const match = searchRes?.data?.[0];
           if (match) {
             ezekiaId = String(match.id);
-            await pool.query('UPDATE people SET source_id = $1, source = $2 WHERE id = $3 AND source_id IS NULL AND tenant_id = $4',
+            await db.query('UPDATE people SET source_id = $1, source = $2 WHERE id = $3 AND source_id IS NULL AND tenant_id = $4',
               [ezekiaId, 'ezekia', req.params.id, req.tenant_id]);
           }
         }
@@ -2576,7 +2616,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           });
           if (match) {
             ezekiaId = String(match.id);
-            await pool.query('UPDATE people SET source_id = $1, source = $2 WHERE id = $3 AND source_id IS NULL AND tenant_id = $4',
+            await db.query('UPDATE people SET source_id = $1, source = $2 WHERE id = $3 AND source_id IS NULL AND tenant_id = $4',
               [ezekiaId, 'ezekia', req.params.id, req.tenant_id]);
           }
         }
@@ -2599,7 +2639,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           // Safety: verify the Ezekia name matches our person
           if (ezName && ourName && !ezName.includes(ourName.split(' ')[0]) && !ourName.includes(ezName.split(' ')[0])) {
             console.warn(`Ezekia name mismatch: "${d.fullName}" vs "${person.full_name}" — re-searching`);
-            await pool.query('UPDATE people SET source_id = NULL WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
+            await db.query('UPDATE people SET source_id = NULL WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
             enrichResults.ezekia_profile = { error: `Name mismatch: "${d.fullName}" — source_id cleared, will re-match on next enrich` };
           } else {
 
@@ -2666,7 +2706,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           if (Object.keys(updates).length > 0) {
             const setClauses = Object.entries(updates).map(([k, v], i) => `${k} = $${i + 2}`);
             const updateVals = Object.values(updates);
-            await pool.query(`UPDATE people SET ${setClauses.join(', ')}, synced_at = NOW(), updated_at = NOW() WHERE id = $1 AND tenant_id = $${updateVals.length + 2}`,
+            await db.query(`UPDATE people SET ${setClauses.join(', ')}, synced_at = NOW(), updated_at = NOW() WHERE id = $1 AND tenant_id = $${updateVals.length + 2}`,
               [req.params.id, ...updateVals, req.tenant_id]);
             enrichResults.ezekia_profile = { updated_fields: Object.keys(updates) };
           } else {
@@ -2698,13 +2738,13 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
             if (!noteText || noteText.length < 5) continue;
 
             // Check if already imported (by external_id)
-            const { rows: existing } = await pool.query(
+            const { rows: existing } = await db.query(
               `SELECT id FROM interactions WHERE person_id = $1 AND external_id = $2 AND tenant_id = $3`,
               [req.params.id, 'ezekia_note_' + note.id, req.tenant_id]
             );
             if (existing.length > 0) continue;
 
-            await pool.query(`
+            await db.query(`
               INSERT INTO interactions (person_id, user_id, interaction_type, direction, subject, summary,
                 source, external_id, channel, interaction_at, tenant_id, created_at)
               VALUES ($1, $2, 'research_note', 'inbound', $3, $4, 'ezekia_enrich', $5, 'crm', $6, $7, NOW())
@@ -2737,7 +2777,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
             // Store aspirations as extracted intelligence
             const aspText = JSON.stringify(aspirations.data);
             if (aspText.length > 10) {
-              await pool.query(`UPDATE people SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('aspirations', $1::jsonb) WHERE id = $2 AND tenant_id = $3`,
+              await db.query(`UPDATE people SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('aspirations', $1::jsonb) WHERE id = $2 AND tenant_id = $3`,
                 [aspText, req.params.id, req.tenant_id]).catch(() => {});
             }
           }
@@ -2779,9 +2819,9 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
             let companiesCreated = 0;
             for (const name of companyNames) {
               if (!name || name.length < 2) continue;
-              const { rows: exists } = await pool.query('SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1', [name, req.tenant_id]);
+              const { rows: exists } = await db.query('SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1', [name, req.tenant_id]);
               if (!exists.length) {
-                await pool.query('INSERT INTO companies (name, source, tenant_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [name, 'ezekia_career', req.tenant_id]);
+                await db.query('INSERT INTO companies (name, source, tenant_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [name, 'ezekia_career', req.tenant_id]);
                 companiesCreated++;
               }
             }
@@ -2792,7 +2832,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
         // ── Write-back: push Signals intelligence to Ezekia ──
         try {
           // Gather any intelligence we have that Ezekia doesn't
-          const { rows: recentSignals } = await pool.query(`
+          const { rows: recentSignals } = await db.query(`
             SELECT se.signal_type, se.evidence_summary, se.company_name, se.detected_at, se.source_url
             FROM signal_events se
             JOIN companies c ON c.id = se.company_id
@@ -2800,7 +2840,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
             ORDER BY se.detected_at DESC LIMIT 5
           `, ['%' + (person.current_company_name || 'NONE') + '%']).catch(() => ({ rows: [] }));
 
-          const { rows: recentInteractions } = await pool.query(`
+          const { rows: recentInteractions } = await db.query(`
             SELECT COUNT(*) AS cnt, MAX(interaction_at) AS last_at
             FROM interactions WHERE person_id = $1 AND tenant_id = $2 AND interaction_at > NOW() - INTERVAL '90 days'
           `, [req.params.id, req.tenant_id]).catch(() => ({ rows: [{}] }));
@@ -2847,7 +2887,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
     }
 
     // Resolve ezekiaId for projects step (may have been linked above)
-    const ezekiaId = person.source_id || (await pool.query('SELECT source_id FROM people WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]).then(r => r.rows[0]?.source_id));
+    const ezekiaId = person.source_id || (await db.query('SELECT source_id FROM people WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]).then(r => r.rows[0]?.source_id));
 
     // 1b. Ezekia Projects API — find which projects/searches this person is in
     if (ezekiaId && process.env.EZEKIA_API_TOKEN) {
@@ -2873,13 +2913,13 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
             if (isCandidate) {
               projectsFound++;
               // Try to link to our searches table
-              const { rows: [existingSearch] } = await pool.query(
+              const { rows: [existingSearch] } = await db.query(
                 `SELECT id FROM opportunities WHERE (code = $1 OR title ILIKE $2) AND tenant_id = $3 LIMIT 1`,
                 [`ezekia_${proj.id}`, `%${proj.name}%`, req.tenant_id]
               );
               if (existingSearch) {
                 // Link person as search candidate
-                await pool.query(`
+                await db.query(`
                   INSERT INTO pipeline_contacts (search_id, person_id, status, source, added_at, tenant_id)
                   VALUES ($1, $2, 'sourced', 'ezekia_enrich', NOW(), $3)
                   ON CONFLICT DO NOTHING
@@ -2906,7 +2946,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
     // 2. Gmail — search via user_google_accounts with proper token refresh
     if (person.email) {
       try {
-        const { rows: gmailAccounts } = await pool.query(
+        const { rows: gmailAccounts } = await db.query(
           `SELECT id, user_id, google_email, access_token, refresh_token, token_expires_at
            FROM user_google_accounts WHERE sync_enabled = true LIMIT 5`
         ).catch(() => ({ rows: [] }));
@@ -2935,7 +2975,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
                   if (refreshRes.ok) {
                     const tokens = await refreshRes.json();
                     token = tokens.access_token;
-                    await pool.query(
+                    await db.query(
                       `UPDATE user_google_accounts SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3`,
                       [token, new Date(Date.now() + tokens.expires_in * 1000), acct.id]
                     );
@@ -2967,7 +3007,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
             // Fetch and store new messages as interactions
             if (gmailData.messages && gmailData.messages.length > 0) {
               for (const msg of gmailData.messages.slice(0, 15)) {
-                const { rows: existing } = await pool.query(
+                const { rows: existing } = await db.query(
                   `SELECT id FROM interactions WHERE person_id = $1 AND external_id = $2 AND tenant_id = $3`,
                   [req.params.id, msg.id, req.tenant_id]
                 );
@@ -2994,7 +3034,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 
                   const direction = from.toLowerCase().includes(emailQ.toLowerCase()) ? 'inbound' : 'outbound';
 
-                  await pool.query(`
+                  await db.query(`
                     INSERT INTO interactions (person_id, user_id, interaction_type, direction, subject, email_snippet,
                                               email_from, email_to, source, external_id, channel, interaction_at, created_at, tenant_id)
                     VALUES ($1, $2, 'email', $3, $4, $5, $6, $7, 'enrich_gmail', $8, 'email', $9, NOW(), $10)
@@ -3035,7 +3075,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
         const searchTerms = [person.full_name];
         if (person.current_company_name) searchTerms.push(person.current_company_name);
 
-        const { rows: mentions } = await pool.query(`
+        const { rows: mentions } = await db.query(`
           SELECT ed.id, ed.title, ed.source_name, ed.published_at, ed.source_url,
                  ts_rank(to_tsvector('english', COALESCE(ed.title,'') || ' ' || COALESCE(ed.summary,'') || ' ' || COALESCE(ed.content,'')),
                          plainto_tsquery('english', $1)) AS relevance
@@ -3071,13 +3111,13 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
               const signals = JSON.parse(jsonMatch ? jsonMatch[0] : '[]');
               for (const sig of signals) {
                 // Avoid duplicates
-                const { rows: existing } = await pool.query(
+                const { rows: existing } = await db.query(
                   `SELECT id FROM person_signals WHERE person_id = $1 AND signal_type = $2 AND title = $3 AND tenant_id = $4`,
                   [req.params.id, sig.signal_type, sig.title, req.tenant_id]
                 );
                 if (existing.length > 0) continue;
 
-                await pool.query(`
+                await db.query(`
                   INSERT INTO person_signals (person_id, signal_type, title, description, confidence_score, source, detected_at, tenant_id)
                   VALUES ($1, $2, $3, $4, $5, 'enrichment', NOW(), $6)
                 `, [req.params.id, sig.signal_type, sig.title, sig.description, sig.confidence || 0.7, req.tenant_id]);
@@ -3100,7 +3140,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
       try {
         // Use existing documents as a proxy for web signals
         // Also check for company signals that relate to this person's employer
-        const { rows: companySignals } = await pool.query(`
+        const { rows: companySignals } = await db.query(`
           SELECT signal_type, evidence_summary, confidence_score, detected_at
           FROM signal_events
           WHERE company_id = $1 AND detected_at > NOW() - INTERVAL '60 days' AND tenant_id = $2
@@ -3120,17 +3160,17 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 
     // 5. Re-embed the person with all enriched data
     try {
-      const { rows: [latest] } = await pool.query(`SELECT * FROM people WHERE id = $1 AND tenant_id = $2`, [req.params.id, req.tenant_id]);
+      const { rows: [latest] } = await db.query(`SELECT * FROM people WHERE id = $1 AND tenant_id = $2`, [req.params.id, req.tenant_id]);
       const parts = [latest.full_name, latest.current_title, latest.current_company_name, latest.headline, latest.bio, latest.location].filter(Boolean);
       if (latest.expertise_tags?.length) parts.push('Skills: ' + latest.expertise_tags.join(', '));
       if (latest.industries?.length) parts.push('Industries: ' + latest.industries.join(', '));
 
       // Get latest notes for embedding context
-      const { rows: notes } = await pool.query(`SELECT summary FROM interactions WHERE person_id = $1 AND interaction_type = 'research_note' AND tenant_id = $2 ORDER BY interaction_at DESC NULLS LAST LIMIT 5`, [req.params.id, req.tenant_id]);
+      const { rows: notes } = await db.query(`SELECT summary FROM interactions WHERE person_id = $1 AND interaction_type = 'research_note' AND tenant_id = $2 ORDER BY interaction_at DESC NULLS LAST LIMIT 5`, [req.params.id, req.tenant_id]);
       notes.forEach(n => { if (n.summary) parts.push(n.summary.slice(0, 500)); });
 
       // Get person signals for embedding context
-      const { rows: psigs } = await pool.query(`SELECT title, description FROM person_signals WHERE person_id = $1 AND tenant_id = $2 ORDER BY detected_at DESC LIMIT 3`, [req.params.id, req.tenant_id]);
+      const { rows: psigs } = await db.query(`SELECT title, description FROM person_signals WHERE person_id = $1 AND tenant_id = $2 ORDER BY detected_at DESC LIMIT 3`, [req.params.id, req.tenant_id]);
       psigs.forEach(s => { if (s.title) parts.push(s.title + (s.description ? ': ' + s.description.slice(0, 200) : '')); });
 
       if (parts.join(' ').length > 10 && process.env.QDRANT_URL) {
@@ -3148,7 +3188,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
           qReq.write(body);
           qReq.end();
         });
-        await pool.query('UPDATE people SET embedded_at = NOW() WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
+        await db.query('UPDATE people SET embedded_at = NOW() WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
         enrichResults.embedding = { message: 'Re-embedded with enriched data' };
       } else {
         enrichResults.embedding = { message: 'Insufficient data for embedding' };
@@ -3159,7 +3199,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 
     // 6. Gmail re-link — match unlinked interactions to this person by email/alt_emails
     try {
-      const { rows: [freshPerson] } = await pool.query(
+      const { rows: [freshPerson] } = await db.query(
         'SELECT email, email_alt FROM people WHERE id = $1 AND tenant_id = $2',
         [req.params.id, req.tenant_id]
       );
@@ -3169,7 +3209,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
       ].filter(Boolean).map(e => e.toLowerCase().trim());
 
       if (emailList.length > 0) {
-        const { rows: unlinked } = await pool.query(`
+        const { rows: unlinked } = await db.query(`
           SELECT id FROM interactions
           WHERE person_id IS NULL
             AND tenant_id = $1
@@ -3179,7 +3219,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 
         if (unlinked.length > 0) {
           const ids = unlinked.map(r => r.id);
-          await pool.query(
+          await db.query(
             'UPDATE interactions SET person_id = $1 WHERE id = ANY($2) AND tenant_id = $3',
             [req.params.id, ids, req.tenant_id]
           );
@@ -3205,17 +3245,18 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 // ─── Reconcile Account → Company (create companies record for unlinked clients) ───
 app.post('/api/clients/:id/reconcile', authenticateToken, async (req, res) => {
   try {
-    const { rows: [client] } = await pool.query('SELECT * FROM accounts WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [client] } = await db.query('SELECT * FROM accounts WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
     // Already linked?
     if (client.company_id) {
-      const { rows: [co] } = await pool.query('SELECT id, name FROM companies WHERE id = $1 AND tenant_id = $2', [client.company_id, req.tenant_id]);
+      const { rows: [co] } = await db.query('SELECT id, name FROM companies WHERE id = $1 AND tenant_id = $2', [client.company_id, req.tenant_id]);
       if (co) return res.json({ company_id: co.id, message: 'Already linked', company_name: co.name });
     }
 
     // Check if a companies record already exists by name
-    let { rows: [existing] } = await pool.query(
+    let { rows: [existing] } = await db.query(
       'SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1', [client.name, req.tenant_id]
     );
 
@@ -3224,7 +3265,7 @@ app.post('/api/clients/:id/reconcile', authenticateToken, async (req, res) => {
       companyId = existing.id;
     } else {
       // Create a new companies record from the client
-      const { rows: [newCo] } = await pool.query(`
+      const { rows: [newCo] } = await db.query(`
         INSERT INTO companies (name, is_client, created_at, updated_at, tenant_id)
         VALUES ($1, true, NOW(), NOW(), $2)
         RETURNING id
@@ -3233,10 +3274,10 @@ app.post('/api/clients/:id/reconcile', authenticateToken, async (req, res) => {
     }
 
     // Link client to company
-    await pool.query('UPDATE accounts SET company_id = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3', [companyId, client.id, req.tenant_id]);
+    await db.query('UPDATE accounts SET company_id = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3', [companyId, client.id, req.tenant_id]);
 
     // Also link any people whose current_company_name matches
-    const { rowCount: linkedPeople } = await pool.query(`
+    const { rowCount: linkedPeople } = await db.query(`
       UPDATE people SET current_company_id = $1, updated_at = NOW()
       WHERE current_company_name ILIKE $2 AND (current_company_id IS NULL OR current_company_id != $1) AND tenant_id = $3
     `, [companyId, client.name, req.tenant_id]);
@@ -3251,7 +3292,8 @@ app.post('/api/clients/:id/reconcile', authenticateToken, async (req, res) => {
 // ─── Bulk reconcile all unlinked accounts ───
 app.post('/api/clients/reconcile-all', authenticateToken, async (req, res) => {
   try {
-    const { rows: unlinked } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows: unlinked } = await db.query(`
       SELECT cl.id, cl.name FROM accounts cl
       WHERE cl.company_id IS NULL AND cl.tenant_id = $1
       ORDER BY cl.name
@@ -3260,7 +3302,7 @@ app.post('/api/clients/reconcile-all', authenticateToken, async (req, res) => {
     let created = 0, linked = 0, errors = 0;
     for (const client of unlinked) {
       try {
-        let { rows: [existing] } = await pool.query(
+        let { rows: [existing] } = await db.query(
           'SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1', [client.name, req.tenant_id]
         );
 
@@ -3269,7 +3311,7 @@ app.post('/api/clients/reconcile-all', authenticateToken, async (req, res) => {
           companyId = existing.id;
           linked++;
         } else {
-          const { rows: [newCo] } = await pool.query(
+          const { rows: [newCo] } = await db.query(
             `INSERT INTO companies (name, is_client, created_at, updated_at, tenant_id) VALUES ($1, true, NOW(), NOW(), $2) RETURNING id`,
             [client.name, req.tenant_id]
           );
@@ -3277,8 +3319,8 @@ app.post('/api/clients/reconcile-all', authenticateToken, async (req, res) => {
           created++;
         }
 
-        await pool.query('UPDATE accounts SET company_id = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3', [companyId, client.id, req.tenant_id]);
-        await pool.query(`
+        await db.query('UPDATE accounts SET company_id = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3', [companyId, client.id, req.tenant_id]);
+        await db.query(`
           UPDATE people SET current_company_id = $1, updated_at = NOW()
           WHERE current_company_name ILIKE $2 AND (current_company_id IS NULL OR current_company_id != $1) AND tenant_id = $3
         `, [companyId, client.name, req.tenant_id]);
@@ -3294,7 +3336,8 @@ app.post('/api/clients/reconcile-all', authenticateToken, async (req, res) => {
 // ─── Company Enrichment ───
 app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
   try {
-    const { rows: [company] } = await pool.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [company] } = await db.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
     if (!company) return res.status(404).json({ error: 'Company not found' });
 
     const enrichResults = {};
@@ -3332,7 +3375,7 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
           if (Object.keys(updates).length > 0) {
             const setClauses = Object.entries(updates).map(([k, v], i) => `${k} = $${i + 2}`);
             const coUpdateVals = Object.values(updates);
-            await pool.query(`UPDATE companies SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = $1 AND tenant_id = $${coUpdateVals.length + 2}`,
+            await db.query(`UPDATE companies SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = $1 AND tenant_id = $${coUpdateVals.length + 2}`,
               [req.params.id, ...coUpdateVals, req.tenant_id]);
             enrichResults.ezekia = { updated_fields: Object.keys(updates), ezekia_id: ezekiaCompany.id };
           } else {
@@ -3399,11 +3442,11 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
 
             let linked = 0;
             for (const [email, name] of discoveredContacts) {
-              const { rows: exists } = await pool.query('SELECT id FROM people WHERE email = $1 AND tenant_id = $2', [email, req.tenant_id]);
+              const { rows: exists } = await db.query('SELECT id FROM people WHERE email = $1 AND tenant_id = $2', [email, req.tenant_id]);
               if (exists.length) {
-                await pool.query('UPDATE people SET current_company_id = $1, current_company_name = $2, updated_at = NOW() WHERE id = $3 AND (current_company_id IS NULL OR current_company_id != $1)', [req.params.id, company.name, exists[0].id]);
+                await db.query('UPDATE people SET current_company_id = $1, current_company_name = $2, updated_at = NOW() WHERE id = $3 AND (current_company_id IS NULL OR current_company_id != $1)', [req.params.id, company.name, exists[0].id]);
               } else {
-                await pool.query('INSERT INTO people (full_name, email, current_company_id, current_company_name, source, created_by, tenant_id, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW())',
+                await db.query('INSERT INTO people (full_name, email, current_company_id, current_company_name, source, created_by, tenant_id, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW())',
                   [name, email, req.params.id, company.name, 'gmail_discovery', req.user?.user_id || null, req.tenant_id]);
               }
               linked++;
@@ -3416,12 +3459,12 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
 
     // 2. Conversion history from account record
     try {
-      const { rows: [clientRecord] } = await pool.query(
+      const { rows: [clientRecord] } = await db.query(
         'SELECT cl.id, cl.relationship_status, cl.relationship_tier FROM accounts cl WHERE cl.company_id = $1 AND cl.tenant_id = $2 LIMIT 1',
         [req.params.id, req.tenant_id]
       );
       if (clientRecord) {
-        const { rows: placements } = await pool.query(
+        const { rows: placements } = await db.query(
           `SELECT p.role_title, p.start_date, p.placement_fee, p.currency, pe.full_name
            FROM conversions p
            LEFT JOIN people pe ON pe.id = p.person_id
@@ -3429,7 +3472,7 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
           [clientRecord.id, req.tenant_id]
         );
         // Mark as client in companies table
-        await pool.query('UPDATE companies SET is_client = true, updated_at = NOW() WHERE id = $1 AND (is_client IS NULL OR is_client = false) AND tenant_id = $2', [req.params.id, req.tenant_id]);
+        await db.query('UPDATE companies SET is_client = true, updated_at = NOW() WHERE id = $1 AND (is_client IS NULL OR is_client = false) AND tenant_id = $2', [req.params.id, req.tenant_id]);
         enrichResults.client = {
           status: clientRecord.relationship_status,
           tier: clientRecord.relationship_tier,
@@ -3445,7 +3488,7 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
 
     // 3. Link unlinked people to this company (exact name match only)
     try {
-      const { rowCount: linked } = await pool.query(
+      const { rowCount: linked } = await db.query(
         `UPDATE people SET current_company_id = $1, updated_at = NOW()
          WHERE LOWER(TRIM(current_company_name)) = LOWER(TRIM($2))
            AND (current_company_id IS NULL OR current_company_id != $1)
@@ -3453,14 +3496,14 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
         [req.params.id, company.name, req.tenant_id]
       );
       // Also try account names
-      const { rows: accountNames } = await pool.query(
+      const { rows: accountNames } = await db.query(
         'SELECT DISTINCT name FROM accounts WHERE company_id = $1 AND tenant_id = $2',
         [req.params.id, req.tenant_id]
       );
       let extraLinked = 0;
       for (const an of accountNames) {
         if (an.name.toLowerCase() !== company.name.toLowerCase()) {
-          const { rowCount } = await pool.query(
+          const { rowCount } = await db.query(
             `UPDATE people SET current_company_id = $1, updated_at = NOW()
              WHERE LOWER(TRIM(current_company_name)) = LOWER(TRIM($2))
                AND (current_company_id IS NULL OR current_company_id != $1)
@@ -3475,7 +3518,7 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
 
     // 4. People at this company
     try {
-      const { rows: people } = await pool.query(
+      const { rows: people } = await db.query(
         `SELECT full_name, current_title, email FROM people WHERE current_company_id = $1 AND tenant_id = $2 ORDER BY current_title LIMIT 20`,
         [req.params.id, req.tenant_id]
       );
@@ -3541,13 +3584,13 @@ Only include genuine business signals. Ignore opinion pieces, listicles, or gene
             if (!headlineItem) continue;
 
             // Check for duplicate signal
-            const { rows: existing } = await pool.query(
+            const { rows: existing } = await db.query(
               `SELECT id FROM signal_events WHERE company_id = $1 AND signal_type = $2 AND evidence_summary ILIKE $3 AND tenant_id = $4 LIMIT 1`,
               [req.params.id, sig.signal_type, `%${sig.evidence_summary.slice(0, 50)}%`, req.tenant_id]
             );
             if (existing.length) continue;
 
-            await pool.query(`
+            await db.query(`
               INSERT INTO signal_events (signal_type, company_id, company_name, confidence_score,
                 evidence_summary, source_url, detected_at, signal_date, tenant_id)
               VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8)
@@ -3569,9 +3612,9 @@ Only include genuine business signals. Ignore opinion pieces, listicles, or gene
       let newsIngested = 0;
       for (const item of newsItems) {
         const sourceUrlHash = require('crypto').createHash('md5').update(item.link).digest('hex');
-        const { rows: exists } = await pool.query('SELECT id FROM external_documents WHERE source_url_hash = $1 AND tenant_id = $2', [sourceUrlHash, req.tenant_id]);
+        const { rows: exists } = await db.query('SELECT id FROM external_documents WHERE source_url_hash = $1 AND tenant_id = $2', [sourceUrlHash, req.tenant_id]);
         if (exists.length) continue;
-        await pool.query(`
+        await db.query(`
           INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash,
             tenant_id, uploaded_by_user_id, published_at, processing_status, created_at)
           VALUES ($1, $2, $3, 'news_enrich', $4, $5, $6, $7, $8, 'processed', NOW())
@@ -3598,13 +3641,13 @@ Only include genuine business signals. Ignore opinion pieces, listicles, or gene
 
     // 4. Re-embed with all enriched data
     try {
-      const { rows: [latest] } = await pool.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
+      const { rows: [latest] } = await db.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
       const parts = [latest.name, latest.sector, latest.geography, latest.description, latest.domain].filter(Boolean);
 
-      const { rows: signals } = await pool.query(`SELECT evidence_summary FROM signal_events WHERE company_id = $1 AND evidence_summary IS NOT NULL AND tenant_id = $2 ORDER BY detected_at DESC LIMIT 5`, [req.params.id, req.tenant_id]);
+      const { rows: signals } = await db.query(`SELECT evidence_summary FROM signal_events WHERE company_id = $1 AND evidence_summary IS NOT NULL AND tenant_id = $2 ORDER BY detected_at DESC LIMIT 5`, [req.params.id, req.tenant_id]);
       signals.forEach(s => parts.push(s.evidence_summary));
 
-      const { rows: people } = await pool.query(`SELECT full_name, current_title FROM people WHERE current_company_id = $1 AND current_title IS NOT NULL AND tenant_id = $2 LIMIT 10`, [req.params.id, req.tenant_id]);
+      const { rows: people } = await db.query(`SELECT full_name, current_title FROM people WHERE current_company_id = $1 AND current_title IS NOT NULL AND tenant_id = $2 LIMIT 10`, [req.params.id, req.tenant_id]);
       if (people.length) parts.push('Key people: ' + people.map(p => `${p.full_name} — ${p.current_title}`).join(', '));
 
       if (parts.join(' ').length > 10 && process.env.QDRANT_URL) {
@@ -3618,7 +3661,7 @@ Only include genuine business signals. Ignore opinion pieces, listicles, or gene
           qReq.write(body);
           qReq.end();
         });
-        await pool.query('UPDATE companies SET embedded_at = NOW() WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
+        await db.query('UPDATE companies SET embedded_at = NOW() WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
         enrichResults.embedding = { message: 'Re-embedded successfully' };
       }
     } catch (e) {
@@ -3629,7 +3672,7 @@ Only include genuine business signals. Ignore opinion pieces, listicles, or gene
     if (enrichResults.ezekia?.ezekia_id && process.env.EZEKIA_API_TOKEN) {
       try {
         const ezekia = require('./lib/ezekia');
-        const { rows: recentSignals } = await pool.query(`
+        const { rows: recentSignals } = await db.query(`
           SELECT signal_type, evidence_summary, detected_at, confidence_score
           FROM signal_events WHERE company_id = $1 AND detected_at > NOW() - INTERVAL '30 days'
           ORDER BY detected_at DESC LIMIT 5
@@ -3663,6 +3706,7 @@ Only include genuine business signals. Ignore opinion pieces, listicles, or gene
 
 app.get('/api/companies', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     const offset = parseInt(req.query.offset) || 0;
     const q = req.query.q;
@@ -3683,7 +3727,7 @@ app.get('/api/companies', authenticateToken, async (req, res) => {
       const clOffsetIdx = clIdx;
 
       const [clientsResult, clientCountResult] = await Promise.all([
-        pool.query(`
+        db.query(`
           SELECT cl.id, cl.name, cl.company_id,
                  cl.relationship_status, cl.relationship_tier,
                  co.sector, co.geography, co.domain, co.employee_count_band, co.description,
@@ -3699,7 +3743,7 @@ app.get('/api/companies', authenticateToken, async (req, res) => {
           ORDER BY COALESCE(cf.total_invoiced, 0) DESC, cl.name
           LIMIT $${clLimitIdx} OFFSET $${clOffsetIdx}
         `, clParams),
-        pool.query(`SELECT COUNT(*) AS cnt FROM accounts cl ${clWhere}`, clParams.slice(0, -2)),
+        db.query(`SELECT COUNT(*) AS cnt FROM accounts cl ${clWhere}`, clParams.slice(0, -2)),
       ]);
 
       return res.json({
@@ -3755,7 +3799,7 @@ app.get('/api/companies', authenticateToken, async (req, res) => {
     const offsetIdx = paramIdx;
 
     const [companiesResult, countResult] = await Promise.all([
-      pool.query(`
+      db.query(`
         SELECT c.id, c.name, c.sector, c.geography, c.domain, c.is_client,
                c.employee_count_band, c.description,
                (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.tenant_id = $1) AS signal_count,
@@ -3785,7 +3829,7 @@ app.get('/api/companies', authenticateToken, async (req, res) => {
           c.name
         LIMIT $${limitIdx} OFFSET $${offsetIdx}
       `, params),
-      pool.query(`SELECT COUNT(*) AS cnt FROM companies c ${where}`, params.slice(0, -2)),
+      db.query(`SELECT COUNT(*) AS cnt FROM companies c ${where}`, params.slice(0, -2)),
     ]);
 
     res.json({
@@ -3802,17 +3846,18 @@ app.get('/api/companies', authenticateToken, async (req, res) => {
 
 app.get('/api/companies/:id', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     let company = null;
     let companyId = req.params.id;
     let clientRecord = null;
 
     // Try companies table first
-    const { rows: [co] } = await pool.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [companyId, req.tenant_id]);
+    const { rows: [co] } = await db.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [companyId, req.tenant_id]);
     if (co) {
       company = co;
     } else {
       // Maybe it's a clients table ID — resolve it
-      const { rows: [cl] } = await pool.query(`
+      const { rows: [cl] } = await db.query(`
         SELECT cl.*, co.id AS resolved_company_id,
                co.sector, co.geography, co.domain, co.employee_count_band,
                co.description AS company_description, co.is_client AS co_is_client
@@ -3822,7 +3867,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
       `, [companyId, req.tenant_id]);
       if (cl && cl.resolved_company_id) {
         // Client has a linked company — use that
-        const { rows: [linked] } = await pool.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [cl.resolved_company_id, req.tenant_id]);
+        const { rows: [linked] } = await db.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [cl.resolved_company_id, req.tenant_id]);
         company = linked;
         companyId = cl.resolved_company_id;
         clientRecord = cl;
@@ -3847,7 +3892,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
     // Get client financials if available
     let financials = null;
     try {
-      const { rows: [cf] } = await pool.query(`
+      const { rows: [cf] } = await db.query(`
         SELECT cf.* FROM account_financials cf
         JOIN accounts cl ON cf.client_id = cl.id
         WHERE (cl.company_id = $1 OR cl.id = $1) AND cf.tenant_id = $2
@@ -3856,7 +3901,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
     } catch (e) {}
 
     // Signals
-    const { rows: signals } = await pool.query(`
+    const { rows: signals } = await db.query(`
       SELECT se.id, se.signal_type, se.confidence_score, se.evidence_summary,
              se.evidence_snippet, se.detected_at, se.triage_status, se.signal_category,
              se.hiring_implications, se.source_url,
@@ -3868,7 +3913,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
     `, [companyId, req.tenant_id]);
 
     // People at this company — ordered by engagement level
-    const { rows: people } = await pool.query(`
+    const { rows: people } = await db.query(`
       SELECT p.id, p.full_name, p.current_title, p.seniority_level, p.location,
              p.expertise_tags, p.linkedin_url, p.email, p.source,
              COALESCE(ix.cnt, 0) AS interaction_count,
@@ -3905,7 +3950,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
     let placements = [];
     try {
       const companyName = company.name || '';
-      const { rows } = await pool.query(`
+      const { rows } = await db.query(`
         SELECT pl.id, COALESCE(pe.full_name, pl.consultant_name) AS candidate_name,
                pl.role_title, pl.start_date, pl.placement_fee, pl.fee_category,
                pl.invoice_number, pl.payment_status
@@ -3929,7 +3974,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
       // For longer names, use ILIKE title search as well
       let rows;
       if (company.name.length <= 3) {
-        ({ rows } = await pool.query(`
+        ({ rows } = await db.query(`
           SELECT DISTINCT ed.id, ed.title, ed.source_name, ed.source_type, ed.source_url, ed.published_at
           FROM external_documents ed
           JOIN document_companies dc ON dc.document_id = ed.id
@@ -3940,7 +3985,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
         const namePattern = company.name.length <= 5
           ? '% ' + company.name + ' %'
           : '%' + company.name + '%';
-        ({ rows } = await pool.query(`
+        ({ rows } = await db.query(`
           SELECT DISTINCT ed.id, ed.title, ed.source_name, ed.source_type, ed.source_url, ed.published_at
           FROM external_documents ed
           LEFT JOIN document_companies dc ON dc.document_id = ed.id
@@ -3954,7 +3999,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
     // Pipeline — opportunities + candidate counts for this company
     let opportunities = [];
     try {
-      const { rows } = await pool.query(`
+      const { rows } = await db.query(`
         SELECT o.id, o.title, o.status, o.seniority_level,
                (SELECT COUNT(*) FROM pipeline_contacts pc WHERE pc.search_id = o.id) as candidate_count
         FROM opportunities o
@@ -3969,7 +4014,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
     // Total pipeline candidates across all opportunities
     let pipelineTotal = 0;
     try {
-      const { rows: [{ cnt }] } = await pool.query(`
+      const { rows: [{ cnt }] } = await db.query(`
         SELECT COUNT(DISTINCT pc.person_id) as cnt
         FROM pipeline_contacts pc
         JOIN opportunities o ON o.id = pc.search_id
@@ -3983,7 +4028,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
     // Case studies where this company was the client
     let case_studies = [];
     try {
-      const { rows } = await pool.query(`
+      const { rows } = await db.query(`
         SELECT id, title, role_title, engagement_type, seniority_level, year,
                challenge, approach, outcome, themes, capabilities, status, visibility
         FROM case_studies
@@ -3996,7 +4041,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
     // Interaction summary — relationship activity across people at this company
     let interaction_summary = null;
     try {
-      const { rows: [is] } = await pool.query(`
+      const { rows: [is] } = await db.query(`
         SELECT
           COUNT(i.id) as total_interactions,
           COUNT(DISTINCT i.person_id) as contacts_engaged,
@@ -4098,16 +4143,17 @@ async function qdrantSearch(collection, vector, limit = 20, filter = null) {
 // Company visibility toggle
 app.patch('/api/companies/:id/visibility', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { visibility } = req.body;
     if (!visibility || !['company', 'private', 'internal'].includes(visibility)) return res.status(400).json({ error: 'visibility must be "company" or "private"' });
 
-    const { rows: [co] } = await pool.query('SELECT id, visibility, owner_user_id FROM companies WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
+    const { rows: [co] } = await db.query('SELECT id, visibility, owner_user_id FROM companies WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
     if (!co) return res.status(404).json({ error: 'Company not found' });
     if (co.visibility === 'private' && co.owner_user_id && co.owner_user_id !== req.user.user_id && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Only the owner can change private companies' });
     }
 
-    await pool.query(
+    await db.query(
       `UPDATE companies SET visibility = $1, owner_user_id = CASE WHEN $1 = 'private' THEN $2 ELSE owner_user_id END WHERE id = $3 AND tenant_id = $4`,
       [visibility, req.user.user_id, req.params.id, req.tenant_id]
     );
@@ -4118,16 +4164,17 @@ app.patch('/api/companies/:id/visibility', authenticateToken, async (req, res) =
 // Signal visibility toggle
 app.patch('/api/signals/:id/visibility', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { visibility } = req.body;
     if (!visibility || !['company', 'private', 'internal'].includes(visibility)) return res.status(400).json({ error: 'visibility must be "company" or "private"' });
 
-    const { rows: [sig] } = await pool.query('SELECT id, visibility, owner_user_id FROM signal_events WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
+    const { rows: [sig] } = await db.query('SELECT id, visibility, owner_user_id FROM signal_events WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
     if (!sig) return res.status(404).json({ error: 'Signal not found' });
     if (sig.visibility === 'private' && sig.owner_user_id && sig.owner_user_id !== req.user.user_id && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Only the owner can change private signals' });
     }
 
-    await pool.query(
+    await db.query(
       `UPDATE signal_events SET visibility = $1, owner_user_id = CASE WHEN $1 = 'private' THEN $2 ELSE owner_user_id END WHERE id = $3 AND tenant_id = $4`,
       [visibility, req.user.user_id, req.params.id, req.tenant_id]
     );
@@ -4137,6 +4184,7 @@ app.patch('/api/signals/:id/visibility', authenticateToken, async (req, res) => 
 
 app.get('/api/search', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const q = req.query.q;
     const collection = req.query.collection || 'all'; // people, documents, all
     const limit = Math.min(parseInt(req.query.limit) || 20, 50);
@@ -4164,7 +4212,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
         }).filter(Boolean);
 
         if (personIds.length > 0) {
-        const { rows: people } = await pool.query(`
+        const { rows: people } = await db.query(`
           SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.headline,
                  p.location, p.seniority_level, p.expertise_tags, p.industries, p.source,
                  p.email, p.linkedin_url, p.current_company_id,
@@ -4206,7 +4254,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
       // SQL fallback: exact name match (catches people that Qdrant missed or ranked low)
       const existingIds = new Set(results.people.map(p => p.id));
-      const { rows: nameFallback } = await pool.query(`
+      const { rows: nameFallback } = await db.query(`
         SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.headline,
                p.location, p.seniority_level, p.source, p.email, p.linkedin_url, p.current_company_id,
                c.is_client AS at_client_company
@@ -4237,7 +4285,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
         if (compIds.length === 0) {
           // No valid UUIDs — skip
         } else {
-        const { rows: companies } = await pool.query(`
+        const { rows: companies } = await db.query(`
           SELECT c.id, c.name, c.sector, c.geography, c.domain, c.is_client,
                  c.employee_count_band, c.description,
                  (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.tenant_id = $2) AS signal_count,
@@ -4286,7 +4334,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
         }).filter(Boolean);
 
         if (docIds.length > 0) {
-        const { rows: docs } = await pool.query(`
+        const { rows: docs } = await db.query(`
           SELECT id, title, source_type, source_name, source_url, author, published_at
           FROM external_documents WHERE id = ANY($1::uuid[]) AND tenant_id = $2
         `, [docIds, req.tenant_id]);
@@ -4316,7 +4364,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
         if (qdrantResults.length > 0) {
           const sigIds = qdrantResults.map(r => r.payload?.signal_id).filter(Boolean);
           if (sigIds.length > 0) {
-            const { rows: signals } = await pool.query(`
+            const { rows: signals } = await db.query(`
               SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
                      se.evidence_summary, se.detected_at, c.sector, c.geography, c.is_client,
                      (SELECT COUNT(DISTINCT tp.person_id) FROM team_proximity tp
@@ -4353,7 +4401,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
             // IDs are numeric timestamps — case_study_id is in the payload
             const csIds = qdrantResults.map(r => r.payload?.case_study_id).filter(Boolean);
             if (csIds.length > 0) {
-              const { rows } = await pool.query(`
+              const { rows } = await db.query(`
                 SELECT id, title, client_name, role_title, sector, geography, year,
                        challenge, engagement_type, themes, capabilities
                 FROM case_studies WHERE id = ANY($1::uuid[]) AND tenant_id = $2
@@ -4370,7 +4418,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
         // Fallback to SQL text search
         if (csResults.length < 3) {
-          const { rows } = await pool.query(`
+          const { rows } = await db.query(`
             SELECT id, title, client_name, role_title, sector, geography, year,
                    challenge, engagement_type, themes, capabilities
             FROM case_studies
@@ -4392,7 +4440,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
         if (qdrantResults.length > 0) {
           const intIds = qdrantResults.map(r => r.payload?.interaction_id).filter(Boolean);
           if (intIds.length > 0) {
-            const { rows: interactions } = await pool.query(`
+            const { rows: interactions } = await db.query(`
               SELECT i.id, i.interaction_type, i.subject, i.summary, i.interaction_at, i.direction,
                      p.full_name as person_name, p.current_title
               FROM interactions i
@@ -4439,7 +4487,8 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 // Search index status
 app.get('/api/search/index-status', authenticateToken, async (req, res) => {
   try {
-    const { rows: [counts] } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [counts] } = await db.query(`
       SELECT
         (SELECT COUNT(*) FROM people WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS people,
         (SELECT COUNT(*) FROM companies WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS companies,
@@ -4468,6 +4517,7 @@ app.get('/api/search/index-status', authenticateToken, async (req, res) => {
 
 app.get('/api/documents', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const offset = parseInt(req.query.offset) || 0;
     const sourceType = req.query.source_type;
@@ -4496,7 +4546,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
     paramIdx++;
     params.push(offset);
 
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT id, title, source_type, source_name, source_url, author,
              published_at, processing_status, embedded_at IS NOT NULL AS is_embedded,
              visibility, owner_user_id, uploaded_by_user_id
@@ -4507,7 +4557,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
     `, params);
 
     const countParams = params.slice(0, -2); // everything except limit/offset
-    const { rows: [{ cnt }] } = await pool.query(
+    const { rows: [{ cnt }] } = await db.query(
       `SELECT COUNT(*) AS cnt FROM external_documents ${where}`,
       countParams
     );
@@ -4521,7 +4571,8 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
 
 app.get('/api/documents/sources', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT rs.id, rs.name, rs.source_type, rs.url, rs.enabled,
              rs.last_fetched_at, rs.last_error, rs.consecutive_errors,
              (SELECT COUNT(*) FROM external_documents ed WHERE ed.source_id = rs.id AND ed.tenant_id = $1) AS doc_count
@@ -4538,12 +4589,13 @@ app.get('/api/documents/sources', authenticateToken, async (req, res) => {
 // Document privacy toggle
 app.patch('/api/documents/:id/visibility', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { visibility } = req.body; // 'company' or 'private'
     if (!visibility || !['company', 'private', 'internal'].includes(visibility)) {
       return res.status(400).json({ error: 'visibility must be "company" or "private"' });
     }
 
-    const { rows: [doc] } = await pool.query(
+    const { rows: [doc] } = await db.query(
       'SELECT id, visibility, owner_user_id FROM external_documents WHERE id = $1 AND tenant_id = $2',
       [req.params.id, req.tenant_id]
     );
@@ -4554,7 +4606,7 @@ app.patch('/api/documents/:id/visibility', authenticateToken, async (req, res) =
       return res.status(403).json({ error: 'Only the owner can change visibility of private documents' });
     }
 
-    await pool.query(`
+    await db.query(`
       UPDATE external_documents
       SET visibility = $1,
           owner_user_id = CASE WHEN $1 = 'private' THEN $2 ELSE owner_user_id END
@@ -4570,6 +4622,7 @@ app.patch('/api/documents/:id/visibility', authenticateToken, async (req, res) =
 // Also update Drive ingest to set uploaded_by
 app.patch('/api/documents/:id', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const allowed = ['title', 'visibility', 'summary'];
     const updates = [];
     const params = [req.params.id, req.tenant_id];
@@ -4586,7 +4639,7 @@ app.patch('/api/documents/:id', authenticateToken, async (req, res) => {
       params.push(req.user.user_id);
     }
     if (updates.length === 0) return res.json({ ok: true });
-    await pool.query(`UPDATE external_documents SET ${updates.join(', ')} WHERE id = $1 AND tenant_id = $2`, params);
+    await db.query(`UPDATE external_documents SET ${updates.join(', ')} WHERE id = $1 AND tenant_id = $2`, params);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -4599,6 +4652,7 @@ app.patch('/api/documents/:id', authenticateToken, async (req, res) => {
 
 app.get('/api/grabs', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const limit = Math.min(parseInt(req.query.limit) || 10, 50);
     const type = req.query.type; // macro, regional, sector, talent, contrarian
     const status = req.query.status || 'draft';
@@ -4627,7 +4681,7 @@ app.get('/api/grabs', authenticateToken, async (req, res) => {
 
     idx++; params.push(limit);
 
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT sg.* FROM signal_grabs sg ${where}
       ORDER BY sg.created_at DESC LIMIT $${idx}
     `, params);
@@ -4640,7 +4694,8 @@ app.get('/api/grabs', authenticateToken, async (req, res) => {
 
 app.get('/api/grabs/:id', authenticateToken, async (req, res) => {
   try {
-    const { rows: [grab] } = await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [grab] } = await db.query(
       'SELECT * FROM signal_grabs WHERE id = $1 AND tenant_id = $2',
       [req.params.id, req.tenant_id]
     );
@@ -4651,9 +4706,10 @@ app.get('/api/grabs/:id', authenticateToken, async (req, res) => {
 
 app.post('/api/grabs/generate', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { execSync } = require('child_process');
     execSync('node scripts/compute_signal_grabs.js', { timeout: 120000, stdio: 'pipe' });
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       "SELECT * FROM signal_grabs WHERE tenant_id = $1 AND created_at > NOW() - INTERVAL '5 minutes' ORDER BY created_at DESC",
       [req.tenant_id]
     );
@@ -4663,9 +4719,10 @@ app.post('/api/grabs/generate', authenticateToken, async (req, res) => {
 
 app.patch('/api/grabs/:id', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { status } = req.body;
     if (status) {
-      await pool.query(
+      await db.query(
         'UPDATE signal_grabs SET status = $1, published_at = CASE WHEN $1 = \'published\' THEN NOW() ELSE published_at END WHERE id = $2 AND tenant_id = $3',
         [status, req.params.id, req.tenant_id]
       );
@@ -4676,15 +4733,16 @@ app.patch('/api/grabs/:id', authenticateToken, async (req, res) => {
 
 app.get('/api/grabs/weekly', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     // Get the most recent weekly wrap
-    const { rows: [wrap] } = await pool.query(`
+    const { rows: [wrap] } = await db.query(`
       SELECT * FROM signal_grabs
       WHERE tenant_id = $1 AND cluster_type = 'weekly_wrap'
       ORDER BY created_at DESC LIMIT 1
     `, [req.tenant_id]);
 
     // Also get the top 5 daily grabs from the week
-    const { rows: topGrabs } = await pool.query(`
+    const { rows: topGrabs } = await db.query(`
       SELECT * FROM signal_grabs
       WHERE tenant_id = $1 AND cluster_type != 'weekly_wrap' AND created_at > NOW() - INTERVAL '7 days'
       ORDER BY grab_score DESC LIMIT 5
@@ -4715,7 +4773,7 @@ app.get('/api/public/stats', async (req, res) => {
     }
 
     const tid = process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
-    const { rows: [s] } = await pool.query(`
+    const { rows: [s] } = await platformPool.query(`
       SELECT
         (SELECT COUNT(*) FROM people WHERE tenant_id = $1) as people,
         (SELECT COUNT(*) FROM companies WHERE tenant_id = $1 AND (sector IS NOT NULL OR is_client = true OR domain IS NOT NULL)) as companies,
@@ -4774,7 +4832,7 @@ app.post('/api/waitlist', async (req, res) => {
     const { name, email, company } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
 
-    await pool.query(
+    await platformPool.query(
       `INSERT INTO waitlist (name, email, company, created_at)
        VALUES ($1, $2, $3, NOW())
        ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, company = EXCLUDED.company, updated_at = NOW()`,
@@ -4792,11 +4850,12 @@ app.post('/api/waitlist', async (req, res) => {
 // Waitlist admin — requires admin role
 app.get('/api/admin/waitlist', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(
       `SELECT id, name, email, company, status, notes, created_at, updated_at
        FROM waitlist ORDER BY created_at DESC`
     );
-    const { rows: [counts] } = await pool.query(
+    const { rows: [counts] } = await db.query(
       `SELECT
          COUNT(*) as total,
          COUNT(*) FILTER (WHERE status = 'pending') as pending,
@@ -4815,6 +4874,7 @@ app.get('/api/admin/waitlist', authenticateToken, requireAdmin, async (req, res)
 
 app.patch('/api/admin/waitlist/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { status, notes } = req.body;
     const allowed = ['pending', 'approved', 'declined', 'contacted'];
     if (status && !allowed.includes(status)) return res.status(400).json({ error: 'Invalid status' });
@@ -4827,7 +4887,7 @@ app.patch('/api/admin/waitlist/:id', authenticateToken, requireAdmin, async (req
     sets.push(`updated_at = NOW()`);
     vals.push(req.params.id);
 
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `UPDATE waitlist SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
       vals
     );
@@ -4844,7 +4904,8 @@ app.patch('/api/admin/waitlist/:id', authenticateToken, requireAdmin, async (req
 
 app.delete('/api/admin/waitlist/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { rowCount } = await pool.query('DELETE FROM waitlist WHERE id = $1', [req.params.id]);
+    const db = new TenantDB(req.tenant_id);
+    const { rowCount } = await db.query('DELETE FROM waitlist WHERE id = $1', [req.params.id]);
     if (!rowCount) return res.status(404).json({ error: 'Not found' });
     res.json({ ok: true });
   } catch (err) {
@@ -4925,7 +4986,7 @@ app.get('/api/public/grabs', ...publicEmbed, async (req, res) => {
 
     idx++; params.push(limit);
 
-    const { rows } = await pool.query(`
+    const { rows } = await platformPool.query(`
       SELECT sg.id, sg.headline, sg.observation, sg.so_what, sg.watch_next,
              sg.evidence, sg.geographies, sg.themes, sg.signal_types,
              sg.cluster_type, sg.published_at, sg.grab_score,
@@ -4937,7 +4998,7 @@ app.get('/api/public/grabs', ...publicEmbed, async (req, res) => {
       LIMIT $${idx}
     `, params);
 
-    const countRes = await pool.query(`SELECT COUNT(*) FROM signal_grabs sg ${where}`, params.slice(0, -1));
+    const countRes = await platformPool.query(`SELECT COUNT(*) FROM signal_grabs sg ${where}`, params.slice(0, -1));
 
     res.json({
       grabs: rows.map(r => stripEmbedFields({ ...r, image_url: r.image_url || null })),
@@ -4960,7 +5021,7 @@ app.get('/api/public/weekly', ...publicEmbed, async (req, res) => {
     if (week) { idx++; where += ` AND sg.digest_week = $${idx}`; params.push(week); }
     if (region) { idx++; where += ` AND $${idx} = ANY(sg.geographies)`; params.push(region); }
 
-    const { rows } = await pool.query(`
+    const { rows } = await platformPool.query(`
       SELECT sg.id, sg.geographies, sg.headline, sg.observation,
              sg.so_what, sg.watch_next, sg.digest_week, sg.published_at, sg.created_at,
              ed.image_url AS image_url
@@ -4995,7 +5056,7 @@ app.get('/api/public/weekly', ...publicEmbed, async (req, res) => {
 // ── 3. GET /api/public/hero — top 3 hero signals, sanitised
 app.get('/api/public/hero', ...publicEmbed, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const { rows } = await platformPool.query(`
       SELECT se.id, se.signal_type, se.company_name, se.evidence_summary,
              se.detected_at, se.image_url, se.source_url,
              c.sector, c.geography,
@@ -5048,7 +5109,7 @@ app.get('/api/public/market-temperature', ...publicEmbed, async (req, res) => {
     const tid = PUBLIC_EMBED_TENANT;
 
     // Signal types by count
-    const { rows: byType } = await pool.query(`
+    const { rows: byType } = await platformPool.query(`
       SELECT se.signal_type, COUNT(*) as cnt
       FROM signal_events se
       WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1
@@ -5056,7 +5117,7 @@ app.get('/api/public/market-temperature', ...publicEmbed, async (req, res) => {
     `, [tid]);
 
     // Regional breakdown
-    const { rows: byRegion } = await pool.query(`
+    const { rows: byRegion } = await platformPool.query(`
       SELECT
         CASE
           WHEN c.geography ILIKE '%Australia%' OR c.country_code = 'AU' THEN 'AU'
@@ -5123,7 +5184,7 @@ app.get('/api/public/events', ...publicEmbed, async (req, res) => {
     const result = {};
 
     for (const region of regions) {
-      const { rows } = await pool.query(`
+      const { rows } = await platformPool.query(`
         SELECT
           id, title AS name, description, event_date, city, country,
           region, theme, event_url AS external_url, relevance_score,
@@ -5139,7 +5200,7 @@ app.get('/api/public/events', ...publicEmbed, async (req, res) => {
     }
 
     // Also get events without region set
-    const { rows: globalRows } = await pool.query(`
+    const { rows: globalRows } = await platformPool.query(`
       SELECT id, title AS name, description, event_date, city, country,
              region, theme, event_url AS external_url, relevance_score
       FROM events
@@ -5168,7 +5229,7 @@ app.get('/api/public/events', ...publicEmbed, async (req, res) => {
 app.get('/api/db-test', async (req, res) => {
   const url = (process.env.DATABASE_URL || '').replace(/:([^@]+)@/, ':***@');
   try {
-    const result = await pool.query('SELECT NOW() as time, current_database() as db');
+    const result = await platformPool.query('SELECT NOW() as time, current_database() as db');
     res.json({ ok: true, url, ...result.rows[0] });
   } catch(e) {
     res.json({ ok: false, url, error: e.message, code: e.code });
@@ -5185,6 +5246,7 @@ app.get('/api/health', (req, res) => {
 // Ranked opportunities — triangulated scores
 app.get('/api/network/opportunities', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const offset = parseInt(req.query.offset) || 0;
     const region = req.query.region;
@@ -5206,7 +5268,7 @@ app.get('/api/network/opportunities', authenticateToken, async (req, res) => {
     idx++; params.push(offset);
 
     const [result, countResult] = await Promise.all([
-      pool.query(`
+      db.query(`
         SELECT ro.*,
                cas.contact_count, cas.senior_contact_count, cas.active_contact_count,
                cas.adjacency_score,
@@ -5218,7 +5280,7 @@ app.get('/api/network/opportunities', authenticateToken, async (req, res) => {
         ORDER BY ro.composite_score DESC
         LIMIT $${idx - 1} OFFSET $${idx}
       `, params),
-      pool.query(`SELECT COUNT(*) AS cnt FROM ranked_opportunities ro ${where}`, params.slice(0, -2))
+      db.query(`SELECT COUNT(*) AS cnt FROM ranked_opportunities ro ${where}`, params.slice(0, -2))
     ]);
 
     res.json({
@@ -5235,9 +5297,10 @@ app.get('/api/network/opportunities', authenticateToken, async (req, res) => {
 // Top opportunities by region
 app.get('/api/network/opportunities/by-region', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const perRegion = Math.min(parseInt(req.query.per_region) || 5, 20);
 
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT ro.*,
              cas.contact_count, cas.senior_contact_count, cas.active_contact_count,
              gp.region_name, gp.weight_boost, gp.is_home_market
@@ -5275,7 +5338,8 @@ app.get('/api/network/opportunities/by-region', authenticateToken, async (req, r
 // Network density scores
 app.get('/api/network/density', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT nds.*, gp.region_name, gp.weight_boost, gp.is_home_market
       FROM network_density_scores nds
       LEFT JOIN geo_priorities gp ON gp.region_code = nds.region_code
@@ -5292,6 +5356,7 @@ app.get('/api/network/density', authenticateToken, async (req, res) => {
 // Full network graph — team nodes, top contacts, client companies, sector clusters
 app.get('/api/network/graph', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const tenantId = req.tenant_id;
     const mode = req.query.mode || 'firm'; // 'firm' or 'signal'
     const signalId = req.query.signal_id;
@@ -5304,10 +5369,10 @@ app.get('/api/network/graph', authenticateToken, async (req, res) => {
     // Firm-wide network graph
     const [teamResult, contactsResult, clientsResult, sectorsResult, signalsResult] = await Promise.all([
       // Team members
-      pool.query(`SELECT id, name, email, role FROM users WHERE tenant_id = $1 ORDER BY name`, [tenantId]),
+      db.query(`SELECT id, name, email, role FROM users WHERE tenant_id = $1 ORDER BY name`, [tenantId]),
 
       // Top contacts by proximity strength (limit to strongest connections)
-      pool.query(`
+      db.query(`
         SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.current_company_id,
                p.seniority_level, p.location,
                tp.team_member_id, tp.relationship_strength, tp.relationship_type,
@@ -5323,7 +5388,7 @@ app.get('/api/network/graph', authenticateToken, async (req, res) => {
       `, [tenantId]),
 
       // Client companies with signal + people counts
-      pool.query(`
+      db.query(`
         SELECT a.id as account_id, a.name, a.relationship_tier, a.company_id,
                c.sector, c.geography,
                (SELECT COUNT(*) FROM people p WHERE p.current_company_id = a.company_id AND p.tenant_id = $1) as people_count,
@@ -5337,7 +5402,7 @@ app.get('/api/network/graph', authenticateToken, async (req, res) => {
       `, [tenantId]),
 
       // Sector clusters (from network density)
-      pool.query(`
+      db.query(`
         SELECT region_code, sector, total_contacts, active_contacts, senior_contacts, density_score
         FROM network_density_scores
         WHERE sector IS NOT NULL AND density_score > 5
@@ -5346,7 +5411,7 @@ app.get('/api/network/graph', authenticateToken, async (req, res) => {
       `),
 
       // Recent high-confidence signals at client companies
-      pool.query(`
+      db.query(`
         SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score, se.detected_at
         FROM signal_events se
         JOIN companies c ON c.id = se.company_id AND c.is_client = true
@@ -5493,6 +5558,7 @@ app.get('/api/network/graph', authenticateToken, async (req, res) => {
 // Manual trigger for topology recompute
 app.post('/api/network/recompute', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { computeNetworkTopology } = require('./scripts/compute_network_topology');
     const { computeTriangulation } = require('./scripts/compute_triangulation');
     res.json({ status: 'started', message: 'Network topology + triangulation recompute triggered' });
@@ -5512,6 +5578,7 @@ app.post('/api/network/recompute', authenticateToken, async (req, res) => {
 // Manual trigger for dispatch generation
 app.post('/api/dispatches/generate', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { generateDispatches } = require('./scripts/generate_dispatches');
     res.json({ status: 'started', message: 'Dispatch generation triggered' });
     generateDispatches().then(r => console.log('Dispatch generation complete:', r)).catch(e => console.error('Dispatch generation failed:', e.message));
@@ -5523,11 +5590,12 @@ app.post('/api/dispatches/generate', authenticateToken, async (req, res) => {
 // Generate dispatch for a specific signal
 app.post('/api/dispatches/generate-for-signal', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { signal_id } = req.body;
     if (!signal_id) return res.status(400).json({ error: 'signal_id required' });
 
     // Check signal exists
-    const { rows: [signal] } = await pool.query(
+    const { rows: [signal] } = await db.query(
       `SELECT id, company_id, company_name, signal_type, evidence_summary, confidence_score, source_url
        FROM signal_events WHERE id = $1 AND tenant_id = $2`,
       [signal_id, req.tenant_id]
@@ -5535,13 +5603,13 @@ app.post('/api/dispatches/generate-for-signal', authenticateToken, async (req, r
     if (!signal) return res.status(404).json({ error: 'Signal not found' });
 
     // Check if dispatch already exists for this signal
-    const { rows: existing } = await pool.query(
+    const { rows: existing } = await db.query(
       `SELECT id FROM signal_dispatches WHERE signal_event_id = $1 LIMIT 1`, [signal_id]
     );
     if (existing.length) return res.json({ dispatch_id: existing[0].id, message: 'Dispatch already exists for this signal' });
 
     // Create a basic dispatch — the generate pipeline will enrich it
-    const { rows: [dispatch] } = await pool.query(`
+    const { rows: [dispatch] } = await db.query(`
       INSERT INTO signal_dispatches (
         signal_event_id, company_id, company_name, signal_type, signal_summary,
         status, created_by, tenant_id, generated_at
@@ -5559,15 +5627,16 @@ app.post('/api/dispatches/generate-for-signal', authenticateToken, async (req, r
 // Claim a dispatch
 app.post('/api/dispatches/:id/claim', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     // Check if already claimed
-    const { rows: [dispatch] } = await pool.query(
+    const { rows: [dispatch] } = await db.query(
       'SELECT id, claimed_by, status FROM signal_dispatches WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]
     );
     if (!dispatch) return res.status(404).json({ error: 'Dispatch not found' });
 
     if (dispatch.claimed_by && dispatch.claimed_by !== req.user?.user_id) {
       // Already claimed by someone else
-      const { rows: [claimer] } = await pool.query('SELECT name FROM users WHERE id = $1', [dispatch.claimed_by]);
+      const { rows: [claimer] } = await db.query('SELECT name FROM users WHERE id = $1', [dispatch.claimed_by]);
       return res.status(409).json({
         error: 'Already claimed',
         claimed_by: claimer?.name || 'another user',
@@ -5575,7 +5644,7 @@ app.post('/api/dispatches/:id/claim', authenticateToken, async (req, res) => {
       });
     }
 
-    const { rows: [updated] } = await pool.query(`
+    const { rows: [updated] } = await db.query(`
       UPDATE signal_dispatches
       SET claimed_by = $2, claimed_at = NOW(), status = CASE WHEN status = 'draft' THEN 'claimed' ELSE status END, updated_at = NOW()
       WHERE id = $1 AND tenant_id = $3
@@ -5592,7 +5661,8 @@ app.post('/api/dispatches/:id/claim', authenticateToken, async (req, res) => {
 // Unclaim a dispatch
 app.post('/api/dispatches/:id/unclaim', authenticateToken, async (req, res) => {
   try {
-    const { rows: [updated] } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [updated] } = await db.query(`
       UPDATE signal_dispatches
       SET claimed_by = NULL, claimed_at = NULL, status = 'draft', updated_at = NOW()
       WHERE id = $1 AND (claimed_by = $2 OR claimed_by IS NULL) AND tenant_id = $3
@@ -5610,6 +5680,7 @@ app.post('/api/dispatches/:id/unclaim', authenticateToken, async (req, res) => {
 // Rescan proximity maps for existing dispatches
 app.post('/api/dispatches/rescan', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { rescanProximity } = require('./scripts/generate_dispatches');
     res.json({ status: 'started', message: 'Proximity rescan triggered' });
     rescanProximity().then(r => console.log('Proximity rescan complete:', r)).catch(e => console.error('Proximity rescan failed:', e.message));
@@ -5621,6 +5692,7 @@ app.post('/api/dispatches/rescan', authenticateToken, async (req, res) => {
 // List dispatches
 app.get('/api/dispatches', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const status = req.query.status;
     const region = req.query.region;
     const limit = Math.min(parseInt(req.query.limit) || 50, 100);
@@ -5651,7 +5723,7 @@ app.get('/api/dispatches', authenticateToken, async (req, res) => {
     idx++; params.push(offset);
 
     const [result, countResult] = await Promise.all([
-      pool.query(`
+      db.query(`
         SELECT sd.id, sd.signal_event_id, sd.company_id, sd.company_name,
                sd.signal_type, sd.signal_summary,
                sd.opportunity_angle, sd.blog_title, sd.blog_theme,
@@ -5675,7 +5747,7 @@ app.get('/api/dispatches', authenticateToken, async (req, res) => {
           sd.generated_at DESC
         LIMIT $${idx - 1} OFFSET $${idx}
       `, params),
-      pool.query(`SELECT COUNT(*) AS cnt FROM signal_dispatches sd LEFT JOIN companies c ON c.id = sd.company_id ${where}`, params.slice(0, -2))
+      db.query(`SELECT COUNT(*) AS cnt FROM signal_dispatches sd LEFT JOIN companies c ON c.id = sd.company_id ${where}`, params.slice(0, -2))
     ]);
 
     res.json({
@@ -5692,7 +5764,8 @@ app.get('/api/dispatches', authenticateToken, async (req, res) => {
 // Get single dispatch
 app.get('/api/dispatches/:id', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT sd.*,
              c.sector, c.geography, c.is_client, c.employee_count_band, c.domain,
              se.confidence_score AS signal_confidence,
@@ -5743,7 +5816,7 @@ app.get('/api/dispatches/:id', authenticateToken, async (req, res) => {
 
       if (scoreTerms.length > 0) {
         const scoreExpr = scoreTerms.join(' + ');
-        const { rows: csRows } = await pool.query(`
+        const { rows: csRows } = await db.query(`
           SELECT cs.id, cs.title, cs.sector, cs.geography, cs.engagement_type, cs.year,
                  cs.themes, cs.capabilities, cs.public_approved, cs.visibility,
                  cs.public_title, cs.public_summary,
@@ -5766,6 +5839,7 @@ app.get('/api/dispatches/:id', authenticateToken, async (req, res) => {
 // Update dispatch status
 app.patch('/api/dispatches/:id', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { status, send_to, blog_body, blog_title } = req.body;
     const updates = ['updated_at = NOW()'];
     const params = [req.params.id];
@@ -5788,7 +5862,7 @@ app.patch('/api/dispatches/:id', authenticateToken, async (req, res) => {
 
     idx++;
     params.push(req.tenant_id);
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `UPDATE signal_dispatches SET ${updates.join(', ')} WHERE id = $1 AND tenant_id = $${idx} RETURNING *`,
       params
     );
@@ -5804,7 +5878,8 @@ app.patch('/api/dispatches/:id', authenticateToken, async (req, res) => {
 // Regenerate blog post for a dispatch
 app.post('/api/dispatches/:id/regenerate', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM signal_dispatches WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query('SELECT * FROM signal_dispatches WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Dispatch not found' });
 
     const dispatch = rows[0];
@@ -5813,7 +5888,7 @@ app.post('/api/dispatches/:id/regenerate', authenticateToken, async (req, res) =
     // Get company info
     let company = {};
     if (dispatch.company_id) {
-      const { rows: [co] } = await pool.query(
+      const { rows: [co] } = await db.query(
         'SELECT sector, geography, employee_count_band FROM companies WHERE id = $1 AND tenant_id = $2',
         [dispatch.company_id, req.tenant_id]
       );
@@ -5883,7 +5958,7 @@ Return valid JSON only.`;
     }
 
     // Update dispatch
-    await pool.query(`
+    await db.query(`
       UPDATE signal_dispatches
       SET blog_theme = $2, blog_title = $3, blog_body = $4, blog_keywords = $5, updated_at = NOW()
       WHERE id = $1 AND tenant_id = $6
@@ -5902,6 +5977,7 @@ Return valid JSON only.`;
 
 app.get('/api/placements', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     const offset = parseInt(req.query.offset) || 0;
     const q = req.query.q;
@@ -5970,7 +6046,7 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
       const pSortCol = projectSortMap[req.query.sort] || 'last_invoice_date';
 
       [placementsResult, statsResult] = await Promise.all([
-        pool.query(`
+        db.query(`
           WITH project_groups AS (
             SELECT
               COALESCE(pl.client_id, pl.company_id) AS group_client_id,
@@ -6000,7 +6076,7 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
           ORDER BY ${pSortCol} ${sortDir} NULLS LAST
           LIMIT $${limitIdx} OFFSET $${offsetIdx}
         `, params),
-        pool.query(`
+        db.query(`
           WITH project_groups AS (
             SELECT COALESCE(pl.client_id, pl.company_id) AS group_client_id,
                    pl.role_title, SUM(pl.placement_fee) AS project_fee
@@ -6018,7 +6094,7 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
       ]);
 
       // Add date range from raw data
-      const { rows: [dr] } = await pool.query(`
+      const { rows: [dr] } = await db.query(`
         SELECT MIN(pl.start_date) AS earliest, MAX(pl.start_date) AS latest
         FROM conversions pl LEFT JOIN accounts cl ON pl.client_id = cl.id LEFT JOIN people pe ON pl.person_id = pe.id ${where}
       `, params.slice(0, -2));
@@ -6027,7 +6103,7 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
     } else {
       // Invoice view: one row per invoice (original behaviour)
       [placementsResult, statsResult] = await Promise.all([
-        pool.query(`
+        db.query(`
           SELECT pl.id, COALESCE(pe.full_name, pl.consultant_name) AS candidate_name, pl.person_id,
                  pl.role_title, pl.start_date,
                  pl.placement_fee, pl.fee_category, pl.fee_type, pl.invoice_number,
@@ -6044,7 +6120,7 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
           ORDER BY ${sortCol} ${sortDir} NULLS LAST
           LIMIT $${limitIdx} OFFSET $${offsetIdx}
         `, params),
-        pool.query(`
+        db.query(`
           SELECT COUNT(*) AS total_count,
                  COALESCE(SUM(pl.placement_fee), 0) AS total_revenue,
                  COUNT(DISTINCT COALESCE(pl.client_id::text, pl.client_name_raw)) AS client_count,
@@ -6081,7 +6157,7 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
       const sources = req.query.source.split(',').filter(s => validSources.includes(s));
       if (sources.length) { currSourceWhere = ' AND source = ANY($2)'; currSideParams.push(sources); }
     }
-    const { rows: currencyBreakdown } = await pool.query(`
+    const { rows: currencyBreakdown } = await db.query(`
       SELECT UPPER(COALESCE(currency, 'AUD')) AS currency, COUNT(*) AS count,
              COALESCE(SUM(placement_fee), 0) AS revenue
       FROM conversions WHERE tenant_id = $1 AND placement_fee IS NOT NULL${currSourceWhere}
@@ -6096,7 +6172,7 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
     const fxCasePl = fxCase.replace(/placement_fee/g, 'pl.placement_fee').replace(/currency/g, 'pl.currency');
 
     // Revenue by year
-    const { rows: byYear } = await pool.query(`
+    const { rows: byYear } = await db.query(`
       SELECT EXTRACT(YEAR FROM start_date)::int AS year,
              COUNT(*) AS count,
              COALESCE(SUM(${fxCase}), 0) AS revenue
@@ -6106,7 +6182,7 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
     `, sideParams);
 
     // Top clients by revenue
-    const { rows: topClients } = await pool.query(`
+    const { rows: topClients } = await db.query(`
       SELECT COALESCE(cl.id, pl.company_id) AS id,
              COALESCE(cl.name, pl.client_name_raw) AS name,
              COUNT(*) AS placement_count,
@@ -6139,6 +6215,7 @@ app.get('/api/placements', authenticateToken, async (req, res) => {
 
 app.patch('/api/placements/:id', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { person_id, role_title, start_date, placement_fee, payment_status } = req.body;
     const sets = [];
     const vals = [];
@@ -6155,7 +6232,7 @@ app.patch('/api/placements/:id', authenticateToken, async (req, res) => {
     sets.push(`updated_at = NOW()`);
     vals.push(req.params.id, req.tenant_id);
 
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `UPDATE conversions SET ${sets.join(', ')} WHERE id = $${idx++} AND tenant_id = $${idx} RETURNING id`,
       vals
     );
@@ -6491,7 +6568,7 @@ async function executeTool(name, input, userId, tenantId) {
           const vector = await generateQueryEmbedding(query);
           const qr = await qdrantSearch('people', vector, limit * 2);
           if (qr.length) {
-            const { rows } = await pool.query(`SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.location, p.seniority_level, p.email, p.linkedin_url, p.headline, p.expertise_tags,
+            const { rows } = await db.query(`SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.location, p.seniority_level, p.email, p.linkedin_url, p.headline, p.expertise_tags,
               (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id AND i.interaction_type = 'research_note' AND i.tenant_id = p.tenant_id) AS note_count,
               (SELECT MAX(i.interaction_at) FROM interactions i WHERE i.person_id = p.id AND i.interaction_type = 'research_note' AND i.tenant_id = p.tenant_id) AS latest_note_date,
               (SELECT i.subject FROM interactions i WHERE i.person_id = p.id AND i.interaction_type = 'research_note' AND i.tenant_id = p.tenant_id ORDER BY i.interaction_at DESC NULLS LAST LIMIT 1) AS latest_note_subject
@@ -6501,7 +6578,7 @@ async function executeTool(name, input, userId, tenantId) {
           }
         } catch (e) {}
         if (results.length < 3) {
-          const { rows } = await pool.query(`SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.location, p.seniority_level, p.email, p.headline,
+          const { rows } = await db.query(`SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.location, p.seniority_level, p.email, p.headline,
             (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id AND i.interaction_type = 'research_note' AND i.tenant_id = p.tenant_id) AS note_count,
             (SELECT MAX(i.interaction_at) FROM interactions i WHERE i.person_id = p.id AND i.interaction_type = 'research_note' AND i.tenant_id = p.tenant_id) AS latest_note_date
             FROM people p WHERE (p.full_name ILIKE $1 OR p.current_title ILIKE $1 OR p.current_company_name ILIKE $1 OR p.headline ILIKE $1) AND p.tenant_id = $3 ORDER BY p.full_name LIMIT $2`, [`%${query}%`, limit, tenantId]);
@@ -6518,22 +6595,22 @@ async function executeTool(name, input, userId, tenantId) {
       }
       case 'search_companies': {
         const { query, filters = {}, limit = 10 } = input;
-        const { rows } = await pool.query(`SELECT c.id, c.name, c.sector, c.geography, c.domain, c.employee_count_band, c.is_client, c.description, (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id AND p.tenant_id = $3) AS people_count, (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.tenant_id = $3) AS signal_count FROM companies c WHERE (c.name ILIKE $1 OR c.sector ILIKE $1 OR c.geography ILIKE $1) AND c.tenant_id = $3 ${filters.is_client ? 'AND c.is_client = true' : ''} ORDER BY c.is_client DESC, c.name LIMIT $2`, [`%${query}%`, limit, tenantId]);
+        const { rows } = await db.query(`SELECT c.id, c.name, c.sector, c.geography, c.domain, c.employee_count_band, c.is_client, c.description, (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id AND p.tenant_id = $3) AS people_count, (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.tenant_id = $3) AS signal_count FROM companies c WHERE (c.name ILIKE $1 OR c.sector ILIKE $1 OR c.geography ILIKE $1) AND c.tenant_id = $3 ${filters.is_client ? 'AND c.is_client = true' : ''} ORDER BY c.is_client DESC, c.name LIMIT $2`, [`%${query}%`, limit, tenantId]);
         return JSON.stringify(rows);
       }
       case 'get_person_detail': {
-        const { rows: [p] } = await pool.query(`SELECT p.*, c.name AS company_name_linked, c.id AS company_id_linked FROM people p LEFT JOIN companies c ON p.current_company_id = c.id WHERE p.id = $1 AND p.tenant_id = $2`, [input.person_id, tenantId]);
+        const { rows: [p] } = await db.query(`SELECT p.*, c.name AS company_name_linked, c.id AS company_id_linked FROM people p LEFT JOIN companies c ON p.current_company_id = c.id WHERE p.id = $1 AND p.tenant_id = $2`, [input.person_id, tenantId]);
         if (!p) return JSON.stringify({ error: 'Not found' });
-        const { rows: notes } = await pool.query(`SELECT subject, summary, interaction_at, note_quality, extracted_intelligence FROM interactions WHERE person_id = $1 AND interaction_type = 'research_note' AND tenant_id = $2 ORDER BY interaction_at DESC NULLS LAST LIMIT 10`, [input.person_id, tenantId]);
-        const { rows: sigs } = await pool.query(`SELECT signal_type, title, description, confidence_score FROM person_signals WHERE person_id = $1 AND tenant_id = $2 ORDER BY detected_at DESC LIMIT 10`, [input.person_id, tenantId]);
+        const { rows: notes } = await db.query(`SELECT subject, summary, interaction_at, note_quality, extracted_intelligence FROM interactions WHERE person_id = $1 AND interaction_type = 'research_note' AND tenant_id = $2 ORDER BY interaction_at DESC NULLS LAST LIMIT 10`, [input.person_id, tenantId]);
+        const { rows: sigs } = await db.query(`SELECT signal_type, title, description, confidence_score FROM person_signals WHERE person_id = $1 AND tenant_id = $2 ORDER BY detected_at DESC LIMIT 10`, [input.person_id, tenantId]);
         return JSON.stringify({ ...p, research_notes: notes, person_signals: sigs });
       }
       case 'get_company_detail': {
-        const { rows: [co] } = await pool.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [input.company_id, tenantId]);
+        const { rows: [co] } = await db.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [input.company_id, tenantId]);
         if (!co) return JSON.stringify({ error: 'Not found' });
-        const { rows: sigs } = await pool.query(`SELECT signal_type, evidence_summary, confidence_score, detected_at FROM signal_events WHERE company_id = $1 AND tenant_id = $2 ORDER BY detected_at DESC LIMIT 15`, [input.company_id, tenantId]);
-        const { rows: ppl } = await pool.query(`SELECT id, full_name, current_title, seniority_level FROM people WHERE current_company_id = $1 AND tenant_id = $2 ORDER BY full_name LIMIT 30`, [input.company_id, tenantId]);
-        let pls = []; try { const { rows } = await pool.query(`SELECT pe.full_name AS candidate_name, pl.role_title, pl.start_date, pl.placement_fee FROM conversions pl LEFT JOIN accounts cl ON pl.client_id = cl.id LEFT JOIN people pe ON pl.person_id = pe.id WHERE (cl.company_id = $1 OR cl.name ILIKE (SELECT name FROM companies WHERE id = $1)) AND pl.tenant_id = $2 ORDER BY pl.start_date DESC`, [input.company_id, tenantId]); pls = rows; } catch (e) {}
+        const { rows: sigs } = await db.query(`SELECT signal_type, evidence_summary, confidence_score, detected_at FROM signal_events WHERE company_id = $1 AND tenant_id = $2 ORDER BY detected_at DESC LIMIT 15`, [input.company_id, tenantId]);
+        const { rows: ppl } = await db.query(`SELECT id, full_name, current_title, seniority_level FROM people WHERE current_company_id = $1 AND tenant_id = $2 ORDER BY full_name LIMIT 30`, [input.company_id, tenantId]);
+        let pls = []; try { const { rows } = await db.query(`SELECT pe.full_name AS candidate_name, pl.role_title, pl.start_date, pl.placement_fee FROM conversions pl LEFT JOIN accounts cl ON pl.client_id = cl.id LEFT JOIN people pe ON pl.person_id = pe.id WHERE (cl.company_id = $1 OR cl.name ILIKE (SELECT name FROM companies WHERE id = $1)) AND pl.tenant_id = $2 ORDER BY pl.start_date DESC`, [input.company_id, tenantId]); pls = rows; } catch (e) {}
         return JSON.stringify({ ...co, signals: sigs, people: ppl, placements: pls });
       }
       case 'search_signals': {
@@ -6542,37 +6619,37 @@ async function executeTool(name, input, userId, tenantId) {
         if (signal_type) w.push(`se.signal_type = '${signal_type}'`);
         if (category) w.push(`se.signal_category = '${category}'`);
         if (company_name) w.push(`c.name ILIKE '%${company_name}%'`);
-        const { rows } = await pool.query(`SELECT se.signal_type, se.signal_category, se.evidence_summary, se.confidence_score, se.detected_at, se.source_url, c.name AS company_name, c.id AS company_id FROM signal_events se LEFT JOIN companies c ON se.company_id = c.id WHERE ${w.join(' AND ')} ORDER BY se.confidence_score DESC LIMIT ${limit}`, [tenantId]);
+        const { rows } = await db.query(`SELECT se.signal_type, se.signal_category, se.evidence_summary, se.confidence_score, se.detected_at, se.source_url, c.name AS company_name, c.id AS company_id FROM signal_events se LEFT JOIN companies c ON se.company_id = c.id WHERE ${w.join(' AND ')} ORDER BY se.confidence_score DESC LIMIT ${limit}`, [tenantId]);
         return JSON.stringify(rows);
       }
       case 'search_placements': {
         const { query = '', limit = 20 } = input;
-        const { rows } = await pool.query(`SELECT pe.full_name AS candidate_name, pl.role_title, pl.start_date, pl.placement_fee, cl.name AS company_name, cl.id AS company_id FROM conversions pl LEFT JOIN accounts cl ON pl.client_id = cl.id LEFT JOIN people pe ON pl.person_id = pe.id WHERE (pe.full_name ILIKE $1 OR pl.role_title ILIKE $1 OR cl.name ILIKE $1) AND pl.tenant_id = $3 ORDER BY pl.start_date DESC NULLS LAST LIMIT $2`, [`%${query}%`, limit, tenantId]);
+        const { rows } = await db.query(`SELECT pe.full_name AS candidate_name, pl.role_title, pl.start_date, pl.placement_fee, cl.name AS company_name, cl.id AS company_id FROM conversions pl LEFT JOIN accounts cl ON pl.client_id = cl.id LEFT JOIN people pe ON pl.person_id = pe.id WHERE (pe.full_name ILIKE $1 OR pl.role_title ILIKE $1 OR cl.name ILIKE $1) AND pl.tenant_id = $3 ORDER BY pl.start_date DESC NULLS LAST LIMIT $2`, [`%${query}%`, limit, tenantId]);
         return JSON.stringify(rows);
       }
       case 'search_research_notes': {
         const { query, person_name, limit = 10 } = input;
         let extra = person_name ? ` AND p.full_name ILIKE '%${person_name}%'` : '';
-        const { rows } = await pool.query(`SELECT i.subject, i.summary, i.interaction_at, i.note_quality, i.extracted_intelligence, p.full_name, p.id AS person_id, p.current_title, p.current_company_name FROM interactions i JOIN people p ON i.person_id = p.id WHERE i.interaction_type = 'research_note' AND (i.summary ILIKE $1 OR i.subject ILIKE $1) AND i.tenant_id = $3${extra} ORDER BY i.interaction_at DESC NULLS LAST LIMIT $2`, [`%${query}%`, limit, tenantId]);
+        const { rows } = await db.query(`SELECT i.subject, i.summary, i.interaction_at, i.note_quality, i.extracted_intelligence, p.full_name, p.id AS person_id, p.current_title, p.current_company_name FROM interactions i JOIN people p ON i.person_id = p.id WHERE i.interaction_type = 'research_note' AND (i.summary ILIKE $1 OR i.subject ILIKE $1) AND i.tenant_id = $3${extra} ORDER BY i.interaction_at DESC NULLS LAST LIMIT $2`, [`%${query}%`, limit, tenantId]);
         return JSON.stringify(rows);
       }
       case 'log_intelligence': {
         const { person_name, company_name, intelligence, subject, extracted = {} } = input;
         let personId;
-        const { rows: ex } = await pool.query(`SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [person_name, tenantId]);
+        const { rows: ex } = await db.query(`SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [person_name, tenantId]);
         if (ex.length) { personId = ex[0].id; }
         else {
-          const { rows: [np] } = await pool.query(`INSERT INTO people (full_name, current_company_name, source, created_by, tenant_id) VALUES ($1, $2, 'chat_intel', $3, $4) RETURNING id`, [person_name, company_name || null, userId, tenantId]);
+          const { rows: [np] } = await db.query(`INSERT INTO people (full_name, current_company_name, source, created_by, tenant_id) VALUES ($1, $2, 'chat_intel', $3, $4) RETURNING id`, [person_name, company_name || null, userId, tenantId]);
           personId = np.id;
         }
-        const { rows: [note] } = await pool.query(`INSERT INTO interactions (person_id, user_id, created_by, interaction_type, subject, summary, extracted_intelligence, source, interaction_at, tenant_id) VALUES ($1, $2, $2, 'research_note', $3, $4, $5, 'chat_concierge', NOW(), $6) RETURNING id`, [personId, userId, subject, intelligence, JSON.stringify(extracted), tenantId]);
+        const { rows: [note] } = await db.query(`INSERT INTO interactions (person_id, user_id, created_by, interaction_type, subject, summary, extracted_intelligence, source, interaction_at, tenant_id) VALUES ($1, $2, $2, 'research_note', $3, $4, $5, 'chat_concierge', NOW(), $6) RETURNING id`, [personId, userId, subject, intelligence, JSON.stringify(extracted), tenantId]);
         auditLog(userId, 'log_intelligence', 'person', personId, { person_name, subject, source: 'chat_concierge' });
 
         // Write-back to Ezekia CRM if person has a source_id
         let ezekiaPushed = false;
         if (process.env.EZEKIA_API_TOKEN) {
           try {
-            const { rows: [p] } = await pool.query('SELECT source_id FROM people WHERE id = $1 AND source = $2', [personId, 'ezekia']);
+            const { rows: [p] } = await db.query('SELECT source_id FROM people WHERE id = $1 AND source = $2', [personId, 'ezekia']);
             if (p?.source_id) {
               const ezekia = require('./lib/ezekia');
               const baseUrl = process.env.APP_URL || 'https://www.autonodal.com';
@@ -6592,11 +6669,11 @@ async function executeTool(name, input, userId, tenantId) {
       }
       case 'create_person': {
         const { full_name, current_title, current_company_name, email, phone, location, linkedin_url, seniority_level } = input;
-        const { rows: dupes } = await pool.query(`SELECT id, full_name, current_title FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 3`, [full_name, tenantId]);
+        const { rows: dupes } = await db.query(`SELECT id, full_name, current_title FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 3`, [full_name, tenantId]);
         if (dupes.length) return JSON.stringify({ existing_matches: dupes, message: 'Possible duplicates found' });
         let coId = null;
-        if (current_company_name) { const { rows } = await pool.query(`SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [current_company_name, tenantId]); if (rows.length) coId = rows[0].id; }
-        const { rows: [p] } = await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, current_company_id, email, phone, location, linkedin_url, seniority_level, source, created_by, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'chat_concierge',$10,$11) RETURNING id, full_name`, [full_name, current_title||null, current_company_name||null, coId, email||null, phone||null, location||null, linkedin_url||null, seniority_level||null, userId, tenantId]);
+        if (current_company_name) { const { rows } = await db.query(`SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [current_company_name, tenantId]); if (rows.length) coId = rows[0].id; }
+        const { rows: [p] } = await db.query(`INSERT INTO people (full_name, current_title, current_company_name, current_company_id, email, phone, location, linkedin_url, seniority_level, source, created_by, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'chat_concierge',$10,$11) RETURNING id, full_name`, [full_name, current_title||null, current_company_name||null, coId, email||null, phone||null, location||null, linkedin_url||null, seniority_level||null, userId, tenantId]);
         auditLog(userId, 'create_person', 'person', p.id, { full_name, source: 'chat_concierge' });
         return JSON.stringify({ ...p, message: `Created ${full_name}` });
       }
@@ -6613,9 +6690,9 @@ async function executeTool(name, input, userId, tenantId) {
           for (const row of fm.preview) {
             const name = row[m.full_name||'Name']||row['Full Name']||row['name'];
             if (!name || name.trim().length < 2) { skipped++; continue; }
-            const { rows: d } = await pool.query(`SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [name.trim(), tenantId]);
+            const { rows: d } = await db.query(`SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [name.trim(), tenantId]);
             if (d.length) { skipped++; continue; }
-            await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, email, location, linkedin_url, source, created_by, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,'csv_import',$7,$8)`,
+            await db.query(`INSERT INTO people (full_name, current_title, current_company_name, email, location, linkedin_url, source, created_by, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,'csv_import',$7,$8)`,
               [name.trim(), row[m.current_title||'Title']||row['Job Title']||null, row[m.current_company_name||'Company']||row['Organization']||null, row[m.email||'Email']||null, row[m.location||'Location']||null, row[m.linkedin_url||'LinkedIn']||null, userId, tenantId]);
             imported++;
           }
@@ -6624,7 +6701,7 @@ async function executeTool(name, input, userId, tenantId) {
         }
         if (action === 'import_linkedin_connections' && fm.preview) {
           // Load people for matching
-          const { rows: dbPeople } = await pool.query(`SELECT id, full_name, first_name, last_name, linkedin_url, current_company_name, email FROM people WHERE full_name IS NOT NULL AND full_name != '' AND tenant_id = $1`, [tenantId]);
+          const { rows: dbPeople } = await db.query(`SELECT id, full_name, first_name, last_name, linkedin_url, current_company_name, email FROM people WHERE full_name IS NOT NULL AND full_name != '' AND tenant_id = $1`, [tenantId]);
           const linkedinIndex = new Map(), nameIndex = new Map(), emailIndex = new Map();
           for (const p of dbPeople) {
             if (p.linkedin_url) { const slug = p.linkedin_url.toLowerCase().replace(/\/+$/, '').split('?')[0].match(/linkedin\.com\/in\/([^\/]+)/); if (slug) linkedinIndex.set(slug[1], p); }
@@ -6634,8 +6711,8 @@ async function executeTool(name, input, userId, tenantId) {
           }
 
           // Ensure tables exist
-          await pool.query(`CREATE TABLE IF NOT EXISTS team_proximity (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), person_id UUID REFERENCES people(id) ON DELETE CASCADE, team_member_id UUID REFERENCES users(id), proximity_type VARCHAR(50) NOT NULL, source VARCHAR(50) NOT NULL, strength NUMERIC(3,2) DEFAULT 0.5, context TEXT, connected_at TIMESTAMPTZ, metadata JSONB DEFAULT '{}', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(person_id, team_member_id, proximity_type, source))`);
-          await pool.query(`CREATE TABLE IF NOT EXISTS linkedin_connections (id SERIAL PRIMARY KEY, team_member_id UUID REFERENCES users(id), first_name VARCHAR(255), last_name VARCHAR(255), full_name VARCHAR(255), linkedin_url TEXT, linkedin_slug VARCHAR(255), email VARCHAR(255), company VARCHAR(255), position VARCHAR(255), connected_at TIMESTAMPTZ, matched_person_id UUID REFERENCES people(id), match_method VARCHAR(50), match_confidence NUMERIC(3,2), imported_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(linkedin_slug))`);
+          await db.query(`CREATE TABLE IF NOT EXISTS team_proximity (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), person_id UUID REFERENCES people(id) ON DELETE CASCADE, team_member_id UUID REFERENCES users(id), proximity_type VARCHAR(50) NOT NULL, source VARCHAR(50) NOT NULL, strength NUMERIC(3,2) DEFAULT 0.5, context TEXT, connected_at TIMESTAMPTZ, metadata JSONB DEFAULT '{}', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(person_id, team_member_id, proximity_type, source))`);
+          await db.query(`CREATE TABLE IF NOT EXISTS linkedin_connections (id SERIAL PRIMARY KEY, team_member_id UUID REFERENCES users(id), first_name VARCHAR(255), last_name VARCHAR(255), full_name VARCHAR(255), linkedin_url TEXT, linkedin_slug VARCHAR(255), email VARCHAR(255), company VARCHAR(255), position VARCHAR(255), connected_at TIMESTAMPTZ, matched_person_id UUID REFERENCES people(id), match_method VARCHAR(50), match_confidence NUMERIC(3,2), imported_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(linkedin_slug))`);
 
           const stats = { total: 0, matched: 0, unmatched: 0, proximity_created: 0, new_people: 0, errors: 0 };
           for (const row of fm.preview) {
@@ -6671,23 +6748,23 @@ async function executeTool(name, input, userId, tenantId) {
                   let strength = 0.5;
                   if (connectedOn) { const yrs = (Date.now() - new Date(connectedOn).getTime()) / (365.25*24*60*60*1000); if (yrs > 5) strength = 0.8; else if (yrs > 2) strength = 0.7; else if (yrs > 1) strength = 0.6; }
                   strength = Math.min(1.0, strength + (matchConfidence - 0.5) * 0.2);
-                  await pool.query(`INSERT INTO team_proximity (person_id, team_member_id, proximity_type, source, strength, context, connected_at, metadata, tenant_id) VALUES ($1,$2,'linkedin_connection','linkedin_import',$3,$4,$5,$6,$7) ON CONFLICT (person_id, team_member_id, proximity_type, source) DO UPDATE SET strength = GREATEST(team_proximity.strength, EXCLUDED.strength), context = EXCLUDED.context, updated_at = NOW()`, [matchedPerson.id, userId, strength.toFixed(2), `${position} @ ${company}`, connectedOn, JSON.stringify({ linkedin_url: linkedinUrl, match_method: matchMethod, match_confidence: matchConfidence }), tenantId]);
+                  await db.query(`INSERT INTO team_proximity (person_id, team_member_id, proximity_type, source, strength, context, connected_at, metadata, tenant_id) VALUES ($1,$2,'linkedin_connection','linkedin_import',$3,$4,$5,$6,$7) ON CONFLICT (person_id, team_member_id, proximity_type, source) DO UPDATE SET strength = GREATEST(team_proximity.strength, EXCLUDED.strength), context = EXCLUDED.context, updated_at = NOW()`, [matchedPerson.id, userId, strength.toFixed(2), `${position} @ ${company}`, connectedOn, JSON.stringify({ linkedin_url: linkedinUrl, match_method: matchMethod, match_confidence: matchConfidence }), tenantId]);
                   stats.proximity_created++;
                 } catch (e) { if (!e.message.includes('duplicate')) stats.errors++; }
               }
               // Update LinkedIn URL if missing
-              if (linkedinUrl && !matchedPerson.linkedin_url) { try { await pool.query('UPDATE people SET linkedin_url = $1, updated_at = NOW() WHERE id = $2 AND linkedin_url IS NULL AND tenant_id = $3', [linkedinUrl, matchedPerson.id, tenantId]); } catch (e) {} }
+              if (linkedinUrl && !matchedPerson.linkedin_url) { try { await db.query('UPDATE people SET linkedin_url = $1, updated_at = NOW() WHERE id = $2 AND linkedin_url IS NULL AND tenant_id = $3', [linkedinUrl, matchedPerson.id, tenantId]); } catch (e) {} }
             } else {
               stats.unmatched++;
               // Create new person record for unmatched connections
               try {
-                const { rows: dupes } = await pool.query('SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1', [fullName, tenantId]);
+                const { rows: dupes } = await db.query('SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1', [fullName, tenantId]);
                 if (!dupes.length) {
-                  const { rows: [np] } = await pool.query(`INSERT INTO people (full_name, current_title, current_company_name, linkedin_url, email, source, created_by, tenant_id) VALUES ($1,$2,$3,$4,$5,'linkedin_import',$6,$7) RETURNING id`, [fullName, position || null, company || null, linkedinUrl || null, email || null, userId, tenantId]);
+                  const { rows: [np] } = await db.query(`INSERT INTO people (full_name, current_title, current_company_name, linkedin_url, email, source, created_by, tenant_id) VALUES ($1,$2,$3,$4,$5,'linkedin_import',$6,$7) RETURNING id`, [fullName, position || null, company || null, linkedinUrl || null, email || null, userId, tenantId]);
                   stats.new_people++;
                   // Also create proximity for new person
                   if (userId && np) {
-                    try { await pool.query(`INSERT INTO team_proximity (person_id, team_member_id, proximity_type, source, strength, context, connected_at, tenant_id) VALUES ($1,$2,'linkedin_connection','linkedin_import',0.5,$3,$4,$5) ON CONFLICT DO NOTHING`, [np.id, userId, `${position} @ ${company}`, connectedOn, tenantId]); stats.proximity_created++; } catch (e) {}
+                    try { await db.query(`INSERT INTO team_proximity (person_id, team_member_id, proximity_type, source, strength, context, connected_at, tenant_id) VALUES ($1,$2,'linkedin_connection','linkedin_import',0.5,$3,$4,$5) ON CONFLICT DO NOTHING`, [np.id, userId, `${position} @ ${company}`, connectedOn, tenantId]); stats.proximity_created++; } catch (e) {}
                   }
                 }
               } catch (e) { stats.errors++; }
@@ -6695,7 +6772,7 @@ async function executeTool(name, input, userId, tenantId) {
 
             // Store in linkedin_connections table
             if (slug) {
-              try { await pool.query(`INSERT INTO linkedin_connections (team_member_id, first_name, last_name, full_name, linkedin_url, linkedin_slug, email, company, position, connected_at, matched_person_id, match_method, match_confidence) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (linkedin_slug) DO UPDATE SET company = EXCLUDED.company, position = EXCLUDED.position, matched_person_id = COALESCE(EXCLUDED.matched_person_id, linkedin_connections.matched_person_id), imported_at = NOW()`, [userId, firstName, lastName, fullName, linkedinUrl, slug, email||null, company||null, position||null, connectedOn, matchedPerson?.id||null, matchMethod, matchConfidence||null]); } catch (e) {}
+              try { await db.query(`INSERT INTO linkedin_connections (team_member_id, first_name, last_name, full_name, linkedin_url, linkedin_slug, email, company, position, connected_at, matched_person_id, match_method, match_confidence) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (linkedin_slug) DO UPDATE SET company = EXCLUDED.company, position = EXCLUDED.position, matched_person_id = COALESCE(EXCLUDED.matched_person_id, linkedin_connections.matched_person_id), imported_at = NOW()`, [userId, firstName, lastName, fullName, linkedinUrl, slug, email||null, company||null, position||null, connectedOn, matchedPerson?.id||null, matchMethod, matchConfidence||null]); } catch (e) {}
             }
           }
           auditLog(userId, 'linkedin_import', 'people', null, { total: stats.total, matched: stats.matched, new_people: stats.new_people, proximity_created: stats.proximity_created, filename: fm.originalname });
@@ -6706,7 +6783,7 @@ async function executeTool(name, input, userId, tenantId) {
           const stats = { total: 0, matched: 0, interactions_created: 0, unmatched_senders: new Set(), errors: 0 };
 
           // Load people for matching by name
-          const { rows: dbPeople } = await pool.query(`SELECT id, full_name FROM people WHERE full_name IS NOT NULL AND tenant_id = $1`, [tenantId]);
+          const { rows: dbPeople } = await db.query(`SELECT id, full_name FROM people WHERE full_name IS NOT NULL AND tenant_id = $1`, [tenantId]);
           const nameMap = new Map();
           for (const p of dbPeople) { nameMap.set(p.full_name.toLowerCase().trim(), p); }
 
@@ -6741,7 +6818,7 @@ async function executeTool(name, input, userId, tenantId) {
                 const latestDate = sorted[sorted.length - 1]?.date;
 
                 try {
-                  await pool.query(`INSERT INTO interactions (person_id, user_id, created_by, interaction_type, subject, summary, source, interaction_at, tenant_id) VALUES ($1, $2, $2, 'linkedin_message', $3, $4, 'linkedin_import', $5, $6) ON CONFLICT DO NOTHING`, [match.id, userId, `LinkedIn conversation (${messages.length} messages)`, summary, latestDate ? new Date(latestDate).toISOString() : new Date().toISOString(), tenantId]);
+                  await db.query(`INSERT INTO interactions (person_id, user_id, created_by, interaction_type, subject, summary, source, interaction_at, tenant_id) VALUES ($1, $2, $2, 'linkedin_message', $3, $4, 'linkedin_import', $5, $6) ON CONFLICT DO NOTHING`, [match.id, userId, `LinkedIn conversation (${messages.length} messages)`, summary, latestDate ? new Date(latestDate).toISOString() : new Date().toISOString(), tenantId]);
                   stats.interactions_created++;
                 } catch (e) { stats.errors++; }
               } else {
@@ -6771,13 +6848,13 @@ async function executeTool(name, input, userId, tenantId) {
               const hash = require('crypto').createHash('md5').update(title + content.slice(0, 500)).digest('hex');
 
               // Check if already exists
-              const { rows: existing } = await pool.query(
+              const { rows: existing } = await db.query(
                 'SELECT id FROM external_documents WHERE source_url_hash = $1 AND tenant_id = $2', [hash, tenantId]
               );
               if (existing.length) { stats.sheets_imported++; continue; }
 
               // Store as external document
-              const { rows: [doc] } = await pool.query(`
+              const { rows: [doc] } = await db.query(`
                 INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash,
                   tenant_id, uploaded_by_user_id, processing_status, created_at)
                 VALUES ($1, $2, $3, 'xlsx_workbook', $4, $5, $6, $7, 'processed', NOW())
@@ -6796,7 +6873,7 @@ async function executeTool(name, input, userId, tenantId) {
                     (res) => { const c = []; res.on('data', d => c.push(d)); res.on('end', () => resolve()); });
                   qReq.on('error', reject); qReq.write(body); qReq.end();
                 });
-                await pool.query('UPDATE external_documents SET embedded_at = NOW() WHERE id = $1', [doc.id]);
+                await db.query('UPDATE external_documents SET embedded_at = NOW() WHERE id = $1', [doc.id]);
               } catch (e) { /* embed error non-fatal */ }
 
               stats.documents_created++;
@@ -6825,15 +6902,15 @@ async function executeTool(name, input, userId, tenantId) {
         if (isDangerous) return JSON.stringify({ error: 'DROP/ALTER/TRUNCATE/CREATE not allowed via chat. Use migrations.' });
         if (isWrite) {
           // Write operations allowed — execute and return affected rows
-          const result = await pool.query(sql + (sql.toUpperCase().includes('RETURNING') ? '' : ' RETURNING *'));
+          const result = await db.query(sql + (sql.toUpperCase().includes('RETURNING') ? '' : ' RETURNING *'));
           return JSON.stringify({ explanation: input.explanation, operation: sql.split(' ')[0].toUpperCase(), rows_affected: result.rowCount, results: result.rows?.slice(0, 20) });
         }
         // SELECT queries
-        const { rows } = await pool.query(sql + (sql.includes('LIMIT') ? '' : ' LIMIT 50'));
+        const { rows } = await db.query(sql + (sql.includes('LIMIT') ? '' : ' LIMIT 50'));
         return JSON.stringify({ explanation: input.explanation, row_count: rows.length, results: rows });
       }
       case 'get_platform_stats': {
-        const { rows: [s] } = await pool.query(`SELECT (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1) AS signals, (SELECT COUNT(*) FROM companies WHERE (sector IS NOT NULL OR is_client = true) AND tenant_id = $1) AS companies, (SELECT COUNT(*) FROM people WHERE tenant_id = $1) AS people, (SELECT COUNT(*) FROM external_documents WHERE tenant_id = $1) AS documents, (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1) AS placements, (SELECT COALESCE(SUM(placement_fee),0) FROM conversions WHERE tenant_id = $1) AS revenue`, [tenantId]);
+        const { rows: [s] } = await db.query(`SELECT (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1) AS signals, (SELECT COUNT(*) FROM companies WHERE (sector IS NOT NULL OR is_client = true) AND tenant_id = $1) AS companies, (SELECT COUNT(*) FROM people WHERE tenant_id = $1) AS people, (SELECT COUNT(*) FROM external_documents WHERE tenant_id = $1) AS documents, (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1) AS placements, (SELECT COALESCE(SUM(placement_fee),0) FROM conversions WHERE tenant_id = $1) AS revenue`, [tenantId]);
         return JSON.stringify(s);
       }
       // ── MCP-style intelligence tools ──────────────────────────────────────
@@ -6842,7 +6919,7 @@ async function executeTool(name, input, userId, tenantId) {
         const minCompanies = input.min_companies || 3;
 
         // Signal type clusters
-        const { rows: signalThemes } = await pool.query(`
+        const { rows: signalThemes } = await db.query(`
           WITH candidate_counts AS (
             SELECT se2.signal_type, COUNT(DISTINCT p.id) as cnt
             FROM people p
@@ -6874,7 +6951,7 @@ async function executeTool(name, input, userId, tenantId) {
         `, [tenantId]);
 
         // Sector convergences
-        const { rows: sectorThemes } = await pool.query(`
+        const { rows: sectorThemes } = await db.query(`
           SELECT
             c.sector,
             COUNT(DISTINCT se.company_id) as company_count,
@@ -6895,7 +6972,7 @@ async function executeTool(name, input, userId, tenantId) {
         // Pipeline matches
         let pipeline = [];
         try {
-          const { rows } = await pool.query(`
+          const { rows } = await db.query(`
             SELECT s.title as search_title, s.status, a.name as client_name,
                    COUNT(DISTINCT se.id) as matching_signals,
                    COUNT(DISTINCT se.company_id) as signalling_companies
@@ -6928,7 +7005,7 @@ async function executeTool(name, input, userId, tenantId) {
 
         if (by_region) {
           const perRegion = Math.min(limit, 10);
-          const { rows } = await pool.query(`
+          const { rows } = await db.query(`
             SELECT ro.company_name, ro.sector, ro.region_code, ro.composite_score, ro.rank_in_region,
                    ro.signal_importance, ro.network_overlap, ro.geo_relevance,
                    ro.signal_summary, ro.recommended_action, ro.signal_count, ro.signal_types,
@@ -6960,7 +7037,7 @@ async function executeTool(name, input, userId, tenantId) {
         if (min_score > 0) { idx++; where += ` AND ro.composite_score >= $${idx}`; params.push(min_score); }
         idx++; params.push(Math.min(limit, 50));
 
-        const { rows } = await pool.query(`
+        const { rows } = await db.query(`
           SELECT ro.company_name, ro.sector, ro.region_code, ro.composite_score, ro.rank_in_region,
                  ro.signal_importance, ro.network_overlap, ro.geo_relevance,
                  ro.signal_summary, ro.recommended_action, ro.signal_count, ro.signal_types,
@@ -6985,7 +7062,7 @@ async function executeTool(name, input, userId, tenantId) {
 
         // Flight risk
         if (focus === 'all' || focus === 'flight_risk') {
-          const { rows } = await pool.query(`
+          const { rows } = await db.query(`
             SELECT DISTINCT ON (p.id)
               p.id, p.full_name, p.current_title, p.current_company_name,
               p.seniority_level, p.linkedin_url,
@@ -7010,7 +7087,7 @@ async function executeTool(name, input, userId, tenantId) {
 
         // Active profiles
         if (focus === 'all' || focus === 'active_profiles') {
-          const { rows } = await pool.query(`
+          const { rows } = await db.query(`
             SELECT p.id, p.full_name, p.current_title, p.current_company_name,
                    p.seniority_level, p.linkedin_url,
                    ps.activity_score, ps.timing_score, ps.receptivity_score, ps.flight_risk_score,
@@ -7028,7 +7105,7 @@ async function executeTool(name, input, userId, tenantId) {
 
         // Re-engage windows
         if (focus === 'all' || focus === 'reengage') {
-          const { rows } = await pool.query(`
+          const { rows } = await db.query(`
             SELECT DISTINCT ON (p.id)
               p.id, p.full_name, p.current_title, p.current_company_name,
               se.signal_type, se.company_name AS signal_company, se.confidence_score,
@@ -7066,7 +7143,7 @@ async function executeTool(name, input, userId, tenantId) {
 
         // Person signals
         if (focus === 'all' || focus === 'person_signals') {
-          const { rows } = await pool.query(`
+          const { rows } = await db.query(`
             SELECT psg.id, psg.signal_type, psg.title, psg.description, psg.confidence_score, psg.detected_at,
                    p.id as person_id, p.full_name, p.current_title, p.current_company_name, p.seniority_level
             FROM person_signals psg
@@ -7089,7 +7166,7 @@ async function executeTool(name, input, userId, tenantId) {
 
         // Resolve from signal_id
         if (input.signal_id) {
-          const { rows: [sig] } = await pool.query('SELECT * FROM signal_events WHERE id = $1 AND tenant_id = $2', [input.signal_id, tenantId]);
+          const { rows: [sig] } = await db.query('SELECT * FROM signal_events WHERE id = $1 AND tenant_id = $2', [input.signal_id, tenantId]);
           if (!sig) return JSON.stringify({ error: 'Signal not found' });
           companyId = sig.company_id;
           signalContext = { id: sig.id, type: sig.signal_type, confidence: sig.confidence_score, headline: sig.evidence_summary, company: sig.company_name, detected_at: sig.detected_at };
@@ -7097,7 +7174,7 @@ async function executeTool(name, input, userId, tenantId) {
 
         // Resolve from company_name
         if (!companyId && input.company_name) {
-          const { rows } = await pool.query('SELECT id, name FROM companies WHERE name ILIKE $1 AND tenant_id = $2 ORDER BY is_client DESC LIMIT 1', [`%${input.company_name}%`, tenantId]);
+          const { rows } = await db.query('SELECT id, name FROM companies WHERE name ILIKE $1 AND tenant_id = $2 ORDER BY is_client DESC LIMIT 1', [`%${input.company_name}%`, tenantId]);
           if (rows.length) companyId = rows[0].id;
           else return JSON.stringify({ error: `No company found matching "${input.company_name}"` });
         }
@@ -7105,13 +7182,13 @@ async function executeTool(name, input, userId, tenantId) {
         if (!companyId) return JSON.stringify({ error: 'Provide signal_id, company_id, or company_name' });
 
         // Get company info
-        const { rows: [company] } = await pool.query('SELECT id, name, sector, geography, is_client, domain FROM companies WHERE id = $1 AND tenant_id = $2', [companyId, tenantId]);
+        const { rows: [company] } = await db.query('SELECT id, name, sector, geography, is_client, domain FROM companies WHERE id = $1 AND tenant_id = $2', [companyId, tenantId]);
         if (!company) return JSON.stringify({ error: 'Company not found' });
 
         // Check client status
         let account = null;
         try {
-          const { rows: [acct] } = await pool.query(`
+          const { rows: [acct] } = await db.query(`
             SELECT a.id, a.name, a.relationship_tier FROM accounts a
             WHERE a.tenant_id = $1 AND (a.company_id = $2 OR LOWER(a.name) = LOWER($3)) LIMIT 1
           `, [tenantId, companyId, company.name]);
@@ -7119,7 +7196,7 @@ async function executeTool(name, input, userId, tenantId) {
         } catch (e) { /* accounts table may not exist */ }
 
         // Get contacts with team proximity
-        const { rows: contacts } = await pool.query(`
+        const { rows: contacts } = await db.query(`
           SELECT
             p.id, p.full_name, p.current_title, p.current_company_name, p.seniority_level,
             ps.timing_score, ps.receptivity_score, ps.engagement_score,
@@ -7145,7 +7222,7 @@ async function executeTool(name, input, userId, tenantId) {
         `, [tenantId, companyId]);
 
         // Get recent signals for context
-        const { rows: signals } = await pool.query(`
+        const { rows: signals } = await db.query(`
           SELECT signal_type, evidence_summary, confidence_score, detected_at
           FROM signal_events WHERE company_id = $1 AND tenant_id = $2 AND detected_at > NOW() - INTERVAL '90 days'
           ORDER BY detected_at DESC LIMIT 5
@@ -7192,13 +7269,13 @@ async function executeTool(name, input, userId, tenantId) {
           }
           case 'claim': {
             if (!dispatch_id) return JSON.stringify({ error: 'dispatch_id required for claim action' });
-            const { rows: [d] } = await pool.query('SELECT id, claimed_by, status FROM signal_dispatches WHERE id = $1 AND tenant_id = $2', [dispatch_id, tenantId]);
+            const { rows: [d] } = await db.query('SELECT id, claimed_by, status FROM signal_dispatches WHERE id = $1 AND tenant_id = $2', [dispatch_id, tenantId]);
             if (!d) return JSON.stringify({ error: 'Dispatch not found' });
             if (d.claimed_by && d.claimed_by !== userId) {
-              const { rows: [claimer] } = await pool.query('SELECT name FROM users WHERE id = $1', [d.claimed_by]);
+              const { rows: [claimer] } = await db.query('SELECT name FROM users WHERE id = $1', [d.claimed_by]);
               return JSON.stringify({ error: `Already claimed by ${claimer?.name || 'another user'}` });
             }
-            const { rows: [updated] } = await pool.query(`
+            const { rows: [updated] } = await db.query(`
               UPDATE signal_dispatches SET claimed_by = $2, claimed_at = NOW(), status = CASE WHEN status = 'draft' THEN 'claimed' ELSE status END, updated_at = NOW()
               WHERE id = $1 AND tenant_id = $3 RETURNING id, company_name, signal_type, status
             `, [dispatch_id, userId, tenantId]);
@@ -7207,7 +7284,7 @@ async function executeTool(name, input, userId, tenantId) {
           }
           case 'unclaim': {
             if (!dispatch_id) return JSON.stringify({ error: 'dispatch_id required for unclaim action' });
-            const { rows: [updated] } = await pool.query(`
+            const { rows: [updated] } = await db.query(`
               UPDATE signal_dispatches SET claimed_by = NULL, claimed_at = NULL, status = 'draft', updated_at = NOW()
               WHERE id = $1 AND (claimed_by = $2 OR claimed_by IS NULL) AND tenant_id = $3 RETURNING id, company_name, status
             `, [dispatch_id, userId, tenantId]);
@@ -7223,7 +7300,7 @@ async function executeTool(name, input, userId, tenantId) {
             const params = status === 'reviewed'
               ? [dispatch_id, tenantId, status, userId]
               : [dispatch_id, tenantId, status];
-            const { rows: [updated] } = await pool.query(`
+            const { rows: [updated] } = await db.query(`
               UPDATE signal_dispatches SET ${updates.join(', ')}
               WHERE id = $1 AND tenant_id = $2 RETURNING id, company_name, signal_type, status
             `, params);
@@ -7232,7 +7309,7 @@ async function executeTool(name, input, userId, tenantId) {
           }
           case 'regenerate_content': {
             if (!dispatch_id) return JSON.stringify({ error: 'dispatch_id required for regenerate_content action' });
-            const { rows: [d] } = await pool.query(`
+            const { rows: [d] } = await db.query(`
               SELECT sd.*, se.evidence_summary, se.signal_type, se.confidence_score,
                      c.sector, c.geography
               FROM signal_dispatches sd
@@ -7250,7 +7327,7 @@ async function executeTool(name, input, userId, tenantId) {
               const text = regen.content.find(c => c.type === 'text')?.text || '';
               const parsed = JSON.parse(text.replace(/```json\n?|\n?```/g, ''));
 
-              await pool.query(`UPDATE signal_dispatches SET blog_theme = $2, blog_title = $3, blog_body = $4, blog_keywords = $5, updated_at = NOW() WHERE id = $1 AND tenant_id = $6`,
+              await db.query(`UPDATE signal_dispatches SET blog_theme = $2, blog_title = $3, blog_body = $4, blog_keywords = $5, updated_at = NOW() WHERE id = $1 AND tenant_id = $6`,
                 [dispatch_id, blogTheme, parsed.title, JSON.stringify(parsed.body || parsed), parsed.keywords || [], tenantId]);
 
               return JSON.stringify({ success: true, title: parsed.title, keywords: parsed.keywords, message: 'Content regenerated' });
@@ -7270,7 +7347,7 @@ async function executeTool(name, input, userId, tenantId) {
           try {
             // Resolve candidate
             let personId = null;
-            const { rows: personMatches } = await pool.query(
+            const { rows: personMatches } = await db.query(
               `SELECT id, full_name, current_title FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 3`,
               [pl.candidate_name.trim(), tenantId]
             );
@@ -7282,7 +7359,7 @@ async function executeTool(name, input, userId, tenantId) {
               personId = exact ? exact.id : personMatches[0].id;
             } else {
               // Create person
-              const { rows: [newPerson] } = await pool.query(
+              const { rows: [newPerson] } = await db.query(
                 `INSERT INTO people (full_name, current_title, source, created_by, tenant_id) VALUES ($1, $2, 'placement_import', $3, $4) RETURNING id`,
                 [pl.candidate_name.trim(), pl.role_title || null, userId, tenantId]
               );
@@ -7291,7 +7368,7 @@ async function executeTool(name, input, userId, tenantId) {
 
             // Resolve client company → account
             let clientId = null;
-            const { rows: acctMatches } = await pool.query(
+            const { rows: acctMatches } = await db.query(
               `SELECT a.id FROM accounts a WHERE a.name ILIKE $1 AND a.tenant_id = $2 LIMIT 1`,
               [`%${pl.company_name.trim()}%`, tenantId]
             );
@@ -7299,12 +7376,12 @@ async function executeTool(name, input, userId, tenantId) {
               clientId = acctMatches[0].id;
             } else {
               // Check companies table, create account if company exists
-              const { rows: coMatches } = await pool.query(
+              const { rows: coMatches } = await db.query(
                 `SELECT id, name FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1`,
                 [`%${pl.company_name.trim()}%`, tenantId]
               );
               if (coMatches.length) {
-                const { rows: [newAcct] } = await pool.query(
+                const { rows: [newAcct] } = await db.query(
                   `INSERT INTO accounts (name, company_id, relationship_status, tenant_id, created_at, updated_at)
                    VALUES ($1, $2, 'active', $3, NOW(), NOW()) RETURNING id`,
                   [coMatches[0].name, coMatches[0].id, tenantId]
@@ -7312,12 +7389,12 @@ async function executeTool(name, input, userId, tenantId) {
                 clientId = newAcct.id;
               } else {
                 // Create both company and account
-                const { rows: [newCo] } = await pool.query(
+                const { rows: [newCo] } = await db.query(
                   `INSERT INTO companies (name, is_client, created_by, tenant_id, created_at, updated_at)
                    VALUES ($1, true, $2, $3, NOW(), NOW()) RETURNING id`,
                   [pl.company_name.trim(), userId, tenantId]
                 );
-                const { rows: [newAcct] } = await pool.query(
+                const { rows: [newAcct] } = await db.query(
                   `INSERT INTO accounts (name, company_id, relationship_status, tenant_id, created_at, updated_at)
                    VALUES ($1, $2, 'active', $3, NOW(), NOW()) RETURNING id`,
                   [pl.company_name.trim(), newCo.id, tenantId]
@@ -7327,7 +7404,7 @@ async function executeTool(name, input, userId, tenantId) {
             }
 
             // Check for duplicate placement
-            const { rows: dupes } = await pool.query(
+            const { rows: dupes } = await db.query(
               `SELECT id FROM conversions WHERE person_id = $1 AND client_id = $2 AND role_title = $3 AND tenant_id = $4 LIMIT 1`,
               [personId, clientId, pl.role_title, tenantId]
             );
@@ -7338,7 +7415,7 @@ async function executeTool(name, input, userId, tenantId) {
             }
 
             // Insert placement
-            await pool.query(
+            await db.query(
               `INSERT INTO conversions (person_id, client_id, role_title, start_date, placement_fee, currency, notes, placed_by_user_id, tenant_id, created_at, updated_at)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())`,
               [personId, clientId, pl.role_title, pl.start_date || null,
@@ -7347,9 +7424,9 @@ async function executeTool(name, input, userId, tenantId) {
             );
 
             // Update person's current company
-            const { rows: [co] } = await pool.query('SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1', [`%${pl.company_name.trim()}%`, tenantId]);
+            const { rows: [co] } = await db.query('SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1', [`%${pl.company_name.trim()}%`, tenantId]);
             if (co) {
-              await pool.query('UPDATE people SET current_company_name = $1, current_company_id = $2, current_title = $3, updated_at = NOW() WHERE id = $4',
+              await db.query('UPDATE people SET current_company_name = $1, current_company_id = $2, current_title = $3, updated_at = NOW() WHERE id = $4',
                 [pl.company_name.trim(), co.id, pl.role_title, personId]);
             }
 
@@ -7373,7 +7450,7 @@ async function executeTool(name, input, userId, tenantId) {
         try {
           const fs = require('fs');
           const migPath = require('path').join(__dirname, 'sql', 'migration_case_studies.sql');
-          if (fs.existsSync(migPath)) await pool.query(fs.readFileSync(migPath, 'utf8'));
+          if (fs.existsSync(migPath)) await db.query(fs.readFileSync(migPath, 'utf8'));
         } catch (e) { /* table may already exist */ }
 
         const results = { imported: 0, skipped: 0, details: [] };
@@ -7383,7 +7460,7 @@ async function executeTool(name, input, userId, tenantId) {
             // Resolve client company
             let clientId = null;
             if (cs.client_name) {
-              const { rows } = await pool.query(
+              const { rows } = await db.query(
                 `SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1`,
                 [`%${cs.client_name.trim()}%`, tenantId]
               );
@@ -7394,7 +7471,7 @@ async function executeTool(name, input, userId, tenantId) {
             const title = [cs.role_title, cs.client_name].filter(Boolean).join(' — ') || 'Case Study';
 
             // Check for duplicate
-            const { rows: dupes } = await pool.query(
+            const { rows: dupes } = await db.query(
               `SELECT id FROM case_studies WHERE title ILIKE $1 AND tenant_id = $2 LIMIT 1`,
               [title, tenantId]
             );
@@ -7409,7 +7486,7 @@ async function executeTool(name, input, userId, tenantId) {
                             cs.geography, cs.challenge, cs.approach, cs.outcome];
             const completeness = fields.filter(Boolean).length / fields.length;
 
-            const { rows: [inserted] } = await pool.query(`
+            const { rows: [inserted] } = await db.query(`
               INSERT INTO case_studies (
                 tenant_id, title, client_name, client_id, engagement_type,
                 role_title, seniority_level, sector, geography, year,
@@ -7451,7 +7528,7 @@ async function executeTool(name, input, userId, tenantId) {
           if (qdrantResults.length > 0) {
             const csIds = qdrantResults.map(r => String(r.id)).filter(id => /^[0-9a-f-]{36}$/i.test(id));
             if (csIds.length > 0) {
-              const { rows } = await pool.query(
+              const { rows } = await db.query(
                 `SELECT id, title, client_name, role_title, sector, geography, year, challenge, themes, capabilities
                  FROM case_studies WHERE id = ANY($1::uuid[]) AND tenant_id = $2`,
                 [csIds, tenantId]
@@ -7468,7 +7545,7 @@ async function executeTool(name, input, userId, tenantId) {
 
         // Fallback to SQL text search
         if (results.length < 3) {
-          const { rows } = await pool.query(
+          const { rows } = await db.query(
             `SELECT id, title, client_name, role_title, sector, geography, year, challenge, themes, capabilities
              FROM case_studies
              WHERE tenant_id = $1 AND (
@@ -7519,6 +7596,7 @@ const uploadedFiles = new Map();
 // File upload
 app.post('/api/chat/upload', authenticateToken, chatUpload.single('file'), async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const file = req.file;
     if (!file) return res.status(400).json({ error: 'No file' });
     const fileId = crypto.randomUUID();
@@ -7664,6 +7742,7 @@ app.post('/api/chat/upload', authenticateToken, chatUpload.single('file'), async
 // Chat endpoint
 app.post('/api/chat', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { message, file_id } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
     if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
@@ -7748,6 +7827,7 @@ app.delete('/api/chat/history', authenticateToken, (req, res) => {
 // Internal: full case study list (authenticated, team only)
 app.get('/api/case-studies', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { sector, geography, theme, status, limit: lim = 50, offset = 0 } = req.query;
     let where = 'WHERE cs.tenant_id = $1';
     const params = [req.tenant_id];
@@ -7761,7 +7841,7 @@ app.get('/api/case-studies', authenticateToken, async (req, res) => {
     idx++; params.push(Math.min(parseInt(lim) || 50, 100));
     idx++; params.push(parseInt(offset) || 0);
 
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT cs.*, c.name AS client_company_name, c.is_client,
              ed.title AS source_document_title, ed.source_url
       FROM case_studies cs
@@ -7772,7 +7852,7 @@ app.get('/api/case-studies', authenticateToken, async (req, res) => {
       LIMIT $${idx - 1} OFFSET $${idx}
     `, params);
 
-    const { rows: [{ count }] } = await pool.query(
+    const { rows: [{ count }] } = await db.query(
       `SELECT COUNT(*) FROM case_studies cs ${where}`, params.slice(0, -2)
     );
 
@@ -7786,7 +7866,8 @@ app.get('/api/case-studies', authenticateToken, async (req, res) => {
 // Internal: full case study detail (authenticated, team only)
 app.get('/api/case-studies/:id', authenticateToken, async (req, res) => {
   try {
-    const { rows: [cs] } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [cs] } = await db.query(`
       SELECT cs.*, c.name AS client_company_name, c.sector AS client_sector,
              ed.title AS source_document_title, ed.source_url, ed.content_summary
       FROM case_studies cs
@@ -7799,7 +7880,7 @@ app.get('/api/case-studies/:id', authenticateToken, async (req, res) => {
     // People from the source document — INTERNAL ONLY
     let people = [];
     if (cs.document_id) {
-      const { rows } = await pool.query(`
+      const { rows } = await db.query(`
         SELECT dp.person_name, dp.person_title, dp.person_company, dp.mention_role, dp.context_note,
                dp.person_id, p.current_title AS current_title_now, p.current_company_name AS current_company_now
         FROM document_people dp
@@ -7819,6 +7900,7 @@ app.get('/api/case-studies/:id', authenticateToken, async (req, res) => {
 // Sanitise a case study for external use (admin only)
 app.patch('/api/case-studies/:id/sanitise', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { public_title, public_summary, public_sector, public_geography, public_capability, public_approved } = req.body;
     const updates = ['updated_at = NOW()'];
     const params = [req.params.id, req.tenant_id];
@@ -7839,7 +7921,7 @@ app.patch('/api/case-studies/:id/sanitise', authenticateToken, async (req, res) 
       }
     }
 
-    const { rows: [updated] } = await pool.query(
+    const { rows: [updated] } = await db.query(
       `UPDATE case_studies SET ${updates.join(', ')} WHERE id = $1 AND tenant_id = $2 RETURNING id, public_title, public_approved, visibility, status`,
       params
     );
@@ -7855,6 +7937,7 @@ app.patch('/api/case-studies/:id/sanitise', authenticateToken, async (req, res) 
 // Edit case study (any field)
 app.patch('/api/case-studies/:id', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const allowed = ['title', 'client_name', 'role_title', 'engagement_type', 'seniority_level',
       'sector', 'geography', 'year', 'challenge', 'approach', 'outcome', 'impact_note',
       'themes', 'change_vectors', 'capabilities', 'status', 'visibility'];
@@ -7877,7 +7960,7 @@ app.patch('/api/case-studies/:id', authenticateToken, async (req, res) => {
 
     if (updates.length <= 1) return res.status(400).json({ error: 'No valid fields to update' });
 
-    const { rows: [updated] } = await pool.query(
+    const { rows: [updated] } = await db.query(
       `UPDATE case_studies SET ${updates.join(', ')} WHERE id = $1 AND tenant_id = $2 RETURNING *`,
       params
     );
@@ -7893,7 +7976,8 @@ app.patch('/api/case-studies/:id', authenticateToken, async (req, res) => {
 // Delete case study
 app.delete('/api/case-studies/:id', authenticateToken, async (req, res) => {
   try {
-    const { rows: [deleted] } = await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [deleted] } = await db.query(
       'DELETE FROM case_studies WHERE id = $1 AND tenant_id = $2 RETURNING id, title',
       [req.params.id, req.tenant_id]
     );
@@ -7923,7 +8007,7 @@ app.get('/api/public/case-studies', async (req, res) => {
     if (capability) { idx++; where += ` AND $${idx} = ANY(cs.capabilities)`; params.push(capability); }
     idx++; params.push(Math.min(parseInt(lim) || 20, 50));
 
-    const { rows } = await pool.query(`
+    const { rows } = await platformPool.query(`
       SELECT
         cs.id, cs.slug,
         cs.public_title AS title,
@@ -7953,6 +8037,7 @@ app.get('/api/public/case-studies', async (req, res) => {
 // Returns INTERNAL fields — for team use, not external publishing
 app.get('/api/case-studies/relevant', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { signal_type, sector, geography, company_name, company_id, limit: lim = 5 } = req.query;
     const tenantId = req.tenant_id;
 
@@ -8005,7 +8090,7 @@ app.get('/api/case-studies/relevant', authenticateToken, async (req, res) => {
     const scoreExpr = scoreTerms.length > 0 ? scoreTerms.join(' + ') : '0';
     idx++; params.push(Math.min(parseInt(lim) || 5, 20));
 
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT
         cs.id, cs.title, cs.client_name, cs.role_title, cs.engagement_type,
         cs.sector, cs.geography, cs.seniority_level, cs.year,
@@ -8032,6 +8117,7 @@ app.get('/api/case-studies/relevant', authenticateToken, async (req, res) => {
 // Used by the dispatch rendering pipeline — returns ONLY public-safe fields
 app.get('/api/case-studies/match', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { themes, sectors, geographies, change_vectors, limit: lim = 3 } = req.query;
     const tenantId = req.tenant_id;
 
@@ -8064,7 +8150,7 @@ app.get('/api/case-studies/match', authenticateToken, async (req, res) => {
     const scoreExpr = scoreTerms.length > 0 ? scoreTerms.join(' + ') : '0';
     idx++; params.push(Math.min(parseInt(lim) || 3, 10));
 
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT
         cs.id, cs.slug,
         cs.public_title AS title,
@@ -8091,6 +8177,7 @@ app.get('/api/case-studies/match', authenticateToken, async (req, res) => {
 // Classified documents overview
 app.get('/api/documents/classified', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { document_type, limit: lim = 30 } = req.query;
     let where = 'WHERE ed.tenant_id = $1 AND ed.classified_at IS NOT NULL';
     const params = [req.tenant_id];
@@ -8098,7 +8185,7 @@ app.get('/api/documents/classified', authenticateToken, async (req, res) => {
     if (document_type) { idx++; where += ` AND ed.document_type = $${idx}`; params.push(document_type); }
     idx++; params.push(Math.min(parseInt(lim) || 30, 100));
 
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT ed.id, ed.title, ed.document_type, ed.content_summary, ed.relevance_tags,
              ed.source_url, ed.classified_at, ed.uploaded_by_user_id,
              u.name AS uploaded_by_name,
@@ -8111,7 +8198,7 @@ app.get('/api/documents/classified', authenticateToken, async (req, res) => {
     `, params);
 
     // Type summary
-    const { rows: typeSummary } = await pool.query(`
+    const { rows: typeSummary } = await db.query(`
       SELECT document_type, COUNT(*) AS count
       FROM external_documents
       WHERE tenant_id = $1 AND classified_at IS NOT NULL AND document_type IS NOT NULL
@@ -8136,8 +8223,9 @@ function requireAdmin(req, res, next) {
 // Team members overview
 app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     // Core user data — only references tables guaranteed to exist
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT u.id, u.name, u.email, u.role, u.region, u.onboarded, u.created_at, u.updated_at,
         (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND s.expires_at > NOW()) AS active_sessions,
         (SELECT MAX(s.created_at) FROM sessions s WHERE s.user_id = u.id) AS last_login,
@@ -8153,7 +8241,7 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
 
     // Enrich with Google account data (table may not exist)
     try {
-      const { rows: googleRows } = await pool.query(`
+      const { rows: googleRows } = await db.query(`
         SELECT user_id,
           COUNT(*) AS google_accounts,
           bool_or(sync_enabled) AS google_sync_active,
@@ -8181,11 +8269,12 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
 // Update user role
 app.patch('/api/admin/users/:id/role', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { role } = req.body;
     if (!['admin', 'consultant', 'researcher', 'viewer'].includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
-    const { rows: [updated] } = await pool.query(
+    const { rows: [updated] } = await db.query(
       'UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3 RETURNING id, name, email, role',
       [role, req.params.id, req.tenant_id]
     );
@@ -8200,8 +8289,9 @@ app.patch('/api/admin/users/:id/role', authenticateToken, requireAdmin, async (r
 // Platform health overview
 app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     // Each query is fail-safe — tables may not exist on all deployments
-    const stats = await pool.query(`
+    const stats = await db.query(`
       SELECT
         (SELECT COUNT(*) FROM users WHERE tenant_id = $1) AS total_users,
         (SELECT COUNT(*) FROM sessions WHERE expires_at > NOW()) AS active_sessions,
@@ -8222,14 +8312,14 @@ app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) =
 
     // Optional tables — may not exist
     let googleCount = 0;
-    try { const r = await pool.query('SELECT COUNT(*) AS cnt FROM user_google_accounts WHERE sync_enabled = true'); googleCount = r.rows[0]?.cnt || 0; } catch (e) {}
+    try { const r = await db.query('SELECT COUNT(*) AS cnt FROM user_google_accounts WHERE sync_enabled = true'); googleCount = r.rows[0]?.cnt || 0; } catch (e) {}
     let grabsCount = 0;
-    try { const r = await pool.query('SELECT COUNT(*) AS cnt FROM signal_grabs WHERE tenant_id = $1', [req.tenant_id]); grabsCount = r.rows[0]?.cnt || 0; } catch (e) {}
+    try { const r = await db.query('SELECT COUNT(*) AS cnt FROM signal_grabs WHERE tenant_id = $1', [req.tenant_id]); grabsCount = r.rows[0]?.cnt || 0; } catch (e) {}
 
     // Gmail/sync running tallies
     let gmailStats = {};
     try {
-      const { rows: [gs] } = await pool.query(`
+      const { rows: [gs] } = await db.query(`
         SELECT
           (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND source = 'gmail_sync') AS gmail_interactions,
           (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND source = 'gmail_sync' AND interaction_at > NOW() - INTERVAL '7 days') AS gmail_7d,
@@ -8248,7 +8338,7 @@ app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) =
       gmailStats = gs || {};
     } catch (e) { /* some tables may not exist */ }
 
-    const sources = await pool.query(`
+    const sources = await db.query(`
       SELECT rs.name, rs.source_type, rs.url, rs.enabled,
              rs.last_fetched_at, rs.last_error, rs.consecutive_errors,
              (SELECT COUNT(*) FROM external_documents ed WHERE ed.source_name = rs.name AND ed.tenant_id = $1) AS doc_count
@@ -8256,14 +8346,14 @@ app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) =
       ORDER BY rs.enabled DESC, rs.last_fetched_at DESC NULLS LAST
     `, [req.tenant_id]).catch(() => ({ rows: [] }));
 
-    const pipelines = await pool.query(`
+    const pipelines = await db.query(`
       SELECT pipeline_key, pipeline_name, status, started_at, completed_at, duration_ms,
              items_processed, error_message
       FROM pipeline_runs
       ORDER BY started_at DESC LIMIT 30
     `).catch(() => ({ rows: [] }));
 
-    const storage = await pool.query(`
+    const storage = await db.query(`
       SELECT
         (SELECT COUNT(*) FROM people WHERE embedded_at IS NOT NULL) AS person_embeddings,
         (SELECT COUNT(*) FROM companies WHERE embedded_at IS NOT NULL) AS company_embeddings,
@@ -8300,12 +8390,13 @@ app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) =
 // Data ingestion per user
 app.get('/api/admin/ingestion', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const tenantId = req.tenant_id;
 
     // People imported per user by source — use created_by first, fall back to proximity
     let peopleBySource = [];
     try {
-      const { rows } = await pool.query(`
+      const { rows } = await db.query(`
         SELECT
           COALESCE(u1.id, u2.id) AS user_id,
           COALESCE(u1.name, u2.name) AS name,
@@ -8332,7 +8423,7 @@ app.get('/api/admin/ingestion', authenticateToken, requireAdmin, async (req, res
     // LinkedIn connections per team member
     let linkedinConnections = [];
     try {
-      const { rows } = await pool.query(`
+      const { rows } = await db.query(`
         SELECT
           lc.team_member_id, u.name, u.email,
           COUNT(*) AS total_connections,
@@ -8353,7 +8444,7 @@ app.get('/api/admin/ingestion', authenticateToken, requireAdmin, async (req, res
     // Google accounts detail
     let googleAccounts = [];
     try {
-      const { rows } = await pool.query(`
+      const { rows } = await db.query(`
         SELECT
           ug.user_id, u.name, u.email AS user_email,
           ug.google_email, ug.sync_enabled, ug.last_sync_at, ug.scopes,
@@ -8371,7 +8462,7 @@ app.get('/api/admin/ingestion', authenticateToken, requireAdmin, async (req, res
     // Xero sync status
     let xeroSync = [];
     try {
-      const { rows } = await pool.query(`
+      const { rows } = await db.query(`
         SELECT xt.tenant_name, xt.expires_at, xt.updated_at AS token_updated,
                xs.last_sync_at, xs.invoices_synced, xs.last_error
         FROM xero_tokens xt
@@ -8383,7 +8474,7 @@ app.get('/api/admin/ingestion', authenticateToken, requireAdmin, async (req, res
     // Ezekia enrichment stats
     let ezekiaStats = null;
     try {
-      const { rows: [stats] } = await pool.query(`
+      const { rows: [stats] } = await db.query(`
         SELECT
           COUNT(*) FILTER (WHERE source = 'ezekia') AS ezekia_people,
           COUNT(*) FILTER (WHERE enriched_at IS NOT NULL) AS enriched_people,
@@ -8397,7 +8488,7 @@ app.get('/api/admin/ingestion', authenticateToken, requireAdmin, async (req, res
     // Documents uploaded per user
     let docUploads = [];
     try {
-      const { rows } = await pool.query(`
+      const { rows } = await db.query(`
         SELECT u.id AS user_id, u.name, u.email,
                COUNT(*) AS docs_uploaded,
                MIN(ed.published_at) AS earliest,
@@ -8414,7 +8505,7 @@ app.get('/api/admin/ingestion', authenticateToken, requireAdmin, async (req, res
     // Team proximity by source (how connections were created)
     let proxBySrc = [];
     try {
-      const { rows } = await pool.query(`
+      const { rows } = await db.query(`
         SELECT
           u.name, u.email,
           tp.source AS proximity_source,
@@ -8447,7 +8538,8 @@ app.get('/api/admin/ingestion', authenticateToken, requireAdmin, async (req, res
 // Tenant config
 app.get('/api/admin/tenant', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { rows: [tenant] } = await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [tenant] } = await db.query(
       'SELECT * FROM tenants WHERE id = $1', [req.tenant_id]
     );
     res.json({ tenant });
@@ -8459,8 +8551,9 @@ app.get('/api/admin/tenant', authenticateToken, requireAdmin, async (req, res) =
 // Audit log
 app.get('/api/admin/audit', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT al.action, al.target_type, al.target_id, al.details, al.ip_address, al.created_at,
              u.name AS user_name, u.email AS user_email
       FROM audit_logs al
@@ -8481,9 +8574,10 @@ app.get('/api/admin/audit', authenticateToken, requireAdmin, async (req, res) =>
 // Profile stats
 app.get('/api/profile/stats', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const uid = req.user.user_id;
     const tid = req.tenant_id;
-    const { rows: [s] } = await pool.query(`
+    const { rows: [s] } = await db.query(`
       SELECT
         (SELECT COUNT(*) FROM team_proximity WHERE team_member_id = $1 AND tenant_id = $2) AS connections,
         (SELECT COUNT(*) FROM interactions WHERE (user_id = $1 OR created_by = $1) AND tenant_id = $2) AS interactions,
@@ -8492,7 +8586,7 @@ app.get('/api/profile/stats', authenticateToken, async (req, res) => {
     `, [uid, tid]);
 
     // Import history from audit log
-    const { rows: imports } = await pool.query(`
+    const { rows: imports } = await db.query(`
       SELECT action, details->>'filename' AS filename, details->>'total' AS total, created_at
       FROM audit_logs WHERE user_id = $1 AND action IN ('csv_import','linkedin_connections_import','linkedin_messages_import','workbook_import','admin_linkedin_import','document_upload')
       ORDER BY created_at DESC LIMIT 20
@@ -8512,7 +8606,8 @@ app.get('/api/profile/stats', authenticateToken, async (req, res) => {
 // User feeds — list
 app.get('/api/profile/feeds', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT fp.id, fp.proposed_url AS url, fp.proposed_name AS name, fp.status,
         fp.status = 'approved' AS active, fp.created_at
       FROM feed_proposals fp
@@ -8526,6 +8621,7 @@ app.get('/api/profile/feeds', authenticateToken, async (req, res) => {
 // User feeds — add
 app.post('/api/profile/feeds', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { url, name } = req.body;
     if (!url || !url.startsWith('http')) return res.status(400).json({ error: 'Valid URL required' });
 
@@ -8537,7 +8633,7 @@ app.post('/api/profile/feeds', authenticateToken, async (req, res) => {
       isRss = text.includes('<rss') || text.includes('<feed') || text.includes('<channel');
     } catch (e) { /* probe failed, not critical */ }
 
-    const { rows: [feed] } = await pool.query(`
+    const { rows: [feed] } = await db.query(`
       INSERT INTO feed_proposals (proposed_url, proposed_name, proposed_by, status, is_rss, created_at)
       VALUES ($1, $2, $3, 'approved', $4, NOW())
       ON CONFLICT (proposed_url) DO UPDATE SET proposed_name = COALESCE(EXCLUDED.proposed_name, feed_proposals.proposed_name)
@@ -8547,16 +8643,16 @@ app.post('/api/profile/feeds', authenticateToken, async (req, res) => {
     // If it's RSS, also add to the feed_inventory / external_sources system
     if (isRss) {
       try {
-        await pool.query(`
+        await db.query(`
           INSERT INTO feed_inventory (url, name, source_type, region, added_by, tenant_id, created_at)
           VALUES ($1, $2, 'rss', $3, $4, $5, NOW())
           ON CONFLICT (url) DO NOTHING
         `, [url.trim(), name || url, req.user?.region || 'GLOBAL', req.user.user_id, req.tenant_id]);
 
         // Also activate for this tenant
-        const { rows: [fi] } = await pool.query(`SELECT id FROM feed_inventory WHERE url = $1 LIMIT 1`, [url.trim()]);
+        const { rows: [fi] } = await db.query(`SELECT id FROM feed_inventory WHERE url = $1 LIMIT 1`, [url.trim()]);
         if (fi) {
-          await pool.query(`
+          await db.query(`
             INSERT INTO tenant_feeds (tenant_id, feed_id, selection_method, activated_at)
             VALUES ($1, $2, 'user_contributed', NOW())
             ON CONFLICT (tenant_id, feed_id) DO UPDATE SET active = TRUE
@@ -8573,7 +8669,8 @@ app.post('/api/profile/feeds', authenticateToken, async (req, res) => {
 // User feeds — remove
 app.delete('/api/profile/feeds/:id', authenticateToken, async (req, res) => {
   try {
-    await pool.query(`DELETE FROM feed_proposals WHERE id = $1 AND proposed_by = $2`, [req.params.id, req.user.user_id]);
+    const db = new TenantDB(req.tenant_id);
+    await db.query(`DELETE FROM feed_proposals WHERE id = $1 AND proposed_by = $2`, [req.params.id, req.user.user_id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -8583,6 +8680,7 @@ const profileUpload = require('multer')({ dest: '/tmp/ml-profile-uploads/', limi
 // Import preview — dry run analysis without writing
 app.post('/api/profile/import/preview', authenticateToken, profileUpload.single('file'), async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const file = req.file;
     const importType = req.body.import_type;
     const tenantId = req.tenant_id;
@@ -8632,7 +8730,7 @@ app.post('/api/profile/import/preview', authenticateToken, profileUpload.single(
     else if (nameCol || firstNameCol) detectedType = 'contacts';
 
     // Load existing people for matching
-    const { rows: dbPeople } = await pool.query(
+    const { rows: dbPeople } = await db.query(
       `SELECT id, full_name, linkedin_url, email FROM people WHERE tenant_id = $1`, [tenantId]
     );
     const linkedinIndex = new Map(), nameIndex = new Map(), emailIndex = new Map();
@@ -8714,6 +8812,7 @@ app.post('/api/profile/import/preview', authenticateToken, profileUpload.single(
 // Import confirmed — write to DB (accepts file upload OR file_id from preview)
 app.post('/api/profile/import', authenticateToken, profileUpload.single('file'), async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     // Support both: new file upload OR confirmed import from preview
     const fileId = req.query.file_id || req.body?.file_id;
     let file = req.file;
@@ -8761,7 +8860,7 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
       }
 
       // Load people for matching
-      const { rows: dbPeople } = await pool.query(
+      const { rows: dbPeople } = await db.query(
         `SELECT id, full_name, linkedin_url FROM people WHERE tenant_id = $1`, [tenantId]
       );
       const linkedinIndex = new Map(), nameIndex = new Map();
@@ -8803,7 +8902,7 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
         if (personId) { stats.matched++; }
         else {
           try {
-            const { rows: [newP] } = await pool.query(
+            const { rows: [newP] } = await db.query(
               `INSERT INTO people (full_name, first_name, last_name, current_title, current_company_name, linkedin_url, source, created_by, tenant_id)
                VALUES ($1,$2,$3,$4,$5,$6,'linkedin_import',$7,$8) RETURNING id`,
               [fullName, firstName, lastName, position || null, company || null, linkedinUrl || null, userId, tenantId]);
@@ -8814,7 +8913,7 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
 
         if (personId) {
           try {
-            await pool.query(
+            await db.query(
               `INSERT INTO team_proximity (person_id, team_member_id, relationship_type, relationship_strength, source, tenant_id)
                VALUES ($1, $2, 'linkedin_connection', 0.5, 'linkedin_import', $3)
                ON CONFLICT (person_id, team_member_id) DO UPDATE SET relationship_strength = GREATEST(team_proximity.relationship_strength, 0.5)`,
@@ -8848,9 +8947,9 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
         const name = row[nameCol]?.trim();
         if (!name || name.length < 2) continue;
         stats.total++;
-        const { rows: exists } = await pool.query(`SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [name, tenantId]);
+        const { rows: exists } = await db.query(`SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [name, tenantId]);
         if (exists.length) { stats.skipped++; continue; }
-        await pool.query(
+        await db.query(
           `INSERT INTO people (full_name, current_title, current_company_name, email, source, created_by, tenant_id)
            VALUES ($1,$2,$3,$4,'csv_import',$5,$6)`,
           [name, titleCol ? row[titleCol] : null, companyCol ? row[companyCol] : null, emailCol ? row[emailCol] : null, userId, tenantId]);
@@ -8864,7 +8963,7 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
     // Document upload (PDF, XLSX, TXT)
     if (importType === 'document') {
       const hash = require('crypto').createHash('md5').update(file.originalname + file.size).digest('hex');
-      const { rows: exists } = await pool.query(`SELECT id FROM external_documents WHERE source_url_hash = $1 AND tenant_id = $2`, [hash, tenantId]);
+      const { rows: exists } = await db.query(`SELECT id FROM external_documents WHERE source_url_hash = $1 AND tenant_id = $2`, [hash, tenantId]);
       if (exists.length) { try { require('fs').unlinkSync(file.path); } catch(e){} return res.json({ documents_created: 0, message: 'File already imported' }); }
 
       let content = file.originalname;
@@ -8876,7 +8975,7 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
         try { content = require('fs').readFileSync(file.path, 'utf8'); } catch(e) {}
       }
 
-      await pool.query(`
+      await db.query(`
         INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash,
           tenant_id, uploaded_by_user_id, processing_status, created_at)
         VALUES ($1, $2, $3, 'user_upload', $4, $5, $6, $7, 'processed', NOW())
@@ -8917,7 +9016,8 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
 // Trigger sync for current user
 app.post('/api/profile/trigger-sync', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(
       `SELECT google_email FROM user_google_accounts WHERE user_id = $1 AND sync_enabled = true`, [req.user.user_id]
     );
     if (!rows.length) return res.json({ message: 'No Google account connected. Connect from this page first.' });
@@ -8931,10 +9031,11 @@ app.post('/api/profile/trigger-sync', authenticateToken, async (req, res) => {
 
 app.get('/api/ecosystem', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const tid = req.tenant_id;
 
     // 1. Regional signal density
-    const { rows: signalsByRegion } = await pool.query(`
+    const { rows: signalsByRegion } = await db.query(`
       SELECT
         CASE
           WHEN c.country_code IN ('AU','NZ') OR c.geography ILIKE '%australia%' THEN 'AU'
@@ -8956,7 +9057,7 @@ app.get('/api/ecosystem', authenticateToken, async (req, res) => {
     `, [tid]).catch(() => ({ rows: [] }));
 
     // 2. Network density per region
-    const { rows: density } = await pool.query(`
+    const { rows: density } = await db.query(`
       SELECT nds.region_code, gp.region_name, gp.weight_boost, gp.is_home_market,
              nds.total_contacts, nds.active_contacts, nds.senior_contacts,
              nds.placement_count, nds.client_count,
@@ -8968,7 +9069,7 @@ app.get('/api/ecosystem', authenticateToken, async (req, res) => {
     `, [tid]).catch(() => ({ rows: [] }));
 
     // 3. Revenue by region (from Xero data only)
-    const { rows: revenue } = await pool.query(`
+    const { rows: revenue } = await db.query(`
       SELECT
         CASE
           WHEN cv.currency = 'AUD' THEN 'AU'
@@ -8987,7 +9088,7 @@ app.get('/api/ecosystem', authenticateToken, async (req, res) => {
     `, [tid]).catch(() => ({ rows: [] }));
 
     // 4. Top companies per region with signal activity
-    const { rows: topCompanies } = await pool.query(`
+    const { rows: topCompanies } = await db.query(`
       SELECT
         CASE
           WHEN c.country_code IN ('AU','NZ') OR c.geography ILIKE '%australia%' THEN 'AU'
@@ -9008,7 +9109,7 @@ app.get('/api/ecosystem', authenticateToken, async (req, res) => {
     `, [tid]).catch(() => ({ rows: [] }));
 
     // 5. Converging themes (top 5 globally)
-    const { rows: themes } = await pool.query(`
+    const { rows: themes } = await db.query(`
       SELECT se.signal_type, COUNT(*) AS count, COUNT(DISTINCT se.company_id) AS companies,
              COUNT(DISTINCT se.company_id) FILTER (WHERE c.is_client = true) AS client_companies
       FROM signal_events se
@@ -9019,7 +9120,7 @@ app.get('/api/ecosystem', authenticateToken, async (req, res) => {
     `, [tid]).catch(() => ({ rows: [] }));
 
     // 6. Case study coverage by geography
-    const { rows: caseGeo } = await pool.query(`
+    const { rows: caseGeo } = await db.query(`
       SELECT geography, COUNT(*) AS count
       FROM case_studies
       WHERE tenant_id = $1 AND status != 'deleted' AND geography IS NOT NULL
@@ -9072,6 +9173,7 @@ app.get('/api/ecosystem', authenticateToken, async (req, res) => {
 
 app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { headers, rows } = req.body;
     if (!rows || !rows.length) return res.status(400).json({ error: 'No rows to import' });
 
@@ -9177,7 +9279,7 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
         // Find or match client account
         let clientId = null;
         if (clientName) {
-          const { rows: [existing] } = await pool.query(
+          const { rows: [existing] } = await db.query(
             `SELECT id FROM accounts WHERE LOWER(name) = LOWER($1) AND tenant_id = $2 LIMIT 1`,
             [clientName.trim(), req.tenant_id]
           );
@@ -9185,7 +9287,7 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
             clientId = existing.id;
           } else {
             // Create account
-            const { rows: [newClient] } = await pool.query(
+            const { rows: [newClient] } = await db.query(
               `INSERT INTO accounts (name, tenant_id, created_at) VALUES ($1, $2, NOW()) RETURNING id`,
               [clientName.trim(), req.tenant_id]
             );
@@ -9196,7 +9298,7 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
         // Check for existing record (dedup by invoice_number or client+role+date)
         let existingId = null;
         if (invoiceNum) {
-          const { rows: [dup] } = await pool.query(
+          const { rows: [dup] } = await db.query(
             `SELECT id FROM conversions WHERE invoice_number = $1 AND tenant_id = $2 LIMIT 1`,
             [invoiceNum, req.tenant_id]
           );
@@ -9207,7 +9309,7 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
 
         if (existingId) {
           // Update existing
-          await pool.query(`
+          await db.query(`
             UPDATE conversions SET
               role_title = COALESCE($1, role_title),
               placement_fee = COALESCE($2, placement_fee),
@@ -9224,7 +9326,7 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
           updated++;
         } else {
           // Insert new
-          await pool.query(`
+          await db.query(`
             INSERT INTO conversions (
               role_title, placement_fee, start_date, client_id, client_name_raw,
               invoice_number, consultant_name, payment_status, fee_stage,
@@ -9255,6 +9357,7 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
 // ── MYOB Sales Detail CSV Import ──
 app.post('/api/admin/import-sales-myob', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { invoices } = req.body;
     if (!invoices || !invoices.length) return res.status(400).json({ error: 'No invoices to import' });
 
@@ -9286,14 +9389,14 @@ app.post('/api/admin/import-sales-myob', authenticateToken, requireAdmin, async 
         // Find or create client account
         let clientId = null;
         if (clientName) {
-          const { rows: [existing] } = await pool.query(
+          const { rows: [existing] } = await db.query(
             `SELECT id FROM accounts WHERE LOWER(name) = LOWER($1) AND tenant_id = $2 LIMIT 1`,
             [clientName, req.tenant_id]
           );
           if (existing) {
             clientId = existing.id;
           } else {
-            const { rows: [newClient] } = await pool.query(
+            const { rows: [newClient] } = await db.query(
               `INSERT INTO accounts (name, tenant_id, created_at) VALUES ($1, $2, NOW()) RETURNING id`,
               [clientName, req.tenant_id]
             );
@@ -9304,7 +9407,7 @@ app.post('/api/admin/import-sales-myob', authenticateToken, requireAdmin, async 
         // Dedup by invoice number
         let existingId = null;
         if (invoiceNum) {
-          const { rows: [dup] } = await pool.query(
+          const { rows: [dup] } = await db.query(
             `SELECT id FROM conversions WHERE invoice_number = $1 AND tenant_id = $2 LIMIT 1`,
             [invoiceNum, req.tenant_id]
           );
@@ -9312,7 +9415,7 @@ app.post('/api/admin/import-sales-myob', authenticateToken, requireAdmin, async 
         }
 
         if (existingId) {
-          await pool.query(`
+          await db.query(`
             UPDATE conversions SET
               role_title = COALESCE($1, role_title),
               placement_fee = COALESCE($2, placement_fee),
@@ -9330,7 +9433,7 @@ app.post('/api/admin/import-sales-myob', authenticateToken, requireAdmin, async 
           );
           updated++;
         } else {
-          await pool.query(`
+          await db.query(`
             INSERT INTO conversions (
               role_title, placement_fee, start_date, client_id, client_name_raw,
               invoice_number, payment_status, currency, source, notes, tenant_id, created_at
@@ -9363,6 +9466,7 @@ app.post('/api/admin/import-sales-myob', authenticateToken, requireAdmin, async 
 const adminUpload = require('multer')({ dest: '/tmp/ml-admin-uploads/', limits: { fileSize: 20 * 1024 * 1024 } });
 app.post('/api/admin/upload-linkedin', authenticateToken, requireAdmin, adminUpload.single('file'), async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const file = req.file;
     const targetUserId = req.body.target_user_id;
     if (!file || !targetUserId) return res.status(400).json({ error: 'File and target_user_id required' });
@@ -9424,7 +9528,7 @@ app.post('/api/admin/upload-linkedin', authenticateToken, requireAdmin, adminUpl
     // Background processing
     (async () => {
       try {
-        const { rows: dbPeople } = await pool.query(
+        const { rows: dbPeople } = await db.query(
           `SELECT id, full_name, linkedin_url, current_company_name, email FROM people WHERE tenant_id = $1`, [tenantId]
         );
         const linkedinIndex = new Map(), nameIndex = new Map();
@@ -9465,7 +9569,7 @@ app.post('/api/admin/upload-linkedin', authenticateToken, requireAdmin, adminUpl
             stats.matched++;
           } else {
             try {
-              const { rows: [newP] } = await pool.query(
+              const { rows: [newP] } = await db.query(
                 `INSERT INTO people (full_name, first_name, last_name, current_title, current_company_name, linkedin_url, email, source, created_by, tenant_id)
                  VALUES ($1,$2,$3,$4,$5,$6,$7,'linkedin_import',$8,$9) RETURNING id`,
                 [fullName, firstName, lastName, position || null, company || null, linkedinUrl || null, email || null, targetUserId, tenantId]
@@ -9477,7 +9581,7 @@ app.post('/api/admin/upload-linkedin', authenticateToken, requireAdmin, adminUpl
 
           if (personId) {
             try {
-              await pool.query(
+              await db.query(
                 `INSERT INTO team_proximity (person_id, team_member_id, relationship_type, relationship_strength, source, tenant_id)
                  VALUES ($1, $2, 'linkedin_connection', 0.5, 'linkedin_import', $3)
                  ON CONFLICT (person_id, team_member_id) DO UPDATE SET relationship_strength = GREATEST(team_proximity.relationship_strength, 0.5)`,
@@ -9505,17 +9609,18 @@ app.post('/api/admin/upload-linkedin', authenticateToken, requireAdmin, adminUpl
 // Trigger Drive sync for a specific user
 app.post('/api/admin/trigger-drive-sync', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { user_id } = req.body;
     if (!user_id) return res.status(400).json({ error: 'user_id required' });
 
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT id, google_email, access_token, refresh_token FROM user_google_accounts WHERE user_id = $1 AND sync_enabled = true`,
       [user_id]
     );
     if (!rows.length) return res.json({ message: 'No Google account connected for this user' });
 
     // Trigger the drive sync pipeline for this specific user
-    const { rows: [user] } = await pool.query('SELECT name FROM users WHERE id = $1', [user_id]);
+    const { rows: [user] } = await db.query('SELECT name FROM users WHERE id = $1', [user_id]);
     auditLog(req.user.user_id, 'admin_trigger_drive_sync', 'user', user_id, { google_email: rows[0].google_email });
     res.json({ message: `Drive sync triggered for ${user?.name || user_id} (${rows[0].google_email}). Will process on next sync cycle.` });
   } catch (err) {
@@ -9526,10 +9631,11 @@ app.post('/api/admin/trigger-drive-sync', authenticateToken, requireAdmin, async
 // Trigger CRM (Ezekia) sync
 app.post('/api/admin/trigger-crm-sync', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     if (!process.env.EZEKIA_API_TOKEN) return res.json({ message: 'Ezekia API not configured. Set EZEKIA_API_TOKEN in environment.' });
 
     // Check current Ezekia people count
-    const { rows: [ezCount] } = await pool.query(
+    const { rows: [ezCount] } = await db.query(
       `SELECT COUNT(*) AS cnt FROM people WHERE source = 'ezekia' AND tenant_id = $1`, [req.tenant_id]
     ).catch(() => ({ rows: [{ cnt: 0 }] }));
 
@@ -9629,14 +9735,16 @@ app.get('/api/xero/callback', async (req, res) => {
 
 // Check Xero connection status
 app.get('/api/xero/status', authenticateToken, async (req, res) => {
-  const tokens = await pool.query('SELECT tenant_id, tenant_name, expires_at, updated_at FROM xero_tokens').catch(() => ({ rows: [] }));
-  const sync = await pool.query('SELECT * FROM xero_sync_state').catch(() => ({ rows: [] }));
+  const db = new TenantDB(req.tenant_id);
+  const tokens = await db.query('SELECT tenant_id, tenant_name, expires_at, updated_at FROM xero_tokens').catch(() => ({ rows: [] }));
+  const sync = await db.query('SELECT * FROM xero_sync_state').catch(() => ({ rows: [] }));
   res.json({ connected: tokens.rows.length > 0, tenants: tokens.rows, sync: sync.rows });
 });
 
 // Manual sync trigger
 app.post('/api/xero/sync', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { pipelineSyncXero } = require('./scripts/sync_xero');
     res.json({ message: 'Xero sync triggered' });
     pipelineSyncXero().catch(e => console.error('Xero sync error:', e.message));
@@ -9685,6 +9793,7 @@ try {
 
 app.get('/api/opportunities', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { status } = req.query;
     let where = 'o.tenant_id = $1';
     const params = [req.tenant_id];
@@ -9696,7 +9805,7 @@ app.get('/api/opportunities', authenticateToken, async (req, res) => {
         where += ` AND o.status = $${params.length}`;
       }
     }
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT o.id, o.title, o.status, o.location, o.seniority_level,
              o.priority, o.kick_off_date, o.target_shortlist_date,
              o.brief_summary, o.created_at, o.updated_at,
@@ -9721,7 +9830,8 @@ app.get('/api/opportunities', authenticateToken, async (req, res) => {
 
 app.get('/api/opportunities/:id', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT o.*,
              p.name AS project_name, c.name AS client_name
       FROM opportunities o
@@ -9739,7 +9849,8 @@ app.get('/api/opportunities/:id', authenticateToken, async (req, res) => {
 
 app.get('/api/opportunities/:id/candidates', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT pc.id, pc.status, pc.created_at,
              p.id AS person_id, p.full_name AS person_name,
              p.current_title AS person_title, p.current_company_name,
@@ -9757,6 +9868,7 @@ app.get('/api/opportunities/:id/candidates', authenticateToken, async (req, res)
 
 app.get('/api/opportunities/:id/matches', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { limit = 20, status = 'all' } = req.query;
     let where = 'sm.search_id = $1 AND sm.tenant_id = $2';
     const params = [req.params.id, req.tenant_id];
@@ -9764,7 +9876,7 @@ app.get('/api/opportunities/:id/matches', authenticateToken, async (req, res) =>
       params.push(status);
       where += ` AND sm.status = $${params.length}`;
     }
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT sm.id, sm.overall_match_score AS match_score, sm.match_reasons,
              sm.status, sm.created_at AS matched_at,
              p.id AS person_id, p.full_name AS person_name,
@@ -9787,11 +9899,12 @@ app.get('/api/opportunities/:id/matches', authenticateToken, async (req, res) =>
 
 app.patch('/api/opportunities/:id/matches/:matchId', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { status } = req.body;
     if (!['suggested', 'accepted', 'rejected', 'shortlisted'].includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
-    await pool.query(
+    await db.query(
       `UPDATE search_matches SET status = $1, reviewed_by = $2, reviewed_at = NOW()
        WHERE id = $3 AND tenant_id = $4`,
       [status, req.user.user_id, req.params.matchId, req.tenant_id]
@@ -9804,7 +9917,8 @@ app.patch('/api/opportunities/:id/matches/:matchId', authenticateToken, async (r
 
 app.get('/api/people/:id/matches', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT sm.search_id, sm.overall_match_score AS match_score,
              sm.match_reasons, sm.status,
              o.title AS search_title, o.status AS search_status,
@@ -9826,6 +9940,7 @@ app.get('/api/people/:id/matches', authenticateToken, async (req, res) => {
 
 app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { owner, region, signal_type, sector } = req.query;
     let where = "d.tenant_id = $1 AND COALESCE(d.pipeline_stage, 'new') != 'archived'";
     const params = [req.tenant_id];
@@ -9836,7 +9951,7 @@ app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
     if (sector) { where += ` AND c.sector ILIKE $${idx++}`; params.push(`%${sector}%`); }
 
     // Group dispatches by company — one card per company with aggregated signals
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT
         -- Use the "best" dispatch per company (highest confidence) as the card ID
         (array_agg(d.id ORDER BY COALESCE(se.confidence_score, 0.5) DESC))[1] AS id,
@@ -9911,7 +10026,7 @@ app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
     const ownerIds = [...new Set(rows.filter(r => r.claimed_by).map(r => r.claimed_by))];
     const ownerMap = new Map();
     if (ownerIds.length) {
-      const { rows: owners } = await pool.query(`SELECT id, name FROM users WHERE id = ANY($1)`, [ownerIds]);
+      const { rows: owners } = await db.query(`SELECT id, name FROM users WHERE id = ANY($1)`, [ownerIds]);
       owners.forEach(o => ownerMap.set(o.id, o.name));
     }
     rows.forEach(r => { r.owner_name = ownerMap.get(r.claimed_by) || null; });
@@ -9927,9 +10042,9 @@ app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
 
     // Facets for filters (always unfiltered to show all options)
     const [facetRegions, facetTypes, facetSectors] = await Promise.all([
-      pool.query(`SELECT DISTINCT c.geography FROM signal_dispatches d JOIN companies c ON c.id = d.company_id WHERE d.tenant_id = $1 AND c.geography IS NOT NULL AND COALESCE(d.pipeline_stage,'new') != 'archived' ORDER BY c.geography`, [req.tenant_id]),
-      pool.query(`SELECT DISTINCT d.signal_type FROM signal_dispatches d WHERE d.tenant_id = $1 AND d.signal_type IS NOT NULL AND COALESCE(d.pipeline_stage,'new') != 'archived' ORDER BY d.signal_type`, [req.tenant_id]),
-      pool.query(`SELECT DISTINCT c.sector FROM signal_dispatches d JOIN companies c ON c.id = d.company_id WHERE d.tenant_id = $1 AND c.sector IS NOT NULL AND COALESCE(d.pipeline_stage,'new') != 'archived' ORDER BY c.sector`, [req.tenant_id]),
+      db.query(`SELECT DISTINCT c.geography FROM signal_dispatches d JOIN companies c ON c.id = d.company_id WHERE d.tenant_id = $1 AND c.geography IS NOT NULL AND COALESCE(d.pipeline_stage,'new') != 'archived' ORDER BY c.geography`, [req.tenant_id]),
+      db.query(`SELECT DISTINCT d.signal_type FROM signal_dispatches d WHERE d.tenant_id = $1 AND d.signal_type IS NOT NULL AND COALESCE(d.pipeline_stage,'new') != 'archived' ORDER BY d.signal_type`, [req.tenant_id]),
+      db.query(`SELECT DISTINCT c.sector FROM signal_dispatches d JOIN companies c ON c.id = d.company_id WHERE d.tenant_id = $1 AND c.sector IS NOT NULL AND COALESCE(d.pipeline_stage,'new') != 'archived' ORDER BY c.sector`, [req.tenant_id]),
     ]);
 
     res.json({
@@ -9948,6 +10063,7 @@ app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
 
 app.patch('/api/pipeline/:id/stage', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { stage, pipeline_value } = req.body;
     const updates = ['pipeline_stage = $1', 'updated_at = NOW()'];
     const params = [stage];
@@ -9962,14 +10078,14 @@ app.patch('/api/pipeline/:id/stage', authenticateToken, async (req, res) => {
     if (pipeline_value !== undefined) { updates.push(`pipeline_value = $${idx}`); params.push(pipeline_value); idx++; }
 
     params.push(req.params.id, req.tenant_id);
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `UPDATE signal_dispatches SET ${updates.join(', ')} WHERE id = $${idx} AND tenant_id = $${idx + 1} RETURNING id, company_name, pipeline_stage, pipeline_value`,
       params
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
 
     // Log activity
-    await pool.query(
+    await db.query(
       `INSERT INTO activities (tenant_id, user_id, user_name, activity_type, subject, dispatch_id, company_id, metadata, source)
        VALUES ($1, $2, $3, 'status_change', $4, $5, (SELECT company_id FROM signal_dispatches WHERE id = $5), $6, 'manual')`,
       [req.tenant_id, req.user.user_id, req.user.name,
@@ -9985,7 +10101,8 @@ app.patch('/api/pipeline/:id/stage', authenticateToken, async (req, res) => {
 
 app.delete('/api/pipeline/:id', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(
       `DELETE FROM signal_dispatches WHERE id = $1 AND tenant_id = $2 RETURNING id`,
       [req.params.id, req.tenant_id]
     );
@@ -9998,8 +10115,9 @@ app.delete('/api/pipeline/:id', authenticateToken, async (req, res) => {
 
 app.patch('/api/pipeline/:id/value', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { pipeline_value } = req.body;
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `UPDATE signal_dispatches SET pipeline_value = $1, updated_at = NOW()
        WHERE id = $2 AND tenant_id = $3 RETURNING id, company_name, pipeline_value`,
       [pipeline_value, req.params.id, req.tenant_id]
@@ -10017,6 +10135,7 @@ app.patch('/api/pipeline/:id/value', authenticateToken, async (req, res) => {
 
 app.get('/api/delivery/board', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { user_id, location, q } = req.query;
     let extraWhere = '';
     const extraParams = [];
@@ -10034,7 +10153,7 @@ app.get('/api/delivery/board', authenticateToken, async (req, res) => {
       extraParams.push(`%${q}%`); pIdx++;
     }
 
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT e.id, e.name, e.code, e.status, e.priority,
              e.fee_amount, e.fee_type, e.currency,
              e.kick_off_date, e.target_completion_date,
@@ -10065,7 +10184,7 @@ app.get('/api/delivery/board', authenticateToken, async (req, res) => {
     }
 
     // Facets
-    const { rows: users } = await pool.query(`SELECT id, name FROM users WHERE tenant_id = $1 ORDER BY name`, [req.tenant_id]);
+    const { rows: users } = await db.query(`SELECT id, name FROM users WHERE tenant_id = $1 ORDER BY name`, [req.tenant_id]);
 
     res.json({ columns, total: rows.length, users });
   } catch (err) {
@@ -10076,14 +10195,15 @@ app.get('/api/delivery/board', authenticateToken, async (req, res) => {
 
 app.patch('/api/delivery/:id/status', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { status } = req.body;
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `UPDATE engagements SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3 RETURNING id, name, status`,
       [status, req.params.id, req.tenant_id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
 
-    await pool.query(
+    await db.query(
       `INSERT INTO activities (tenant_id, user_id, user_name, activity_type, subject, engagement_id, source)
        VALUES ($1, $2, $3, 'status_change', $4, $5, 'manual')`,
       [req.tenant_id, req.user.user_id, req.user.name, `Project status → ${status}`, req.params.id]
@@ -10097,8 +10217,9 @@ app.patch('/api/delivery/:id/status', authenticateToken, async (req, res) => {
 
 app.post('/api/delivery/:id/members', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { user_id, role = 'member' } = req.body;
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `INSERT INTO project_members (engagement_id, user_id, role, tenant_id)
        VALUES ($1, $2, $3, $4) ON CONFLICT (engagement_id, user_id) DO UPDATE SET role = $3
        RETURNING *`,
@@ -10112,7 +10233,8 @@ app.post('/api/delivery/:id/members', authenticateToken, async (req, res) => {
 
 app.delete('/api/delivery/:id/members/:userId', authenticateToken, async (req, res) => {
   try {
-    await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    await db.query(
       `DELETE FROM project_members WHERE engagement_id = $1 AND user_id = $2 AND tenant_id = $3`,
       [req.params.id, req.params.userId, req.tenant_id]
     );
@@ -10128,8 +10250,9 @@ app.delete('/api/delivery/:id/members/:userId', authenticateToken, async (req, r
 
 app.post('/api/activities', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { activity_type, subject, description, opportunity_id, engagement_id, person_id, company_id, metadata } = req.body;
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `INSERT INTO activities (tenant_id, user_id, user_name, activity_type, subject, description,
          opportunity_id, engagement_id, person_id, company_id, metadata, source)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'manual') RETURNING *`,
@@ -10145,6 +10268,7 @@ app.post('/api/activities', authenticateToken, async (req, res) => {
 
 app.get('/api/activities', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { opportunity_id, engagement_id, person_id, company_id, limit = 50 } = req.query;
     let where = 'a.tenant_id = $1';
     const params = [req.tenant_id];
@@ -10155,7 +10279,7 @@ app.get('/api/activities', authenticateToken, async (req, res) => {
     if (company_id) { where += ` AND a.company_id = $${idx++}`; params.push(company_id); }
     params.push(Math.min(parseInt(limit) || 50, 200));
 
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT a.*, u.name AS actor_name
       FROM activities a LEFT JOIN users u ON u.id = a.user_id
       WHERE ${where} ORDER BY a.activity_at DESC LIMIT $${idx}
@@ -10168,7 +10292,8 @@ app.get('/api/activities', authenticateToken, async (req, res) => {
 
 app.get('/api/people/:id/activities', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT a.*, u.name AS actor_name FROM activities a
       LEFT JOIN users u ON u.id = a.user_id
       WHERE a.tenant_id = $1 AND (
@@ -10186,7 +10311,8 @@ app.get('/api/people/:id/activities', authenticateToken, async (req, res) => {
 
 app.get('/api/companies/:id/activities', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT a.*, u.name AS actor_name FROM activities a
       LEFT JOIN users u ON u.id = a.user_id
       WHERE a.tenant_id = $1 AND (
@@ -10209,7 +10335,8 @@ app.get('/api/companies/:id/activities', authenticateToken, async (req, res) => 
 
 app.get('/api/crm/connections', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(
       `SELECT id, provider, display_name, sync_enabled, sync_direction, sync_interval_minutes,
               last_sync_at, last_sync_status, last_sync_stats, last_error, created_at
        FROM crm_connections WHERE tenant_id = $1 ORDER BY provider`,
@@ -10223,8 +10350,9 @@ app.get('/api/crm/connections', authenticateToken, async (req, res) => {
 
 app.post('/api/crm/connections', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { provider, display_name, auth_type, credentials, sync_direction, field_mappings } = req.body;
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `INSERT INTO crm_connections (tenant_id, provider, display_name, auth_type, credentials_encrypted, sync_direction, field_mappings)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, provider, display_name`,
       [req.tenant_id, provider, display_name, auth_type || 'api_key',
@@ -10239,6 +10367,7 @@ app.post('/api/crm/connections', authenticateToken, requireAdmin, async (req, re
 
 app.patch('/api/crm/connections/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { sync_enabled, sync_direction, field_mappings, display_name } = req.body;
     const fields = []; const params = []; let idx = 1;
     if (sync_enabled !== undefined) { fields.push(`sync_enabled = $${idx++}`); params.push(sync_enabled); }
@@ -10248,7 +10377,7 @@ app.patch('/api/crm/connections/:id', authenticateToken, requireAdmin, async (re
     if (!fields.length) return res.status(400).json({ error: 'No fields' });
     fields.push('updated_at = NOW()');
     params.push(req.params.id, req.tenant_id);
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `UPDATE crm_connections SET ${fields.join(', ')} WHERE id = $${idx} AND tenant_id = $${idx + 1} RETURNING *`,
       params
     );
@@ -10261,7 +10390,8 @@ app.patch('/api/crm/connections/:id', authenticateToken, requireAdmin, async (re
 
 app.delete('/api/crm/connections/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    await pool.query(`DELETE FROM crm_connections WHERE id = $1 AND tenant_id = $2`, [req.params.id, req.tenant_id]);
+    const db = new TenantDB(req.tenant_id);
+    await db.query(`DELETE FROM crm_connections WHERE id = $1 AND tenant_id = $2`, [req.params.id, req.tenant_id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -10270,7 +10400,8 @@ app.delete('/api/crm/connections/:id', authenticateToken, requireAdmin, async (r
 
 app.get('/api/crm/connections/:id/log', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(
       `SELECT * FROM crm_sync_log WHERE connection_id = $1 AND tenant_id = $2 ORDER BY synced_at DESC LIMIT 100`,
       [req.params.id, req.tenant_id]
     );
@@ -10283,14 +10414,14 @@ app.get('/api/crm/connections/:id/log', authenticateToken, async (req, res) => {
 // Webhook receiver (no auth — uses HMAC validation)
 app.post('/api/webhooks/crm/:connectionId', async (req, res) => {
   try {
-    const { rows: [conn] } = await pool.query(
+    const { rows: [conn] } = await platformPool.query(
       `SELECT * FROM crm_connections WHERE id = $1`, [req.params.connectionId]
     );
     if (!conn) return res.status(404).json({ error: 'Unknown connection' });
 
     // TODO: HMAC validation using conn.webhook_secret
     // For now, log the webhook payload
-    await pool.query(
+    await platformPool.query(
       `INSERT INTO crm_sync_log (connection_id, tenant_id, direction, entity_type, action, changes)
        VALUES ($1, $2, 'inbound', 'webhook', 'received', $3)`,
       [conn.id, conn.tenant_id, JSON.stringify(req.body)]
@@ -10308,6 +10439,7 @@ app.post('/api/webhooks/crm/:connectionId', async (req, res) => {
 
 app.get('/api/feeds/bundles', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { type, sector, geo, search, featured } = req.query;
     let where = ['fb.is_active = true'];
     const params = [req.tenant_id]; let idx = 2;
@@ -10316,7 +10448,7 @@ app.get('/api/feeds/bundles', authenticateToken, async (req, res) => {
     if (geo) { where.push(`$${idx++} = ANY(fb.geographies)`); params.push(geo); }
     if (featured === 'true') where.push('fb.is_featured = true');
     if (search) { where.push(`(fb.name ILIKE $${idx} OR fb.description ILIKE $${idx})`); params.push(`%${search}%`); idx++; }
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT fb.*,
         EXISTS(SELECT 1 FROM tenant_feed_subscriptions tfs WHERE tfs.bundle_id = fb.id AND tfs.tenant_id = $1 AND tfs.is_enabled = true) AS is_subscribed,
         ROUND(AVG(fc.quality_score), 2) AS avg_quality_score
@@ -10332,28 +10464,30 @@ app.get('/api/feeds/bundles', authenticateToken, async (req, res) => {
 
 app.get('/api/feeds/bundles/:slug', authenticateToken, async (req, res) => {
   try {
-    const { rows: [bundle] } = await pool.query('SELECT * FROM feed_bundles WHERE slug = $1', [req.params.slug]);
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [bundle] } = await db.query('SELECT * FROM feed_bundles WHERE slug = $1', [req.params.slug]);
     if (!bundle) return res.status(404).json({ error: 'Bundle not found' });
-    const { rows: sources } = await pool.query(`
+    const { rows: sources } = await db.query(`
       SELECT fc.*, fqm.signal_yield, fqm.articles_fetched, fqm.high_conf_signals
       FROM feed_bundle_sources fbs JOIN feed_catalog fc ON fc.id = fbs.source_id
       LEFT JOIN LATERAL (SELECT signal_yield, articles_fetched, high_conf_signals FROM feed_quality_metrics WHERE source_id = fc.id ORDER BY measured_at DESC LIMIT 1) fqm ON true
       WHERE fbs.bundle_id = $1 ORDER BY fc.quality_score DESC NULLS LAST
     `, [bundle.id]);
-    const isSub = (await pool.query('SELECT 1 FROM tenant_feed_subscriptions WHERE bundle_id = $1 AND tenant_id = $2 AND is_enabled = true', [bundle.id, req.tenant_id])).rows.length > 0;
+    const isSub = (await db.query('SELECT 1 FROM tenant_feed_subscriptions WHERE bundle_id = $1 AND tenant_id = $2 AND is_enabled = true', [bundle.id, req.tenant_id])).rows.length > 0;
     res.json({ ...bundle, sources, is_subscribed: isSub });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/feeds/catalog', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { search, sector, geo, category } = req.query;
     const params = []; let where = ['fc.is_active = true', 'fc.is_deprecated = false']; let idx = 1;
     if (search) { where.push(`(fc.name ILIKE $${idx} OR fc.description ILIKE $${idx})`); params.push(`%${search}%`); idx++; }
     if (sector) { where.push(`$${idx} = ANY(fc.sectors)`); params.push(sector); idx++; }
     if (geo) { where.push(`$${idx} = ANY(fc.geographies)`); params.push(geo); idx++; }
     if (category) { where.push(`fc.primary_category = $${idx}`); params.push(category); idx++; }
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT fc.*, fqm.signal_yield, fqm.articles_fetched
       FROM feed_catalog fc
       LEFT JOIN LATERAL (SELECT signal_yield, articles_fetched FROM feed_quality_metrics WHERE source_id = fc.id ORDER BY measured_at DESC LIMIT 1) fqm ON true
@@ -10365,7 +10499,8 @@ app.get('/api/feeds/catalog', authenticateToken, async (req, res) => {
 
 app.get('/api/feeds/my', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT tfs.*, fb.name AS bundle_name, fb.icon, fb.bundle_type, fb.source_count,
              fc.name AS source_name, fc.primary_category AS source_category
       FROM tenant_feed_subscriptions tfs
@@ -10379,29 +10514,30 @@ app.get('/api/feeds/my', authenticateToken, async (req, res) => {
 
 app.post('/api/feeds/subscribe', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { bundle_ids, source_id } = req.body;
     if (bundle_ids && bundle_ids.length) {
       for (const bid of bundle_ids) {
-        await pool.query(`INSERT INTO tenant_feed_subscriptions (tenant_id, bundle_id, is_enabled) VALUES ($1, $2, true)
+        await db.query(`INSERT INTO tenant_feed_subscriptions (tenant_id, bundle_id, is_enabled) VALUES ($1, $2, true)
           ON CONFLICT (tenant_id, bundle_id) DO UPDATE SET is_enabled = true, disabled_at = NULL`, [req.tenant_id, bid]);
         // Materialise sources into rss_sources
-        const { rows: sources } = await pool.query(`
+        const { rows: sources } = await db.query(`
           SELECT fc.id, fc.name, fc.url, fc.fetch_interval_min FROM feed_bundle_sources fbs
           JOIN feed_catalog fc ON fc.id = fbs.source_id AND fc.is_active = true WHERE fbs.bundle_id = $1
         `, [bid]);
         for (const src of sources) {
-          await pool.query(`INSERT INTO rss_sources (name, url, source_type, enabled, poll_interval_minutes, catalog_source_id, tenant_id)
+          await db.query(`INSERT INTO rss_sources (name, url, source_type, enabled, poll_interval_minutes, catalog_source_id, tenant_id)
             VALUES ($1, $2, 'rss', true, $3, $4, $5) ON CONFLICT DO NOTHING`,
             [src.name, src.url, src.fetch_interval_min, src.id, req.tenant_id]).catch(() => {});
         }
       }
       res.json({ status: 'subscribed', bundle_ids });
     } else if (source_id) {
-      await pool.query(`INSERT INTO tenant_feed_subscriptions (tenant_id, source_id, is_enabled) VALUES ($1, $2, true)
+      await db.query(`INSERT INTO tenant_feed_subscriptions (tenant_id, source_id, is_enabled) VALUES ($1, $2, true)
         ON CONFLICT (tenant_id, source_id) DO UPDATE SET is_enabled = true, disabled_at = NULL`, [req.tenant_id, source_id]);
-      const { rows: [src] } = await pool.query('SELECT * FROM feed_catalog WHERE id = $1', [source_id]);
+      const { rows: [src] } = await db.query('SELECT * FROM feed_catalog WHERE id = $1', [source_id]);
       if (src) {
-        await pool.query(`INSERT INTO rss_sources (name, url, source_type, enabled, poll_interval_minutes, catalog_source_id, tenant_id)
+        await db.query(`INSERT INTO rss_sources (name, url, source_type, enabled, poll_interval_minutes, catalog_source_id, tenant_id)
           VALUES ($1, $2, 'rss', true, $3, $4, $5) ON CONFLICT DO NOTHING`,
           [src.name, src.url, src.fetch_interval_min, src.id, req.tenant_id]).catch(() => {});
       }
@@ -10412,8 +10548,9 @@ app.post('/api/feeds/subscribe', authenticateToken, async (req, res) => {
 
 app.delete('/api/feeds/subscribe/:bundleId', authenticateToken, async (req, res) => {
   try {
-    await pool.query(`UPDATE tenant_feed_subscriptions SET is_enabled = false, disabled_at = NOW() WHERE tenant_id = $1 AND bundle_id = $2`, [req.tenant_id, req.params.bundleId]);
-    await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    await db.query(`UPDATE tenant_feed_subscriptions SET is_enabled = false, disabled_at = NOW() WHERE tenant_id = $1 AND bundle_id = $2`, [req.tenant_id, req.params.bundleId]);
+    await db.query(`
       UPDATE rss_sources rs SET enabled = false FROM feed_bundle_sources fbs
       WHERE fbs.bundle_id = $1 AND rs.catalog_source_id = fbs.source_id AND rs.tenant_id = $2
         AND NOT EXISTS (SELECT 1 FROM tenant_feed_subscriptions tfs2 JOIN feed_bundle_sources fbs2 ON fbs2.bundle_id = tfs2.bundle_id
@@ -10425,7 +10562,8 @@ app.delete('/api/feeds/subscribe/:bundleId', authenticateToken, async (req, res)
 
 app.get('/api/feeds/stats', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT rs.name, rs.catalog_source_id,
         COUNT(ed.id) FILTER (WHERE ed.created_at > NOW() - INTERVAL '7 days') AS articles_7d,
         COUNT(DISTINCT se.id) FILTER (WHERE se.detected_at > NOW() - INTERVAL '7 days') AS signals_7d
@@ -10442,8 +10580,9 @@ app.get('/api/feeds/stats', authenticateToken, async (req, res) => {
 
 app.post('/api/admin/feeds/catalog', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { name, slug, url, tier, primary_category, tags, sectors, geographies, description, fetch_interval_min, quality_score } = req.body;
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       INSERT INTO feed_catalog (name, slug, url, tier, primary_category, tags, sectors, geographies, description, fetch_interval_min, quality_score)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [name, slug, url, tier || 'curated', primary_category, tags || [], sectors || [], geographies || [], description, fetch_interval_min || 60, quality_score]);
@@ -10456,6 +10595,7 @@ app.post('/api/admin/feeds/catalog', authenticateToken, requireAdmin, async (req
 
 app.get('/api/events', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { theme, region, format, from, to, search, limit = 20, offset = 0 } = req.query;
     const params = [req.tenant_id];
     const conditions = ['e.tenant_id = $1'];
@@ -10499,7 +10639,7 @@ app.get('/api/events', authenticateToken, async (req, res) => {
     const where = conditions.join(' AND ');
 
     const [eventsResult, countResult, themesResult, regionsResult] = await Promise.all([
-      pool.query(`
+      db.query(`
         SELECT e.id, e.title, e.theme, e.region, e.city, e.country, e.event_date,
                e.event_end_date, e.format, e.is_virtual, e.event_url, e.relevance_score,
                e.signal_relevance, e.speaker_names, e.description, e.external_id,
@@ -10514,9 +10654,9 @@ app.get('/api/events', authenticateToken, async (req, res) => {
         ORDER BY e.event_date ASC NULLS LAST, e.relevance_score DESC
         LIMIT $${idx} OFFSET $${idx + 1}
       `, [...params, lim, off]),
-      pool.query(`SELECT COUNT(*) AS cnt FROM events e WHERE ${where}`, params),
-      pool.query(`SELECT DISTINCT theme FROM events WHERE tenant_id = $1 AND theme IS NOT NULL ORDER BY theme`, [req.tenant_id]),
-      pool.query(`SELECT DISTINCT region FROM events WHERE tenant_id = $1 AND region IS NOT NULL ORDER BY region`, [req.tenant_id]),
+      db.query(`SELECT COUNT(*) AS cnt FROM events e WHERE ${where}`, params),
+      db.query(`SELECT DISTINCT theme FROM events WHERE tenant_id = $1 AND theme IS NOT NULL ORDER BY theme`, [req.tenant_id]),
+      db.query(`SELECT DISTINCT region FROM events WHERE tenant_id = $1 AND region IS NOT NULL ORDER BY region`, [req.tenant_id]),
     ]);
 
     res.json({
@@ -10536,20 +10676,21 @@ app.get('/api/events', authenticateToken, async (req, res) => {
 
 app.get('/api/events/trends', authenticateToken, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const [byTheme, byRegion, thisWeek] = await Promise.all([
-      pool.query(`
+      db.query(`
         SELECT theme, COUNT(*) AS count,
                COUNT(*) FILTER (WHERE event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 30) AS upcoming_30d
         FROM events WHERE tenant_id = $1 AND theme IS NOT NULL
         GROUP BY theme ORDER BY count DESC
       `, [req.tenant_id]),
-      pool.query(`
+      db.query(`
         SELECT region, COUNT(*) AS count,
                COUNT(*) FILTER (WHERE event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 30) AS upcoming_30d
         FROM events WHERE tenant_id = $1 AND region IS NOT NULL
         GROUP BY region ORDER BY count DESC
       `, [req.tenant_id]),
-      pool.query(`
+      db.query(`
         SELECT id, title, theme, region, city, event_date, format, event_url, is_virtual
         FROM events
         WHERE tenant_id = $1 AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 7
@@ -10575,7 +10716,8 @@ app.get('/api/events/trends', authenticateToken, async (req, res) => {
 
 app.get('/api/events/for-search/:searchId', authenticateToken, async (req, res) => {
   try {
-    const search = await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    const search = await db.query(
       `SELECT s.title, p.name AS project_name, s.target_industries, s.target_geography,
               s.must_have_keywords, s.brief_summary
        FROM searches s
@@ -10615,7 +10757,7 @@ app.get('/api/events/for-search/:searchId', authenticateToken, async (req, res) 
       idx += geographies.length;
     }
 
-    const { rows } = await pool.query(`
+    const { rows } = await db.query(`
       SELECT id, title, theme, region, city, event_date, format, event_url, is_virtual
       FROM events e
       WHERE ${conditions.join(' AND ')}
@@ -10632,7 +10774,8 @@ app.get('/api/events/for-search/:searchId', authenticateToken, async (req, res) 
 
 app.get('/api/events/:id', authenticateToken, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
       SELECT e.*,
         COALESCE(
           (SELECT json_agg(json_build_object('id', c.id, 'name', c.name, 'link_type', ecl.link_type))
@@ -10662,7 +10805,8 @@ app.get('/api/events/:id', authenticateToken, async (req, res) => {
 
 app.get('/api/admin/event-sources', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(
       `SELECT es.*,
         (SELECT COUNT(*) FROM events e WHERE e.source_id = es.id) AS event_count
        FROM event_sources es
@@ -10678,9 +10822,10 @@ app.get('/api/admin/event-sources', authenticateToken, requireAdmin, async (req,
 
 app.post('/api/admin/event-sources', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { name, feed_url, theme, region } = req.body;
     if (!name || !feed_url) return res.status(400).json({ error: 'name and feed_url required' });
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `INSERT INTO event_sources (tenant_id, name, feed_url, theme, region)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [req.tenant_id, name, feed_url, theme || null, region || null]
@@ -10693,6 +10838,7 @@ app.post('/api/admin/event-sources', authenticateToken, requireAdmin, async (req
 
 app.patch('/api/admin/event-sources/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const db = new TenantDB(req.tenant_id);
     const { is_active, name, feed_url, theme, region } = req.body;
     const fields = [];
     const params = [];
@@ -10705,7 +10851,7 @@ app.patch('/api/admin/event-sources/:id', authenticateToken, requireAdmin, async
     if (fields.length === 0) return res.status(400).json({ error: 'No fields to update' });
     fields.push(`updated_at = NOW()`);
     params.push(req.params.id, req.tenant_id);
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `UPDATE event_sources SET ${fields.join(', ')} WHERE id = $${idx} AND tenant_id = $${idx + 1} RETURNING *`,
       params
     );
@@ -10718,7 +10864,8 @@ app.patch('/api/admin/event-sources/:id', authenticateToken, requireAdmin, async
 
 app.post('/api/admin/events/fetch/:sourceId', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(
       `SELECT * FROM event_sources WHERE id = $1 AND tenant_id = $2`,
       [req.params.sourceId, req.tenant_id]
     );
@@ -10765,7 +10912,7 @@ app.listen(PORT, async () => {
 
   // Ensure user profile columns exist
   try {
-    await pool.query(`
+    await db.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS region VARCHAR(10);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarded BOOLEAN DEFAULT false;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT '{}'::jsonb;
@@ -10778,13 +10925,13 @@ app.listen(PORT, async () => {
     const fs = require('fs');
     const csMigration = require('path').join(__dirname, 'sql', 'migration_case_studies.sql');
     if (fs.existsSync(csMigration)) {
-      await pool.query(fs.readFileSync(csMigration, 'utf8'));
+      await db.query(fs.readFileSync(csMigration, 'utf8'));
     }
   } catch (e) { /* tables may already exist */ }
 
   // Ensure people privacy columns exist
   try {
-    await pool.query(`
+    await db.query(`
       ALTER TABLE people ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) DEFAULT 'company';
       ALTER TABLE people ADD COLUMN IF NOT EXISTS owner_user_id UUID;
       ALTER TABLE people ADD COLUMN IF NOT EXISTS marked_private_at TIMESTAMPTZ;
@@ -10793,7 +10940,7 @@ app.listen(PORT, async () => {
 
   // Ensure document privacy columns exist
   try {
-    await pool.query(`
+    await db.query(`
       ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) DEFAULT 'company';
       ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS owner_user_id UUID;
       ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS uploaded_by_user_id UUID;
@@ -10802,7 +10949,7 @@ app.listen(PORT, async () => {
 
   // Ensure company + signal privacy columns exist
   try {
-    await pool.query(`
+    await db.query(`
       ALTER TABLE companies ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) DEFAULT 'company';
       ALTER TABLE companies ADD COLUMN IF NOT EXISTS owner_user_id UUID;
       ALTER TABLE signal_events ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) DEFAULT 'company';
@@ -10812,7 +10959,7 @@ app.listen(PORT, async () => {
 
   // Ensure interactions has sensitivity flag for internal ML-to-ML
   try {
-    await pool.query(`
+    await db.query(`
       ALTER TABLE interactions ADD COLUMN IF NOT EXISTS is_internal BOOLEAN DEFAULT false;
       ALTER TABLE interactions ADD COLUMN IF NOT EXISTS sensitivity VARCHAR(20) DEFAULT 'normal';
     `);
@@ -10820,7 +10967,7 @@ app.listen(PORT, async () => {
 
   // User attribution columns
   try {
-    await pool.query(`
+    await db.query(`
       ALTER TABLE people ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id);
       ALTER TABLE companies ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id);
       ALTER TABLE interactions ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id);
@@ -10829,8 +10976,8 @@ app.listen(PORT, async () => {
 
   // Gmail sync counter + podcast audio URL
   try {
-    await pool.query(`ALTER TABLE user_google_accounts ADD COLUMN IF NOT EXISTS emails_synced INTEGER DEFAULT 0`);
-    await pool.query(`ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS audio_url TEXT`);
+    await db.query(`ALTER TABLE user_google_accounts ADD COLUMN IF NOT EXISTS emails_synced INTEGER DEFAULT 0`);
+    await db.query(`ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS audio_url TEXT`);
     // Always run podcast audio backfill on startup
     console.log('  🎧 Running podcast audio backfill...');
     const { spawn: spawnAudio } = require('child_process');
@@ -10840,7 +10987,7 @@ app.listen(PORT, async () => {
 
   // Embedding tracking columns for all embeddable entities
   try {
-    await pool.query(`
+    await db.query(`
       ALTER TABLE signal_events ADD COLUMN IF NOT EXISTS embedded_at TIMESTAMPTZ;
       ALTER TABLE case_studies ADD COLUMN IF NOT EXISTS embedded_at TIMESTAMPTZ;
       ALTER TABLE people ADD COLUMN IF NOT EXISTS embedded_at TIMESTAMPTZ;
@@ -10851,12 +10998,12 @@ app.listen(PORT, async () => {
 
   // Bootstrap admin: ensure at least one admin exists per tenant
   try {
-    const { rows: admins } = await pool.query(
+    const { rows: admins } = await db.query(
       `SELECT id FROM users WHERE role = 'admin' AND tenant_id = '00000000-0000-0000-0000-000000000001' LIMIT 1`
     );
     if (admins.length === 0) {
       // Promote the first user created (tenant owner)
-      await pool.query(`
+      await db.query(`
         UPDATE users SET role = 'admin', updated_at = NOW()
         WHERE id = (SELECT id FROM users WHERE tenant_id = '00000000-0000-0000-0000-000000000001' ORDER BY created_at ASC LIMIT 1)
       `);
@@ -10869,7 +11016,7 @@ app.listen(PORT, async () => {
     const fs = require('fs');
     const topoMigration = require('path').join(__dirname, 'sql', 'migration_network_topology.sql');
     if (fs.existsSync(topoMigration)) {
-      await pool.query(fs.readFileSync(topoMigration, 'utf8'));
+      await db.query(fs.readFileSync(topoMigration, 'utf8'));
       console.log('  ✅ Network topology tables ready');
     }
   } catch (e) { /* tables may already exist */ }
@@ -10883,12 +11030,12 @@ app.listen(PORT, async () => {
       `CREATE TABLE IF NOT EXISTS market_health_history (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID, horizon VARCHAR(10) NOT NULL, score FLOAT NOT NULL, delta FLOAT NOT NULL DEFAULT 0, snapshot_at TIMESTAMPTZ DEFAULT NOW())`,
       `CREATE TABLE IF NOT EXISTS signal_index_stats (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID UNIQUE, people_tracked INT DEFAULT 0, companies_tracked INT DEFAULT 0, signals_7d INT DEFAULT 0, signals_30d INT DEFAULT 0, computed_at TIMESTAMPTZ DEFAULT NOW())`,
     ];
-    for (const sql of siTables) { try { await pool.query(sql); } catch (e) {} }
+    for (const sql of siTables) { try { await db.query(sql); } catch (e) {} }
   } catch (e) {}
 
   // Ensure signal_dispatches table exists with claim columns
   try {
-    await pool.query(`
+    await db.query(`
       CREATE TABLE IF NOT EXISTS signal_dispatches (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         signal_event_id UUID, company_id UUID, company_name TEXT,
@@ -10907,13 +11054,13 @@ app.listen(PORT, async () => {
       )
     `);
     // Add claim columns if table already existed
-    await pool.query(`ALTER TABLE signal_dispatches ADD COLUMN IF NOT EXISTS claimed_by UUID`);
-    await pool.query(`ALTER TABLE signal_dispatches ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ`);
+    await db.query(`ALTER TABLE signal_dispatches ADD COLUMN IF NOT EXISTS claimed_by UUID`);
+    await db.query(`ALTER TABLE signal_dispatches ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ`);
   } catch (e) { /* table may already exist */ }
 
   // Ensure indexes for new query patterns
   try {
-    await pool.query(`
+    await db.query(`
       CREATE INDEX IF NOT EXISTS idx_signal_events_detected ON signal_events(detected_at DESC);
       CREATE INDEX IF NOT EXISTS idx_signal_events_company_type_date ON signal_events(company_id, signal_type, detected_at);
       CREATE INDEX IF NOT EXISTS idx_signal_events_megacap ON signal_events(is_megacap) WHERE is_megacap = true;
@@ -10926,7 +11073,7 @@ app.listen(PORT, async () => {
   try {
     const mtMigration = require('path').join(__dirname, 'sql', 'migration_multi_tenant.sql');
     if (require('fs').existsSync(mtMigration)) {
-      await pool.query(require('fs').readFileSync(mtMigration, 'utf8'));
+      await db.query(require('fs').readFileSync(mtMigration, 'utf8'));
       console.log('  \u2705 Multi-tenant migration complete');
     }
   } catch (e) {
@@ -10936,7 +11083,7 @@ app.listen(PORT, async () => {
   // Backfill: mark companies as clients if they have placements
   try {
     // First, try to link clients to companies by name match
-    const { rowCount: linked } = await pool.query(`
+    const { rowCount: linked } = await db.query(`
       UPDATE accounts SET company_id = co.id
       FROM companies co
       WHERE accounts.company_id IS NULL
@@ -10945,7 +11092,7 @@ app.listen(PORT, async () => {
     if (linked > 0) console.log(`  ✅ Linked ${linked} clients to companies by name`);
 
     // Then mark those companies as clients
-    const { rowCount } = await pool.query(`
+    const { rowCount } = await db.query(`
       UPDATE companies SET is_client = true
       WHERE id IN (
         SELECT DISTINCT cl.company_id FROM accounts cl
@@ -10962,7 +11109,7 @@ app.listen(PORT, async () => {
   try {
     const sophieCsv = require('path').join(__dirname, 'data', 'sophie_linkedin_connections.csv');
     if (require('fs').existsSync(sophieCsv)) {
-      const { rows: [check] } = await pool.query(
+      const { rows: [check] } = await db.query(
         `SELECT COUNT(*) AS cnt FROM team_proximity WHERE source = 'linkedin_import' AND team_member_id = (SELECT id FROM users WHERE email = 'sophiec@mitchellake.com' LIMIT 1)`
       ).catch(() => ({ rows: [{ cnt: '0' }] }));
       if (parseInt(check.cnt) < 100) {
@@ -10980,7 +11127,7 @@ app.listen(PORT, async () => {
   try {
     const sophieMsgs = require('path').join(__dirname, 'data', 'sophie_linkedin_messages.csv');
     if (require('fs').existsSync(sophieMsgs)) {
-      const { rows: [check] } = await pool.query(
+      const { rows: [check] } = await db.query(
         `SELECT COUNT(*) AS cnt FROM interactions WHERE source = 'linkedin_import' AND user_id = (SELECT id FROM users WHERE email = 'sophiec@mitchellake.com' LIMIT 1)`
       ).catch(() => ({ rows: [{ cnt: '0' }] }));
       if (parseInt(check.cnt) < 100) {
@@ -11000,7 +11147,7 @@ app.listen(PORT, async () => {
 
   // Backfill: create team_proximity for LinkedIn-imported people missing proximity links
   try {
-    const { rowCount: proxCreated } = await pool.query(`
+    const { rowCount: proxCreated } = await db.query(`
       INSERT INTO team_proximity (person_id, team_member_id, relationship_type, relationship_strength, source, tenant_id)
       SELECT p.id, p.created_by, 'linkedin_connection', 0.5, 'linkedin_import', p.tenant_id
       FROM people p
@@ -11016,7 +11163,7 @@ app.listen(PORT, async () => {
   // One-time backfill: link orphaned interactions to people
   try {
     // 1. Sent emails — match recipients against people.email
-    const { rowCount: sentLinked } = await pool.query(`
+    const { rowCount: sentLinked } = await db.query(`
       UPDATE interactions i
       SET person_id = p.id
       FROM people p,
@@ -11030,7 +11177,7 @@ app.listen(PORT, async () => {
     if (sentLinked > 0) console.log(`  ✅ Backfilled ${sentLinked} sent-email interactions → people`);
 
     // 2. Received emails — match sender against people.email
-    const { rowCount: recvLinked } = await pool.query(`
+    const { rowCount: recvLinked } = await db.query(`
       UPDATE interactions i
       SET person_id = p.id
       FROM people p
@@ -11044,7 +11191,7 @@ app.listen(PORT, async () => {
     if (recvLinked > 0) console.log(`  ✅ Backfilled ${recvLinked} received-email interactions → people`);
 
     // 3. Also try email_alt
-    const { rowCount: altLinked } = await pool.query(`
+    const { rowCount: altLinked } = await db.query(`
       UPDATE interactions i
       SET person_id = p.id
       FROM people p
@@ -11060,7 +11207,7 @@ app.listen(PORT, async () => {
     if (altLinked > 0) console.log(`  ✅ Backfilled ${altLinked} interactions via email_alt`);
 
     // 4. Delete noise rows that slipped through before filter
-    const { rowCount: noiseDeleted } = await pool.query(`
+    const { rowCount: noiseDeleted } = await db.query(`
       DELETE FROM interactions
       WHERE source = 'gmail_sync'
         AND person_id IS NULL
@@ -11070,7 +11217,7 @@ app.listen(PORT, async () => {
     if (noiseDeleted > 0) console.log(`  🗑️  Cleaned ${noiseDeleted} noise interaction rows`);
 
     // 5. Link signals to people via company — people at signalling companies
-    const { rowCount: sigLinked } = await pool.query(`
+    const { rowCount: sigLinked } = await db.query(`
       UPDATE person_signals ps
       SET person_id = p.id
       FROM signal_events se, people p
@@ -11090,7 +11237,7 @@ app.listen(PORT, async () => {
   // One-time: force re-auth for all users to pick up new Gmail+Drive scopes
   // Remove this block after everyone has re-authenticated (deploy after 2026-03-27)
   try {
-    const { rowCount } = await pool.query(`DELETE FROM sessions WHERE created_at < '2026-03-26T12:00:00Z'`);
+    const { rowCount } = await db.query(`DELETE FROM sessions WHERE created_at < '2026-03-26T12:00:00Z'`);
     if (rowCount > 0) console.log(`  🔑 Cleared ${rowCount} old sessions — users will re-auth with full Gmail+Drive scopes`);
   } catch (e) { /* ok */ }
 
@@ -11099,7 +11246,7 @@ app.listen(PORT, async () => {
     const wipFile = require('path').join(__dirname, 'data', 'Global_Billings_and_WIP.xlsx');
     if (require('fs').existsSync(wipFile)) {
       // Check if already fully ingested (need at least 500 WIP records — invoices + WIP combined)
-      const { rows: [check] } = await pool.query(
+      const { rows: [check] } = await db.query(
         `SELECT COUNT(*) AS cnt FROM conversions WHERE source IN ('wip_workbook', 'xero_export') LIMIT 1`
       ).catch(() => ({ rows: [{ cnt: '0' }] }));
       if (parseInt(check.cnt) < 500) {

@@ -1691,6 +1691,20 @@ body {
         <!-- Region cards injected by JS -->
       </div>
 
+      <!-- Events to Watch -->
+      <div style="margin-bottom:28px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:var(--serif);font-size:16px;font-weight:600">Events to Watch</span>
+            <span style="font-size:11px;color:var(--ink-4);font-family:var(--mono)" id="eventsCount"></span>
+          </div>
+          <a href="/signals.html?tab=events" style="font-size:11px;color:var(--blue);text-decoration:none;font-weight:600">View all events →</a>
+        </div>
+        <div id="eventsDashboard" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+          <div style="padding:16px;color:var(--ink-4);font-size:12px;text-align:center">Loading events...</div>
+        </div>
+      </div>
+
       <!-- Network Signals Stream -->
       <div class="signal-stream" id="networkStream" style="margin-bottom:28px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
@@ -2161,6 +2175,48 @@ async function generateDispatchForSignal(signalId, btn) {
     btn.innerHTML = icon('target') + ' Dispatch Created';
     btn.style.background = 'var(--blue-soft)'; btn.style.color = 'var(--blue)'; btn.style.cursor = 'default';
   } catch (e) { btn.textContent = 'Failed'; btn.disabled = false; }
+}
+
+async function loadDashboardEvents() {
+  try {
+    var data = await api('/api/events?limit=6');
+    var container = document.getElementById('eventsDashboard');
+    var events = data.events || [];
+    document.getElementById('eventsCount').textContent = data.total + ' upcoming';
+
+    if (!events.length) {
+      container.innerHTML = '<div style="padding:16px;color:var(--ink-4);font-size:12px;text-align:center">No upcoming events. <a href="/signals.html?tab=events" style="color:var(--blue)">Browse all →</a></div>';
+      return;
+    }
+
+    container.innerHTML = events.map(function(e) {
+      var eventDate = e.event_date ? new Date(e.event_date) : null;
+      var now = new Date();
+      var daysUntil = eventDate ? Math.ceil((eventDate - now) / 86400000) : null;
+      var urgency = daysUntil !== null && daysUntil <= 7 ? 'background:var(--amber-soft);color:var(--amber)' : 'background:var(--surface-warm);color:var(--ink-3)';
+      var dayLabel = daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : daysUntil !== null ? daysUntil + 'd' : '';
+      var dateStr = eventDate ? eventDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+      var themeColors = { AI: '#2563EB', FinTech: '#B45309', Fintech: '#B45309', Cybersecurity: '#C41D3E', Health: '#0D7A50', 'Climate': '#0D7A50', Web3: '#6D28D9' };
+      var tc = themeColors[e.theme] || 'var(--ink-3)';
+
+      return '<div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:10px 12px;cursor:pointer;transition:all .15s" onclick="window.location=\'/signals.html?tab=events\'" onmouseenter="this.style.borderColor=\'var(--blue)\'" onmouseleave="this.style.borderColor=\'var(--rule)\'">' +
+        '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px">' +
+          '<div style="font-size:12px;font-weight:600;line-height:1.3;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.title) + '</div>' +
+          (dayLabel ? '<span style="font-size:9px;font-weight:600;padding:2px 6px;border-radius:8px;' + urgency + ';flex-shrink:0;margin-left:6px">' + dayLabel + '</span>' : '') +
+        '</div>' +
+        '<div style="font-size:10px;color:var(--ink-3);margin-bottom:6px">' +
+          (dateStr ? dateStr + ' · ' : '') + esc([e.city, e.region].filter(Boolean).join(', ') || 'Online') +
+        '</div>' +
+        '<div style="display:flex;gap:4px;align-items:center">' +
+          (e.theme ? '<span style="font-size:8px;font-weight:600;padding:2px 6px;border-radius:6px;background:' + tc + '14;color:' + tc + '">' + esc(e.theme) + '</span>' : '') +
+          (e.format && e.format !== 'other' ? '<span style="font-size:8px;color:var(--ink-4)">' + esc(e.format) + '</span>' : '') +
+          (e.event_url ? '<a href="' + esc(e.event_url) + '" target="_blank" onclick="event.stopPropagation()" style="font-size:9px;color:var(--blue);text-decoration:none;margin-left:auto">↗</a>' : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch (e) {
+    document.getElementById('eventsDashboard').innerHTML = '<div style="padding:12px;color:var(--ink-4);font-size:11px">Events unavailable</div>';
+  }
 }
 
 async function loadRegionCards() {
@@ -3230,6 +3286,7 @@ async function init() {
   loadSignalGrabs();
   loadNetworkSignals();
   loadRegionCards();
+  loadDashboardEvents();
   loadSignals();
   loadTopPodcasts();
   loadTalentInMotion();
