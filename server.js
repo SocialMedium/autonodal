@@ -9892,18 +9892,8 @@ app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
       WHERE ${where}
       GROUP BY d.company_id, d.company_name, c.sector, c.geography, c.is_client, d.tenant_id
       ORDER BY
-        -- Sort by most advanced stage first, then lead score within "new"
         MAX(CASE d.pipeline_stage WHEN 'won' THEN 5 WHEN 'converted' THEN 4 WHEN 'actioned' THEN 3 WHEN 'claimed' THEN 2 ELSE 1 END) DESC,
-        MAX(
-          CASE d.signal_type
-            WHEN 'strategic_hiring' THEN 40 WHEN 'geographic_expansion' THEN 35 WHEN 'capital_raising' THEN 35
-            WHEN 'product_launch' THEN 25 WHEN 'partnership' THEN 20 WHEN 'leadership_change' THEN 15
-            WHEN 'ma_activity' THEN 15 WHEN 'restructuring' THEN 10 WHEN 'layoffs' THEN 5 ELSE 10
-          END +
-          CASE WHEN c.is_client THEN 100 ELSE 0 END +
-          CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = d.company_id AND p.tenant_id = d.tenant_id) > 0 THEN 50 ELSE 0 END +
-          MAX(COALESCE(se.confidence_score, 0.5)) * 30
-        ) DESC,
+        lead_score DESC,
         SUM(d.pipeline_value) DESC NULLS LAST,
         MAX(d.updated_at) DESC
     `, params);
