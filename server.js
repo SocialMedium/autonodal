@@ -4154,12 +4154,15 @@ app.get('/api/search', authenticateToken, async (req, res) => {
       const qdrantResults = await qdrantSearch('people', vector, limit);
 
       if (qdrantResults.length > 0) {
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const pointIds = qdrantResults.map(r => String(r.id)).filter(id => uuidRegex.test(id));
+        // IDs may be UUIDs or numeric — person_id is in payload for numeric IDs
+        const personIds = qdrantResults.map(r => {
+          const pid = r.payload?.person_id || r.payload?.id;
+          if (pid) return pid;
+          const sid = String(r.id);
+          return /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(sid) ? sid : null;
+        }).filter(Boolean);
 
-        if (pointIds.length === 0) {
-          // No valid UUIDs — skip DB query
-        } else {
+        if (personIds.length > 0) {
         const { rows: people } = await pool.query(`
           SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.headline,
                  p.location, p.seniority_level, p.expertise_tags, p.industries, p.source,
@@ -4181,13 +4184,14 @@ app.get('/api/search', authenticateToken, async (req, res) => {
           LEFT JOIN person_scores ps ON ps.person_id = p.id
           LEFT JOIN companies c ON c.id = p.current_company_id
           WHERE p.id = ANY($1::uuid[]) AND p.tenant_id = $2
-        `, [pointIds, req.tenant_id]);
+        `, [personIds, req.tenant_id]);
 
         const peopleMap = new Map(people.map(p => [p.id, p]));
 
         results.people = qdrantResults
           .map(r => {
-            const person = peopleMap.get(r.id);
+            const pid = r.payload?.person_id || r.payload?.id || String(r.id);
+            const person = peopleMap.get(pid);
             if (!person) return null;
             return {
               ...person,
@@ -4272,12 +4276,15 @@ app.get('/api/search', authenticateToken, async (req, res) => {
       const qdrantResults = await qdrantSearch('documents', vector, docLimit);
 
       if (qdrantResults.length > 0) {
-        const uuidRx2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const docIds = qdrantResults.map(r => String(r.id)).filter(id => uuidRx2.test(id));
+        // IDs may be UUIDs or numeric — document_id is in payload for numeric IDs
+        const docIds = qdrantResults.map(r => {
+          const did = r.payload?.document_id;
+          if (did) return did;
+          const sid = String(r.id);
+          return /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(sid) ? sid : null;
+        }).filter(Boolean);
 
-        if (docIds.length === 0) {
-          // No valid UUIDs — skip
-        } else {
+        if (docIds.length > 0) {
         const { rows: docs } = await pool.query(`
           SELECT id, title, source_type, source_name, source_url, author, published_at
           FROM external_documents WHERE id = ANY($1::uuid[]) AND tenant_id = $2
@@ -4287,7 +4294,8 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
         results.documents = qdrantResults
           .map(r => {
-            const doc = docMap.get(r.id);
+            const did = r.payload?.document_id || String(r.id);
+            const doc = docMap.get(did);
             if (!doc) return null;
             return {
               ...doc,
@@ -4341,7 +4349,8 @@ app.get('/api/search', authenticateToken, async (req, res) => {
         try {
           const qdrantResults = await qdrantSearch('case_studies', vector, csLimit);
           if (qdrantResults.length > 0) {
-            const csIds = qdrantResults.map(r => String(r.id)).filter(id => /^[0-9a-f-]{36}$/i.test(id));
+            // IDs are numeric timestamps — case_study_id is in the payload
+            const csIds = qdrantResults.map(r => r.payload?.case_study_id).filter(Boolean);
             if (csIds.length > 0) {
               const { rows } = await pool.query(`
                 SELECT id, title, client_name, role_title, sector, geography, year,
@@ -4350,7 +4359,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
               `, [csIds, req.tenant_id]);
               const csMap = new Map(rows.map(r => [r.id, r]));
               csResults = qdrantResults.map(r => {
-                const cs = csMap.get(r.id);
+                const cs = csMap.get(r.payload?.case_study_id);
                 if (!cs) return null;
                 return { ...cs, match_score: Math.round(r.score * 100), score: r.score };
               }).filter(Boolean);
