@@ -2141,12 +2141,12 @@ async function loadRegionCards() {
 
   for (const r of regions) {
     try {
-      const params = new URLSearchParams({ limit: 5, region: r.code });
+      const params = new URLSearchParams({ limit: 30, region: r.code });
       if (currentFilter !== 'all') params.set('type', currentFilter);
       const data = await api('/api/signals/brief?' + params);
 
-      const clientCount = data.signals.filter(s => s.is_client).length;
-      const networkCount = data.signals.filter(s => parseInt(s.contact_count) > 0).length;
+      const clientCount = [...new Set(data.signals.filter(s => s.is_client).map(s => s.company_id || s.company_name))].length;
+      const networkCount = [...new Set(data.signals.filter(s => parseInt(s.contact_count) > 0).map(s => s.company_id || s.company_name))].length;
 
       // Group signals by company — one row per company, aggregate signal types
       const companyMap = new Map();
