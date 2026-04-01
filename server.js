@@ -9839,15 +9839,32 @@ app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
              d.company_id, d.opportunity_id, d.conversion_id,
              u.name AS owner_name,
              se.confidence_score, se.evidence_summary,
-             c.sector, c.geography,
+             c.sector, c.geography, c.is_client,
+             (SELECT COUNT(*) FROM people p WHERE p.current_company_id = d.company_id AND p.tenant_id = d.tenant_id) AS contact_count,
+             (SELECT COUNT(DISTINCT tp.person_id) FROM team_proximity tp
+              JOIN people p2 ON p2.id = tp.person_id AND p2.current_company_id = d.company_id AND p2.tenant_id = d.tenant_id
+              WHERE tp.tenant_id = d.tenant_id AND tp.relationship_strength >= 0.25) AS prox_count,
              (SELECT COUNT(*) FROM signal_dispatches d2
-              WHERE d2.company_id = d.company_id AND d2.tenant_id = d.tenant_id) AS related_signals
+              WHERE d2.company_id = d.company_id AND d2.tenant_id = d.tenant_id) AS related_signals,
+             -- Lead score: client + network + confidence (same weighting as hero signals)
+             CASE WHEN c.is_client = true THEN 100 ELSE 0 END +
+             CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = d.company_id AND p.tenant_id = d.tenant_id) > 0 THEN 50 ELSE 0 END +
+             COALESCE(se.confidence_score, 0.5) * 30
+             AS lead_score
       FROM signal_dispatches d
       LEFT JOIN users u ON u.id = d.claimed_by
       LEFT JOIN signal_events se ON se.id = d.signal_event_id
       LEFT JOIN companies c ON c.id = d.company_id
       WHERE ${where}
-      ORDER BY d.pipeline_value DESC NULLS LAST, d.updated_at DESC
+      ORDER BY
+        CASE d.pipeline_stage WHEN 'new' THEN 0 ELSE 1 END,
+        CASE d.pipeline_stage
+          WHEN 'new' THEN (CASE WHEN c.is_client THEN 100 ELSE 0 END +
+            CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = d.company_id AND p.tenant_id = d.tenant_id) > 0 THEN 50 ELSE 0 END +
+            COALESCE(se.confidence_score, 0.5) * 30)
+          ELSE 0 END DESC,
+        d.pipeline_value DESC NULLS LAST,
+        d.updated_at DESC
     `, params);
 
     const columns = {};
