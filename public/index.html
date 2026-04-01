@@ -1698,7 +1698,7 @@ body {
             <span class="sub-section-title" style="border-top:none;padding-top:0">Events to Watch</span>
             <span style="font-size:11px;color:var(--ink-4);font-family:var(--mono)" id="eventsCount"></span>
           </div>
-          <a href="/signals.html?tab=events" style="font-size:11px;color:var(--blue);text-decoration:none;font-weight:600">View all events →</a>
+          <a href="https://www.eventmedium.ai/events.html" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:var(--blue);text-decoration:none;font-weight:600">View all events on EventMedium →</a>
         </div>
         <div id="eventsDashboard" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
           <div style="padding:16px;color:var(--ink-4);font-size:12px;text-align:center">Loading events...</div>
@@ -2198,8 +2198,10 @@ async function loadDashboardEvents() {
       var dateStr = eventDate ? eventDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
       var themeColors = { AI: '#2563EB', FinTech: '#B45309', Fintech: '#B45309', Cybersecurity: '#C41D3E', Health: '#0D7A50', 'Climate': '#0D7A50', Web3: '#6D28D9' };
       var tc = themeColors[e.theme] || 'var(--ink-3)';
+      // Build EventMedium event card URL from external_id or fall back to event_url
+      var emUrl = e.external_id ? 'https://www.eventmedium.ai/event.html?id=' + e.external_id : e.event_url || '#';
 
-      return '<div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:10px 12px;cursor:pointer;transition:all .15s" onclick="window.location=\'/signals.html?tab=events\'" onmouseenter="this.style.borderColor=\'var(--blue)\'" onmouseleave="this.style.borderColor=\'var(--rule)\'">' +
+      return '<div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:10px 12px;cursor:pointer;transition:all .15s" onclick="window.open(\'' + esc(emUrl) + '\',\'_blank\')" onmouseenter="this.style.borderColor=\'var(--blue)\'" onmouseleave="this.style.borderColor=\'var(--rule)\'">' +
         '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px">' +
           '<div style="font-size:12px;font-weight:600;line-height:1.3;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.title) + '</div>' +
           (dayLabel ? '<span style="font-size:9px;font-weight:600;padding:2px 6px;border-radius:8px;' + urgency + ';flex-shrink:0;margin-left:6px">' + dayLabel + '</span>' : '') +
@@ -2210,7 +2212,7 @@ async function loadDashboardEvents() {
         '<div style="display:flex;gap:4px;align-items:center">' +
           (e.theme ? '<span style="font-size:8px;font-weight:600;padding:2px 6px;border-radius:6px;background:' + tc + '14;color:' + tc + '">' + esc(e.theme) + '</span>' : '') +
           (e.format && e.format !== 'other' ? '<span style="font-size:8px;color:var(--ink-4)">' + esc(e.format) + '</span>' : '') +
-          (e.event_url ? '<a href="' + esc(e.event_url) + '" target="_blank" onclick="event.stopPropagation()" style="font-size:9px;color:var(--blue);text-decoration:none;margin-left:auto">↗</a>' : '') +
+          '<a href="' + esc(emUrl) + '" target="_blank" onclick="event.stopPropagation()" style="font-size:9px;color:var(--blue);text-decoration:none;margin-left:auto">EventMedium ↗</a>' +
         '</div>' +
       '</div>';
     }).join('');
