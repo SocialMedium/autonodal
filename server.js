@@ -9825,62 +9825,76 @@ app.get('/api/people/:id/matches', authenticateToken, async (req, res) => {
 
 app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
   try {
-    const { owner, client } = req.query;
-    let where = 'o.tenant_id = $1';
+    const { owner } = req.query;
+    let where = 'd.tenant_id = $1';
     const params = [req.tenant_id];
     let idx = 2;
-    if (owner) { where += ` AND o.lead_consultant_id = $${idx++}`; params.push(owner); }
-    if (client) { where += ` AND co.name ILIKE $${idx++}`; params.push(`%${client}%`); }
+    if (owner) { where += ` AND d.claimed_by = $${idx++}`; params.push(owner); }
 
     const { rows } = await pool.query(`
-      SELECT o.id, o.title, o.status, o.location, o.seniority_level,
-             o.priority, o.kick_off_date, o.target_shortlist_date, o.target_placement_date,
-             o.lead_consultant_id, o.researcher_id, o.updated_at, o.created_at,
+      SELECT d.id, d.company_name, d.signal_type, d.signal_summary,
+             d.status, d.pipeline_stage, d.pipeline_value,
+             d.claimed_by, d.claimed_at, d.actioned_at, d.converted_at, d.won_at,
+             d.opportunity_angle, d.created_at, d.updated_at,
+             d.company_id, d.opportunity_id, d.conversion_id,
              u.name AS owner_name,
-             e.name AS project_name, e.fee_amount, e.fee_type,
-             ac.name AS client_name, co.name AS company_name, co.id AS company_id,
-             (SELECT COUNT(*) FROM pipeline_contacts pc WHERE pc.search_id = o.id) AS candidate_count,
-             (SELECT COUNT(*) FROM pipeline_contacts pc WHERE pc.search_id = o.id AND pc.status IN ('shortlisted','presented','client_interview')) AS shortlisted_count,
-             (SELECT COUNT(*) FROM search_matches sm WHERE sm.search_id = o.id) AS match_count
-      FROM opportunities o
-      LEFT JOIN engagements e ON e.id = o.project_id
-      LEFT JOIN accounts ac ON ac.id = e.client_id
-      LEFT JOIN companies co ON co.id = ac.company_id
-      LEFT JOIN users u ON u.id = o.lead_consultant_id
+             se.confidence_score, se.evidence_summary,
+             c.sector, c.geography,
+             (SELECT COUNT(*) FROM signal_dispatches d2
+              WHERE d2.company_id = d.company_id AND d2.tenant_id = d.tenant_id) AS related_signals
+      FROM signal_dispatches d
+      LEFT JOIN users u ON u.id = d.claimed_by
+      LEFT JOIN signal_events se ON se.id = d.signal_event_id
+      LEFT JOIN companies c ON c.id = d.company_id
       WHERE ${where}
-      ORDER BY o.updated_at DESC
+      ORDER BY d.pipeline_value DESC NULLS LAST, d.updated_at DESC
     `, params);
 
-    // Group by status
     const columns = {};
+    const totals = {};
     for (const row of rows) {
-      const status = row.status || 'briefing';
-      if (!columns[status]) columns[status] = [];
-      columns[status].push(row);
+      const stage = row.pipeline_stage || 'new';
+      if (!columns[stage]) { columns[stage] = []; totals[stage] = 0; }
+      columns[stage].push(row);
+      totals[stage] += parseFloat(row.pipeline_value) || 0;
     }
 
-    res.json({ columns, total: rows.length });
+    res.json({ columns, totals, total: rows.length });
   } catch (err) {
     console.error('Pipeline board error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.patch('/api/pipeline/:id/status', authenticateToken, async (req, res) => {
+app.patch('/api/pipeline/:id/stage', authenticateToken, async (req, res) => {
   try {
-    const { status } = req.body;
+    const { stage, pipeline_value } = req.body;
+    const updates = ['pipeline_stage = $1', 'updated_at = NOW()'];
+    const params = [stage];
+    let idx = 2;
+
+    // Set timestamp for the stage
+    if (stage === 'claimed' && !req.body.skip_timestamp) { updates.push(`claimed_at = COALESCE(claimed_at, NOW()), claimed_by = COALESCE(claimed_by, $${idx})`); params.push(req.user.user_id); idx++; }
+    if (stage === 'actioned') { updates.push('actioned_at = COALESCE(actioned_at, NOW())'); }
+    if (stage === 'converted') { updates.push('converted_at = COALESCE(converted_at, NOW())'); }
+    if (stage === 'won') { updates.push('won_at = COALESCE(won_at, NOW())'); }
+
+    if (pipeline_value !== undefined) { updates.push(`pipeline_value = $${idx}`); params.push(pipeline_value); idx++; }
+
+    params.push(req.params.id, req.tenant_id);
     const { rows } = await pool.query(
-      `UPDATE opportunities SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3 RETURNING id, title, status`,
-      [status, req.params.id, req.tenant_id]
+      `UPDATE signal_dispatches SET ${updates.join(', ')} WHERE id = $${idx} AND tenant_id = $${idx + 1} RETURNING id, company_name, pipeline_stage, pipeline_value`,
+      params
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
 
     // Log activity
     await pool.query(
-      `INSERT INTO activities (tenant_id, user_id, user_name, activity_type, subject, opportunity_id, metadata, source)
-       VALUES ($1, $2, $3, 'status_change', $4, $5, $6, 'manual')`,
-      [req.tenant_id, req.user.user_id, req.user.name, `Status → ${status}`, req.params.id,
-       JSON.stringify({ new_status: status, previous_status: req.body.previous_status })]
+      `INSERT INTO activities (tenant_id, user_id, user_name, activity_type, subject, dispatch_id, company_id, metadata, source)
+       VALUES ($1, $2, $3, 'status_change', $4, $5, (SELECT company_id FROM signal_dispatches WHERE id = $5), $6, 'manual')`,
+      [req.tenant_id, req.user.user_id, req.user.name,
+       `${rows[0].company_name} → ${stage}` + (pipeline_value ? ` ($${Number(pipeline_value).toLocaleString()})` : ''),
+       req.params.id, JSON.stringify({ stage, pipeline_value })]
     );
 
     res.json(rows[0]);
@@ -9889,45 +9903,16 @@ app.patch('/api/pipeline/:id/status', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/pipeline/from-dispatch/:dispatchId', authenticateToken, async (req, res) => {
+app.patch('/api/pipeline/:id/value', authenticateToken, async (req, res) => {
   try {
-    const { rows: [dispatch] } = await pool.query(
-      `SELECT * FROM signal_dispatches WHERE id = $1 AND tenant_id = $2`,
-      [req.params.dispatchId, req.tenant_id]
+    const { pipeline_value } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE signal_dispatches SET pipeline_value = $1, updated_at = NOW()
+       WHERE id = $2 AND tenant_id = $3 RETURNING id, company_name, pipeline_value`,
+      [pipeline_value, req.params.id, req.tenant_id]
     );
-    if (!dispatch) return res.status(404).json({ error: 'Dispatch not found' });
-
-    // Create engagement + opportunity from dispatch
-    const { rows: [eng] } = await pool.query(
-      `INSERT INTO engagements (name, client_context, status, lead_partner_id, tenant_id)
-       VALUES ($1, $2, 'active', $3, $4) RETURNING id`,
-      [`${dispatch.company_name} — ${dispatch.signal_type.replace(/_/g, ' ')}`,
-       dispatch.opportunity_angle, req.user.user_id, req.tenant_id]
-    );
-
-    const { rows: [opp] } = await pool.query(
-      `INSERT INTO opportunities (project_id, title, brief_summary, status, lead_consultant_id, tenant_id)
-       VALUES ($1, $2, $3, 'sourcing', $4, $5) RETURNING id, title, status`,
-      [eng.id, dispatch.company_name + ' — Signal Opportunity',
-       dispatch.signal_summary, req.user.user_id, req.tenant_id]
-    );
-
-    // Link dispatch
-    await pool.query(
-      `UPDATE signal_dispatches SET opportunity_id = $1 WHERE id = $2`,
-      [opp.id, dispatch.id]
-    );
-
-    // Log activity
-    await pool.query(
-      `INSERT INTO activities (tenant_id, user_id, user_name, activity_type, subject, opportunity_id, dispatch_id, company_id, source)
-       VALUES ($1, $2, $3, 'dispatch_claimed', $4, $5, $6, $7, 'manual')`,
-      [req.tenant_id, req.user.user_id, req.user.name,
-       `Created opportunity from dispatch: ${dispatch.company_name}`,
-       opp.id, dispatch.id, dispatch.company_id]
-    );
-
-    res.json(opp);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

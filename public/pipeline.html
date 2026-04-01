@@ -32,38 +32,39 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);font-size:14p
 .page{max-width:1400px;margin:0 auto;padding:24px clamp(14px,3vw,40px) 60px}
 .page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
 .page-title{font-family:var(--serif);font-size:24px;font-weight:600}
-.page-count{font-family:var(--mono);font-size:12px;color:var(--ink-4)}
+.summary{display:flex;gap:16px;font-size:12px;color:var(--ink-3);align-items:center}
+.summary-val{font-family:var(--mono);font-weight:600;color:var(--ink)}
 
-.board{display:flex;gap:12px;overflow-x:auto;padding-bottom:20px;min-height:calc(100vh - 160px)}
-.column{min-width:240px;max-width:280px;flex:1;display:flex;flex-direction:column}
-.col-header{padding:10px 12px;border-radius:var(--radius) var(--radius) 0 0;border:1px solid var(--rule);border-bottom:2px solid;display:flex;justify-content:space-between;align-items:center;background:var(--surface)}
-.col-header h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3)}
+.board{display:flex;gap:12px;overflow-x:auto;padding-bottom:20px;min-height:calc(100vh - 180px)}
+.column{min-width:250px;max-width:300px;flex:1;display:flex;flex-direction:column}
+.col-header{padding:10px 12px;border-radius:var(--radius) var(--radius) 0 0;border:1px solid var(--rule);border-bottom:3px solid;display:flex;justify-content:space-between;align-items:center;background:var(--surface)}
+.col-label{display:flex;flex-direction:column}
+.col-label h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3)}
+.col-total{font-family:var(--mono);font-size:11px;color:var(--ink-4);margin-top:1px}
 .col-count{font-family:var(--mono);font-size:10px;color:var(--ink-4);background:var(--surface-warm);padding:2px 7px;border-radius:10px}
 .col-body{flex:1;background:var(--surface-warm);border:1px solid var(--rule);border-top:none;border-radius:0 0 var(--radius) var(--radius);padding:8px;display:flex;flex-direction:column;gap:8px;min-height:100px}
-.col-body.sortable-ghost-class .card{opacity:.4}
 
 .card{background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:10px 12px;cursor:grab;transition:box-shadow .15s,border-color .15s;font-size:12px}
 .card:hover{box-shadow:var(--shadow-hover);border-color:var(--rule-bold)}
 .card.sortable-chosen{box-shadow:var(--shadow-hover);opacity:.9}
-.card-title{font-weight:600;font-size:13px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.card-client{font-size:11px;color:var(--ink-3);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.card-meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.card-pill{font-size:9px;font-weight:600;padding:2px 7px;border-radius:10px;display:inline-block}
-.pill-blue{background:var(--blue-soft);color:var(--blue)}
-.pill-emerald{background:var(--emerald-soft);color:var(--emerald)}
-.pill-amber{background:var(--amber-soft);color:var(--amber)}
-.pill-violet{background:var(--violet-soft);color:var(--violet)}
-.pill-grey{background:var(--surface-warm);color:var(--ink-3)}
-.card-owner{font-size:10px;color:var(--ink-4);margin-top:5px}
-.card-dates{font-size:9px;color:var(--ink-4);margin-top:3px}
+.card-company{font-weight:600;font-size:13px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-signal{font-size:10px;margin-bottom:6px;display:flex;align-items:center;gap:4px}
+.card-signal .dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0}
+.card-meta{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+.pill{font-size:9px;font-weight:600;padding:2px 7px;border-radius:10px;display:inline-block}
+.card-value{display:flex;align-items:center;gap:4px;margin-top:6px;padding-top:6px;border-top:1px solid var(--rule)}
+.card-value input{font-family:var(--mono);font-size:12px;font-weight:600;border:1px solid transparent;border-radius:4px;padding:2px 6px;width:100px;background:transparent;color:var(--ink);transition:border-color .15s}
+.card-value input:hover{border-color:var(--rule)}
+.card-value input:focus{outline:none;border-color:var(--blue);background:var(--blue-soft)}
+.card-owner{font-size:10px;color:var(--ink-4);margin-top:4px}
+.card-date{font-size:9px;color:var(--ink-4)}
+.card-summary{font-size:10px;color:var(--ink-3);margin:4px 0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 
-.col-sourcing .col-header{border-bottom-color:var(--blue)}
-.col-outreach .col-header{border-bottom-color:#85B7EB}
-.col-interviewing .col-header{border-bottom-color:var(--amber)}
-.col-shortlist .col-header{border-bottom-color:var(--violet)}
-.col-offer .col-header{border-bottom-color:var(--emerald)}
-.col-placed .col-header{border-bottom-color:#0D7A50}
-.col-on_hold .col-header{border-bottom-color:var(--ink-4)}
+.col-new .col-header{border-bottom-color:var(--ink-4)}
+.col-claimed .col-header{border-bottom-color:var(--blue)}
+.col-actioned .col-header{border-bottom-color:var(--amber)}
+.col-converted .col-header{border-bottom-color:var(--violet)}
+.col-won .col-header{border-bottom-color:var(--emerald)}
 
 .empty-col{font-size:11px;color:var(--ink-4);text-align:center;padding:24px 8px}
 </style>
@@ -81,7 +82,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);font-size:14p
       <a href="/delivery.html">Delivery</a>
       <a href="/placements.html">Revenue</a>
     </nav>
-    <div class="masthead-user" id="userAvatar" title="Sign out">?</div>
+    <div class="masthead-user" id="userAvatar">?</div>
   </div>
 </header>
 
@@ -89,116 +90,134 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);font-size:14p
   <div class="page-header">
     <div>
       <div class="page-title">Sales Pipeline</div>
-      <div style="font-size:12px;color:var(--ink-3);margin-top:2px">Drag opportunities between stages. Click to view details.</div>
+      <div style="font-size:12px;color:var(--ink-3);margin-top:2px">Signal-to-revenue pipeline. Drag cards between stages. Click value to edit.</div>
     </div>
-    <div class="page-count" id="totalCount">Loading...</div>
+    <div class="summary" id="summary">Loading...</div>
   </div>
   <div class="board" id="board">
-    <div class="loading" style="padding:40px;color:var(--ink-3)">Loading pipeline...</div>
+    <div style="padding:40px;color:var(--ink-3)">Loading pipeline...</div>
   </div>
 </div>
 
 <script>
+var SIG_COLORS={capital_raising:'#EF9F27',strategic_hiring:'#5DCAA5',geographic_expansion:'#378ADD',leadership_change:'#D4537E',ma_activity:'#AFA9EC',product_launch:'#97C459',layoffs:'#E24B4A',restructuring:'#E24B4A',partnership:'#85B7EB'};
+var COLUMNS=[
+  {key:'new',label:'New Signals',cls:'col-new'},
+  {key:'claimed',label:'Claimed',cls:'col-claimed'},
+  {key:'actioned',label:'Actioned',cls:'col-actioned'},
+  {key:'converted',label:'Converted',cls:'col-converted'},
+  {key:'won',label:'Won',cls:'col-won'},
+];
+
 function getToken(){return localStorage.getItem('ml_token')}
 function esc(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
 function ago(d){if(!d)return'';var ms=Date.now()-new Date(d).getTime();if(ms<86400000)return'today';if(ms<604800000)return Math.floor(ms/86400000)+'d ago';return new Date(d).toLocaleDateString()}
+function fmtCurrency(n){return'$'+(parseInt(n)||0).toLocaleString()}
 
 async function api(url,opts){
   opts=opts||{};var token=getToken();
   var r=await fetch(url,Object.assign({},opts,{headers:Object.assign({'Content-Type':'application/json'},token?{'Authorization':'Bearer '+token}:{},opts.headers||{}),body:opts.body?JSON.stringify(opts.body):undefined}));
   if(r.status===401){localStorage.removeItem('ml_token');window.location='/index.html';throw new Error('Unauthorized')}
-  if(!r.ok){var e=await r.json().catch(()=>({error:r.statusText}));throw new Error(e.error||'Failed')}
+  if(!r.ok){var e=await r.json().catch(function(){return{error:r.statusText}});throw new Error(e.error||'Failed')}
   return r.json();
 }
 
-// Column definitions (ordered left to right)
-var COLUMNS=[
-  {key:'sourcing',label:'Sourcing',cls:'col-sourcing'},
-  {key:'outreach',label:'Outreach',cls:'col-outreach'},
-  {key:'interviewing',label:'Interviewing',cls:'col-interviewing'},
-  {key:'shortlist',label:'Shortlist',cls:'col-shortlist'},
-  {key:'client_interviews',label:'Client Interviews',cls:'col-shortlist'},
-  {key:'offer',label:'Offer',cls:'col-offer'},
-  {key:'negotiation',label:'Negotiation',cls:'col-offer'},
-  {key:'placed',label:'Placed',cls:'col-placed'},
-  {key:'on_hold',label:'On Hold',cls:'col-on_hold'},
-];
+async function updateValue(id,input){
+  var raw=input.value.replace(/[^0-9.]/g,'');
+  var val=parseFloat(raw)||0;
+  input.value=fmtCurrency(val);
+  try{await api('/api/pipeline/'+id+'/value',{method:'PATCH',body:{pipeline_value:val}})}catch(e){console.error(e)}
+  updateTotals();
+}
 
-// Map briefing/research into sourcing for display
-var STATUS_MAP={briefing:'sourcing',research:'sourcing'};
+function updateTotals(){
+  document.querySelectorAll('.col-body').forEach(function(col){
+    var total=0;
+    col.querySelectorAll('.card').forEach(function(c){
+      var v=c.querySelector('.val-input');
+      if(v)total+=parseFloat(v.value.replace(/[^0-9.]/g,''))||0;
+    });
+    var header=col.previousElementSibling;
+    header.querySelector('.col-count').textContent=col.querySelectorAll('.card').length;
+    var totalEl=header.querySelector('.col-total');
+    if(totalEl)totalEl.textContent=total>0?fmtCurrency(total):'';
+  });
+  // Grand total
+  var grand=0;
+  document.querySelectorAll('.val-input').forEach(function(v){grand+=parseFloat(v.value.replace(/[^0-9.]/g,''))||0});
+  var sumEl=document.getElementById('summary');
+  var cnt=document.querySelectorAll('.card').length;
+  sumEl.innerHTML='<span>'+cnt+' signals</span><span class="summary-val">'+fmtCurrency(grand)+' pipeline</span>';
+}
 
 async function loadBoard(){
   try{
     var data=await api('/api/pipeline/board');
     var cols=data.columns;
-    document.getElementById('totalCount').textContent=data.total+' opportunities';
 
     var html='';
     COLUMNS.forEach(function(col){
-      var mapped=STATUS_MAP[col.key]||col.key;
       var items=cols[col.key]||[];
-      // Also merge mapped statuses
-      Object.keys(STATUS_MAP).forEach(function(k){if(STATUS_MAP[k]===col.key&&cols[k])items=items.concat(cols[k])});
+      var total=items.reduce(function(s,d){return s+(parseFloat(d.pipeline_value)||0)},0);
 
       html+='<div class="column '+col.cls+'">';
-      html+='<div class="col-header"><h3>'+col.label+'</h3><span class="col-count">'+items.length+'</span></div>';
-      html+='<div class="col-body" data-status="'+col.key+'">';
-      if(!items.length)html+='<div class="empty-col">No opportunities</div>';
-      items.forEach(function(o){
-        var pri=o.priority==='high'?'pill-rose':o.priority==='medium'?'pill-amber':'pill-grey';
-        html+='<div class="card" data-id="'+o.id+'" data-status="'+o.status+'" onclick="window.location=\'/searches.html?id='+o.id+'\'">';
-        html+='<div class="card-title">'+esc(o.title)+'</div>';
-        html+='<div class="card-client">'+esc(o.client_name||o.company_name||'No client')+'</div>';
+      html+='<div class="col-header"><div class="col-label"><h3>'+col.label+'</h3><div class="col-total">'+(total>0?fmtCurrency(total):'')+'</div></div><span class="col-count">'+items.length+'</span></div>';
+      html+='<div class="col-body" data-stage="'+col.key+'">';
+      if(!items.length)html+='<div class="empty-col">No signals</div>';
+      items.forEach(function(d){
+        var sc=SIG_COLORS[d.signal_type]||'#888';
+        var val=parseFloat(d.pipeline_value)||0;
+        html+='<div class="card" data-id="'+d.id+'" data-stage="'+(d.pipeline_stage||'new')+'">';
+        html+='<div class="card-company" onclick="window.open(\'/company.html?id='+d.company_id+'\',\'_blank\')">'+esc(d.company_name)+'</div>';
+        html+='<div class="card-signal"><span class="dot" style="background:'+sc+'"></span>'+esc((d.signal_type||'').replace(/_/g,' '))+'<span style="font-size:9px;color:var(--ink-4);margin-left:auto">'+Math.round((d.confidence_score||0)*100)+'%</span></div>';
+        if(d.opportunity_angle)html+='<div class="card-summary">'+esc(d.opportunity_angle)+'</div>';
         html+='<div class="card-meta">';
-        if(o.seniority_level)html+='<span class="card-pill pill-blue">'+esc(o.seniority_level)+'</span>';
-        if(o.location)html+='<span class="card-pill pill-grey">'+esc(o.location)+'</span>';
-        html+='<span class="card-pill pill-violet">'+parseInt(o.candidate_count||0)+' candidates</span>';
-        if(parseInt(o.match_count)>0)html+='<span class="card-pill pill-emerald">'+o.match_count+' AI matches</span>';
+        if(d.sector)html+='<span class="pill" style="background:var(--surface-cool);color:var(--ink-3)">'+esc(d.sector)+'</span>';
+        if(d.geography)html+='<span class="pill" style="background:var(--surface-cool);color:var(--ink-3)">'+esc(d.geography)+'</span>';
+        if(parseInt(d.related_signals)>1)html+='<span class="pill" style="background:var(--amber-soft);color:var(--amber)">'+d.related_signals+' signals</span>';
         html+='</div>';
-        if(o.owner_name)html+='<div class="card-owner">'+esc(o.owner_name)+'</div>';
-        var dates=[];
-        if(o.kick_off_date)dates.push('Started '+ago(o.kick_off_date));
-        if(o.target_shortlist_date)dates.push('Shortlist '+ago(o.target_shortlist_date));
-        if(dates.length)html+='<div class="card-dates">'+dates.join(' · ')+'</div>';
+        html+='<div class="card-value"><span style="font-size:10px;color:var(--ink-4)">Value:</span><input class="val-input" type="text" value="'+fmtCurrency(val)+'" onfocus="this.select()" onblur="updateValue(\''+d.id+'\',this)" onkeydown="if(event.key===\'Enter\'){this.blur()}" onclick="event.stopPropagation()"></div>';
+        if(d.owner_name)html+='<div class="card-owner">'+esc(d.owner_name)+'</div>';
+        var dateLabel=d.won_at?'Won '+ago(d.won_at):d.converted_at?'Converted '+ago(d.converted_at):d.actioned_at?'Actioned '+ago(d.actioned_at):d.claimed_at?'Claimed '+ago(d.claimed_at):'Created '+ago(d.created_at);
+        html+='<div class="card-date">'+dateLabel+'</div>';
         html+='</div>';
       });
       html+='</div></div>';
     });
 
     document.getElementById('board').innerHTML=html;
+    updateTotals();
 
-    // Init SortableJS on each column
+    // SortableJS
     document.querySelectorAll('.col-body').forEach(function(el){
       new Sortable(el,{
         group:'pipeline',
         animation:150,
-        ghostClass:'sortable-ghost-class',
+        ghostClass:'sortable-ghost',
         chosenClass:'sortable-chosen',
         onEnd:function(evt){
           var cardEl=evt.item;
-          var newStatus=evt.to.dataset.status;
-          var oldStatus=cardEl.dataset.status;
-          if(newStatus===oldStatus)return;
+          var newStage=evt.to.dataset.stage;
+          var oldStage=cardEl.dataset.stage;
+          if(newStage===oldStage)return;
           var id=cardEl.dataset.id;
-          cardEl.dataset.status=newStatus;
-          api('/api/pipeline/'+id+'/status',{method:'PATCH',body:{status:newStatus,previous_status:oldStatus}}).catch(function(e){
-            alert('Failed to update: '+e.message);
+          cardEl.dataset.stage=newStage;
+          // Remove empty-col placeholder if present
+          var empty=evt.to.querySelector('.empty-col');
+          if(empty)empty.remove();
+          api('/api/pipeline/'+id+'/stage',{method:'PATCH',body:{stage:newStage}}).catch(function(e){
+            alert('Failed: '+e.message);
             loadBoard();
           });
-          // Update counts
-          document.querySelectorAll('.col-body').forEach(function(c){
-            var count=c.querySelectorAll('.card').length;
-            c.previousElementSibling.querySelector('.col-count').textContent=count;
-          });
+          updateTotals();
         }
       });
     });
   }catch(e){
-    document.getElementById('board').innerHTML='<div style="padding:40px;color:var(--rose)">Failed to load: '+esc(e.message)+'</div>';
+    document.getElementById('board').innerHTML='<div style="padding:40px;color:var(--rose)">Failed: '+esc(e.message)+'</div>';
   }
 }
 
-// Init
 (function(){
   if(!getToken()){window.location='/index.html';return}
   try{var u=JSON.parse(localStorage.getItem('ml_user')||'{}');document.getElementById('userAvatar').textContent=(u.name||'').split(' ').map(function(w){return w[0]}).join('').slice(0,2)||'?'}catch(e){}
