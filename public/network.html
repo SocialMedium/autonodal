@@ -249,7 +249,12 @@ function renderGraph(data, fullData) {
 
   function nodeR(d) {
     if (d.type === 'team') return 22;
-    if (d.type === 'client') return 10 + Math.min((d.peopleCount || 0) * 0.5, 12);
+    if (d.type === 'client') {
+      // Size by total revenue — log scale, min 8, max 30
+      var rev = d.totalRevenue || 0;
+      if (rev <= 0) return 8;
+      return Math.min(30, 8 + Math.log10(rev / 1000 + 1) * 8);
+    }
     if (d.type === 'sector') return 8 + Math.min((d.density || 0) * 0.3, 15);
     if (d.type === 'company') return 16;
     return 5 + (d.bestStrength || 0) * 8;
@@ -344,7 +349,10 @@ function renderGraph(data, fullData) {
       let html = '<div class="tooltip-name">' + (d.fullName || d.label) + '</div>';
       if (d.role) html += '<div class="tooltip-role">' + d.role + '</div>';
       if (d.company) html += '<div class="tooltip-role">' + d.company + '</div>';
-      if (d.type === 'client') html += '<div class="tooltip-meta">' + (d.tier || 'client') + ' · ' + (d.peopleCount || 0) + ' contacts · ' + (d.signalCount || 0) + ' signals' + (d.region ? ' · ' + d.region : '') + '</div>';
+      if (d.type === 'client') {
+        var rev = d.totalRevenue ? '$' + Math.round(d.totalRevenue).toLocaleString() : null;
+        html += '<div class="tooltip-meta">' + (d.tier || 'client') + ' · ' + (d.peopleCount || 0) + ' contacts · ' + (d.signalCount || 0) + ' signals' + (rev ? ' · ' + rev + ' revenue' : '') + (d.region ? ' · ' + d.region : '') + '</div>';
+      }
       if (d.type === 'sector') html += '<div class="tooltip-meta">Density: ' + (d.density || 0).toFixed(1) + ' · ' + (d.contacts || 0) + ' contacts</div>';
       if (d.type === 'contact') html += '<div class="tooltip-meta">Strength: ' + ((d.bestStrength || 0) * 100).toFixed(0) + '%' + (d.timingScore ? ' · Timing: ' + (d.timingScore * 100).toFixed(0) + '%' : '') + '</div>';
       showTooltip(evt, html);

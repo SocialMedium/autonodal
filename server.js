@@ -5326,7 +5326,8 @@ app.get('/api/network/graph', authenticateToken, async (req, res) => {
         SELECT a.id as account_id, a.name, a.relationship_tier, a.company_id,
                c.sector, c.geography,
                (SELECT COUNT(*) FROM people p WHERE p.current_company_id = a.company_id AND p.tenant_id = $1) as people_count,
-               (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = a.company_id AND se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '30 days') as signal_count
+               (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = a.company_id AND se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '30 days') as signal_count,
+               (SELECT COALESCE(SUM(cv.placement_fee), 0) FROM conversions cv WHERE cv.client_id = a.id AND cv.tenant_id = $1) as total_revenue
         FROM accounts a
         LEFT JOIN companies c ON c.id = a.company_id
         WHERE a.tenant_id = $1 AND a.relationship_status = 'active'
@@ -5391,6 +5392,7 @@ app.get('/api/network/graph', authenticateToken, async (req, res) => {
           region: region,
           peopleCount: parseInt(cl.people_count) || 0,
           signalCount: parseInt(cl.signal_count) || 0,
+          totalRevenue: parseFloat(cl.total_revenue) || 0,
           companyId: cl.company_id, accountId: cl.account_id
         });
         addedNodes.add(nid);
