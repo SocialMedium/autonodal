@@ -94,6 +94,18 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);font-size:14p
     </div>
     <div class="summary" id="summary">Loading...</div>
   </div>
+  <div class="filter-bar" id="filterBar" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+    <select id="filterRegion" onchange="loadBoard()" style="font-family:var(--sans);font-size:11px;padding:5px 10px;border:1px solid var(--rule);border-radius:6px;background:var(--surface);color:var(--ink-2);cursor:pointer">
+      <option value="">All Regions</option>
+    </select>
+    <select id="filterSignalType" onchange="loadBoard()" style="font-family:var(--sans);font-size:11px;padding:5px 10px;border:1px solid var(--rule);border-radius:6px;background:var(--surface);color:var(--ink-2);cursor:pointer">
+      <option value="">All Signal Types</option>
+    </select>
+    <select id="filterSector" onchange="loadBoard()" style="font-family:var(--sans);font-size:11px;padding:5px 10px;border:1px solid var(--rule);border-radius:6px;background:var(--surface);color:var(--ink-2);cursor:pointer">
+      <option value="">All Sectors</option>
+    </select>
+    <button onclick="clearFilters()" style="font-family:var(--sans);font-size:10px;padding:4px 10px;border:1px solid var(--rule);border-radius:6px;background:transparent;color:var(--ink-4);cursor:pointer">Clear</button>
+  </div>
   <div class="board" id="board">
     <div style="padding:40px;color:var(--ink-3)">Loading pipeline...</div>
   </div>
@@ -167,9 +179,38 @@ async function deleteCard(id,name){
   }catch(e){alert('Failed: '+e.message)}
 }
 
+var _facetsLoaded=false;
+
+function clearFilters(){
+  document.getElementById('filterRegion').value='';
+  document.getElementById('filterSignalType').value='';
+  document.getElementById('filterSector').value='';
+  loadBoard();
+}
+
+function populateFacets(facets){
+  if(_facetsLoaded)return;
+  _facetsLoaded=true;
+  var regionSel=document.getElementById('filterRegion');
+  var typeSel=document.getElementById('filterSignalType');
+  var sectorSel=document.getElementById('filterSector');
+  (facets.regions||[]).forEach(function(r){var o=document.createElement('option');o.value=r;o.textContent=r;regionSel.appendChild(o)});
+  (facets.signal_types||[]).forEach(function(t){var o=document.createElement('option');o.value=t;o.textContent=t.replace(/_/g,' ');typeSel.appendChild(o)});
+  (facets.sectors||[]).forEach(function(s){var o=document.createElement('option');o.value=s;o.textContent=s;sectorSel.appendChild(o)});
+}
+
 async function loadBoard(){
   try{
-    var data=await api('/api/pipeline/board');
+    var params=new URLSearchParams();
+    var region=document.getElementById('filterRegion').value;
+    var signalType=document.getElementById('filterSignalType').value;
+    var sector=document.getElementById('filterSector').value;
+    if(region)params.set('region',region);
+    if(signalType)params.set('signal_type',signalType);
+    if(sector)params.set('sector',sector);
+    var qs=params.toString();
+    var data=await api('/api/pipeline/board'+(qs?'?'+qs:''));
+    if(data.facets)populateFacets(data.facets);
     var cols=data.columns;
 
     var html='';

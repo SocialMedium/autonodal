@@ -9825,11 +9825,14 @@ app.get('/api/people/:id/matches', authenticateToken, async (req, res) => {
 
 app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
   try {
-    const { owner } = req.query;
+    const { owner, region, signal_type, sector } = req.query;
     let where = "d.tenant_id = $1 AND COALESCE(d.pipeline_stage, 'new') != 'archived'";
     const params = [req.tenant_id];
     let idx = 2;
     if (owner) { where += ` AND d.claimed_by = $${idx++}`; params.push(owner); }
+    if (region) { where += ` AND c.geography ILIKE $${idx++}`; params.push(`%${region}%`); }
+    if (signal_type) { where += ` AND d.signal_type = $${idx++}`; params.push(signal_type); }
+    if (sector) { where += ` AND c.sector ILIKE $${idx++}`; params.push(`%${sector}%`); }
 
     // Group dispatches by company — one card per company with aggregated signals
     const { rows } = await pool.query(`
@@ -9923,7 +9926,21 @@ app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
       totals[stage] += parseFloat(row.pipeline_value) || 0;
     }
 
-    res.json({ columns, totals, total: rows.length });
+    // Facets for filters (always unfiltered to show all options)
+    const [facetRegions, facetTypes, facetSectors] = await Promise.all([
+      pool.query(`SELECT DISTINCT c.geography FROM signal_dispatches d JOIN companies c ON c.id = d.company_id WHERE d.tenant_id = $1 AND c.geography IS NOT NULL AND COALESCE(d.pipeline_stage,'new') != 'archived' ORDER BY c.geography`, [req.tenant_id]),
+      pool.query(`SELECT DISTINCT d.signal_type FROM signal_dispatches d WHERE d.tenant_id = $1 AND d.signal_type IS NOT NULL AND COALESCE(d.pipeline_stage,'new') != 'archived' ORDER BY d.signal_type`, [req.tenant_id]),
+      pool.query(`SELECT DISTINCT c.sector FROM signal_dispatches d JOIN companies c ON c.id = d.company_id WHERE d.tenant_id = $1 AND c.sector IS NOT NULL AND COALESCE(d.pipeline_stage,'new') != 'archived' ORDER BY c.sector`, [req.tenant_id]),
+    ]);
+
+    res.json({
+      columns, totals, total: rows.length,
+      facets: {
+        regions: facetRegions.rows.map(r => r.geography),
+        signal_types: facetTypes.rows.map(r => r.signal_type),
+        sectors: facetSectors.rows.map(r => r.sector),
+      }
+    });
   } catch (err) {
     console.error('Pipeline board error:', err.message);
     res.status(500).json({ error: err.message });
