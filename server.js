@@ -9826,7 +9826,7 @@ app.get('/api/people/:id/matches', authenticateToken, async (req, res) => {
 app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
   try {
     const { owner } = req.query;
-    let where = 'd.tenant_id = $1';
+    let where = "d.tenant_id = $1 AND COALESCE(d.pipeline_stage, 'new') != 'archived'";
     const params = [req.tenant_id];
     let idx = 2;
     if (owner) { where += ` AND d.claimed_by = $${idx++}`; params.push(owner); }
@@ -9898,6 +9898,19 @@ app.patch('/api/pipeline/:id/stage', authenticateToken, async (req, res) => {
     );
 
     res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/pipeline/:id', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `DELETE FROM signal_dispatches WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+      [req.params.id, req.tenant_id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

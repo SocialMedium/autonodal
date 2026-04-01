@@ -150,6 +150,23 @@ function updateTotals(){
   sumEl.innerHTML='<span>'+cnt+' signals</span><span class="summary-val">'+fmtCurrency(grand)+' pipeline</span>';
 }
 
+async function archiveCard(id){
+  try{
+    await api('/api/pipeline/'+id+'/stage',{method:'PATCH',body:{stage:'archived'}});
+    document.querySelector('.card[data-id="'+id+'"]')?.remove();
+    updateTotals();
+  }catch(e){alert('Failed: '+e.message)}
+}
+
+async function deleteCard(id,name){
+  if(!confirm('Delete "'+name+'" from pipeline? This cannot be undone.'))return;
+  try{
+    await api('/api/pipeline/'+id,{method:'DELETE'});
+    document.querySelector('.card[data-id="'+id+'"]')?.remove();
+    updateTotals();
+  }catch(e){alert('Failed: '+e.message)}
+}
+
 async function loadBoard(){
   try{
     var data=await api('/api/pipeline/board');
@@ -179,7 +196,11 @@ async function loadBoard(){
         html+='<div class="card-value"><span style="font-size:10px;color:var(--ink-4)">Value:</span><input class="val-input" type="text" value="'+fmtCurrency(val)+'" onfocus="this.select()" onblur="updateValue(\''+d.id+'\',this)" onkeydown="if(event.key===\'Enter\'){this.blur()}" onclick="event.stopPropagation()"></div>';
         if(d.owner_name)html+='<div class="card-owner">'+esc(d.owner_name)+'</div>';
         var dateLabel=d.won_at?'Won '+ago(d.won_at):d.converted_at?'Converted '+ago(d.converted_at):d.actioned_at?'Actioned '+ago(d.actioned_at):d.claimed_at?'Claimed '+ago(d.claimed_at):'Created '+ago(d.created_at);
-        html+='<div class="card-date">'+dateLabel+'</div>';
+        html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px"><div class="card-date">'+dateLabel+'</div>';
+        html+='<div style="display:flex;gap:4px" onclick="event.stopPropagation()">';
+        html+='<button onclick="archiveCard(\''+d.id+'\')" title="Archive" style="font-size:9px;padding:2px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--surface-warm);color:var(--ink-4);cursor:pointer;font-family:var(--sans)">Archive</button>';
+        html+='<button onclick="deleteCard(\''+d.id+'\',\''+esc(d.company_name).replace(/'/g,"\\'")+'\')" title="Delete" style="font-size:9px;padding:2px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--rose-soft);color:var(--rose);cursor:pointer;font-family:var(--sans)">Delete</button>';
+        html+='</div></div>';
         html+='</div>';
       });
       html+='</div></div>';
