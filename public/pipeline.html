@@ -182,15 +182,23 @@ async function loadBoard(){
       html+='<div class="col-body" data-stage="'+col.key+'">';
       if(!items.length)html+='<div class="empty-col">No signals</div>';
       items.forEach(function(d){
-        var sc=SIG_COLORS[d.signal_type]||'#888';
         var val=parseFloat(d.pipeline_value)||0;
         var isClient=d.is_client;
         var contacts=parseInt(d.contact_count)||0;
         var proxCount=parseInt(d.prox_count)||0;
-        var leadScore=parseFloat(d.lead_score)||0;
+        var signalTypes=d.signal_types||[];
+        var signalCount=parseInt(d.signal_count)||1;
         html+='<div class="card" data-id="'+d.id+'" data-stage="'+(d.pipeline_stage||'new')+'" onclick="window.location=\'/company.html?id='+d.company_id+'\'" style="cursor:pointer'+(isClient?';border-left:3px solid var(--amber)':'')+ '">';
         html+='<div class="card-company">'+esc(d.company_name)+(isClient?' <span style="font-size:8px;font-weight:700;color:var(--amber);vertical-align:middle">CLIENT</span>':'')+'</div>';
-        html+='<div class="card-signal"><span class="dot" style="background:'+sc+'"></span>'+esc((d.signal_type||'').replace(/_/g,' '))+'<span style="font-size:9px;color:var(--ink-4);margin-left:auto">'+Math.round((d.confidence_score||0)*100)+'%</span></div>';
+        // Signal type badges (multiple per company)
+        html+='<div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px">';
+        signalTypes.forEach(function(st){
+          var sc2=SIG_COLORS[st]||'#888';
+          html+='<span style="font-size:8px;padding:2px 6px;border-radius:8px;background:'+sc2+'18;color:'+sc2+';font-weight:600;white-space:nowrap">'+esc((st||'').replace(/_/g,' '))+'</span>';
+        });
+        if(signalCount>1)html+='<span style="font-size:8px;color:var(--ink-4);align-self:center">'+signalCount+' signals</span>';
+        html+='<span style="font-size:9px;color:var(--ink-4);margin-left:auto;align-self:center">'+Math.round((d.confidence_score||0)*100)+'%</span>';
+        html+='</div>';
         // Network context
         var ctx=[];
         if(proxCount>0)ctx.push('<span class="pill" style="background:var(--blue-soft);color:var(--blue)">'+proxCount+' connected</span>');
@@ -200,7 +208,6 @@ async function loadBoard(){
         html+='<div class="card-meta">';
         if(d.sector)html+='<span class="pill" style="background:var(--surface-cool);color:var(--ink-3)">'+esc(d.sector)+'</span>';
         if(d.geography)html+='<span class="pill" style="background:var(--surface-cool);color:var(--ink-3)">'+esc(d.geography)+'</span>';
-        if(parseInt(d.related_signals)>1)html+='<span class="pill" style="background:var(--amber-soft);color:var(--amber)">'+d.related_signals+' signals</span>';
         html+='</div>';
         html+='<div class="card-value" onclick="event.stopPropagation()"><span style="font-size:10px;color:var(--ink-4)">Value:</span><input class="val-input" type="text" value="'+fmtCurrency(val)+'" onfocus="this.select()" onblur="updateValue(\''+d.id+'\',this)" onkeydown="if(event.key===\'Enter\'){this.blur()}"></div>';
         if(d.owner_name)html+='<div class="card-owner">'+esc(d.owner_name)+'</div>';

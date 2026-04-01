@@ -9831,67 +9831,88 @@ app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
     let idx = 2;
     if (owner) { where += ` AND d.claimed_by = $${idx++}`; params.push(owner); }
 
+    // Group dispatches by company — one card per company with aggregated signals
     const { rows } = await pool.query(`
-      SELECT d.id, d.company_name, d.signal_type, d.signal_summary,
-             d.status, d.pipeline_stage, d.pipeline_value,
-             d.claimed_by, d.claimed_at, d.actioned_at, d.converted_at, d.won_at,
-             d.opportunity_angle, d.created_at, d.updated_at,
-             d.company_id, d.opportunity_id, d.conversion_id,
-             u.name AS owner_name,
-             se.confidence_score, se.evidence_summary,
-             c.sector, c.geography, c.is_client,
-             (SELECT COUNT(*) FROM people p WHERE p.current_company_id = d.company_id AND p.tenant_id = d.tenant_id) AS contact_count,
-             (SELECT COUNT(DISTINCT tp.person_id) FROM team_proximity tp
-              JOIN people p2 ON p2.id = tp.person_id AND p2.current_company_id = d.company_id AND p2.tenant_id = d.tenant_id
-              WHERE tp.tenant_id = d.tenant_id AND tp.relationship_strength >= 0.25) AS prox_count,
-             (SELECT COUNT(*) FROM signal_dispatches d2
-              WHERE d2.company_id = d.company_id AND d2.tenant_id = d.tenant_id) AS related_signals,
-             -- Lead score: signal type + client + network + confidence
-             -- Hiring-intent signals ranked highest (these drive exec search revenue)
-             CASE d.signal_type
-               WHEN 'strategic_hiring' THEN 40
-               WHEN 'geographic_expansion' THEN 35
-               WHEN 'capital_raising' THEN 35
-               WHEN 'product_launch' THEN 25
-               WHEN 'partnership' THEN 20
-               WHEN 'leadership_change' THEN 15
-               WHEN 'ma_activity' THEN 15
-               WHEN 'restructuring' THEN 10
-               WHEN 'layoffs' THEN 5
-               ELSE 10
-             END +
-             CASE WHEN c.is_client = true THEN 100 ELSE 0 END +
-             CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = d.company_id AND p.tenant_id = d.tenant_id) > 0 THEN 50 ELSE 0 END +
-             COALESCE(se.confidence_score, 0.5) * 30
-             AS lead_score
+      SELECT
+        -- Use the "best" dispatch per company (highest confidence) as the card ID
+        (array_agg(d.id ORDER BY COALESCE(se.confidence_score, 0.5) DESC))[1] AS id,
+        d.company_name, d.company_id,
+        -- Aggregate the pipeline stage: use the most advanced stage for this company
+        (array_agg(d.pipeline_stage ORDER BY
+          CASE d.pipeline_stage WHEN 'won' THEN 5 WHEN 'converted' THEN 4 WHEN 'actioned' THEN 3 WHEN 'claimed' THEN 2 ELSE 1 END DESC
+        ))[1] AS pipeline_stage,
+        -- Sum pipeline values across all dispatches for this company
+        COALESCE(SUM(d.pipeline_value), 0) AS pipeline_value,
+        -- Ownership: first claimer
+        (array_agg(d.claimed_by ORDER BY d.claimed_at ASC NULLS LAST))[1] AS claimed_by,
+        MIN(d.claimed_at) AS claimed_at,
+        MIN(d.actioned_at) AS actioned_at,
+        MIN(d.converted_at) AS converted_at,
+        MIN(d.won_at) AS won_at,
+        -- Best opportunity angle
+        (array_agg(d.opportunity_angle ORDER BY COALESCE(se.confidence_score, 0.5) DESC) FILTER (WHERE d.opportunity_angle IS NOT NULL))[1] AS opportunity_angle,
+        MAX(d.updated_at) AS updated_at,
+        MIN(d.created_at) AS created_at,
+        (array_agg(d.opportunity_id) FILTER (WHERE d.opportunity_id IS NOT NULL))[1] AS opportunity_id,
+        -- Signal aggregation
+        array_agg(DISTINCT d.signal_type) FILTER (WHERE d.signal_type IS NOT NULL) AS signal_types,
+        COUNT(*) AS signal_count,
+        MAX(se.confidence_score) AS confidence_score,
+        -- Company context
+        c.sector, c.geography, c.is_client,
+        (SELECT COUNT(*) FROM people p WHERE p.current_company_id = d.company_id AND p.tenant_id = d.tenant_id) AS contact_count,
+        (SELECT COUNT(DISTINCT tp.person_id) FROM team_proximity tp
+         JOIN people p2 ON p2.id = tp.person_id AND p2.current_company_id = d.company_id AND p2.tenant_id = d.tenant_id
+         WHERE tp.tenant_id = d.tenant_id AND tp.relationship_strength >= 0.25) AS prox_count,
+        -- Lead score: best signal type + client + network + confidence
+        MAX(
+          CASE d.signal_type
+            WHEN 'strategic_hiring' THEN 40
+            WHEN 'geographic_expansion' THEN 35
+            WHEN 'capital_raising' THEN 35
+            WHEN 'product_launch' THEN 25
+            WHEN 'partnership' THEN 20
+            WHEN 'leadership_change' THEN 15
+            WHEN 'ma_activity' THEN 15
+            WHEN 'restructuring' THEN 10
+            WHEN 'layoffs' THEN 5
+            ELSE 10
+          END
+        ) +
+        CASE WHEN c.is_client = true THEN 100 ELSE 0 END +
+        CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = d.company_id AND p.tenant_id = d.tenant_id) > 0 THEN 50 ELSE 0 END +
+        MAX(COALESCE(se.confidence_score, 0.5)) * 30
+        AS lead_score
       FROM signal_dispatches d
-      LEFT JOIN users u ON u.id = d.claimed_by
       LEFT JOIN signal_events se ON se.id = d.signal_event_id
       LEFT JOIN companies c ON c.id = d.company_id
       WHERE ${where}
+      GROUP BY d.company_id, d.company_name, c.sector, c.geography, c.is_client, d.tenant_id
       ORDER BY
-        CASE d.pipeline_stage WHEN 'new' THEN 0 ELSE 1 END,
-        CASE d.pipeline_stage
-          WHEN 'new' THEN (
-            CASE d.signal_type
-              WHEN 'strategic_hiring' THEN 40
-              WHEN 'geographic_expansion' THEN 35
-              WHEN 'capital_raising' THEN 35
-              WHEN 'product_launch' THEN 25
-              WHEN 'partnership' THEN 20
-              WHEN 'leadership_change' THEN 15
-              WHEN 'ma_activity' THEN 15
-              WHEN 'restructuring' THEN 10
-              WHEN 'layoffs' THEN 5
-              ELSE 10
-            END +
-            CASE WHEN c.is_client THEN 100 ELSE 0 END +
-            CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = d.company_id AND p.tenant_id = d.tenant_id) > 0 THEN 50 ELSE 0 END +
-            COALESCE(se.confidence_score, 0.5) * 30)
-          ELSE 0 END DESC,
-        d.pipeline_value DESC NULLS LAST,
-        d.updated_at DESC
+        -- Sort by most advanced stage first, then lead score within "new"
+        MAX(CASE d.pipeline_stage WHEN 'won' THEN 5 WHEN 'converted' THEN 4 WHEN 'actioned' THEN 3 WHEN 'claimed' THEN 2 ELSE 1 END) DESC,
+        MAX(
+          CASE d.signal_type
+            WHEN 'strategic_hiring' THEN 40 WHEN 'geographic_expansion' THEN 35 WHEN 'capital_raising' THEN 35
+            WHEN 'product_launch' THEN 25 WHEN 'partnership' THEN 20 WHEN 'leadership_change' THEN 15
+            WHEN 'ma_activity' THEN 15 WHEN 'restructuring' THEN 10 WHEN 'layoffs' THEN 5 ELSE 10
+          END +
+          CASE WHEN c.is_client THEN 100 ELSE 0 END +
+          CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = d.company_id AND p.tenant_id = d.tenant_id) > 0 THEN 50 ELSE 0 END +
+          MAX(COALESCE(se.confidence_score, 0.5)) * 30
+        ) DESC,
+        SUM(d.pipeline_value) DESC NULLS LAST,
+        MAX(d.updated_at) DESC
     `, params);
+
+    // Resolve owner names
+    const ownerIds = [...new Set(rows.filter(r => r.claimed_by).map(r => r.claimed_by))];
+    const ownerMap = new Map();
+    if (ownerIds.length) {
+      const { rows: owners } = await pool.query(`SELECT id, name FROM users WHERE id = ANY($1)`, [ownerIds]);
+      owners.forEach(o => ownerMap.set(o.id, o.name));
+    }
+    rows.forEach(r => { r.owner_name = ownerMap.get(r.claimed_by) || null; });
 
     const columns = {};
     const totals = {};
