@@ -9794,6 +9794,391 @@ app.get('/api/people/:id/matches', authenticateToken, async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// PIPELINE BOARD (Sales Kanban)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
+  try {
+    const { owner, client } = req.query;
+    let where = 'o.tenant_id = $1';
+    const params = [req.tenant_id];
+    let idx = 2;
+    if (owner) { where += ` AND o.lead_consultant_id = $${idx++}`; params.push(owner); }
+    if (client) { where += ` AND co.name ILIKE $${idx++}`; params.push(`%${client}%`); }
+
+    const { rows } = await pool.query(`
+      SELECT o.id, o.title, o.status, o.location, o.seniority_level,
+             o.priority, o.kick_off_date, o.target_shortlist_date, o.target_placement_date,
+             o.lead_consultant_id, o.researcher_id, o.updated_at, o.created_at,
+             u.name AS owner_name,
+             e.name AS project_name, e.fee_amount, e.fee_type,
+             ac.name AS client_name, co.name AS company_name, co.id AS company_id,
+             (SELECT COUNT(*) FROM pipeline_contacts pc WHERE pc.search_id = o.id) AS candidate_count,
+             (SELECT COUNT(*) FROM pipeline_contacts pc WHERE pc.search_id = o.id AND pc.status IN ('shortlisted','presented','client_interview')) AS shortlisted_count,
+             (SELECT COUNT(*) FROM search_matches sm WHERE sm.search_id = o.id) AS match_count
+      FROM opportunities o
+      LEFT JOIN engagements e ON e.id = o.project_id
+      LEFT JOIN accounts ac ON ac.id = e.client_id
+      LEFT JOIN companies co ON co.id = ac.company_id
+      LEFT JOIN users u ON u.id = o.lead_consultant_id
+      WHERE ${where}
+      ORDER BY o.updated_at DESC
+    `, params);
+
+    // Group by status
+    const columns = {};
+    for (const row of rows) {
+      const status = row.status || 'briefing';
+      if (!columns[status]) columns[status] = [];
+      columns[status].push(row);
+    }
+
+    res.json({ columns, total: rows.length });
+  } catch (err) {
+    console.error('Pipeline board error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/pipeline/:id/status', authenticateToken, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE opportunities SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3 RETURNING id, title, status`,
+      [status, req.params.id, req.tenant_id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+
+    // Log activity
+    await pool.query(
+      `INSERT INTO activities (tenant_id, user_id, user_name, activity_type, subject, opportunity_id, metadata, source)
+       VALUES ($1, $2, $3, 'status_change', $4, $5, $6, 'manual')`,
+      [req.tenant_id, req.user.user_id, req.user.name, `Status → ${status}`, req.params.id,
+       JSON.stringify({ new_status: status, previous_status: req.body.previous_status })]
+    );
+
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/pipeline/from-dispatch/:dispatchId', authenticateToken, async (req, res) => {
+  try {
+    const { rows: [dispatch] } = await pool.query(
+      `SELECT * FROM signal_dispatches WHERE id = $1 AND tenant_id = $2`,
+      [req.params.dispatchId, req.tenant_id]
+    );
+    if (!dispatch) return res.status(404).json({ error: 'Dispatch not found' });
+
+    // Create engagement + opportunity from dispatch
+    const { rows: [eng] } = await pool.query(
+      `INSERT INTO engagements (name, client_context, status, lead_partner_id, tenant_id)
+       VALUES ($1, $2, 'active', $3, $4) RETURNING id`,
+      [`${dispatch.company_name} — ${dispatch.signal_type.replace(/_/g, ' ')}`,
+       dispatch.opportunity_angle, req.user.user_id, req.tenant_id]
+    );
+
+    const { rows: [opp] } = await pool.query(
+      `INSERT INTO opportunities (project_id, title, brief_summary, status, lead_consultant_id, tenant_id)
+       VALUES ($1, $2, $3, 'sourcing', $4, $5) RETURNING id, title, status`,
+      [eng.id, dispatch.company_name + ' — Signal Opportunity',
+       dispatch.signal_summary, req.user.user_id, req.tenant_id]
+    );
+
+    // Link dispatch
+    await pool.query(
+      `UPDATE signal_dispatches SET opportunity_id = $1 WHERE id = $2`,
+      [opp.id, dispatch.id]
+    );
+
+    // Log activity
+    await pool.query(
+      `INSERT INTO activities (tenant_id, user_id, user_name, activity_type, subject, opportunity_id, dispatch_id, company_id, source)
+       VALUES ($1, $2, $3, 'dispatch_claimed', $4, $5, $6, $7, 'manual')`,
+      [req.tenant_id, req.user.user_id, req.user.name,
+       `Created opportunity from dispatch: ${dispatch.company_name}`,
+       opp.id, dispatch.id, dispatch.company_id]
+    );
+
+    res.json(opp);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DELIVERY BOARD (Project Kanban)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/delivery/board', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT e.id, e.name, e.code, e.status, e.priority,
+             e.fee_amount, e.fee_type, e.currency,
+             e.kick_off_date, e.target_completion_date,
+             e.lead_partner_id, e.updated_at, e.created_at,
+             ac.name AS client_name, co.name AS company_name, co.id AS company_id,
+             u.name AS lead_name,
+             (SELECT json_agg(json_build_object('user_id', pm.user_id, 'role', pm.role, 'name', pu.name))
+              FROM project_members pm JOIN users pu ON pu.id = pm.user_id
+              WHERE pm.engagement_id = e.id) AS team,
+             (SELECT COUNT(*) FROM opportunities o WHERE o.project_id = e.id) AS opportunity_count,
+             (SELECT json_agg(json_build_object('id', o.id, 'title', o.title, 'status', o.status,
+               'candidates', (SELECT COUNT(*) FROM pipeline_contacts pc WHERE pc.search_id = o.id)))
+              FROM opportunities o WHERE o.project_id = e.id) AS opportunities,
+             (SELECT COUNT(*) FROM conversions cv WHERE cv.search_id IN (SELECT o2.id FROM opportunities o2 WHERE o2.project_id = e.id)) AS placements
+      FROM engagements e
+      LEFT JOIN accounts ac ON ac.id = e.client_id
+      LEFT JOIN companies co ON co.id = ac.company_id
+      LEFT JOIN users u ON u.id = e.lead_partner_id
+      WHERE e.tenant_id = $1
+      ORDER BY e.updated_at DESC
+    `, [req.tenant_id]);
+
+    const columns = {};
+    for (const row of rows) {
+      const status = row.status || 'active';
+      if (!columns[status]) columns[status] = [];
+      columns[status].push(row);
+    }
+
+    res.json({ columns, total: rows.length });
+  } catch (err) {
+    console.error('Delivery board error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/delivery/:id/status', authenticateToken, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE engagements SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3 RETURNING id, name, status`,
+      [status, req.params.id, req.tenant_id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+
+    await pool.query(
+      `INSERT INTO activities (tenant_id, user_id, user_name, activity_type, subject, engagement_id, source)
+       VALUES ($1, $2, $3, 'status_change', $4, $5, 'manual')`,
+      [req.tenant_id, req.user.user_id, req.user.name, `Project status → ${status}`, req.params.id]
+    );
+
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/delivery/:id/members', authenticateToken, async (req, res) => {
+  try {
+    const { user_id, role = 'member' } = req.body;
+    const { rows } = await pool.query(
+      `INSERT INTO project_members (engagement_id, user_id, role, tenant_id)
+       VALUES ($1, $2, $3, $4) ON CONFLICT (engagement_id, user_id) DO UPDATE SET role = $3
+       RETURNING *`,
+      [req.params.id, user_id, role, req.tenant_id]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/delivery/:id/members/:userId', authenticateToken, async (req, res) => {
+  try {
+    await pool.query(
+      `DELETE FROM project_members WHERE engagement_id = $1 AND user_id = $2 AND tenant_id = $3`,
+      [req.params.id, req.params.userId, req.tenant_id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACTIVITIES (unified activity log with entity cascading)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.post('/api/activities', authenticateToken, async (req, res) => {
+  try {
+    const { activity_type, subject, description, opportunity_id, engagement_id, person_id, company_id, metadata } = req.body;
+    const { rows } = await pool.query(
+      `INSERT INTO activities (tenant_id, user_id, user_name, activity_type, subject, description,
+         opportunity_id, engagement_id, person_id, company_id, metadata, source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'manual') RETURNING *`,
+      [req.tenant_id, req.user.user_id, req.user.name, activity_type, subject, description,
+       opportunity_id || null, engagement_id || null, person_id || null, company_id || null,
+       JSON.stringify(metadata || {})]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/activities', authenticateToken, async (req, res) => {
+  try {
+    const { opportunity_id, engagement_id, person_id, company_id, limit = 50 } = req.query;
+    let where = 'a.tenant_id = $1';
+    const params = [req.tenant_id];
+    let idx = 2;
+    if (opportunity_id) { where += ` AND a.opportunity_id = $${idx++}`; params.push(opportunity_id); }
+    if (engagement_id) { where += ` AND a.engagement_id = $${idx++}`; params.push(engagement_id); }
+    if (person_id) { where += ` AND a.person_id = $${idx++}`; params.push(person_id); }
+    if (company_id) { where += ` AND a.company_id = $${idx++}`; params.push(company_id); }
+    params.push(Math.min(parseInt(limit) || 50, 200));
+
+    const { rows } = await pool.query(`
+      SELECT a.*, u.name AS actor_name
+      FROM activities a LEFT JOIN users u ON u.id = a.user_id
+      WHERE ${where} ORDER BY a.activity_at DESC LIMIT $${idx}
+    `, params);
+    res.json({ activities: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/people/:id/activities', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT a.*, u.name AS actor_name FROM activities a
+      LEFT JOIN users u ON u.id = a.user_id
+      WHERE a.tenant_id = $1 AND (
+        a.person_id = $2
+        OR a.opportunity_id IN (SELECT pc.search_id FROM pipeline_contacts pc WHERE pc.person_id = $2)
+        OR a.company_id = (SELECT current_company_id FROM people WHERE id = $2)
+      )
+      ORDER BY a.activity_at DESC LIMIT 50
+    `, [req.tenant_id, req.params.id]);
+    res.json({ activities: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/companies/:id/activities', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT a.*, u.name AS actor_name FROM activities a
+      LEFT JOIN users u ON u.id = a.user_id
+      WHERE a.tenant_id = $1 AND (
+        a.company_id = $2
+        OR a.engagement_id IN (
+          SELECT e.id FROM engagements e JOIN accounts ac ON ac.id = e.client_id WHERE ac.company_id = $2
+        )
+      )
+      ORDER BY a.activity_at DESC LIMIT 50
+    `, [req.tenant_id, req.params.id]);
+    res.json({ activities: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CRM CONNECTIONS (adapter management)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/crm/connections', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, provider, display_name, sync_enabled, sync_direction, sync_interval_minutes,
+              last_sync_at, last_sync_status, last_sync_stats, last_error, created_at
+       FROM crm_connections WHERE tenant_id = $1 ORDER BY provider`,
+      [req.tenant_id]
+    );
+    res.json({ connections: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/crm/connections', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { provider, display_name, auth_type, credentials, sync_direction, field_mappings } = req.body;
+    const { rows } = await pool.query(
+      `INSERT INTO crm_connections (tenant_id, provider, display_name, auth_type, credentials_encrypted, sync_direction, field_mappings)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, provider, display_name`,
+      [req.tenant_id, provider, display_name, auth_type || 'api_key',
+       JSON.stringify(credentials || {}), sync_direction || 'bidirectional',
+       JSON.stringify(field_mappings || {})]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/crm/connections/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { sync_enabled, sync_direction, field_mappings, display_name } = req.body;
+    const fields = []; const params = []; let idx = 1;
+    if (sync_enabled !== undefined) { fields.push(`sync_enabled = $${idx++}`); params.push(sync_enabled); }
+    if (sync_direction) { fields.push(`sync_direction = $${idx++}`); params.push(sync_direction); }
+    if (field_mappings) { fields.push(`field_mappings = $${idx++}`); params.push(JSON.stringify(field_mappings)); }
+    if (display_name) { fields.push(`display_name = $${idx++}`); params.push(display_name); }
+    if (!fields.length) return res.status(400).json({ error: 'No fields' });
+    fields.push('updated_at = NOW()');
+    params.push(req.params.id, req.tenant_id);
+    const { rows } = await pool.query(
+      `UPDATE crm_connections SET ${fields.join(', ')} WHERE id = $${idx} AND tenant_id = $${idx + 1} RETURNING *`,
+      params
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/crm/connections/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM crm_connections WHERE id = $1 AND tenant_id = $2`, [req.params.id, req.tenant_id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/crm/connections/:id/log', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM crm_sync_log WHERE connection_id = $1 AND tenant_id = $2 ORDER BY synced_at DESC LIMIT 100`,
+      [req.params.id, req.tenant_id]
+    );
+    res.json({ log: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Webhook receiver (no auth — uses HMAC validation)
+app.post('/api/webhooks/crm/:connectionId', async (req, res) => {
+  try {
+    const { rows: [conn] } = await pool.query(
+      `SELECT * FROM crm_connections WHERE id = $1`, [req.params.connectionId]
+    );
+    if (!conn) return res.status(404).json({ error: 'Unknown connection' });
+
+    // TODO: HMAC validation using conn.webhook_secret
+    // For now, log the webhook payload
+    await pool.query(
+      `INSERT INTO crm_sync_log (connection_id, tenant_id, direction, entity_type, action, changes)
+       VALUES ($1, $2, 'inbound', 'webhook', 'received', $3)`,
+      [conn.id, conn.tenant_id, JSON.stringify(req.body)]
+    );
+
+    res.json({ received: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // EVENTS — EventMedium event feed intelligence
 // ═══════════════════════════════════════════════════════════════════════════════
 

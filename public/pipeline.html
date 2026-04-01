@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales Pipeline — MitchelLake Signals</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=DM+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<style>
+:root {
+  --serif:'Source Serif 4',Georgia,serif;--sans:'DM Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',monospace;
+  --bg:#FAF9F7;--surface:#FFFFFF;--surface-warm:#F7F5F2;--surface-cool:#F2F4F8;
+  --ink:#1A1A1A;--ink-2:#4A4A4A;--ink-3:#7A7A7A;--ink-4:#AAAAAA;
+  --rule:#E0DDD8;--rule-bold:#C8C4BE;
+  --blue:#2563EB;--blue-soft:#EBF1FE;--emerald:#0D7A50;--emerald-soft:#E8F5EE;
+  --amber:#B45309;--amber-soft:#FEF7E8;--rose:#C41D3E;--rose-soft:#FDF0F2;
+  --violet:#6D28D9;--violet-soft:#F3EEFE;--radius:8px;
+  --shadow-card:0 1px 3px rgba(0,0,0,0.04);--shadow-hover:0 4px 16px rgba(0,0,0,0.06);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--sans);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:auto}
+.masthead{background:var(--surface);border-bottom:2px solid var(--ink);padding:0 clamp(14px,3vw,40px);position:sticky;top:0;z-index:100}
+.masthead-top{display:flex;align-items:center;justify-content:space-between;height:56px;max-width:1400px;margin:0 auto}
+.masthead-logo{font-family:var(--serif);font-size:20px;font-weight:600;text-decoration:none;color:inherit}
+.masthead-logo em{font-style:italic;color:var(--ink-3)}
+.masthead-nav{display:flex;gap:2px}
+.masthead-nav a{font-size:12px;font-weight:500;color:var(--ink-3);text-decoration:none;padding:6px 14px;border-radius:6px;transition:all .15s}
+.masthead-nav a:hover{color:var(--ink);background:var(--surface-warm)}
+.masthead-nav a.active{color:var(--ink);background:var(--surface-warm);font-weight:600}
+.masthead-user{width:32px;height:32px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;cursor:pointer}
+
+.page{max-width:1400px;margin:0 auto;padding:24px clamp(14px,3vw,40px) 60px}
+.page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.page-title{font-family:var(--serif);font-size:24px;font-weight:600}
+.page-count{font-family:var(--mono);font-size:12px;color:var(--ink-4)}
+
+.board{display:flex;gap:12px;overflow-x:auto;padding-bottom:20px;min-height:calc(100vh - 160px)}
+.column{min-width:240px;max-width:280px;flex:1;display:flex;flex-direction:column}
+.col-header{padding:10px 12px;border-radius:var(--radius) var(--radius) 0 0;border:1px solid var(--rule);border-bottom:2px solid;display:flex;justify-content:space-between;align-items:center;background:var(--surface)}
+.col-header h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3)}
+.col-count{font-family:var(--mono);font-size:10px;color:var(--ink-4);background:var(--surface-warm);padding:2px 7px;border-radius:10px}
+.col-body{flex:1;background:var(--surface-warm);border:1px solid var(--rule);border-top:none;border-radius:0 0 var(--radius) var(--radius);padding:8px;display:flex;flex-direction:column;gap:8px;min-height:100px}
+.col-body.sortable-ghost-class .card{opacity:.4}
+
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:10px 12px;cursor:grab;transition:box-shadow .15s,border-color .15s;font-size:12px}
+.card:hover{box-shadow:var(--shadow-hover);border-color:var(--rule-bold)}
+.card.sortable-chosen{box-shadow:var(--shadow-hover);opacity:.9}
+.card-title{font-weight:600;font-size:13px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-client{font-size:11px;color:var(--ink-3);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.card-pill{font-size:9px;font-weight:600;padding:2px 7px;border-radius:10px;display:inline-block}
+.pill-blue{background:var(--blue-soft);color:var(--blue)}
+.pill-emerald{background:var(--emerald-soft);color:var(--emerald)}
+.pill-amber{background:var(--amber-soft);color:var(--amber)}
+.pill-violet{background:var(--violet-soft);color:var(--violet)}
+.pill-grey{background:var(--surface-warm);color:var(--ink-3)}
+.card-owner{font-size:10px;color:var(--ink-4);margin-top:5px}
+.card-dates{font-size:9px;color:var(--ink-4);margin-top:3px}
+
+.col-sourcing .col-header{border-bottom-color:var(--blue)}
+.col-outreach .col-header{border-bottom-color:#85B7EB}
+.col-interviewing .col-header{border-bottom-color:var(--amber)}
+.col-shortlist .col-header{border-bottom-color:var(--violet)}
+.col-offer .col-header{border-bottom-color:var(--emerald)}
+.col-placed .col-header{border-bottom-color:#0D7A50}
+.col-on_hold .col-header{border-bottom-color:var(--ink-4)}
+
+.empty-col{font-size:11px;color:var(--ink-4);text-align:center;padding:24px 8px}
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-top">
+    <a href="/index.html" class="masthead-logo">MitchelLake <em>Signals</em></a>
+    <nav class="masthead-nav">
+      <a href="/index.html">Signals</a>
+      <a href="/people.html">People</a>
+      <a href="/companies.html">Companies</a>
+      <a href="/dispatches.html">Dispatch</a>
+      <a href="/pipeline.html" class="active">Pipeline</a>
+      <a href="/delivery.html">Delivery</a>
+      <a href="/placements.html">Revenue</a>
+    </nav>
+    <div class="masthead-user" id="userAvatar" title="Sign out">?</div>
+  </div>
+</header>
+
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Sales Pipeline</div>
+      <div style="font-size:12px;color:var(--ink-3);margin-top:2px">Drag opportunities between stages. Click to view details.</div>
+    </div>
+    <div class="page-count" id="totalCount">Loading...</div>
+  </div>
+  <div class="board" id="board">
+    <div class="loading" style="padding:40px;color:var(--ink-3)">Loading pipeline...</div>
+  </div>
+</div>
+
+<script>
+function getToken(){return localStorage.getItem('ml_token')}
+function esc(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
+function ago(d){if(!d)return'';var ms=Date.now()-new Date(d).getTime();if(ms<86400000)return'today';if(ms<604800000)return Math.floor(ms/86400000)+'d ago';return new Date(d).toLocaleDateString()}
+
+async function api(url,opts){
+  opts=opts||{};var token=getToken();
+  var r=await fetch(url,Object.assign({},opts,{headers:Object.assign({'Content-Type':'application/json'},token?{'Authorization':'Bearer '+token}:{},opts.headers||{}),body:opts.body?JSON.stringify(opts.body):undefined}));
+  if(r.status===401){localStorage.removeItem('ml_token');window.location='/index.html';throw new Error('Unauthorized')}
+  if(!r.ok){var e=await r.json().catch(()=>({error:r.statusText}));throw new Error(e.error||'Failed')}
+  return r.json();
+}
+
+// Column definitions (ordered left to right)
+var COLUMNS=[
+  {key:'sourcing',label:'Sourcing',cls:'col-sourcing'},
+  {key:'outreach',label:'Outreach',cls:'col-outreach'},
+  {key:'interviewing',label:'Interviewing',cls:'col-interviewing'},
+  {key:'shortlist',label:'Shortlist',cls:'col-shortlist'},
+  {key:'client_interviews',label:'Client Interviews',cls:'col-shortlist'},
+  {key:'offer',label:'Offer',cls:'col-offer'},
+  {key:'negotiation',label:'Negotiation',cls:'col-offer'},
+  {key:'placed',label:'Placed',cls:'col-placed'},
+  {key:'on_hold',label:'On Hold',cls:'col-on_hold'},
+];
+
+// Map briefing/research into sourcing for display
+var STATUS_MAP={briefing:'sourcing',research:'sourcing'};
+
+async function loadBoard(){
+  try{
+    var data=await api('/api/pipeline/board');
+    var cols=data.columns;
+    document.getElementById('totalCount').textContent=data.total+' opportunities';
+
+    var html='';
+    COLUMNS.forEach(function(col){
+      var mapped=STATUS_MAP[col.key]||col.key;
+      var items=cols[col.key]||[];
+      // Also merge mapped statuses
+      Object.keys(STATUS_MAP).forEach(function(k){if(STATUS_MAP[k]===col.key&&cols[k])items=items.concat(cols[k])});
+
+      html+='<div class="column '+col.cls+'">';
+      html+='<div class="col-header"><h3>'+col.label+'</h3><span class="col-count">'+items.length+'</span></div>';
+      html+='<div class="col-body" data-status="'+col.key+'">';
+      if(!items.length)html+='<div class="empty-col">No opportunities</div>';
+      items.forEach(function(o){
+        var pri=o.priority==='high'?'pill-rose':o.priority==='medium'?'pill-amber':'pill-grey';
+        html+='<div class="card" data-id="'+o.id+'" data-status="'+o.status+'" onclick="window.location=\'/searches.html?id='+o.id+'\'">';
+        html+='<div class="card-title">'+esc(o.title)+'</div>';
+        html+='<div class="card-client">'+esc(o.client_name||o.company_name||'No client')+'</div>';
+        html+='<div class="card-meta">';
+        if(o.seniority_level)html+='<span class="card-pill pill-blue">'+esc(o.seniority_level)+'</span>';
+        if(o.location)html+='<span class="card-pill pill-grey">'+esc(o.location)+'</span>';
+        html+='<span class="card-pill pill-violet">'+parseInt(o.candidate_count||0)+' candidates</span>';
+        if(parseInt(o.match_count)>0)html+='<span class="card-pill pill-emerald">'+o.match_count+' AI matches</span>';
+        html+='</div>';
+        if(o.owner_name)html+='<div class="card-owner">'+esc(o.owner_name)+'</div>';
+        var dates=[];
+        if(o.kick_off_date)dates.push('Started '+ago(o.kick_off_date));
+        if(o.target_shortlist_date)dates.push('Shortlist '+ago(o.target_shortlist_date));
+        if(dates.length)html+='<div class="card-dates">'+dates.join(' · ')+'</div>';
+        html+='</div>';
+      });
+      html+='</div></div>';
+    });
+
+    document.getElementById('board').innerHTML=html;
+
+    // Init SortableJS on each column
+    document.querySelectorAll('.col-body').forEach(function(el){
+      new Sortable(el,{
+        group:'pipeline',
+        animation:150,
+        ghostClass:'sortable-ghost-class',
+        chosenClass:'sortable-chosen',
+        onEnd:function(evt){
+          var cardEl=evt.item;
+          var newStatus=evt.to.dataset.status;
+          var oldStatus=cardEl.dataset.status;
+          if(newStatus===oldStatus)return;
+          var id=cardEl.dataset.id;
+          cardEl.dataset.status=newStatus;
+          api('/api/pipeline/'+id+'/status',{method:'PATCH',body:{status:newStatus,previous_status:oldStatus}}).catch(function(e){
+            alert('Failed to update: '+e.message);
+            loadBoard();
+          });
+          // Update counts
+          document.querySelectorAll('.col-body').forEach(function(c){
+            var count=c.querySelectorAll('.card').length;
+            c.previousElementSibling.querySelector('.col-count').textContent=count;
+          });
+        }
+      });
+    });
+  }catch(e){
+    document.getElementById('board').innerHTML='<div style="padding:40px;color:var(--rose)">Failed to load: '+esc(e.message)+'</div>';
+  }
+}
+
+// Init
+(function(){
+  if(!getToken()){window.location='/index.html';return}
+  try{var u=JSON.parse(localStorage.getItem('ml_user')||'{}');document.getElementById('userAvatar').textContent=(u.name||'').split(' ').map(function(w){return w[0]}).join('').slice(0,2)||'?'}catch(e){}
+  loadBoard();
+})();
+</script>
+<script src="/terminology.js"></script>
+</body>
+</html>
