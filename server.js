@@ -10016,6 +10016,23 @@ app.patch('/api/pipeline/:id/value', authenticateToken, async (req, res) => {
 
 app.get('/api/delivery/board', authenticateToken, async (req, res) => {
   try {
+    const { user_id, location, q } = req.query;
+    let extraWhere = '';
+    const extraParams = [];
+    let pIdx = 2;
+    if (user_id) {
+      extraWhere += ` AND (e.lead_partner_id = $${pIdx} OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.engagement_id = e.id AND pm.user_id = $${pIdx}))`;
+      extraParams.push(user_id); pIdx++;
+    }
+    if (location) {
+      extraWhere += ` AND (e.name ILIKE $${pIdx} OR co.name ILIKE $${pIdx} OR ac.name ILIKE $${pIdx})`;
+      extraParams.push(`%${location}%`); pIdx++;
+    }
+    if (q) {
+      extraWhere += ` AND (e.name ILIKE $${pIdx} OR e.code ILIKE $${pIdx} OR ac.name ILIKE $${pIdx} OR co.name ILIKE $${pIdx} OR e.client_context ILIKE $${pIdx})`;
+      extraParams.push(`%${q}%`); pIdx++;
+    }
+
     const { rows } = await pool.query(`
       SELECT e.id, e.name, e.code, e.status, e.priority,
              e.fee_amount, e.fee_type, e.currency,
@@ -10035,9 +10052,9 @@ app.get('/api/delivery/board', authenticateToken, async (req, res) => {
       LEFT JOIN accounts ac ON ac.id = e.client_id
       LEFT JOIN companies co ON co.id = ac.company_id
       LEFT JOIN users u ON u.id = e.lead_partner_id
-      WHERE e.tenant_id = $1
+      WHERE e.tenant_id = $1 ${extraWhere}
       ORDER BY e.updated_at DESC
-    `, [req.tenant_id]);
+    `, [req.tenant_id, ...extraParams]);
 
     const columns = {};
     for (const row of rows) {
@@ -10046,7 +10063,10 @@ app.get('/api/delivery/board', authenticateToken, async (req, res) => {
       columns[status].push(row);
     }
 
-    res.json({ columns, total: rows.length });
+    // Facets
+    const { rows: users } = await pool.query(`SELECT id, name FROM users WHERE tenant_id = $1 ORDER BY name`, [req.tenant_id]);
+
+    res.json({ columns, total: rows.length, users });
   } catch (err) {
     console.error('Delivery board error:', err.message);
     res.status(500).json({ error: err.message });

@@ -96,6 +96,16 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);font-size:14p
     </div>
     <div class="page-count" id="totalCount">Loading...</div>
   </div>
+  <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+    <select id="filterUser" onchange="loadBoard()" style="font-family:var(--sans);font-size:11px;padding:5px 10px;border:1px solid var(--rule);border-radius:6px;background:var(--surface);color:var(--ink-2);cursor:pointer">
+      <option value="">All Team Members</option>
+    </select>
+    <input id="filterLocation" type="text" placeholder="Location..." onkeydown="if(event.key==='Enter')loadBoard()"
+      style="font-family:var(--sans);font-size:11px;padding:5px 10px;border:1px solid var(--rule);border-radius:6px;background:var(--surface);color:var(--ink-2);width:140px">
+    <input id="filterSearch" type="text" placeholder="Search projects..." onkeydown="if(event.key==='Enter')loadBoard()"
+      style="font-family:var(--sans);font-size:11px;padding:5px 10px;border:1px solid var(--rule);border-radius:6px;background:var(--surface);color:var(--ink-2);width:180px">
+    <button onclick="clearFilters()" style="font-family:var(--sans);font-size:10px;padding:4px 10px;border:1px solid var(--rule);border-radius:6px;background:transparent;color:var(--ink-4);cursor:pointer">Clear</button>
+  </div>
   <div class="board" id="board">
     <div style="padding:40px;color:var(--ink-3)">Loading projects...</div>
   </div>
@@ -149,9 +159,34 @@ function renderOpps(opps){
   return parts.length?'<div class="card-opps">'+parts.join(' · ')+'</div>':'';
 }
 
+var _usersLoaded=false;
+
+function clearFilters(){
+  document.getElementById('filterUser').value='';
+  document.getElementById('filterLocation').value='';
+  document.getElementById('filterSearch').value='';
+  loadBoard();
+}
+
+function populateUsers(users){
+  if(_usersLoaded||!users)return;
+  _usersLoaded=true;
+  var sel=document.getElementById('filterUser');
+  users.forEach(function(u){var o=document.createElement('option');o.value=u.id;o.textContent=u.name;sel.appendChild(o)});
+}
+
 async function loadBoard(){
   try{
-    var data=await api('/api/delivery/board');
+    var params=new URLSearchParams();
+    var userId=document.getElementById('filterUser').value;
+    var location=document.getElementById('filterLocation').value.trim();
+    var q=document.getElementById('filterSearch').value.trim();
+    if(userId)params.set('user_id',userId);
+    if(location)params.set('location',location);
+    if(q)params.set('q',q);
+    var qs=params.toString();
+    var data=await api('/api/delivery/board'+(qs?'?'+qs:''));
+    if(data.users)populateUsers(data.users);
     var cols=data.columns;
     document.getElementById('totalCount').textContent=data.total+' projects';
 
