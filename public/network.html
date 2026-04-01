@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Network Graph — MLX Autonode</title>
+<title>Network Graph — MitchelLake Signals</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;600&family=DM+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -68,6 +68,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); overf
   <span style="width:1px;height:16px;background:var(--rule);margin:0 4px"></span>
   <button class="filt-btn" data-filter="high_prox" onclick="toggleFilter(this)">High Proximity Only</button>
   <button class="filt-btn" data-filter="with_signals" onclick="toggleFilter(this)">Companies w/ Signals</button>
+  <span style="width:1px;height:16px;background:var(--rule);margin:0 4px"></span>
+  <span style="font-size:9px;color:var(--ink4);margin-right:2px;white-space:nowrap">GEO:</span>
+  <button class="filt-btn active" data-region="all" onclick="setRegion(this)">All</button>
+  <button class="filt-btn" data-region="AU" onclick="setRegion(this)" style="border-color:rgba(93,202,165,.4);color:#5DCAA5">AU</button>
+  <button class="filt-btn" data-region="SG" onclick="setRegion(this)" style="border-color:rgba(175,169,236,.4);color:#AFA9EC">SG</button>
+  <button class="filt-btn" data-region="UK" onclick="setRegion(this)" style="border-color:rgba(55,138,221,.4);color:#378ADD">UK</button>
+  <button class="filt-btn" data-region="US" onclick="setRegion(this)" style="border-color:rgba(239,159,39,.4);color:#EF9F27">US</button>
 </div>
 
 <svg id="graph-canvas"></svg>
@@ -96,7 +103,23 @@ const tooltip = document.getElementById('tooltip');
 let W, H;
 
 let activeFilters = new Set(['team', 'client', 'contact', 'sector']);
+let activeRegion = 'all';
 let fullGraphData = null;
+
+// Geographic region layout — positions as fraction of canvas width
+const GEO_LAYOUT = {
+  AU: { x: 0.12, label: 'Australia & NZ', color: '#5DCAA5' },
+  SG: { x: 0.34, label: 'Singapore & Asia', color: '#AFA9EC' },
+  UK: { x: 0.56, label: 'UK & Europe', color: '#378ADD' },
+  US: { x: 0.78, label: 'Americas', color: '#EF9F27' },
+};
+
+function setRegion(btn) {
+  document.querySelectorAll('[data-region]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeRegion = btn.dataset.region;
+  if (fullGraphData) applyFilters();
+}
 
 function resize() {
   W = window.innerWidth;
@@ -131,6 +154,11 @@ function applyFilters() {
     if (activeFilters.has('high_prox') && n.type === 'contact' && (n.bestStrength || 0) < 0.5) show = false;
     // Companies with signals filter
     if (activeFilters.has('with_signals') && n.type === 'client' && !(n.signalCount > 0)) show = false;
+    // Region filter (team nodes always visible; filter clients/contacts/sectors by region)
+    if (activeRegion !== 'all' && n.type !== 'team' && n.type !== 'company') {
+      if (n.region && n.region !== activeRegion) show = false;
+      // Keep untagged nodes visible (no region = global)
+    }
 
     if (show) { filtered.nodes.push(n); visibleIds.add(n.id); }
   });
@@ -234,13 +262,47 @@ function renderGraph(data, fullData) {
     return '#378ADD';
   }
 
-  // Initial positions
+  // Initial positions — geographic clustering
   const cx = W / 2, cy = H / 2;
+  const geoCounters = { AU: 0, SG: 0, UK: 0, US: 0 };
+
+  function geoPos(region, idx, spread) {
+    const geo = GEO_LAYOUT[region];
+    if (!geo) return { x: cx + (Math.random() - 0.5) * 400, y: cy + (Math.random() - 0.5) * 300 };
+    const baseX = geo.x * W;
+    const baseY = cy;
+    const angle = (idx * 0.8) + Math.random() * 0.4;
+    return { x: baseX + Math.cos(angle) * spread * (0.5 + Math.random()), y: baseY + Math.sin(angle) * spread * (0.5 + Math.random()) };
+  }
+
   nodes.forEach((n, i) => {
-    if (n.type === 'team') { const a = (i / Math.max(1, nodes.filter(x => x.type === 'team').length)) * Math.PI * 2; n.x = cx + Math.cos(a) * 150; n.y = cy + Math.sin(a) * 120; }
-    else if (n.type === 'client') { const a = (i / nodes.length) * Math.PI * 2; n.x = cx + Math.cos(a) * 280; n.y = cy + Math.sin(a) * 220; }
-    else if (n.type === 'sector') { const a = (i / nodes.length) * Math.PI * 2; n.x = cx + Math.cos(a) * 350; n.y = cy + Math.sin(a) * 280; }
-    else { n.x = cx + (Math.random() - 0.5) * 400; n.y = cy + (Math.random() - 0.5) * 300; }
+    if (n.type === 'team') {
+      const a = (i / Math.max(1, nodes.filter(x => x.type === 'team').length)) * Math.PI * 2;
+      n.x = cx + Math.cos(a) * 100; n.y = cy + Math.sin(a) * 80;
+    } else if (n.region && GEO_LAYOUT[n.region]) {
+      const idx = geoCounters[n.region]++;
+      const spread = n.type === 'client' ? 100 : n.type === 'sector' ? 130 : 80;
+      const p = geoPos(n.region, idx, spread);
+      n.x = p.x; n.y = p.y;
+    } else if (n.type === 'client') {
+      const a = (i / nodes.length) * Math.PI * 2;
+      n.x = cx + Math.cos(a) * 280; n.y = cy + Math.sin(a) * 220;
+    } else if (n.type === 'sector') {
+      const a = (i / nodes.length) * Math.PI * 2;
+      n.x = cx + Math.cos(a) * 350; n.y = cy + Math.sin(a) * 280;
+    } else {
+      n.x = cx + (Math.random() - 0.5) * 400; n.y = cy + (Math.random() - 0.5) * 300;
+    }
+  });
+
+  // Draw region labels as background text
+  const regionG = svg.append('g').attr('opacity', 0.08);
+  Object.entries(GEO_LAYOUT).forEach(([code, geo]) => {
+    regionG.append('text').text(geo.label)
+      .attr('x', geo.x * W).attr('y', 36)
+      .attr('text-anchor', 'middle').attr('font-size', 13)
+      .attr('font-weight', 600).attr('fill', geo.color)
+      .attr('font-family', 'var(--sans)');
   });
 
   const linkG = svg.append('g');
@@ -282,7 +344,7 @@ function renderGraph(data, fullData) {
       let html = '<div class="tooltip-name">' + (d.fullName || d.label) + '</div>';
       if (d.role) html += '<div class="tooltip-role">' + d.role + '</div>';
       if (d.company) html += '<div class="tooltip-role">' + d.company + '</div>';
-      if (d.type === 'client') html += '<div class="tooltip-meta">' + (d.tier || 'client') + ' · ' + (d.peopleCount || 0) + ' contacts · ' + (d.signalCount || 0) + ' signals</div>';
+      if (d.type === 'client') html += '<div class="tooltip-meta">' + (d.tier || 'client') + ' · ' + (d.peopleCount || 0) + ' contacts · ' + (d.signalCount || 0) + ' signals' + (d.region ? ' · ' + d.region : '') + '</div>';
       if (d.type === 'sector') html += '<div class="tooltip-meta">Density: ' + (d.density || 0).toFixed(1) + ' · ' + (d.contacts || 0) + ' contacts</div>';
       if (d.type === 'contact') html += '<div class="tooltip-meta">Strength: ' + ((d.bestStrength || 0) * 100).toFixed(0) + '%' + (d.timingScore ? ' · Timing: ' + (d.timingScore * 100).toFixed(0) + '%' : '') + '</div>';
       showTooltip(evt, html);
@@ -303,16 +365,21 @@ function renderGraph(data, fullData) {
     .attr('dy', d => d.type === 'team' ? 3 : nodeR(d) + 12)
     .style('pointer-events', 'none');
 
-  // Simulation
+  // Simulation — with geographic gravity
   sim = d3.forceSimulation(nodes)
     .force('link', d3.forceLink(links).id(d => d.id)
       .distance(d => d.type === 'works_at' ? 60 : 80 + (1 - (d.strength || 0.3)) * 80)
       .strength(d => d.type === 'works_at' ? 0.3 : (d.strength || 0.3) * 0.4))
     .force('charge', d3.forceManyBody().strength(d =>
       d.type === 'team' ? -400 : d.type === 'client' ? -200 : d.type === 'sector' ? -100 : -30))
-    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('center', d3.forceCenter(W / 2, H / 2).strength(0.01))
     .force('collision', d3.forceCollide(d => nodeR(d) + 4))
-    .force('x', d3.forceX(W / 2).strength(0.02))
+    // Geographic gravity — pull nodes toward their region column
+    .force('geoX', d3.forceX(d => {
+      if (d.region && GEO_LAYOUT[d.region]) return GEO_LAYOUT[d.region].x * W;
+      if (d.type === 'team') return W / 2;
+      return W / 2;
+    }).strength(d => d.region ? 0.08 : 0.02))
     .force('y', d3.forceY(H / 2).strength(0.02))
     .alphaDecay(0.015);
 

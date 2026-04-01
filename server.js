@@ -5377,9 +5377,18 @@ app.get('/api/network/graph', authenticateToken, async (req, res) => {
     clients.forEach(cl => {
       const nid = 'client-' + (cl.company_id || cl.account_id);
       if (!addedNodes.has(nid)) {
+        // Normalize geography to region code
+        let region = null;
+        const geo = (cl.geography || '').toLowerCase();
+        if (/australia|oceania|nz|new zealand/i.test(geo)) region = 'AU';
+        else if (/singapore|sea|asia|asean|hong kong|japan|india/i.test(geo)) region = 'SG';
+        else if (/uk|united kingdom|europe|london|eu|ireland/i.test(geo)) region = 'UK';
+        else if (/us|usa|america|canada|north america/i.test(geo)) region = 'US';
+
         nodes.push({
           id: nid, type: 'client', label: cl.name,
           tier: cl.relationship_tier, sector: cl.sector, geography: cl.geography,
+          region: region,
           peopleCount: parseInt(cl.people_count) || 0,
           signalCount: parseInt(cl.signal_count) || 0,
           companyId: cl.company_id, accountId: cl.account_id
@@ -5397,8 +5406,21 @@ app.get('/api/network/graph', authenticateToken, async (req, res) => {
       });
     });
 
+    // Build company→geography lookup from clients
+    const companyGeoMap = new Map();
+    clients.forEach(cl => { if (cl.company_id && cl.geography) companyGeoMap.set(cl.company_id, cl.geography); });
+
     contactsByPerson.forEach((c, personId) => {
       const nid = 'contact-' + personId;
+      // Derive region from company geography or person location
+      let region = companyGeoMap.get(c.current_company_id) || null;
+      if (!region && c.location) {
+        const loc = c.location.toLowerCase();
+        if (/australia|sydney|melbourne|brisbane|perth|auckland|nz/i.test(loc)) region = 'AU';
+        else if (/singapore|jakarta|bangkok|kuala lumpur|manila|vietnam|sea/i.test(loc)) region = 'SG';
+        else if (/london|uk|united kingdom|dublin|amsterdam|paris|berlin|europe/i.test(loc)) region = 'UK';
+        else if (/us|usa|new york|san francisco|chicago|boston|los angeles|america|canada|toronto/i.test(loc)) region = 'US';
+      }
       if (!addedNodes.has(nid)) {
         nodes.push({
           id: nid, type: 'contact', label: c.full_name, personId,
@@ -5406,7 +5428,8 @@ app.get('/api/network/graph', authenticateToken, async (req, res) => {
           companyId: c.current_company_id,
           seniority: c.seniority_level,
           bestStrength: Math.max(...c.teamLinks.map(l => l.strength)),
-          timingScore: c.timing_score, receptivityScore: c.receptivity_score
+          timingScore: c.timing_score, receptivityScore: c.receptivity_score,
+          region: region
         });
         addedNodes.add(nid);
       }
