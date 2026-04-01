@@ -9846,7 +9846,20 @@ app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
               WHERE tp.tenant_id = d.tenant_id AND tp.relationship_strength >= 0.25) AS prox_count,
              (SELECT COUNT(*) FROM signal_dispatches d2
               WHERE d2.company_id = d.company_id AND d2.tenant_id = d.tenant_id) AS related_signals,
-             -- Lead score: client + network + confidence (same weighting as hero signals)
+             -- Lead score: signal type + client + network + confidence
+             -- Hiring-intent signals ranked highest (these drive exec search revenue)
+             CASE d.signal_type
+               WHEN 'strategic_hiring' THEN 40
+               WHEN 'geographic_expansion' THEN 35
+               WHEN 'capital_raising' THEN 35
+               WHEN 'product_launch' THEN 25
+               WHEN 'partnership' THEN 20
+               WHEN 'leadership_change' THEN 15
+               WHEN 'ma_activity' THEN 15
+               WHEN 'restructuring' THEN 10
+               WHEN 'layoffs' THEN 5
+               ELSE 10
+             END +
              CASE WHEN c.is_client = true THEN 100 ELSE 0 END +
              CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = d.company_id AND p.tenant_id = d.tenant_id) > 0 THEN 50 ELSE 0 END +
              COALESCE(se.confidence_score, 0.5) * 30
@@ -9859,7 +9872,20 @@ app.get('/api/pipeline/board', authenticateToken, async (req, res) => {
       ORDER BY
         CASE d.pipeline_stage WHEN 'new' THEN 0 ELSE 1 END,
         CASE d.pipeline_stage
-          WHEN 'new' THEN (CASE WHEN c.is_client THEN 100 ELSE 0 END +
+          WHEN 'new' THEN (
+            CASE d.signal_type
+              WHEN 'strategic_hiring' THEN 40
+              WHEN 'geographic_expansion' THEN 35
+              WHEN 'capital_raising' THEN 35
+              WHEN 'product_launch' THEN 25
+              WHEN 'partnership' THEN 20
+              WHEN 'leadership_change' THEN 15
+              WHEN 'ma_activity' THEN 15
+              WHEN 'restructuring' THEN 10
+              WHEN 'layoffs' THEN 5
+              ELSE 10
+            END +
+            CASE WHEN c.is_client THEN 100 ELSE 0 END +
             CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = d.company_id AND p.tenant_id = d.tenant_id) > 0 THEN 50 ELSE 0 END +
             COALESCE(se.confidence_score, 0.5) * 30)
           ELSE 0 END DESC,
