@@ -2045,7 +2045,7 @@ function filterRegion(region, btn) {
 // ── Network Signals Stream ──
 async function loadNetworkSignals() {
   try {
-    const params = new URLSearchParams({ limit: 10, network: 'true' });
+    const params = new URLSearchParams({ limit: 40, network: 'true' });
     if (currentFilter !== 'all') params.set('type', currentFilter);
 
     const data = await api('/api/signals/brief?' + params);
@@ -2057,21 +2057,55 @@ async function loadNetworkSignals() {
       return;
     }
 
-    feed.innerHTML = data.signals.map(s => {
-      const sigIcon = SIGNAL_ICONS[s.signal_type] || signalIcon(s.signal_type, 20);
-      const label = (s.signal_type || '').replace(/_/g, ' ');
-      const contacts = parseInt(s.contact_count) || 0;
-      const placements = parseInt(s.placement_count) || 0;
-      const conf = Math.round((s.confidence_score || 0) * 100);
+    // Group by company — one card per company with aggregated signals
+    const coMap = new Map();
+    data.signals.forEach(s => {
+      const key = s.company_id || s.company_name;
+      if (!coMap.has(key)) {
+        coMap.set(key, {
+          company_name: s.company_name, company_id: s.company_id,
+          is_client: s.is_client, contact_count: parseInt(s.contact_count)||0,
+          placement_count: parseInt(s.placement_count)||0,
+          prox_connection_count: parseInt(s.prox_connection_count)||0,
+          best_connector_name: s.best_connector_name,
+          geography: s.geography, is_megacap: s.is_megacap,
+          signal_types: new Set(), signal_count: 0,
+          best_confidence: 0, best_evidence: null, best_id: s.id,
+          dispatch_id: s.dispatch_id, dispatch_status: s.dispatch_status,
+          claimed_by: s.claimed_by, claimed_by_name: s.claimed_by_name,
+          detected_at: s.detected_at,
+        });
+      }
+      const co = coMap.get(key);
+      co.signal_types.add(s.signal_type);
+      co.signal_count++;
+      if ((s.confidence_score||0) > co.best_confidence) {
+        co.best_confidence = s.confidence_score;
+        co.best_evidence = s.evidence_summary || s.doc_title;
+        co.best_id = s.id;
+      }
+      if (s.is_client) co.is_client = true;
+      co.contact_count = Math.max(co.contact_count, parseInt(s.contact_count)||0);
+      co.prox_connection_count = Math.max(co.prox_connection_count, parseInt(s.prox_connection_count)||0);
+      if (s.best_connector_name) co.best_connector_name = s.best_connector_name;
+      if (s.dispatch_id && !co.dispatch_id) { co.dispatch_id = s.dispatch_id; co.dispatch_status = s.dispatch_status; co.claimed_by = s.claimed_by; co.claimed_by_name = s.claimed_by_name; }
+    });
+
+    feed.innerHTML = [...coMap.values()].map(s => {
+      const topType = [...s.signal_types][0] || '';
+      const sigIcon = SIGNAL_ICONS[topType] || signalIcon(topType, 20);
+      const contacts = s.contact_count;
+      const placements = s.placement_count;
+      const conf = Math.round((s.best_confidence || 0) * 100);
 
       const companyHref = s.company_id
         ? '/company.html?id=' + s.company_id
         : '/companies.html?q=' + encodeURIComponent(s.company_name || '');
       const peopleHref = '/people.html?q=' + encodeURIComponent(s.company_name || '');
 
-      const proxCount = parseInt(s.prox_connection_count) || 0;
+      const proxCount = s.prox_connection_count;
       const proxBadge = proxCount > 0
-        ? '<button class="badge prox-trigger" data-signal-id="' + s.id + '" style="background:var(--blue-soft);color:var(--blue);border:1px solid var(--blue);cursor:pointer;font-family:var(--sans);font-size:10px;font-weight:600;padding:2px 8px;border-radius:3px" onmouseenter="this.style.background=\'var(--blue)\';this.style.color=\'#fff\';clearTimeout(this._ht);this._st=setTimeout(()=>ProximityPopup.show(this,\'' + s.id + '\'),120)" onmouseleave="this.style.background=\'var(--blue-soft)\';this.style.color=\'var(--blue)\';clearTimeout(this._st);ProximityPopup.scheduleHide()">' + icon('link') + '' + proxCount + ' proximity' + (s.best_connector_name ? ' \u00b7 via ' + esc(s.best_connector_name.split(' ')[0]) : '') + '</button>'
+        ? '<button class="badge prox-trigger" data-signal-id="' + s.best_id + '" style="background:var(--blue-soft);color:var(--blue);border:1px solid var(--blue);cursor:pointer;font-family:var(--sans);font-size:10px;font-weight:600;padding:2px 8px;border-radius:3px" onmouseenter="this.style.background=\'var(--blue)\';this.style.color=\'#fff\';clearTimeout(this._ht);this._st=setTimeout(()=>ProximityPopup.show(this,\'' + s.best_id + '\'),120)" onmouseleave="this.style.background=\'var(--blue-soft)\';this.style.color=\'var(--blue)\';clearTimeout(this._st);ProximityPopup.scheduleHide()">' + icon('link') + '' + proxCount + ' proximity' + (s.best_connector_name ? ' \u00b7 via ' + esc(s.best_connector_name.split(' ')[0]) : '') + '</button>'
         : '';
       const dispatchBadge = s.dispatch_id
         ? '<a href="/dispatches.html" onclick="event.stopPropagation();localStorage.setItem(\'open_dispatch\',\'' + s.dispatch_id + '\')" class="badge" style="background:var(--blue-soft);color:var(--blue);text-decoration:none;font-weight:600">' + icon('target') + 'Dispatch' + (s.dispatch_status === 'claimed' && s.claimed_by_name ? ' (' + esc(s.claimed_by_name) + ')' : '') + '</a>'
@@ -2079,27 +2113,28 @@ async function loadNetworkSignals() {
       const actionBtns = '<div style="display:flex;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid var(--rule)" onclick="event.stopPropagation()">' +
         (s.dispatch_id
           ? (!s.claimed_by ? '<button class="badge" style="background:var(--violet-soft);color:var(--violet);border:1px solid var(--violet);cursor:pointer" onclick="claimSignalDispatch(\'' + s.dispatch_id + '\',this)">' + icon('user') + ' Claim</button>' : '<span class="badge" style="background:var(--violet-soft);color:var(--violet)">' + icon('lock') + ' ' + esc(s.claimed_by_name || 'Claimed') + '</span>')
-          : '<button class="badge" style="background:var(--emerald-soft);color:var(--emerald);border:1px solid var(--emerald);cursor:pointer" onclick="generateDispatchForSignal(\'' + s.id + '\',this)">Generate Dispatch</button>') +
+          : '<button class="badge" style="background:var(--emerald-soft);color:var(--emerald);border:1px solid var(--emerald);cursor:pointer" onclick="generateDispatchForSignal(\'' + s.best_id + '\',this)">Generate Dispatch</button>') +
         '</div>';
+
+      // Signal type badges
+      var typeBadges = [...s.signal_types].map(t => '<span class="badge ' + (SIGNAL_BADGE_CLASS[t] || 'deal') + '">' + (t||'').replace(/_/g,' ').toUpperCase() + '</span>').join('');
 
       return '<div class="network-card' + (s.is_client ? ' client' : '') + '" style="cursor:pointer" onclick="if(!event.target.closest(\'a,button\')){location.href=\'' + companyHref + '\'}">' +
         '<div class="network-top">' +
-          '<a href="' + companyHref + '" class="network-company" style="text-decoration:none;color:inherit">' + sigIcon + ' ' + esc(s.company_name) + '</a>' +
+          '<a href="' + companyHref + '" class="network-company" style="text-decoration:none;color:inherit">' + sigIcon + ' ' + esc(s.company_name) + (s.signal_count > 1 ? ' <span style="font-size:10px;color:var(--ink-4)">(' + s.signal_count + ' signals)</span>' : '') + '</a>' +
           '<div class="network-contacts">' +
             (contacts > 0 ? '<a href="' + peopleHref + '" style="text-decoration:none;color:var(--blue);font-weight:600;font-size:11px">' + icon('users') + '' + contacts + ' contacts</a>' : '') +
             (placements > 0 ? '<span style="font-size:11px;color:var(--emerald);font-weight:600;margin-left:6px">' + icon('trophy') + '' + placements + ' placed</span>' : '') +
           '</div>' +
         '</div>' +
-        '<div class="network-summary">' + esc(s.evidence_summary || s.doc_title || label) + '</div>' +
+        '<div class="network-summary">' + esc(s.best_evidence || topType.replace(/_/g,' ')) + '</div>' +
         '<div class="network-badges">' +
-          '<span class="badge ' + (SIGNAL_BADGE_CLASS[s.signal_type] || 'deal') + '">' + label.toUpperCase() + '</span>' +
-          (s.is_megacap ? '<span class="badge" style="background:#f0f0f0;color:#888;font-style:italic">' + icon('cloud') + 'MARKET WEATHER</span>' : '') +
+          typeBadges +
           (s.is_client ? '<span class="badge client">CLIENT</span>' : '') +
           proxBadge +
           dispatchBadge +
           (s.geography ? '<span class="badge time">' + esc(s.geography) + '</span>' : '') +
           '<span class="badge time">' + conf + '% \u00b7 ' + ago(s.detected_at) + '</span>' +
-          (s.source_url ? '<a href="' + esc(s.source_url) + '" target="_blank" onclick="event.stopPropagation()" class="badge" style="background:var(--surface-warm);color:var(--blue);text-decoration:none">\u2197 Source</a>' : '') +
         '</div>' +
         actionBtns +
       '</div>';
