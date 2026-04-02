@@ -301,6 +301,39 @@ function copyFallback(text, btn, origHtml) {
   document.body.removeChild(ta);
 }
 
+function getGrabCardText(btn) {
+  // Navigate to the card container (the div with border-top:3px)
+  var card = btn.closest('div[style*="border-top:3px"]') || btn.parentElement.parentElement;
+  // Extract text from content divs, skipping the button row
+  var parts = [];
+  card.querySelectorAll('div').forEach(function(d) {
+    // Skip the button row and type badge row
+    if (d.querySelector('button')) return;
+    if (d.style.display === 'flex' && d.querySelector('span[style*="text-transform"]')) return;
+    var t = d.innerText || d.textContent || '';
+    t = t.trim();
+    if (t && t.length > 5 && t !== 'Copy' && t !== 'LinkedIn') parts.push(t);
+  });
+  // Deduplicate (nested divs repeat text) — keep only unique substantial lines
+  var seen = new Set();
+  var unique = [];
+  parts.forEach(function(p) {
+    var key = p.slice(0, 40);
+    if (!seen.has(key)) { seen.add(key); unique.push(p); }
+  });
+  return unique.join('\n\n');
+}
+
+function copyGrabCard(btn) {
+  var text = getGrabCardText(btn);
+  copyText(text, btn);
+}
+
+function shareGrabLinkedIn(btn) {
+  var text = getGrabCardText(btn);
+  window.open('https://www.linkedin.com/shareArticle?mini=true&summary=' + encodeURIComponent(text.slice(0, 256)), '_blank');
+}
+
 function copyElementText(el, btn) {
   if (!el) return;
   // Use innerText to preserve line breaks from white-space:pre-line rendering
@@ -833,8 +866,8 @@ async function loadGrabs() {
         '<div style="font-size:12px;color:var(--ink-2);line-height:1.5;padding:8px 10px;background:var(--surface-warm);border-radius:6px;margin-bottom:8px"><strong style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3)">The read</strong><br>' + esc(g.so_what || g.why_it_matters) + '</div>' +
         (g.watch_next ? '<div style="font-size:11px;color:var(--ink-3);font-style:italic">Watch: ' + esc(g.watch_next) + '</div>' : '') +
         '<div style="display:flex;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid var(--rule)">' +
-          '<button onclick="copyText(this.closest(\'div[style]\').textContent.trim(),this)" style="font-size:10px;padding:3px 10px;border-radius:16px;border:1px solid var(--rule);background:transparent;color:var(--ink-3);cursor:pointer;font-family:var(--sans)">Copy</button>' +
-          '<button onclick="window.open(\'https://www.linkedin.com/shareArticle?mini=true&summary=\'+encodeURIComponent(this.closest(\'div[style]\').textContent.trim().slice(0,256)),\'_blank\')" style="font-size:10px;padding:3px 10px;border-radius:16px;border:1px solid var(--rule);background:transparent;color:var(--blue);cursor:pointer;font-family:var(--sans)">LinkedIn</button>' +
+          '<button onclick="copyGrabCard(this)" style="font-size:10px;padding:3px 10px;border-radius:16px;border:1px solid var(--rule);background:transparent;color:var(--ink-3);cursor:pointer;font-family:var(--sans)">Copy</button>' +
+          '<button onclick="shareGrabLinkedIn(this)" style="font-size:10px;padding:3px 10px;border-radius:16px;border:1px solid var(--rule);background:transparent;color:var(--blue);cursor:pointer;font-family:var(--sans)">LinkedIn</button>' +
         '</div>' +
       '</div>';
     }).join('');
