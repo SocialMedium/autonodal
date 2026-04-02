@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Signal Dispatch — MLX Autonode</title>
+<title>Signal Dispatch — MitchelLake Signals</title>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -180,14 +180,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 <body>
 <header class="masthead">
   <div class="masthead-top">
-    <a href="/index.html" class="masthead-logo">MLX <em>Autonode</em></a>
+    <a href="/index.html" class="masthead-logo">MitchelLake <em>Signals</em></a>
     <nav class="masthead-nav">
       <a href="/index.html">Signals</a>
       <a href="/people.html">People</a>
       <a href="/companies.html">Companies</a>
       <a href="/dispatches.html" class="active">Dispatch</a>
       <a href="/placements.html">Revenue</a>
-      <a href="/case-studies.html">Case Studies</a>
+      <a href="/case-studies.html">Case Studies</a><a href="/huddles.html">Huddles</a>
     </nav>
     <div class="masthead-user" id="userAvatar">JT</div>
   </div>
@@ -273,6 +273,76 @@ async function api(path, opts = {}) {
 }
 
 function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : ''; }
+
+function copyText(text, btn) {
+  if (!text) return;
+  var origHtml = btn ? btn.innerHTML : '';
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      if (btn) { btn.innerHTML = 'Copied!'; setTimeout(function() { btn.innerHTML = origHtml; }, 1500); }
+    }).catch(function() { copyFallback(text, btn, origHtml); });
+  } else {
+    copyFallback(text, btn, origHtml);
+  }
+}
+
+function copyFallback(text, btn, origHtml) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    if (btn) { btn.innerHTML = 'Copied!'; setTimeout(function() { btn.innerHTML = origHtml; }, 1500); }
+  } catch(e) {
+    if (btn) { btn.innerHTML = 'Failed'; setTimeout(function() { btn.innerHTML = origHtml; }, 1500); }
+  }
+  document.body.removeChild(ta);
+}
+
+function copyElementText(el, btn) {
+  if (!el) return;
+  // Use innerText to preserve line breaks from white-space:pre-line rendering
+  var text = el.innerText || el.textContent || '';
+  copyText(text.trim(), btn);
+}
+
+function copyLinkedInPost(btn) {
+  var d = window._currentDispatch;
+  if (!d) return;
+  var text = '';
+  try {
+    var brief = typeof d.blog_body === 'string' ? JSON.parse(d.blog_body) : d.blog_body;
+    text = brief.linkedin_post || '';
+  } catch(e) {
+    // Legacy format — use blog title + body
+    text = (d.blog_title || '') + '\n\n' + (d.blog_body || '');
+  }
+  // Add source link and hashtag
+  if (d.company_name) {
+    var hashtag = d.company_name.replace(/[^a-zA-Z0-9]/g, '');
+    if (text && !text.includes('#')) text += '\n\n#' + hashtag + ' #signals #leadership';
+  }
+  copyText(text.trim(), btn);
+}
+
+function copyEmailBrief(btn) {
+  var d = window._currentDispatch;
+  if (!d) return;
+  var text = '';
+  try {
+    var brief = typeof d.blog_body === 'string' ? JSON.parse(d.blog_body) : d.blog_body;
+    text = 'Subject: ' + (d.blog_title || d.company_name || 'Signal Brief') + '\n\n';
+    text += brief.email_brief || brief.linkedin_post || '';
+    if (brief.data_points && brief.data_points.length) {
+      text += '\n\nKey data:\n' + brief.data_points.map(function(p) { return '• ' + p.metric + ': ' + p.value + (p.context ? ' — ' + p.context : ''); }).join('\n');
+    }
+  } catch(e) {
+    text = (d.blog_title || '') + '\n\n' + (d.blog_body || '');
+  }
+  copyText(text.trim(), btn);
+}
 function ago(t) {
   if (!t) return '';
   const m = Math.floor((Date.now() - new Date(t)) / 6e4);
@@ -284,11 +354,12 @@ function ago(t) {
   return new Date(t).toLocaleDateString('en-AU', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-const SIG_ICONS = {
-  capital_raising: '\ud83d\udcb0', ma_activity: '\ud83d\udd17', restructuring: '\u2699\ufe0f',
-  leadership_change: '\ud83d\udc64', geographic_expansion: '\ud83c\udf10', product_launch: '\ud83d\ude80',
-  strategic_hiring: '\ud83d\udc65', layoffs: '\ud83d\udcc9', partnership: '\ud83e\udd1d'
-};
+const SIG_ICONS = {};
+if (typeof signalIcon === 'function') {
+  ['capital_raising','ma_activity','product_launch','partnership','geographic_expansion','restructuring','leadership_change','layoffs','strategic_hiring'].forEach(function(k) {
+    SIG_ICONS[k] = signalIcon(k, 16);
+  });
+}
 
 // ── Feed ──
 let offset = 0, currentFilter = '', currentRegion = '';
@@ -334,7 +405,7 @@ async function loadDispatches() {
     }
 
     data.dispatches.forEach(d => {
-      const icon = SIG_ICONS[d.signal_type] || '\ud83d\udce1';
+      const sigIco = SIG_ICONS[d.signal_type] || signalIcon(d.signal_type, 16);
       const entry = d.best_entry_point ? (typeof d.best_entry_point === 'string' ? JSON.parse(d.best_entry_point) : d.best_entry_point) : null;
       const prox = d.proximity_map ? (typeof d.proximity_map === 'string' ? JSON.parse(d.proximity_map) : d.proximity_map) : [];
       const peopleAtCo = parseInt(d.people_at_company) || 0;
@@ -365,7 +436,7 @@ async function loadDispatches() {
         <div class="dispatch-card status-${d.status}" onclick="openDispatch('${d.id}')">
           <div class="dc-top">
             <div class="dc-company"><a href="${d.company_id ? '/company.html?id=' + d.company_id : '/companies.html?q=' + encodeURIComponent(d.company_name || '')}" onclick="event.stopPropagation()" style="text-decoration:none;color:inherit">${esc(d.company_name)}</a>${d.is_client ? ' <span class="badge client" style="vertical-align:middle;margin-left:6px">CLIENT</span>' : ''}</div>
-            <div class="dc-time">${d.claimed_by ? '<span style="color:var(--violet);font-weight:600">\ud83d\udd12 Claimed</span> \u00b7 ' : ''}${ago(d.generated_at)}</div>
+            <div class="dc-time">${d.claimed_by ? '<span style="color:var(--violet);font-weight:600">' + icon('lock') + ' Claimed</span> \u00b7 ' : ''}${ago(d.generated_at)}</div>
           </div>
           <div class="dc-meta">
             ${d.sector ? esc(d.sector) : ''}${d.geography ? ' \u00b7 ' + esc(d.geography) : ''}
@@ -373,15 +444,15 @@ async function loadDispatches() {
             ${placements > 0 ? ' \u00b7 ' + placements + ' past placement' + (placements > 1 ? 's' : '') : ''}
           </div>
           <div class="dc-badges">
-            <span class="badge signal">${icon} ${esc((d.signal_type || '').replace(/_/g, ' '))}</span>
-            <span class="badge connections">\ud83d\udd17 ${d.connection_count || 0} connections</span>
+            <span class="badge signal">${sigIco} ${esc((d.signal_type || '').replace(/_/g, ' '))}</span>
+            <span class="badge connections">${icon('link')} ${d.connection_count || 0} connections</span>
             <span class="badge status-${d.status}">${d.status}</span>
           </div>
           ${d.signal_summary ? '<div class="dc-summary">' + esc(String(d.signal_summary).slice(0, 180)) + '</div>' : ''}
           ${contactsHtml}
           ${d.blog_title ? '<div class="dc-blog-title" style="font-size:12px;color:var(--ink-2);font-weight:500">' + esc(d.blog_title) + '</div>' : ''}
           ${entry ? '<div class="dc-entry">\u2b50 Best entry: <strong>' + esc(entry.name) + '</strong>' + (entry.title ? ' \u00b7 ' + esc(entry.title) : '') + (entry.approach_via ? ' \u00b7 via ' + esc(entry.approach_via) : '') + '</div>' : ''}
-          ${d.opportunity_angle ? '<div class="dc-angle">\ud83c\udfaf ' + esc(d.opportunity_angle) + '</div>' : ''}
+          ${d.opportunity_angle ? '<div class="dc-angle">' + icon('target') + ' ' + esc(d.opportunity_angle) + '</div>' : ''}
           <div class="dc-actions" style="display:flex;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid var(--rule)" onclick="event.stopPropagation()">
             ${!d.claimed_by ? '<button class="btn-sm" style="background:var(--violet-soft);color:var(--violet);border-color:var(--violet)" onclick="quickClaim(\'' + d.id + '\',this)">Claim</button>' : '<span style="font-size:11px;color:var(--violet);font-weight:600">Claimed' + (d.claimed_by_name ? ' by ' + esc(d.claimed_by_name) : '') + '</span>'}
             ${d.status === 'draft' || d.status === 'claimed' ? '<button class="btn-sm" style="background:var(--blue-soft);color:var(--blue);border-color:var(--blue)" onclick="quickStatus(\'' + d.id + '\',\'reviewed\',this)">Review</button>' : ''}
@@ -431,7 +502,7 @@ function renderDetail(d) {
   const sendTo = typeof d.send_to === 'string' ? JSON.parse(d.send_to) : (d.send_to || []);
   const confidence = d.signal_confidence ? Math.round(d.signal_confidence * 100) : null;
   const confColor = confidence >= 80 ? 'var(--emerald)' : confidence >= 60 ? 'var(--amber)' : 'var(--ink-3)';
-  const icon = SIG_ICONS[d.signal_type] || '\ud83d\udce1';
+  const sigIco = SIG_ICONS[d.signal_type] || signalIcon(d.signal_type, 16);
 
   let html = '';
 
@@ -440,7 +511,7 @@ function renderDetail(d) {
   html += '<div class="signal-box">';
   html += '<div class="signal-company">' + esc(d.company_name) + '</div>';
   html += '<div class="dc-badges" style="margin-top:8px">';
-  html += '<span class="badge signal">' + icon + ' ' + esc((d.signal_type || '').replace(/_/g, ' ')) + '</span>';
+  html += '<span class="badge signal">' + sigIco + ' ' + esc((d.signal_type || '').replace(/_/g, ' ')) + '</span>';
   if (d.is_client) html += '<span class="badge client">CLIENT</span>';
   if (d.sector) html += '<span class="badge" style="background:var(--surface-warm);color:var(--ink-3)">' + esc(d.sector) + '</span>';
   html += '</div>';
@@ -492,7 +563,7 @@ function renderDetail(d) {
     // New format — structured signal brief
     html += '<div class="psec"><div class="psec-label">LinkedIn Post</div>';
     html += '<div style="background:var(--surface-warm);border:1px solid var(--rule);border-radius:8px;padding:14px 16px;font-size:13px;line-height:1.6;white-space:pre-line;color:var(--ink-2)" id="linkedinPost">' + esc(briefData.linkedin_post) + '</div>';
-    html += '<div style="display:flex;gap:6px;margin-top:8px"><button class="btn-sm" onclick="navigator.clipboard.writeText(document.getElementById(\'linkedinPost\').textContent)">Copy Post</button><button class="btn-sm" onclick="window.open(\'https://www.linkedin.com/shareArticle?mini=true&summary=\'+encodeURIComponent(document.getElementById(\'linkedinPost\').textContent.slice(0,256)),\'_blank\')">Share on LinkedIn ↗</button></div>';
+    html += '<div style="display:flex;gap:6px;margin-top:8px"><button class="btn-sm" onclick="copyLinkedInPost(this)">Copy LinkedIn Post</button><button class="btn-sm" onclick="window.open(\'https://www.linkedin.com/shareArticle?mini=true&summary=\'+encodeURIComponent(document.getElementById(\'linkedinPost\').innerText.slice(0,256)),\'_blank\')">Share on LinkedIn ↗</button></div>';
     html += '</div>';
 
     if (briefData.data_points && briefData.data_points.length) {
@@ -515,7 +586,7 @@ function renderDetail(d) {
 
     html += '<div class="psec"><div class="psec-label">Email Brief</div>';
     html += '<div style="background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:14px 16px;font-size:13px;line-height:1.6;white-space:pre-line;color:var(--ink-2)" id="emailBrief">' + esc(briefData.email_brief) + '</div>';
-    html += '<div style="display:flex;gap:6px;margin-top:8px"><button class="btn-sm" onclick="navigator.clipboard.writeText(document.getElementById(\'emailBrief\').textContent)">Copy Email</button></div>';
+    html += '<div style="display:flex;gap:6px;margin-top:8px"><button class="btn-sm" onclick="copyEmailBrief(this)">Copy Email Brief</button></div>';
     html += '</div>';
   } else {
     // Legacy format — old blog post
@@ -554,9 +625,9 @@ function renderDetail(d) {
 
   // Claim button
   if (!d.claimed_by) {
-    actions += '<button class="btn-sm" style="background:var(--violet);color:white;border-color:var(--violet)" onclick="claimThisDispatch()">🙋 Claim This</button>';
+    actions += '<button class="btn-sm" style="background:var(--violet);color:white;border-color:var(--violet)" onclick="claimThisDispatch()">' + icon('user') + ' Claim This</button>';
   } else {
-    actions += '<span class="btn-sm" style="cursor:default;opacity:0.7">🔒 Claimed by ' + esc(d.claimed_by_name || 'team member') + '</span>';
+    actions += '<span class="btn-sm" style="cursor:default;opacity:0.7">' + icon('lock') + ' Claimed by ' + esc(d.claimed_by_name || 'team member') + '</span>';
   }
 
   if (d.status === 'draft' || d.status === 'claimed') {
@@ -571,7 +642,7 @@ function renderDetail(d) {
 
   // Company link
   if (d.company_id) {
-    actions += '<a href="/company.html?id=' + d.company_id + '" class="btn-sm" style="text-decoration:none;text-align:center">🏢 Company</a>';
+    actions += '<a href="/company.html?id=' + d.company_id + '" class="btn-sm" style="text-decoration:none;text-align:center">'+icon('building')+' Company</a>';
   }
 
   document.getElementById('panelActions').innerHTML = actions;
@@ -581,17 +652,15 @@ function renderDetail(d) {
 }
 
 function copyBlog() {
-  const d = window._currentDispatch;
-  let text = d.blog_title + '\n\n';
+  var d = window._currentDispatch;
+  var text = d.blog_title + '\n\n';
   try {
-    const brief = JSON.parse(d.blog_body);
+    var brief = JSON.parse(d.blog_body);
     text += (brief.linkedin_post || '') + '\n\n---\n\n' + (brief.email_brief || '');
-    if (brief.data_points) text += '\n\nData:\n' + brief.data_points.map(p => '- ' + p.metric + ': ' + p.value).join('\n');
+    if (brief.data_points) text += '\n\nData:\n' + brief.data_points.map(function(p) { return '- ' + p.metric + ': ' + p.value; }).join('\n');
   } catch(e) { text += d.blog_body; }
-  navigator.clipboard.writeText(text).then(() => {
-    const btn = document.querySelector('.blog-actions .btn-sm');
-    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 1500); }
-  });
+  var btn = document.querySelector('.blog-actions .btn-sm');
+  copyText(text, btn);
 }
 
 function toggleRegenerate() {
@@ -764,7 +833,7 @@ async function loadGrabs() {
         '<div style="font-size:12px;color:var(--ink-2);line-height:1.5;padding:8px 10px;background:var(--surface-warm);border-radius:6px;margin-bottom:8px"><strong style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3)">The read</strong><br>' + esc(g.so_what || g.why_it_matters) + '</div>' +
         (g.watch_next ? '<div style="font-size:11px;color:var(--ink-3);font-style:italic">Watch: ' + esc(g.watch_next) + '</div>' : '') +
         '<div style="display:flex;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid var(--rule)">' +
-          '<button onclick="navigator.clipboard.writeText(this.closest(\'div[style]\').textContent.trim())" style="font-size:10px;padding:3px 10px;border-radius:16px;border:1px solid var(--rule);background:transparent;color:var(--ink-3);cursor:pointer;font-family:var(--sans)">Copy</button>' +
+          '<button onclick="copyText(this.closest(\'div[style]\').textContent.trim(),this)" style="font-size:10px;padding:3px 10px;border-radius:16px;border:1px solid var(--rule);background:transparent;color:var(--ink-3);cursor:pointer;font-family:var(--sans)">Copy</button>' +
           '<button onclick="window.open(\'https://www.linkedin.com/shareArticle?mini=true&summary=\'+encodeURIComponent(this.closest(\'div[style]\').textContent.trim().slice(0,256)),\'_blank\')" style="font-size:10px;padding:3px 10px;border-radius:16px;border:1px solid var(--rule);background:transparent;color:var(--blue);cursor:pointer;font-family:var(--sans)">LinkedIn</button>' +
         '</div>' +
       '</div>';
@@ -817,7 +886,7 @@ async function loadWeeklyWrap() {
     h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">';
     w.regions.forEach(function(r) {
       var rc = regionColors[r.code] || '#888';
-      var rf = regionFlags[r.code] || '🌐';
+      var rf = regionFlags[r.code] || ''+icon('globe')+'';
       var numbers = (r.key_numbers || []).slice(0, 4).map(function(n) {
         var arrow = n.change === 'up' ? '↑' : n.change === 'down' ? '↓' : '→';
         var arrowColor = n.change === 'up' ? 'var(--emerald)' : n.change === 'down' ? 'var(--rose)' : 'var(--ink-4)';
