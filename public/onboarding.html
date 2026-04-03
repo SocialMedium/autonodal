@@ -1,0 +1,1728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Get Started — MLX Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="/icons.js"></script>
+<style>
+:root {
+  --serif: 'Source Serif 4', 'Georgia', serif;
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+
+  --bg: #FAF9F7;
+  --surface: #FFFFFF;
+  --surface-warm: #F7F5F2;
+  --surface-cool: #F2F4F8;
+  --ink: #1A1A1A;
+  --ink-2: #4A4A4A;
+  --ink-3: #7A7A7A;
+  --ink-4: #AAAAAA;
+  --rule: #E0DDD8;
+  --rule-bold: #C8C4BE;
+
+  --blue: #2563EB;
+  --blue-soft: #EBF1FE;
+  --emerald: #0D7A50;
+  --emerald-soft: #E8F5EE;
+  --amber: #B45309;
+  --amber-soft: #FEF7E8;
+  --rose: #C41D3E;
+  --rose-soft: #FDF0F2;
+  --violet: #6D28D9;
+  --violet-soft: #F3EEFE;
+
+  --radius: 8px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+  --shadow-hover: 0 4px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+  --shadow-panel: 0 2px 12px rgba(0,0,0,0.05);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* ═══════════════════════════════════════
+   PROGRESS BAR
+   ═══════════════════════════════════════ */
+.progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+  padding: 0 24px;
+}
+
+.progress-inner {
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+}
+
+.progress-brand {
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ink);
+  margin-right: 24px;
+  white-space: nowrap;
+}
+
+.progress-steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.progress-segment {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--rule);
+  transition: background 0.3s ease;
+}
+
+.progress-segment.filled {
+  background: var(--blue);
+}
+
+.progress-segment.active {
+  background: var(--blue);
+  opacity: 0.5;
+}
+
+.progress-labels {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+
+.progress-label {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-4);
+  transition: color 0.3s ease;
+}
+
+.progress-label.active {
+  color: var(--blue);
+}
+
+.progress-label.done {
+  color: var(--ink-3);
+}
+
+/* ═══════════════════════════════════════
+   WIZARD LAYOUT
+   ═══════════════════════════════════════ */
+.wizard {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 96px 24px 80px;
+}
+
+.step {
+  display: none;
+}
+
+.step.active {
+  display: block;
+}
+
+.step-header {
+  margin-bottom: 36px;
+}
+
+.step-header h1 {
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+
+.step-header p {
+  color: var(--ink-3);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+/* ═══════════════════════════════════════
+   FORM ELEMENTS
+   ═══════════════════════════════════════ */
+.field {
+  margin-bottom: 24px;
+}
+
+.field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+}
+
+.field label .optional {
+  font-weight: 400;
+  color: var(--ink-4);
+  margin-left: 4px;
+}
+
+.field input[type="text"] {
+  width: 100%;
+  padding: 10px 14px;
+  font-family: var(--sans);
+  font-size: 15px;
+  border: 1px solid var(--rule-bold);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+}
+
+.field input[type="text"]:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-soft);
+}
+
+.field input[type="text"]::placeholder {
+  color: var(--ink-4);
+}
+
+/* ═══════════════════════════════════════
+   PILLS
+   ═══════════════════════════════════════ */
+.pill-section {
+  margin-bottom: 28px;
+}
+
+.pill-section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 10px;
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--rule-bold);
+  border-radius: 100px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.pill:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.pill.selected {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: white;
+}
+
+.pill.coming-soon {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pill.coming-soon:hover {
+  border-color: var(--rule-bold);
+  color: var(--ink-2);
+}
+
+.pill .soon-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--surface-warm);
+  color: var(--ink-4);
+  padding: 1px 6px;
+  border-radius: 100px;
+}
+
+.pill.selected .soon-badge {
+  background: rgba(255,255,255,0.2);
+  color: white;
+}
+
+/* ═══════════════════════════════════════
+   BUTTONS
+   ═══════════════════════════════════════ */
+.btn-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 40px;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 28px;
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 600;
+  color: white;
+  background: var(--blue);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-primary:hover {
+  background: #1d4ed8;
+  box-shadow: var(--shadow-hover);
+}
+
+.btn-primary:disabled {
+  background: var(--rule-bold);
+  color: var(--ink-4);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 28px;
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--rule-bold);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-secondary:hover {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+.btn-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-3);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.btn-link:hover {
+  color: var(--ink);
+}
+
+/* ═══════════════════════════════════════
+   CONNECTION CARDS (Step 2b)
+   ═══════════════════════════════════════ */
+.connection-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.connection-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.connection-card:hover {
+  border-color: var(--rule-bold);
+  box-shadow: var(--shadow-card);
+}
+
+.connection-card.done {
+  border-color: var(--emerald);
+  background: var(--emerald-soft);
+}
+
+.connection-card.failed {
+  border-color: var(--rose);
+  background: var(--rose-soft);
+}
+
+.connection-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  background: var(--surface-cool);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ink-2);
+}
+
+.connection-card.done .connection-icon {
+  background: var(--emerald);
+  color: white;
+}
+
+.connection-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.connection-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.connection-desc {
+  font-size: 13px;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+
+.connection-records {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-4);
+  margin-top: 4px;
+}
+
+.connection-action {
+  flex-shrink: 0;
+}
+
+.connection-action .btn-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--blue);
+  background: var(--blue-soft);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.connection-action .btn-sm:hover {
+  background: var(--blue);
+  color: white;
+}
+
+.connection-action .btn-sm.connecting {
+  color: var(--ink-4);
+  background: var(--surface-warm);
+  cursor: wait;
+}
+
+.connection-action .btn-sm.done {
+  color: var(--emerald);
+  background: var(--emerald-soft);
+  cursor: default;
+}
+
+.connection-action .btn-sm.failed {
+  color: var(--rose);
+  background: var(--rose-soft);
+}
+
+.connection-action input[type="file"] {
+  display: none;
+}
+
+.connection-action .upload-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--blue);
+  background: var(--blue-soft);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.connection-action .upload-label:hover {
+  background: var(--blue);
+  color: white;
+}
+
+/* ═══════════════════════════════════════
+   SIGNAL FEED (Step 3)
+   ═══════════════════════════════════════ */
+.feed-section {
+  margin-bottom: 32px;
+}
+
+.feed-section-title {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.feed-section-desc {
+  font-size: 13px;
+  color: var(--ink-3);
+  margin-bottom: 16px;
+}
+
+.feed-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.feed-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.feed-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ink-3);
+  background: var(--surface-warm);
+}
+
+.feed-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.feed-card-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.feed-card-desc {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.feed-card .toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.feed-card .toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.feed-card .toggle .slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--rule-bold);
+  border-radius: 11px;
+  transition: 0.2s;
+}
+
+.feed-card .toggle .slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: 0.2s;
+}
+
+.feed-card .toggle input:checked + .slider {
+  background: var(--blue);
+}
+
+.feed-card .toggle input:checked + .slider:before {
+  transform: translateX(18px);
+}
+
+.feed-card.always-on .toggle .slider {
+  background: var(--emerald);
+  cursor: default;
+}
+
+.feed-card.always-on .toggle input:checked + .slider:before {
+  transform: translateX(18px);
+}
+
+.browse-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.browse-toggle:hover {
+  color: var(--blue);
+}
+
+.browse-toggle .chevron {
+  transition: transform 0.2s ease;
+}
+
+.browse-toggle.expanded .chevron {
+  transform: rotate(180deg);
+}
+
+.browse-content {
+  display: none;
+}
+
+.browse-content.expanded {
+  display: block;
+}
+
+/* ═══════════════════════════════════════
+   API KEY MODAL
+   ═══════════════════════════════════════ */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-overlay.visible {
+  display: flex;
+}
+
+.modal {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 28px;
+  max-width: 420px;
+  width: 90%;
+  box-shadow: var(--shadow-panel);
+}
+
+.modal h3 {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.modal p {
+  font-size: 14px;
+  color: var(--ink-3);
+  margin-bottom: 16px;
+}
+
+.modal input[type="text"] {
+  width: 100%;
+  padding: 10px 14px;
+  font-family: var(--mono);
+  font-size: 13px;
+  border: 1px solid var(--rule-bold);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  outline: none;
+  margin-bottom: 16px;
+}
+
+.modal input[type="text"]:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-soft);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ═══════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════ */
+@media (max-width: 600px) {
+  .wizard {
+    padding: 80px 16px 60px;
+  }
+
+  .step-header h1 {
+    font-size: 24px;
+  }
+
+  .progress-brand {
+    display: none;
+  }
+
+  .connection-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .connection-action {
+    align-self: flex-end;
+  }
+
+  .btn-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn-primary, .btn-secondary {
+    justify-content: center;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ PROGRESS BAR ═══════════════ -->
+<div class="progress-bar">
+  <div class="progress-inner">
+    <div class="progress-brand">MLX Intelligence</div>
+    <div class="progress-steps">
+      <div class="progress-segment" id="seg-1"></div>
+      <div class="progress-segment" id="seg-2"></div>
+      <div class="progress-segment" id="seg-3"></div>
+    </div>
+  </div>
+  <div class="progress-inner" style="height:24px;">
+    <div class="progress-brand" style="visibility:hidden;">MLX Intelligence</div>
+    <div class="progress-labels">
+      <div class="progress-label" id="lbl-1">Profile</div>
+      <div class="progress-label" id="lbl-2">Integrations</div>
+      <div class="progress-label" id="lbl-3">Signal feed</div>
+    </div>
+  </div>
+</div>
+
+<div class="wizard">
+
+  <!-- ═══════════════ STEP 1 ═══════════════ -->
+  <div class="step" id="step-1">
+    <div class="step-header">
+      <h1>Who you are</h1>
+      <p>Help us personalise your signal feed and recommendations.</p>
+    </div>
+
+    <div class="field">
+      <label for="f-display-name">Display name</label>
+      <input type="text" id="f-display-name" placeholder="Jane Smith">
+    </div>
+
+    <div class="field">
+      <label for="f-role">Role</label>
+      <input type="text" id="f-role" placeholder="e.g. Managing Partner, Head of Talent, VP Engineering">
+    </div>
+
+    <div class="field">
+      <label for="f-company">Company <span class="optional">(optional)</span></label>
+      <input type="text" id="f-company" placeholder="e.g. Acme Ventures">
+    </div>
+
+    <div class="field">
+      <label for="f-location">Home location</label>
+      <input type="text" id="f-location" placeholder="e.g. Sydney, London, Singapore">
+    </div>
+
+    <div class="pill-section">
+      <div class="pill-section-label">Geographies you focus on</div>
+      <div class="pills" id="geo-pills"></div>
+    </div>
+
+    <div class="pill-section">
+      <div class="pill-section-label">Sectors you focus on</div>
+      <div class="pills" id="sector-pills"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-primary" id="btn-step1" onclick="saveStep1()">Continue</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════ STEP 2a ═══════════════ -->
+  <div class="step" id="step-2a">
+    <div class="step-header">
+      <h1>What tools do you use?</h1>
+      <p>Select the platforms where your contacts and deal data live. We will help you connect them next.</p>
+    </div>
+
+    <div id="platform-groups"></div>
+
+    <div class="btn-row">
+      <button class="btn-primary" id="btn-step2a" onclick="saveStep2a()" disabled>Connect selected</button>
+      <button class="btn-link" onclick="skipStep2a()">Skip &mdash; connect later</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════ STEP 2b ═══════════════ -->
+  <div class="step" id="step-2b">
+    <div class="step-header">
+      <h1>Connect them</h1>
+      <p>Link your selected platforms so we can import your network.</p>
+    </div>
+
+    <div class="connection-cards" id="connection-cards"></div>
+
+    <div class="btn-row">
+      <button class="btn-primary" id="btn-step2b" onclick="goToStep3()">Continue</button>
+      <button class="btn-link" onclick="goToStep3()">Skip remaining</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════ STEP 3 ═══════════════ -->
+  <div class="step" id="step-3">
+    <div class="step-header">
+      <h1>Your signal feed</h1>
+      <p>These sources power your daily intelligence brief. Toggle what matters to you.</p>
+    </div>
+
+    <div class="feed-section" id="always-on-section">
+      <div class="feed-section-title">Always on</div>
+      <div class="feed-section-desc">Core sources that run continuously for all users.</div>
+      <div class="feed-cards" id="always-on-cards"></div>
+    </div>
+
+    <div class="feed-section" id="recommended-section">
+      <div class="feed-section-title">Recommended for you</div>
+      <div class="feed-section-desc">Based on your geographies and sectors.</div>
+      <div class="feed-cards" id="recommended-cards"></div>
+    </div>
+
+    <div class="feed-section">
+      <button class="browse-toggle" id="browse-btn" onclick="toggleBrowse()">
+        Browse all bundles
+        <span class="chevron" id="browse-chevron"></span>
+      </button>
+      <div class="browse-content" id="browse-content">
+        <div class="feed-cards" id="browse-cards"></div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-primary" id="btn-activate" onclick="activateFeed()">Activate my feed</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════ API KEY MODAL ═══════════════ -->
+<div class="modal-overlay" id="api-key-modal">
+  <div class="modal">
+    <h3 id="modal-title">Add API key</h3>
+    <p id="modal-desc">Paste your API key below.</p>
+    <input type="text" id="modal-key-input" placeholder="sk-...">
+    <div class="modal-actions">
+      <button class="btn-link" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitApiKey()" style="padding:8px 20px;font-size:14px;">Save key</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════ */
+var wizardState = {
+  currentStep: 'step_1',
+  geos: [],
+  sectors: [],
+  selectedPlatforms: [],
+  platformData: [],
+  connectedPlatforms: {},
+  feedToggles: {},
+  modalPlatformId: null
+};
+
+var GEOS = [
+  'APAC', 'SEA', 'ANZ', 'India', 'Japan',
+  'UK & Ireland', 'Europe', 'DACH',
+  'North America', 'Middle East', 'Latin America', 'Global'
+];
+
+var SECTORS = [
+  'FinTech & Payments', 'Enterprise SaaS & AI', 'Web3 & DeFi',
+  'HealthTech & BioTech', 'CleanTech & Climate', 'AdTech & MarTech',
+  'Private Equity', 'Venture Capital', 'M&A & Transactions',
+  'Professional Services', 'Real Estate', 'Industrial'
+];
+
+var ALWAYS_ON_SOURCES = [
+  { id: 'sec', name: 'SEC Filings', desc: 'Board changes, capital events, insider trades', icon: 'file-text' },
+  { id: 'prnewswire', name: 'PR Newswire', desc: 'Press releases and announcements', icon: 'radio' },
+  { id: 'crunchbase', name: 'Crunchbase', desc: 'Funding rounds, acquisitions, IPOs', icon: 'trending-up' },
+  { id: 'patents', name: 'Patent Filings', desc: 'USPTO and WIPO patent applications', icon: 'shield' },
+  { id: 'regulatory', name: 'Regulatory Filings', desc: 'ASIC, FCA, MAS and other regulators', icon: 'building' }
+];
+
+var ALL_BUNDLES = [
+  { id: 'apac_vc', name: 'APAC VC & Startups', desc: 'Funding, exits and launches across Asia-Pacific', geos: ['APAC', 'SEA', 'ANZ', 'India', 'Japan'], sectors: ['Venture Capital'], icon: 'rocket' },
+  { id: 'fintech_global', name: 'Global FinTech', desc: 'Payments, banking and insurance tech', geos: ['Global'], sectors: ['FinTech & Payments'], icon: 'dollar-sign' },
+  { id: 'saas_ai', name: 'SaaS & AI Intelligence', desc: 'Enterprise software and AI developments', geos: ['Global', 'North America'], sectors: ['Enterprise SaaS & AI'], icon: 'zap' },
+  { id: 'web3', name: 'Web3 & DeFi Watch', desc: 'Crypto, DeFi protocols and blockchain', geos: ['Global'], sectors: ['Web3 & DeFi'], icon: 'link' },
+  { id: 'healthtech', name: 'HealthTech & Bio', desc: 'Digital health, biotech and medtech', geos: ['Global', 'North America'], sectors: ['HealthTech & BioTech'], icon: 'shield' },
+  { id: 'climate', name: 'CleanTech & Climate', desc: 'Energy transition, carbon and sustainability', geos: ['Global', 'Europe'], sectors: ['CleanTech & Climate'], icon: 'sun' },
+  { id: 'pe_ma', name: 'PE & M&A Tracker', desc: 'Buyouts, mergers and transactions', geos: ['Global'], sectors: ['Private Equity', 'M&A & Transactions'], icon: 'handshake' },
+  { id: 'uk_europe', name: 'UK & Europe Tech', desc: 'European startup and scale-up ecosystem', geos: ['UK & Ireland', 'Europe', 'DACH'], sectors: [], icon: 'globe' },
+  { id: 'sea_focus', name: 'Southeast Asia Focus', desc: 'Singapore, Indonesia and regional markets', geos: ['SEA'], sectors: [], icon: 'map-pin' },
+  { id: 'india_focus', name: 'India Tech & VC', desc: 'Indian startup ecosystem and funding', geos: ['India'], sectors: ['Venture Capital'], icon: 'flag' },
+  { id: 'exec_moves', name: 'Executive Moves', desc: 'C-suite and board appointments globally', geos: ['Global'], sectors: [], icon: 'users' },
+  { id: 'adtech', name: 'AdTech & MarTech', desc: 'Advertising technology and marketing platforms', geos: ['Global', 'North America'], sectors: ['AdTech & MarTech'], icon: 'target' },
+  { id: 'real_estate', name: 'PropTech & Real Estate', desc: 'Property technology and REIT developments', geos: ['Global'], sectors: ['Real Estate'], icon: 'building' },
+  { id: 'latam', name: 'Latin America Tech', desc: 'LatAm startup and fintech ecosystem', geos: ['Latin America'], sectors: [], icon: 'map-pin' },
+  { id: 'mena', name: 'Middle East Tech', desc: 'MENA investment and tech development', geos: ['Middle East'], sectors: [], icon: 'map-pin' }
+];
+
+/* ═══════════════════════════════════════
+   HELPERS
+   ═══════════════════════════════════════ */
+function getToken() {
+  return localStorage.getItem('ml_token') || '';
+}
+
+function api(method, path, body) {
+  var opts = {
+    method: method,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + getToken()
+    }
+  };
+  if (body) {
+    opts.body = JSON.stringify(body);
+  }
+  return fetch(path, opts).then(function(res) {
+    if (!res.ok) throw new Error('API error: ' + res.status);
+    return res.json();
+  });
+}
+
+function qs(sel) { return document.querySelector(sel); }
+function qsa(sel) { return document.querySelectorAll(sel); }
+
+/* ═══════════════════════════════════════
+   NAVIGATION
+   ═══════════════════════════════════════ */
+function showStep(stepId) {
+  var steps = qsa('.step');
+  for (var i = 0; i < steps.length; i++) {
+    steps[i].classList.remove('active');
+  }
+  var target = qs('#' + stepId);
+  if (target) target.classList.add('active');
+
+  wizardState.currentStep = stepId;
+  updateProgress(stepId);
+}
+
+function updateProgress(stepId) {
+  var seg1 = qs('#seg-1');
+  var seg2 = qs('#seg-2');
+  var seg3 = qs('#seg-3');
+  var lbl1 = qs('#lbl-1');
+  var lbl2 = qs('#lbl-2');
+  var lbl3 = qs('#lbl-3');
+
+  // Reset
+  seg1.className = 'progress-segment';
+  seg2.className = 'progress-segment';
+  seg3.className = 'progress-segment';
+  lbl1.className = 'progress-label';
+  lbl2.className = 'progress-label';
+  lbl3.className = 'progress-label';
+
+  if (stepId === 'step-1') {
+    seg1.classList.add('active');
+    lbl1.classList.add('active');
+  } else if (stepId === 'step-2a' || stepId === 'step-2b') {
+    seg1.classList.add('filled');
+    seg2.classList.add('active');
+    lbl1.classList.add('done');
+    lbl2.classList.add('active');
+  } else if (stepId === 'step-3') {
+    seg1.classList.add('filled');
+    seg2.classList.add('filled');
+    seg3.classList.add('active');
+    lbl1.classList.add('done');
+    lbl2.classList.add('done');
+    lbl3.classList.add('active');
+  }
+}
+
+/* ═══════════════════════════════════════
+   STEP 1 RENDERING
+   ═══════════════════════════════════════ */
+function renderPills(containerId, items, stateKey) {
+  var container = qs('#' + containerId);
+  container.innerHTML = '';
+  for (var i = 0; i < items.length; i++) {
+    (function(item) {
+      var pill = document.createElement('button');
+      pill.className = 'pill';
+      pill.type = 'button';
+      pill.textContent = item;
+      pill.onclick = function() {
+        var arr = wizardState[stateKey];
+        var idx = arr.indexOf(item);
+        if (idx > -1) {
+          arr.splice(idx, 1);
+          pill.classList.remove('selected');
+        } else {
+          arr.push(item);
+          pill.classList.add('selected');
+        }
+      };
+      container.appendChild(pill);
+    })(items[i]);
+  }
+}
+
+function initStep1() {
+  renderPills('geo-pills', GEOS, 'geos');
+  renderPills('sector-pills', SECTORS, 'sectors');
+}
+
+function saveStep1() {
+  var btn = qs('#btn-step1');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  var payload = {
+    display_name: qs('#f-display-name').value,
+    role: qs('#f-role').value,
+    company: qs('#f-company').value,
+    home_location: qs('#f-location').value,
+    geographies: wizardState.geos,
+    sectors: wizardState.sectors
+  };
+
+  api('POST', '/api/onboarding/step1', payload)
+    .then(function() {
+      btn.disabled = false;
+      btn.textContent = 'Continue';
+      loadPlatforms();
+    })
+    .catch(function(err) {
+      btn.disabled = false;
+      btn.textContent = 'Continue';
+      console.error('Step 1 save failed:', err);
+      // Advance anyway to allow offline dev
+      loadPlatforms();
+    });
+}
+
+/* ═══════════════════════════════════════
+   STEP 2a RENDERING
+   ═══════════════════════════════════════ */
+function loadPlatforms() {
+  showStep('step-2a');
+
+  api('GET', '/api/onboarding/platforms')
+    .then(function(data) {
+      wizardState.platformData = data.groups || data;
+      renderPlatformGroups(wizardState.platformData);
+    })
+    .catch(function(err) {
+      console.error('Failed to load platforms:', err);
+      // Render fallback groups for offline dev
+      var fallback = [
+        {
+          name: 'CRM & ATS',
+          platforms: [
+            { id: 'salesforce', name: 'Salesforce', connection_type: 'oauth', coming_soon: false },
+            { id: 'hubspot', name: 'HubSpot', connection_type: 'oauth', coming_soon: false },
+            { id: 'bullhorn', name: 'Bullhorn', connection_type: 'api_key', coming_soon: false },
+            { id: 'ezekia', name: 'Ezekia', connection_type: 'api_key', coming_soon: false },
+            { id: 'vincere', name: 'Vincere', connection_type: 'api_key', coming_soon: true }
+          ]
+        },
+        {
+          name: 'Spreadsheets & Files',
+          platforms: [
+            { id: 'csv', name: 'CSV Upload', connection_type: 'csv', coming_soon: false },
+            { id: 'google_sheets', name: 'Google Sheets', connection_type: 'oauth', coming_soon: true }
+          ]
+        },
+        {
+          name: 'Communication',
+          platforms: [
+            { id: 'gmail', name: 'Gmail', connection_type: 'oauth', coming_soon: false },
+            { id: 'outlook', name: 'Outlook', connection_type: 'oauth', coming_soon: true },
+            { id: 'linkedin', name: 'LinkedIn', connection_type: 'csv', coming_soon: false }
+          ]
+        }
+      ];
+      wizardState.platformData = fallback;
+      renderPlatformGroups(fallback);
+    });
+}
+
+function renderPlatformGroups(groups) {
+  var container = qs('#platform-groups');
+  container.innerHTML = '';
+
+  for (var g = 0; g < groups.length; g++) {
+    var group = groups[g];
+    var section = document.createElement('div');
+    section.className = 'pill-section';
+
+    var label = document.createElement('div');
+    label.className = 'pill-section-label';
+    label.textContent = group.name;
+    section.appendChild(label);
+
+    var pillsDiv = document.createElement('div');
+    pillsDiv.className = 'pills';
+
+    for (var p = 0; p < group.platforms.length; p++) {
+      (function(platform) {
+        var pill = document.createElement('button');
+        pill.type = 'button';
+        pill.className = 'pill';
+        if (platform.coming_soon) {
+          pill.classList.add('coming-soon');
+        }
+
+        pill.textContent = platform.name;
+
+        if (platform.coming_soon) {
+          var badge = document.createElement('span');
+          badge.className = 'soon-badge';
+          badge.textContent = 'Soon';
+          pill.appendChild(badge);
+        }
+
+        pill.setAttribute('data-platform-id', platform.id);
+
+        pill.onclick = function() {
+          if (platform.coming_soon) return;
+          var idx = wizardState.selectedPlatforms.indexOf(platform.id);
+          if (idx > -1) {
+            wizardState.selectedPlatforms.splice(idx, 1);
+            pill.classList.remove('selected');
+          } else {
+            wizardState.selectedPlatforms.push(platform.id);
+            pill.classList.add('selected');
+          }
+          qs('#btn-step2a').disabled = wizardState.selectedPlatforms.length === 0;
+        };
+
+        pillsDiv.appendChild(pill);
+      })(group.platforms[p]);
+    }
+
+    section.appendChild(pillsDiv);
+    container.appendChild(section);
+  }
+}
+
+function saveStep2a() {
+  var btn = qs('#btn-step2a');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  api('POST', '/api/onboarding/step2a', { platforms: wizardState.selectedPlatforms })
+    .then(function() {
+      btn.disabled = false;
+      btn.textContent = 'Connect selected';
+      renderStep2b();
+    })
+    .catch(function(err) {
+      btn.disabled = false;
+      btn.textContent = 'Connect selected';
+      console.error('Step 2a save failed:', err);
+      renderStep2b();
+    });
+}
+
+function skipStep2a() {
+  wizardState.selectedPlatforms = [];
+  api('POST', '/api/onboarding/step2a', { platforms: [] }).catch(function() {});
+  goToStep3();
+}
+
+/* ═══════════════════════════════════════
+   STEP 2b RENDERING
+   ═══════════════════════════════════════ */
+function findPlatformById(id) {
+  var groups = wizardState.platformData;
+  for (var g = 0; g < groups.length; g++) {
+    for (var p = 0; p < groups[g].platforms.length; p++) {
+      if (groups[g].platforms[p].id === id) {
+        return groups[g].platforms[p];
+      }
+    }
+  }
+  return null;
+}
+
+function getPlatformIcon(connType) {
+  if (connType === 'oauth') return 'lock';
+  if (connType === 'csv') return 'file-text';
+  if (connType === 'api_key') return 'settings';
+  return 'link';
+}
+
+function getPlatformValueProp(id) {
+  var props = {
+    salesforce: 'Import contacts, accounts and opportunities',
+    hubspot: 'Sync contacts, companies and deals',
+    bullhorn: 'Pull candidates, placements and job orders',
+    ezekia: 'Import candidates and search assignments',
+    csv: 'Upload a CSV of contacts or companies',
+    gmail: 'Discover contacts from email history',
+    linkedin: 'Import connections and profile data',
+    google_sheets: 'Sync contacts from a spreadsheet',
+    outlook: 'Discover contacts from email history',
+    vincere: 'Import candidates and placements'
+  };
+  return props[id] || 'Connect to import your data';
+}
+
+function getPlatformRecords(id) {
+  var records = {
+    salesforce: 'Typically 5,000-50,000 records',
+    hubspot: 'Typically 1,000-20,000 records',
+    bullhorn: 'Typically 10,000-100,000 records',
+    ezekia: 'Typically 2,000-30,000 records',
+    csv: 'Up to 100,000 rows per file',
+    gmail: 'Typically 500-5,000 contacts',
+    linkedin: 'Up to 10,000 connections',
+    google_sheets: 'Up to 50,000 rows',
+    outlook: 'Typically 500-5,000 contacts',
+    vincere: 'Typically 5,000-50,000 records'
+  };
+  return records[id] || '';
+}
+
+function renderStep2b() {
+  showStep('step-2b');
+
+  if (wizardState.selectedPlatforms.length === 0) {
+    goToStep3();
+    return;
+  }
+
+  var container = qs('#connection-cards');
+  container.innerHTML = '';
+
+  for (var i = 0; i < wizardState.selectedPlatforms.length; i++) {
+    (function(platformId) {
+      var platform = findPlatformById(platformId);
+      if (!platform) return;
+
+      var card = document.createElement('div');
+      card.className = 'connection-card';
+      card.id = 'card-' + platformId;
+
+      var iconDiv = document.createElement('div');
+      iconDiv.className = 'connection-icon';
+      iconDiv.innerHTML = icon(getPlatformIcon(platform.connection_type));
+
+      var info = document.createElement('div');
+      info.className = 'connection-info';
+
+      var nameEl = document.createElement('div');
+      nameEl.className = 'connection-name';
+      nameEl.textContent = platform.name;
+
+      var descEl = document.createElement('div');
+      descEl.className = 'connection-desc';
+      descEl.textContent = getPlatformValueProp(platformId);
+
+      var recordsEl = document.createElement('div');
+      recordsEl.className = 'connection-records';
+      recordsEl.textContent = getPlatformRecords(platformId);
+
+      info.appendChild(nameEl);
+      info.appendChild(descEl);
+      info.appendChild(recordsEl);
+
+      var actionDiv = document.createElement('div');
+      actionDiv.className = 'connection-action';
+
+      if (platform.connection_type === 'oauth') {
+        var btn = document.createElement('button');
+        btn.className = 'btn-sm';
+        btn.innerHTML = icon('lock') + ' Connect';
+        btn.onclick = function() { startOAuth(platformId, btn, card); };
+        actionDiv.appendChild(btn);
+      } else if (platform.connection_type === 'csv') {
+        var lbl = document.createElement('label');
+        lbl.className = 'upload-label';
+        lbl.innerHTML = icon('file-text') + ' Upload';
+        var fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.csv';
+        fileInput.onchange = function(e) { handleCsvUpload(platformId, e.target, card); };
+        lbl.appendChild(fileInput);
+        actionDiv.appendChild(lbl);
+      } else if (platform.connection_type === 'api_key') {
+        var btn2 = document.createElement('button');
+        btn2.className = 'btn-sm';
+        btn2.innerHTML = icon('settings') + ' Add key';
+        btn2.onclick = function() { openApiKeyModal(platformId, platform.name); };
+        actionDiv.appendChild(btn2);
+      }
+
+      card.appendChild(iconDiv);
+      card.appendChild(info);
+      card.appendChild(actionDiv);
+      container.appendChild(card);
+    })(wizardState.selectedPlatforms[i]);
+  }
+}
+
+function startOAuth(platformId, btn, card) {
+  btn.className = 'btn-sm connecting';
+  btn.innerHTML = icon('refresh-cw') + ' Connecting...';
+
+  // Open OAuth in new window
+  var authUrl = '/api/oauth/' + platformId + '/start?token=' + encodeURIComponent(getToken());
+  var authWindow = window.open(authUrl, 'oauth', 'width=600,height=700');
+
+  // Poll for completion
+  var pollInterval = setInterval(function() {
+    if (authWindow && authWindow.closed) {
+      clearInterval(pollInterval);
+      // Check if it worked
+      api('GET', '/api/oauth/' + platformId + '/status')
+        .then(function(data) {
+          if (data.connected) {
+            markCardDone(platformId, card, btn);
+          } else {
+            markCardFailed(platformId, card, btn);
+          }
+        })
+        .catch(function() {
+          markCardFailed(platformId, card, btn);
+        });
+    }
+  }, 1000);
+}
+
+function handleCsvUpload(platformId, input, card) {
+  if (!input.files || !input.files[0]) return;
+
+  var file = input.files[0];
+  var formData = new FormData();
+  formData.append('file', file);
+
+  var label = card.querySelector('.upload-label');
+  if (label) {
+    label.innerHTML = icon('refresh-cw') + ' Uploading...';
+    label.style.pointerEvents = 'none';
+  }
+
+  fetch('/api/import/csv/' + platformId, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + getToken() },
+    body: formData
+  })
+    .then(function(res) {
+      if (!res.ok) throw new Error('Upload failed');
+      return res.json();
+    })
+    .then(function() {
+      markCardDone(platformId, card, null);
+      if (label) {
+        label.innerHTML = icon('check') + ' Done';
+        label.style.color = 'var(--emerald)';
+      }
+    })
+    .catch(function() {
+      markCardFailed(platformId, card, null);
+      if (label) {
+        label.innerHTML = icon('x') + ' Failed';
+        label.style.color = 'var(--rose)';
+        label.style.pointerEvents = 'auto';
+      }
+    });
+}
+
+function openApiKeyModal(platformId, name) {
+  wizardState.modalPlatformId = platformId;
+  qs('#modal-title').textContent = 'Add ' + name + ' API key';
+  qs('#modal-desc').textContent = 'Paste your ' + name + ' API key below. It will be encrypted and stored securely.';
+  qs('#modal-key-input').value = '';
+  qs('#api-key-modal').classList.add('visible');
+  qs('#modal-key-input').focus();
+}
+
+function closeModal() {
+  qs('#api-key-modal').classList.remove('visible');
+  wizardState.modalPlatformId = null;
+}
+
+function submitApiKey() {
+  var platformId = wizardState.modalPlatformId;
+  var key = qs('#modal-key-input').value.trim();
+  if (!key || !platformId) return;
+
+  var card = qs('#card-' + platformId);
+  var btn = card ? card.querySelector('.btn-sm') : null;
+
+  closeModal();
+
+  if (btn) {
+    btn.className = 'btn-sm connecting';
+    btn.innerHTML = icon('refresh-cw') + ' Connecting...';
+  }
+
+  api('POST', '/api/integrations/' + platformId + '/key', { api_key: key })
+    .then(function() {
+      markCardDone(platformId, card, btn);
+    })
+    .catch(function() {
+      markCardFailed(platformId, card, btn);
+    });
+}
+
+function markCardDone(platformId, card, btn) {
+  wizardState.connectedPlatforms[platformId] = true;
+  if (card) {
+    card.classList.add('done');
+    card.classList.remove('failed');
+    var iconDiv = card.querySelector('.connection-icon');
+    if (iconDiv) iconDiv.innerHTML = icon('check');
+  }
+  if (btn) {
+    btn.className = 'btn-sm done';
+    btn.innerHTML = icon('check') + ' Connected';
+  }
+}
+
+function markCardFailed(platformId, card, btn) {
+  if (card) {
+    card.classList.add('failed');
+    card.classList.remove('done');
+  }
+  if (btn) {
+    btn.className = 'btn-sm failed';
+    btn.innerHTML = icon('x') + ' Failed';
+  }
+}
+
+/* ═══════════════════════════════════════
+   STEP 3 RENDERING
+   ═══════════════════════════════════════ */
+function goToStep3() {
+  showStep('step-3');
+  renderFeedStep();
+}
+
+function renderFeedStep() {
+  // Always on
+  var alwaysOnContainer = qs('#always-on-cards');
+  alwaysOnContainer.innerHTML = '';
+
+  for (var i = 0; i < ALWAYS_ON_SOURCES.length; i++) {
+    var src = ALWAYS_ON_SOURCES[i];
+    alwaysOnContainer.appendChild(createFeedCard(src, true));
+  }
+
+  // Recommended — filter bundles by user geos + sectors
+  var recommended = [];
+  var other = [];
+
+  for (var b = 0; b < ALL_BUNDLES.length; b++) {
+    var bundle = ALL_BUNDLES[b];
+    var isRecommended = false;
+
+    // Check geo overlap
+    for (var g = 0; g < bundle.geos.length; g++) {
+      if (wizardState.geos.indexOf(bundle.geos[g]) > -1) {
+        isRecommended = true;
+        break;
+      }
+    }
+
+    // Check sector overlap
+    if (!isRecommended) {
+      for (var s = 0; s < bundle.sectors.length; s++) {
+        if (wizardState.sectors.indexOf(bundle.sectors[s]) > -1) {
+          isRecommended = true;
+          break;
+        }
+      }
+    }
+
+    if (isRecommended) {
+      recommended.push(bundle);
+    } else {
+      other.push(bundle);
+    }
+  }
+
+  // If no user selections, show a few defaults as recommended
+  if (recommended.length === 0) {
+    recommended = ALL_BUNDLES.slice(0, 4);
+    other = ALL_BUNDLES.slice(4);
+  }
+
+  var recContainer = qs('#recommended-cards');
+  recContainer.innerHTML = '';
+  for (var r = 0; r < recommended.length; r++) {
+    wizardState.feedToggles[recommended[r].id] = true;
+    recContainer.appendChild(createFeedCard(recommended[r], false, true));
+  }
+
+  // Browse all
+  var browseContainer = qs('#browse-cards');
+  browseContainer.innerHTML = '';
+  for (var o = 0; o < other.length; o++) {
+    wizardState.feedToggles[other[o].id] = false;
+    browseContainer.appendChild(createFeedCard(other[o], false, false));
+  }
+
+  // Chevron icon
+  qs('#browse-chevron').innerHTML = icon('arrow-down-right');
+}
+
+function createFeedCard(source, alwaysOn, defaultOn) {
+  var card = document.createElement('div');
+  card.className = 'feed-card';
+  if (alwaysOn) card.classList.add('always-on');
+
+  var iconDiv = document.createElement('div');
+  iconDiv.className = 'feed-card-icon';
+  iconDiv.innerHTML = icon(source.icon || 'radio');
+
+  var info = document.createElement('div');
+  info.className = 'feed-card-info';
+
+  var name = document.createElement('div');
+  name.className = 'feed-card-name';
+  name.textContent = source.name;
+
+  var desc = document.createElement('div');
+  desc.className = 'feed-card-desc';
+  desc.textContent = source.desc;
+
+  info.appendChild(name);
+  info.appendChild(desc);
+
+  var toggle = document.createElement('label');
+  toggle.className = 'toggle';
+
+  var checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = alwaysOn || !!defaultOn;
+  if (alwaysOn) checkbox.disabled = true;
+
+  if (!alwaysOn && source.id) {
+    (function(id) {
+      checkbox.onchange = function() {
+        wizardState.feedToggles[id] = checkbox.checked;
+      };
+    })(source.id);
+  }
+
+  var slider = document.createElement('span');
+  slider.className = 'slider';
+
+  toggle.appendChild(checkbox);
+  toggle.appendChild(slider);
+
+  card.appendChild(iconDiv);
+  card.appendChild(info);
+  card.appendChild(toggle);
+
+  return card;
+}
+
+function toggleBrowse() {
+  var btn = qs('#browse-btn');
+  var content = qs('#browse-content');
+  btn.classList.toggle('expanded');
+  content.classList.toggle('expanded');
+}
+
+function activateFeed() {
+  var btn = qs('#btn-activate');
+  btn.disabled = true;
+  btn.textContent = 'Activating...';
+
+  var activeBundles = [];
+  for (var id in wizardState.feedToggles) {
+    if (wizardState.feedToggles[id]) {
+      activeBundles.push(id);
+    }
+  }
+
+  api('POST', '/api/onboarding/complete', { bundles: activeBundles })
+    .then(function() {
+      window.location.href = '/index.html?onboarded=true';
+    })
+    .catch(function(err) {
+      console.error('Activation failed:', err);
+      btn.disabled = false;
+      btn.textContent = 'Activate my feed';
+      // Redirect anyway for dev
+      window.location.href = '/index.html?onboarded=true';
+    });
+}
+
+/* ═══════════════════════════════════════
+   INITIALISATION
+   ═══════════════════════════════════════ */
+function init() {
+  initStep1();
+
+  // Determine starting step
+  var params = new URLSearchParams(window.location.search);
+  var stepParam = params.get('step');
+
+  // Map API status values to step IDs
+  var stepMap = {
+    'step_1': 'step-1',
+    'step_2a': 'step-2a',
+    'step_2b': 'step-2b',
+    'step_3': 'step-3'
+  };
+
+  if (stepParam && stepMap[stepParam]) {
+    var targetStep = stepMap[stepParam];
+    showStep(targetStep);
+    if (targetStep === 'step-2a') loadPlatforms();
+    if (targetStep === 'step-2b') {
+      loadPlatforms(); // Need platform data before rendering 2b
+    }
+    if (targetStep === 'step-3') goToStep3();
+    return;
+  }
+
+  // Fetch onboarding status from API
+  api('GET', '/api/onboarding/status')
+    .then(function(data) {
+      var status = data.onboarding_status || data.step || 'step_1';
+      var targetStep = stepMap[status] || 'step-1';
+
+      // Pre-fill user data if available
+      if (data.user) {
+        if (data.user.display_name) qs('#f-display-name').value = data.user.display_name;
+        if (data.user.role) qs('#f-role').value = data.user.role;
+        if (data.user.company) qs('#f-company').value = data.user.company;
+        if (data.user.home_location) qs('#f-location').value = data.user.home_location;
+        if (data.user.geographies) wizardState.geos = data.user.geographies;
+        if (data.user.sectors) wizardState.sectors = data.user.sectors;
+
+        // Restore pill selections
+        restorePillSelections('geo-pills', wizardState.geos);
+        restorePillSelections('sector-pills', wizardState.sectors);
+      }
+
+      showStep(targetStep);
+      if (targetStep === 'step-2a' || targetStep === 'step-2b') loadPlatforms();
+      if (targetStep === 'step-3') goToStep3();
+    })
+    .catch(function(err) {
+      console.error('Failed to load onboarding status:', err);
+      showStep('step-1');
+    });
+}
+
+function restorePillSelections(containerId, selectedItems) {
+  var pills = qs('#' + containerId).querySelectorAll('.pill');
+  for (var i = 0; i < pills.length; i++) {
+    if (selectedItems.indexOf(pills[i].textContent) > -1) {
+      pills[i].classList.add('selected');
+    }
+  }
+}
+
+// Close modal on overlay click
+qs('#api-key-modal').onclick = function(e) {
+  if (e.target === qs('#api-key-modal')) closeModal();
+};
+
+// Close modal on Escape
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeModal();
+});
+
+init();
+</script>
+</body>
+</html>

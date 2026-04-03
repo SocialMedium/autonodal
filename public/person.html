@@ -168,7 +168,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 <body>
 <header class="masthead"><div class="masthead-inner">
   <a href="/index.html" class="mast-logo">MitchelLake <em>Signals</em></a>
-  <nav class="mast-nav"><a href="/index.html">Signals</a><a href="/people.html" class="active">People</a><a href="/companies.html">Companies</a><a href="/dispatches.html">Dispatch</a><a href="/placements.html">Revenue</a><a href="/case-studies.html">Case Studies</a></nav>
+  <nav class="mast-nav"><a href="/index.html">Signals</a><a href="/people.html" class="active">People</a><a href="/companies.html">Companies</a><a href="/dispatches.html">Dispatch</a><a href="/placements.html">Revenue</a><a href="/case-studies.html">Case Studies</a><a href="/huddles.html">Huddles</a></nav>
   <div style="width:34px;height:34px;border-radius:50%;background:var(--ink);color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600">JT</div>
 </div></header>
 
@@ -200,7 +200,7 @@ const _from=_params.get('from'),_fromId=_params.get('from_id'),_fromName=decodeU
 const p=await api('/api/people/'+id);if(!p)return;
 document.title=(p.full_name||'Person')+' — MitchelLake Signals';
 const ini=(p.full_name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-const notes=p.research_notes||[];const ixs=p.interactions||[];const csig=p.company_signals||[];const psig=p.person_signals||[];const colls=p.colleagues||[];const s=p.interaction_stats||{};
+const notes=p.research_notes||[];const ixs=p.interactions||[];const csig=p.company_signals||[];const psig=p.person_signals||[];const colls=p.colleagues||[];const s=p.interaction_stats||{};const prox=p.proximity||[];
 
 const coId=p.company_id_linked||p.current_company_id||'';
 
@@ -212,9 +212,9 @@ if(p.company_is_client)tags.push('<a class="tag client" href="/company.html?id='
 (Array.isArray(p.expertise_tags)?p.expertise_tags:[]).slice(0,4).forEach(t=>tags.push('<a class="tag" href="/people.html?q='+encodeURIComponent(t)+'" style="text-decoration:none">'+esc(t)+'</a>'));
 
 const ct=[];
-if(p.email)ct.push('<div class="ci">✉️ <a href="mailto:'+esc(p.email)+'">'+esc(p.email)+'</a></div>');
-if(p.linkedin_url)ct.push('<div class="ci">🔗 <a href="'+esc(p.linkedin_url)+'" target="_blank">LinkedIn</a></div>');
-if(p.phone)ct.push('<div class="ci">📞 '+esc(p.phone)+'</div>');
+if(p.email)ct.push('<div class="ci">'+icon('mail')+' <a href="mailto:'+esc(p.email)+'">'+esc(p.email)+'</a></div>');
+if(p.linkedin_url)ct.push('<div class="ci">'+icon('link')+' <a href="'+esc(p.linkedin_url)+'" target="_blank">LinkedIn</a></div>');
+if(p.phone)ct.push('<div class="ci">'+icon('phone')+' '+esc(p.phone)+'</div>');
 let h='';
 if(_from&&_fromId){
   var _link=_from==='company'?'/company.html?id='+_fromId:'/person.html?id='+_fromId;
@@ -226,18 +226,18 @@ h+='<div class="pinfo">';
 h+='<div class="pname"><span class="editable" onclick="editField(this,\'full_name\',\''+esc(p.full_name)+'\')">'+esc(p.full_name)+'</span></div>';
 h+='<div class="ptitle"><span class="editable" onclick="editField(this,\'current_title\',\''+esc(p.current_title||p.headline||'')+'\')">'+esc(p.current_title||p.headline||'Add title')+'</span></div>';
 h+='<div class="pmeta">';
-h+='<span>🏢 <span class="editable" onclick="editField(this,\'current_company_name\',\''+esc(p.current_company_name||'')+'\')">'+esc(p.current_company_name||'Add company')+'</span>'+(p.company_sector?' · '+esc(p.company_sector):'')+'</span>';
-if(p.location)h+='<span>📍 <span class="editable" onclick="editField(this,\'location\',\''+esc(p.location)+'\')">'+esc(p.location)+'</span></span>';
-else h+='<span>📍 <span class="editable" onclick="editField(this,\'location\',\'\')">Add location</span></span>';
-if(p.functional_area)h+='<span>⚡ '+esc(p.functional_area)+'</span>';
+h+='<span>'+icon('building')+' <span class="editable" onclick="editField(this,\'current_company_name\',\''+esc(p.current_company_name||'')+'\')">'+esc(p.current_company_name||'Add company')+'</span>'+(p.company_sector?' · '+esc(p.company_sector):'')+'</span>';
+if(p.location)h+='<span>'+icon('map-pin')+' <span class="editable" onclick="editField(this,\'location\',\''+esc(p.location)+'\')">'+esc(p.location)+'</span></span>';
+else h+='<span>'+icon('map-pin')+' <span class="editable" onclick="editField(this,\'location\',\'\')">Add location</span></span>';
+if(p.functional_area)h+='<span>'+icon('zap')+' '+esc(p.functional_area)+'</span>';
 h+='</div>';
 if(tags.length)h+='<div class="ptags">'+tags.join('')+'</div>';
 h+='</div>';
 h+='<div class="pcontact">';
-h+='<div class="ci">✉️ <span class="editable" onclick="editField(this,\'email\',\''+esc(p.email||'')+'\')">'+esc(p.email||'Add email')+'</span></div>';
-if(p.linkedin_url)h+='<div class="ci">🔗 <a href="'+esc(p.linkedin_url)+'" target="_blank">LinkedIn</a></div>';
-else h+='<div class="ci">🔗 <span class="editable" onclick="editField(this,\'linkedin_url\',\'\')">Add LinkedIn</span></div>';
-if(p.phone)h+='<div class="ci">📞 <span class="editable" onclick="editField(this,\'phone\',\''+esc(p.phone)+'\')">'+esc(p.phone)+'</span></div>';
+h+='<div class="ci">'+icon('mail')+' <span class="editable" onclick="editField(this,\'email\',\''+esc(p.email||'')+'\')">'+esc(p.email||'Add email')+'</span></div>';
+if(p.linkedin_url)h+='<div class="ci">'+icon('link')+' <a href="'+esc(p.linkedin_url)+'" target="_blank">LinkedIn</a></div>';
+else h+='<div class="ci">'+icon('link')+' <span class="editable" onclick="editField(this,\'linkedin_url\',\'\')">Add LinkedIn</span></div>';
+if(p.phone)h+='<div class="ci">'+icon('phone')+' <span class="editable" onclick="editField(this,\'phone\',\''+esc(p.phone)+'\')">'+esc(p.phone)+'</span></div>';
 h+='</div>';
 h+='<div class="pheader-actions">';
 h+='<button class="enrich-btn" id="enrichBtn" onclick="enrichPerson()">'+icon('refresh-cw')+' Refresh &amp; Enrich</button>';
@@ -260,6 +260,25 @@ if(s.last_interaction)h+='<span style="font-size:10px;color:var(--ink-4);margin-
 h+='</div>';
 if(p.bio)h+='<div style="font-size:11px;color:var(--ink-3);line-height:1.45;overflow-wrap:break-word;max-height:34px;overflow:hidden;margin-bottom:12px">'+esc(p.bio)+'</div>';
 
+// Proximity — team connections to this person
+if(prox.length>0){
+  h+='<div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px">';
+  h+='<div style="font-size:11px;font-weight:600;color:var(--ink-3);margin-bottom:8px">'+icon('link')+' Team Proximity</div>';
+  prox.forEach(function(pr){
+    var str=Math.round((parseFloat(pr.relationship_strength)||0)*100);
+    var col=str>=50?'var(--emerald)':str>=25?'var(--amber)':'var(--ink-4)';
+    var last=pr.last_contact?fmtD(pr.last_contact):'';
+    var ixCount=parseInt(pr.interaction_count)||0;
+    h+='<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px">';
+    h+='<span style="font-weight:500;color:var(--ink)">'+esc(pr.team_member)+'</span>';
+    h+='<span style="font-family:var(--mono);font-size:10px;color:'+col+'">'+str+'%</span>';
+    if(ixCount>0)h+='<span style="font-size:10px;color:var(--ink-4)">'+ixCount+' interactions</span>';
+    if(last)h+='<span style="font-size:10px;color:var(--ink-4);margin-left:auto">'+last+'</span>';
+    h+='</div>';
+  });
+  h+='</div>';
+}
+
 // Signals + Interactions — SIDE BY SIDE
 h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px" class="sig-ix-grid">';
 
@@ -268,7 +287,7 @@ if(csig.length){
   h+='<div class="card" style="margin-bottom:0"><div class="card-head"><div class="card-title">Signals</div><div class="card-count">'+csig.length+'</div></div>';
   csig.slice(0,6).forEach(function(x){
     var sigClick=x.source_url?'onclick="window.open(\''+esc(x.source_url)+'\',\'_blank\')"':'onclick="location.href=\'/company.html?id='+coId+'\'"';
-    h+='<div class="sig" style="cursor:pointer" '+sigClick+'><div class="sig-icon">'+(SI[x.signal_type]||'📡')+'</div><div class="sig-info"><div class="sig-hl">'+esc((x.evidence_summary||x.signal_type.replace(/_/g,' ')).slice(0,80))+(x.source_url?' <span style="font-size:10px;color:var(--blue)">↗</span>':'')+'</div><div class="sig-det">'+esc(x.signal_type.replace(/_/g,' '))+' · '+ago(x.detected_at)+(x.source_name?' · '+esc(x.source_name):'')+'</div></div><div class="sig-conf">'+Math.round((x.confidence_score||0)*100)+'%</div></div>';
+    h+='<div class="sig" style="cursor:pointer" '+sigClick+'><div class="sig-icon">'+(SI[x.signal_type]||''+icon('radio')+'')+'</div><div class="sig-info"><div class="sig-hl">'+esc((x.evidence_summary||x.signal_type.replace(/_/g,' ')).slice(0,80))+(x.source_url?' <span style="font-size:10px;color:var(--blue)">↗</span>':'')+'</div><div class="sig-det">'+esc(x.signal_type.replace(/_/g,' '))+' · '+ago(x.detected_at)+(x.source_name?' · '+esc(x.source_name):'')+'</div></div><div class="sig-conf">'+Math.round((x.confidence_score||0)*100)+'%</div></div>';
   });
   if(csig.length>6)h+='<div style="font-size:11px;color:var(--blue);padding:4px 0;cursor:pointer" onclick="location.href=\'/company.html?id='+coId+'\'">+'+(csig.length-6)+' more →</div>';
   h+='</div>';
@@ -279,19 +298,19 @@ if(csig.length){
 // Interactions column
 if(ixs.length){
   h+='<div class="card" style="margin-bottom:0"><div class="card-head"><div class="card-title">Interactions</div><div class="card-count">'+ixs.length+'</div></div>';
-  const ixLimit = 8;
+  const ixLimit = 6;
   const ixVisible = ixs.slice(0, ixLimit);
   const ixHidden = ixs.slice(ixLimit);
   ixVisible.forEach(i=>{
     const intBadge=i.is_internal?'<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:#F3EEFE;color:#6D28D9;font-weight:600;margin-left:4px">INTERNAL</span>':'';
     const sensBadge=i.sensitivity==='sensitive'?'<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:#FDF0F2;color:#C41D3E;font-weight:600;margin-left:4px">SENSITIVE</span>':'';
     const privBadge=i.visibility==='private'?'<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:#FEF7E8;color:#B45309;font-weight:600;margin-left:4px">PRIVATE</span>':'';
-    h+='<div class="ix" style="cursor:pointer" onclick="toggleIx(this)"><div class="ix-icon">'+(II[i.interaction_type]||'📋')+'</div><div class="ix-info"><div class="ix-title">'+esc(i.subject||i.summary||i.interaction_type)+intBadge+sensBadge+privBadge+'</div>'+(i.email_snippet?'<div class="ix-det ix-preview">'+esc(String(i.email_snippet).slice(0,200))+'</div><div class="ix-full" style="display:none;white-space:pre-line">'+esc(i.email_snippet)+'</div>':'')+(i.summary&&i.email_snippet?'<div class="ix-full" style="display:none;margin-top:6px;font-size:12px;color:var(--ink-3)"><strong>Summary:</strong> '+esc(i.summary)+'</div>':'')+(i.email_from||i.email_to?'<div class="ix-full" style="display:none;font-size:11px;color:var(--ink-4);margin-top:4px">'+(i.email_from?'From: '+esc(i.email_from):'')+(i.email_to?' → '+esc(i.email_to):'')+'</div>':'')+'<div class="ix-det">'+esc(i.interaction_type.replace(/_/g,' '))+(i.direction?' · '+i.direction:'')+(i.source?' · '+esc(i.source):'')+'</div></div><div class="ix-date">'+fmtD(i.interaction_at)+'</div></div>';
+    h+='<div class="ix" style="cursor:pointer" onclick="toggleIx(this)"><div class="ix-icon">'+(II[i.interaction_type]||''+icon('clipboard')+'')+'</div><div class="ix-info"><div class="ix-title">'+esc(i.subject||i.summary||i.interaction_type)+intBadge+sensBadge+privBadge+'</div>'+(i.email_snippet?'<div class="ix-det ix-preview">'+esc(String(i.email_snippet).slice(0,200))+'</div><div class="ix-full" style="display:none;white-space:pre-line">'+esc(i.email_snippet)+'</div>':'')+(i.summary&&i.email_snippet?'<div class="ix-full" style="display:none;margin-top:6px;font-size:12px;color:var(--ink-3)"><strong>Summary:</strong> '+esc(i.summary)+'</div>':'')+(i.email_from||i.email_to?'<div class="ix-full" style="display:none;font-size:11px;color:var(--ink-4);margin-top:4px">'+(i.email_from?'From: '+esc(i.email_from):'')+(i.email_to?' → '+esc(i.email_to):'')+'</div>':'')+'<div class="ix-det">'+esc(i.interaction_type.replace(/_/g,' '))+(i.direction?' · '+i.direction:'')+(i.source?' · '+esc(i.source):'')+'</div></div><div class="ix-date">'+fmtD(i.interaction_at)+'</div></div>';
   });
   if(ixHidden.length){
     h+='<div id="ixMore" style="display:none">';
     ixHidden.forEach(i=>{
-      h+='<div class="ix" style="cursor:pointer" onclick="toggleIx(this)"><div class="ix-icon">'+(II[i.interaction_type]||'📋')+'</div><div class="ix-info"><div class="ix-title">'+esc(i.subject||i.summary||i.interaction_type)+'</div>'+(i.email_snippet?'<div class="ix-det ix-preview">'+esc(String(i.email_snippet).slice(0,200))+'</div>':'')+'<div class="ix-det">'+esc(i.interaction_type.replace(/_/g,' '))+(i.direction?' · '+i.direction:'')+'</div></div><div class="ix-date">'+fmtD(i.interaction_at)+'</div></div>';
+      h+='<div class="ix" style="cursor:pointer" onclick="toggleIx(this)"><div class="ix-icon">'+(II[i.interaction_type]||''+icon('clipboard')+'')+'</div><div class="ix-info"><div class="ix-title">'+esc(i.subject||i.summary||i.interaction_type)+'</div>'+(i.email_snippet?'<div class="ix-det ix-preview">'+esc(String(i.email_snippet).slice(0,200))+'</div>':'')+'<div class="ix-det">'+esc(i.interaction_type.replace(/_/g,' '))+(i.direction?' · '+i.direction:'')+'</div></div><div class="ix-date">'+fmtD(i.interaction_at)+'</div></div>';
     });
     h+='</div>';
     h+='<button onclick="document.getElementById(\'ixMore\').style.display=\'block\';this.style.display=\'none\'" style="width:100%;padding:8px;margin-top:6px;font-size:12px;color:var(--blue);background:var(--surface-cool);border:1px solid var(--rule);border-radius:6px;cursor:pointer;font-family:var(--sans)">Show '+ixHidden.length+' more interactions</button>';
@@ -307,7 +326,7 @@ h+='<div class="card-grid">';
 // Research Notes — compact, only if populated with real content
 if(notes.length){
   h+='<div class="card"><div class="card-head"><div class="card-title">Research Notes</div><div class="card-count">'+notes.length+'</div></div>';
-  notes.slice(0,4).forEach(n=>{
+  notes.slice(0,6).forEach(n=>{
     const qb=n.note_quality?'<span class="note-q '+(n.note_quality==='high'?'high':'medium')+'">'+n.note_quality+'</span>':'';
     let intel='';
     if(n.extracted_intelligence&&typeof n.extracted_intelligence==='object'){
@@ -327,7 +346,7 @@ if(notes.length){
     const noteBody=stripHtml(n.summary||'').slice(0,300);
     h+='<div class="note"><div class="note-top"><div class="note-subj">'+esc(n.subject||'Note')+qb+'</div><div class="note-date">'+fmtD(n.interaction_at||n.created_at)+'</div></div><div class="note-body">'+esc(noteBody)+(noteBody.length>=300?'…':'')+'</div>'+intel+'</div>';
   });
-  if(notes.length>4)h+='<div style="font-size:11px;color:var(--blue);padding:4px 0;cursor:pointer" onclick="document.getElementById(\'allNotes\').style.display=\'block\';this.style.display=\'none\'">Show '+(notes.length-4)+' more notes →</div><div id="allNotes" style="display:none">'+notes.slice(4).map(function(n){return '<div class="note"><div class="note-top"><div class="note-subj">'+esc(n.subject||'Note')+'</div><div class="note-date">'+fmtD(n.interaction_at||n.created_at)+'</div></div><div class="note-body">'+esc(stripHtml(n.summary||'').slice(0,300))+'</div></div>'}).join('')+'</div>';
+  if(notes.length>6)h+='<div style="font-size:11px;color:var(--blue);padding:4px 0;cursor:pointer" onclick="document.getElementById(\'allNotes\').style.display=\'block\';this.style.display=\'none\'">Show '+(notes.length-6)+' more notes</div><div id="allNotes" style="display:none">'+notes.slice(6).map(function(n){return '<div class="note"><div class="note-top"><div class="note-subj">'+esc(n.subject||'Note')+'</div><div class="note-date">'+fmtD(n.interaction_at||n.created_at)+'</div></div><div class="note-body">'+esc(stripHtml(n.summary||'').slice(0,300))+'</div></div>'}).join('')+'</div>';
   h+='</div>';
 }
 
@@ -405,12 +424,12 @@ async function enrichPerson() {
     else if (r2.signals?.mentions_found > 0) msgs.push(r2.signals.mentions_found + ' mentions');
     if (r2.web?.company_signals > 0) msgs.push(r2.web.company_signals + ' co signals');
     if (r2.embedding?.message) msgs.push('Embedded');
-    btn.textContent = '✅ ' + (msgs.length ? msgs.join(' · ') : 'Up to date');
+    btn.textContent = ''+icon('check')+' ' + (msgs.length ? msgs.join(' · ') : 'Up to date');
     setTimeout(() => { window.scrollTo(0, 0); location.reload(); }, 3000);
   } catch (e) {
     btn.className = 'enrich-btn';
-    btn.textContent = '❌ ' + e.message;
-    setTimeout(() => { btn.textContent = '🔄 Refresh & Enrich'; }, 3000);
+    btn.textContent = ''+icon('x')+' ' + e.message;
+    setTimeout(() => { btn.textContent = ''+icon('refresh-cw')+' Refresh & Enrich'; }, 3000);
   }
 }
 

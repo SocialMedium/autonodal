@@ -1573,9 +1573,9 @@ const PIPELINES = {
     icon: '📧',
     fn: async () => {
       const { execSync } = require('child_process');
-      execSync('node ' + require('path').join(__dirname, 'sync_gmail.js'), { timeout: 300000, stdio: 'inherit' });
+      execSync('node ' + require('path').join(__dirname, 'sync_gmail.js'), { timeout: 600000, stdio: 'inherit' });
     },
-    schedule: '*/15 * * * *',
+    schedule: '0 */4 * * *',  // Every 4 hours — DB lock prevents overlaps, worker process only
     description: 'Delta sync Gmail threads for connected accounts → interactions + team_proximity'
   },
 

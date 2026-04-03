@@ -74,11 +74,31 @@ function parseRSS(data, sourceName) {
   
   for (const item of channel.item.slice(0, MAX_ITEMS_PER_FEED)) {
     const title = Array.isArray(item.title) ? item.title[0] : item.title;
-    const link = Array.isArray(item.link) ? item.link[0] : item.link;
+    let link = Array.isArray(item.link) ? item.link[0] : item.link;
     const description = Array.isArray(item.description) ? item.description[0] : item.description;
     const pubDate = Array.isArray(item.pubDate) ? item.pubDate[0] : item.pubDate;
     const author = Array.isArray(item.author) ? item.author[0] : (item['dc:creator']?.[0] || null);
-    
+
+    // Podcast: extract audio URL from enclosure, image from itunes:image
+    let audioUrl = null;
+    let imageUrl = null;
+    if (item.enclosure) {
+      const enc = Array.isArray(item.enclosure) ? item.enclosure[0] : item.enclosure;
+      audioUrl = enc.$?.url || enc.url || null;
+    }
+    if (item['itunes:image']) {
+      const img = Array.isArray(item['itunes:image']) ? item['itunes:image'][0] : item['itunes:image'];
+      imageUrl = img.$?.href || img.href || null;
+    }
+    // If no link but we have audio URL, use it as the link
+    if (!link && audioUrl) link = audioUrl;
+    // If still no link, try guid
+    if (!link) {
+      const guid = Array.isArray(item.guid) ? item.guid[0] : item.guid;
+      const guidText = typeof guid === 'object' ? guid._ : guid;
+      if (guidText && guidText.startsWith('http')) link = guidText;
+    }
+
     if (link) {
       items.push({
         title: cleanText(title),
@@ -86,7 +106,9 @@ function parseRSS(data, sourceName) {
         content: cleanText(description),
         author: cleanText(author),
         published_at: parseDate(pubDate),
-        source_name: sourceName
+        source_name: sourceName,
+        image_url: imageUrl,
+        audio_url: audioUrl,
       });
     }
   }
@@ -122,7 +144,24 @@ function parseAtom(data, sourceName) {
     const author = entry.author?.[0]?.name?.[0] || null;
     
     const bodyText = typeof content === 'object' ? content._ : (content || summary);
-    
+
+    // YouTube-specific: extract video ID and thumbnail
+    let videoId = null;
+    let imageUrl = null;
+    if (entry['yt:videoId']) {
+      videoId = Array.isArray(entry['yt:videoId']) ? entry['yt:videoId'][0] : entry['yt:videoId'];
+      imageUrl = 'https://img.youtube.com/vi/' + videoId + '/hqdefault.jpg';
+      if (!link) link = 'https://www.youtube.com/watch?v=' + videoId;
+    }
+    // Also try media:group > media:thumbnail
+    if (!imageUrl && entry['media:group']) {
+      const mg = Array.isArray(entry['media:group']) ? entry['media:group'][0] : entry['media:group'];
+      if (mg['media:thumbnail']) {
+        const thumb = Array.isArray(mg['media:thumbnail']) ? mg['media:thumbnail'][0] : mg['media:thumbnail'];
+        imageUrl = thumb?.$?.url || thumb?.url || null;
+      }
+    }
+
     if (link) {
       items.push({
         title: cleanText(titleText),
@@ -130,7 +169,9 @@ function parseAtom(data, sourceName) {
         content: cleanText(bodyText),
         author: cleanText(author),
         published_at: parseDate(published || updated),
-        source_name: sourceName
+        source_name: sourceName,
+        image_url: imageUrl,
+        video_id: videoId,
       });
     }
   }
@@ -215,7 +256,7 @@ async function harvestRSS() {
         
         if (!existing) {
           await db.insert('external_documents', {
-            source_type: 'rss',
+            source_type: item.video_id ? 'youtube' : (item.audio_url ? 'podcast' : 'rss'),
             source_name: item.source_name,
             source_url: item.url,
             source_url_hash: urlHash,
@@ -223,6 +264,8 @@ async function harvestRSS() {
             content: item.content,
             author: item.author,
             published_at: item.published_at,
+            image_url: item.image_url || null,
+            audio_url: item.audio_url || null,
             processing_status: 'pending'
           });
           newItems++;

@@ -32,8 +32,9 @@ const USER_ID   = (() => {
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const LOOKBACK_DAYS    = parseInt(process.env.GMAIL_LOOKBACK_DAYS    || '90');
-const MAX_THREADS      = parseInt(process.env.GMAIL_MAX_THREADS_PER_RUN || '500');
-const RATE_LIMIT_MS    = 100; // 10 calls/sec max
+const MAX_THREADS      = parseInt(process.env.GMAIL_MAX_THREADS_PER_RUN || '2000');
+const RATE_LIMIT_MS    = 200; // 5 calls/sec — safer for quota
+const INITIAL_SYNC_MAX = 5000; // Cap for first-time account sync (no historyId)
 const SKIP_LABELS      = new Set(['SPAM', 'TRASH', 'PROMOTIONS', 'CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_UPDATES', 'CATEGORY_FORUMS']);
 const CV_PATTERN       = /(resume|cv|curriculum.vitae).*(\.pdf|\.doc|\.docx)$/i;
 
@@ -615,8 +616,27 @@ async function main() {
     await loadTeamEmails();
     console.log(c.dim(`  Team emails loaded: ${teamEmailSet.size}`));
 
+    // Prevent overlapping runs via DB-based lock
+    const lockKey = 'gmail_sync_running';
+    const { rows: [lock] } = await pool.query(
+      `SELECT value, updated_at FROM system_settings WHERE key = $1`, [lockKey]
+    ).catch(() => ({ rows: [] }));
+    if (lock && lock.value === 'true') {
+      const lockAge = (Date.now() - new Date(lock.updated_at)) / 60000;
+      if (lockAge < 30) {
+        console.log(c.yellow(`  ⏭️  Gmail sync already running (${Math.round(lockAge)}m ago) — skipping`));
+        return { records_in: 0, records_out: 0 };
+      }
+      console.log(c.yellow(`  ⚠️  Stale lock (${Math.round(lockAge)}m) — overriding`));
+    }
+    await pool.query(
+      `INSERT INTO system_settings (key, value, updated_at) VALUES ($1, 'true', NOW())
+       ON CONFLICT (key) DO UPDATE SET value = 'true', updated_at = NOW()`,
+      [lockKey]
+    ).catch(() => {});
+
     // Get accounts to sync
-    let query = `SELECT * FROM user_google_accounts WHERE access_token IS NOT NULL`;
+    let query = `SELECT * FROM user_google_accounts WHERE access_token IS NOT NULL AND sync_enabled = true`;
     const params = [];
     if (USER_ID) {
       query += ` AND user_id = $1`;
@@ -627,6 +647,7 @@ async function main() {
 
     if (accounts.length === 0) {
       console.log(c.yellow('  No connected Google accounts found'));
+      await pool.query(`UPDATE system_settings SET value = 'false', updated_at = NOW() WHERE key = $1`, [lockKey]).catch(() => {});
       return { records_in: 0, records_out: 0 };
     }
 
@@ -650,6 +671,9 @@ async function main() {
     console.log('');
     console.log(c.blue('═══════════════════════════════════════════════════════'));
     console.log(c.blue('  📧 GMAIL SYNC COMPLETE'));
+    // Release lock
+    await pool.query(`UPDATE system_settings SET value = 'false', updated_at = NOW() WHERE key = $1`, [lockKey]).catch(() => {});
+
     console.log(c.blue('═══════════════════════════════════════════════════════'));
     console.log(`  Threads scanned:        ${totalThreads.toLocaleString()}`);
     console.log(`  Interactions logged:    ${totalInteractions.toLocaleString()}`);

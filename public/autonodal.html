@@ -155,6 +155,29 @@ p.body{font-size:16px;font-weight:300;line-height:1.8;color:var(--ink-mid);margi
 .restricted{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:rgba(245,243,239,0.32);display:flex;align-items:center;gap:10px}
 .restricted::before,.restricted::after{content:'';display:block;width:24px;height:1px;background:var(--void-border)}
 
+.modal-overlay{position:fixed;inset:0;z-index:999;background:rgba(13,12,10,0.82);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;padding:24px}
+.modal-overlay.open{display:flex}
+.modal-box{background:var(--void-surface);border:1px solid var(--void-border);max-width:480px;width:100%;padding:56px 48px;position:relative;text-align:center}
+.modal-close{position:absolute;top:20px;right:20px;background:none;border:none;color:rgba(245,243,239,0.3);cursor:pointer;font-size:20px;line-height:1;padding:4px;transition:color .2s}
+.modal-close:hover{color:rgba(245,243,239,0.7)}
+.modal-icon{display:flex;justify-content:center;margin-bottom:28px}
+.modal-title{font-family:'Playfair Display',serif;font-size:28px;font-weight:400;color:var(--cream);line-height:1.2;margin-bottom:12px}
+.modal-sub{font-size:15px;font-weight:300;color:rgba(245,243,239,0.55);line-height:1.7;margin-bottom:36px}
+.modal-sub strong{color:rgba(245,243,239,0.82);font-weight:400}
+.modal-form{display:flex;flex-direction:column;gap:12px}
+.modal-input{background:var(--void);border:1px solid var(--void-border);color:var(--cream);font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:300;padding:14px 18px;outline:none;transition:border-color .2s}
+.modal-input::placeholder{color:rgba(245,243,239,0.22)}
+.modal-input:focus{border-color:rgba(232,155,62,0.4)}
+.modal-submit{background:var(--cream);color:var(--void);font-family:'IBM Plex Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;padding:14px 28px;border:none;cursor:pointer;transition:background .2s}
+.modal-submit:hover{background:#fff}
+.modal-submit:disabled{opacity:0.5;cursor:default}
+.modal-note{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;color:rgba(245,243,239,0.2);margin-top:24px}
+.modal-success{display:none}
+.modal-success.show{display:block}
+.modal-success p{font-family:'Playfair Display',serif;font-size:22px;font-style:italic;color:rgba(245,243,239,0.78);line-height:1.5;margin-bottom:16px}
+.modal-success span{font-size:13px;font-weight:300;color:rgba(245,243,239,0.4)}
+@media(max-width:560px){.modal-box{padding:40px 28px}}
+
 footer{background:var(--void-surface);border-top:1px solid var(--void-border);padding:28px 48px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
 .footer-mark{font-family:'Playfair Display',serif;font-size:15px;color:rgba(245,243,239,0.45)}
 .footer-note{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:rgba(245,243,239,0.28)}
@@ -258,8 +281,8 @@ footer{background:var(--void-surface);border-top:1px solid var(--void-border);pa
 <nav id="nav">
   <a href="#" class="nav-mark">Autonodal</a>
   <div class="nav-actions" id="navAuth">
-    <a href="/api/auth/google?return_to=/index.html" class="nav-entry hero-auth-login" id="navLogin">
-      Enter Platform
+    <a href="/api/auth/google?return_to=/index.html" class="nav-entry nav-login-direct" id="navLogin">
+      Login
       <svg class="icon" width="12" height="12" style="display:inline-block;vertical-align:middle;margin-left:6px"><use href="#ic-arrow-r"/></svg>
     </a>
     <div id="navUser" class="nav-user" style="display:none">
@@ -278,7 +301,7 @@ footer{background:var(--void-surface);border-top:1px solid var(--void-border);pa
     Market Proximity Intelligence
   </div>
   <h1 class="hero-h1 r">Stop chasing<br>the market.<br><em>Act when it matters.</em></h1>
-  <p class="hero-sub r">Actionable intelligence from networks in motion —<br><strong>mapped to where you already have advantage.</strong></p>
+  <p class="hero-sub r">Actionable intelligence from markets in motion —<br><strong>mapped to your relationships.</strong></p>
   <div class="hero-actions r">
     <a href="/index.html" class="btn-enter hero-auth-enter" style="display:none">
       Enter platform
@@ -332,7 +355,7 @@ footer{background:var(--void-surface);border-top:1px solid var(--void-border);pa
       <div class="icon-mark-line"></div>
     </div>
     <div class="tag r">The shift</div>
-    <h2 class="r">Most teams are still doing<br>this <em>the hard way.</em></h2>
+    <h2 class="r">Most teams are still doing<br>this <em>manually.</em></h2>
     <div class="shift-layout">
       <div class="r">
         <ul class="shift-list"><li>Outbound.</li><li>Content.</li><li>Events.</li><li>Cold outreach.</li></ul>
@@ -510,6 +533,33 @@ footer{background:var(--void-surface);border-top:1px solid var(--void-border);pa
   </div>
 </section>
 
+<div class="modal-overlay" id="waitlistModal">
+  <div class="modal-box">
+    <button class="modal-close" id="modalClose">&times;</button>
+    <div id="waitlistForm">
+      <div class="modal-icon">
+        <svg width="40" height="40" color="rgba(232,155,62,0.5)"><use href="#ic-signal"/></svg>
+      </div>
+      <div class="modal-title">We're in private beta.</div>
+      <p class="modal-sub">Autonodal is live with a small group of partners.<br><strong>Register your interest</strong> and we'll be in touch when we're ready for you.</p>
+      <form class="modal-form" id="waitlistFormEl">
+        <input type="text" class="modal-input" name="name" placeholder="Your name" required>
+        <input type="email" class="modal-input" name="email" placeholder="Email address" required>
+        <input type="text" class="modal-input" name="company" placeholder="Company (optional)">
+        <button type="submit" class="modal-submit">Join waitlist</button>
+      </form>
+      <div class="modal-note">By invitation only · No spam, ever</div>
+    </div>
+    <div class="modal-success" id="waitlistSuccess">
+      <div class="modal-icon">
+        <svg width="40" height="40" color="var(--emerald)"><use href="#ic-signal"/></svg>
+      </div>
+      <p>You're on the list.</p>
+      <span>We'll reach out when your access is ready.</span>
+    </div>
+  </div>
+</div>
+
 <footer>
   <div class="footer-mark">Autonodal</div>
   <div class="footer-note">Powered by LORAC AI · Multi-party intelligence</div>
@@ -587,7 +637,8 @@ var statsObs = new IntersectionObserver(function(entries) {
 var sr = document.getElementById('stats-row');
 if (sr) statsObs.observe(sr);
 
-// Auth
+// Auth — runs first so authenticated users bypass waitlist
+var _isAuthenticated = false;
 (function() {
   var params = new URLSearchParams(window.location.search);
   if (params.get('token')) {
@@ -603,17 +654,63 @@ if (sr) statsObs.observe(sr);
       fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + token } })
         .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
         .then(function() {
+          _isAuthenticated = true;
           var initials = (user.name || user.email || '').split(' ').map(function(w) { return w[0]; }).join('').toUpperCase().slice(0, 2);
           document.getElementById('navLogin').style.display = 'none';
           document.getElementById('navUser').style.display = 'flex';
           document.getElementById('navAvatar').textContent = initials;
           document.getElementById('navName').textContent = user.name || user.email;
-          document.querySelectorAll('.hero-auth-login').forEach(function(el) { el.style.display = 'none'; });
+          document.querySelectorAll('.hero-auth-login, .nav-login-direct').forEach(function(el) { el.style.display = 'none'; });
           document.querySelectorAll('.hero-auth-enter').forEach(function(el) { el.style.display = 'inline-flex'; });
         })
         .catch(function() { localStorage.removeItem('ml_token'); localStorage.removeItem('ml_user'); });
     } catch(e) {}
   }
+})();
+
+// Waitlist modal — only intercepts unauthenticated users
+(function() {
+  var modal = document.getElementById('waitlistModal');
+  var form = document.getElementById('waitlistFormEl');
+  var formWrap = document.getElementById('waitlistForm');
+  var success = document.getElementById('waitlistSuccess');
+  var closeBtn = document.getElementById('modalClose');
+
+  document.querySelectorAll('.hero-auth-login').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      if (_isAuthenticated) return; // let authenticated users through
+      e.preventDefault();
+      modal.classList.add('open');
+    });
+  });
+
+  closeBtn.addEventListener('click', function() { modal.classList.remove('open'); });
+  modal.addEventListener('click', function(e) { if (e.target === modal) modal.classList.remove('open'); });
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') modal.classList.remove('open'); });
+
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var btn = form.querySelector('.modal-submit');
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+    var data = { name: form.name.value, email: form.email.value, company: form.company.value };
+
+    fetch('/api/waitlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
+    .then(function() {
+      formWrap.style.display = 'none';
+      success.classList.add('show');
+    })
+    .catch(function() {
+      console.log('Waitlist submission:', data);
+      formWrap.style.display = 'none';
+      success.classList.add('show');
+    });
+  });
 })();
 </script>
 </body>

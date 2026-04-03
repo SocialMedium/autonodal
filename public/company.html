@@ -155,7 +155,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 <body>
 <header class="masthead"><div class="masthead-inner">
   <a href="/index.html" class="mast-logo">MitchelLake <em>Signals</em></a>
-  <nav class="mast-nav"><a href="/index.html">Signals</a><a href="/people.html">People</a><a href="/companies.html" class="active">Companies</a><a href="/dispatches.html">Dispatch</a><a href="/placements.html">Revenue</a><a href="/case-studies.html">Case Studies</a></nav>
+  <nav class="mast-nav"><a href="/index.html">Signals</a><a href="/people.html">People</a><a href="/companies.html" class="active">Companies</a><a href="/dispatches.html">Dispatch</a><a href="/placements.html">Revenue</a><a href="/case-studies.html">Case Studies</a><a href="/huddles.html">Huddles</a></nav>
   <div style="width:34px;height:34px;border-radius:50%;background:var(--ink);color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600">JT</div>
 </div></header>
 
@@ -199,8 +199,8 @@ h+='<div class="co-info">';
 h+='<div class="co-name">'+esc(c.name)+'</div>';
 h+='<div class="co-meta">';
 if(c.sector)h+='<span>'+esc(c.sector)+'</span>';
-if(c.geography)h+='<span>📍 '+esc(c.geography)+'</span>';
-if(c.domain)h+='<span>🌐 <a href="https://'+esc(c.domain)+'" target="_blank">'+esc(c.domain)+'</a></span>';
+if(c.geography)h+='<span>'+icon('map-pin')+' '+esc(c.geography)+'</span>';
+if(c.domain)h+='<span>'+icon('globe')+' <a href="https://'+esc(c.domain)+'" target="_blank">'+esc(c.domain)+'</a></span>';
 h+='</div>';
 if(tags.length)h+='<div class="co-tags">'+tags.join('')+'</div>';
 if(c.description)h+='<div class="co-desc">'+esc(c.description)+'</div>';
@@ -209,7 +209,7 @@ var is=c.interaction_summary;
 h+='<div class="co-stats"><div class="co-st"><div class="co-st-v">'+ppl.length+'</div><div class="co-st-l">Contacts</div></div><div class="co-st"><div class="co-st-v">'+opps.length+'</div><div class="co-st-l">Searches</div></div><div class="co-st"><div class="co-st-v">'+pls.length+'</div><div class="co-st-l">Placements</div></div><div class="co-st"><div class="co-st-v">'+pipelineTotal+'</div><div class="co-st-l">Pipeline</div></div><div class="co-st"><div class="co-st-v">'+sigs.length+'</div><div class="co-st-l">Signals</div></div><div class="co-st"><div class="co-st-v">'+docs.length+'</div><div class="co-st-l">Docs</div></div>';
 if(is){h+='<div class="co-st"><div class="co-st-v">'+num(is.interactions_90d)+'</div><div class="co-st-l">Interactions (90d)</div></div><div class="co-st"><div class="co-st-v">'+num(is.contacts_engaged)+'</div><div class="co-st-l">Engaged</div></div>';}
 h+='</div>';
-h+='<button class="enrich-btn" id="enrichBtn" onclick="enrichCompany()">🔄 Refresh &amp; Enrich</button>';
+h+='<button class="enrich-btn" id="enrichBtn" onclick="enrichCompany()">'+icon('refresh-cw')+' Refresh &amp; Enrich</button>';
 h+='</div>';
 
 h+='<div class="card-grid">';
@@ -224,7 +224,7 @@ if(sigSummary)h+='<div style="font-size:11px;color:var(--ink-3);margin-bottom:8p
 if(!sigs.length)h+='<div style="font-size:12px;color:var(--ink-4);padding:8px 0">No signals detected</div>';
 else {
   h+=cappedList(sigs, 6, function(s){
-    var icon=SI[s.signal_type]||'📡';
+    var icon=SI[s.signal_type]||''+icon('radio')+'';
     var conf=Math.round((s.confidence_score||0)*100);
     var cc=conf>=80?'hi':conf>=50?'md':'lo';
     var type=s.signal_type.replace(/_/g,' ');
@@ -237,13 +237,13 @@ else {
 h+='</div>'; // close signals card
 
 // ── PEOPLE (employees/contacts at this company) ──
-h+='<div class="card"><div class="card-head"><div class="card-title">Top Contacts</div><div class="card-count">'+ppl.length+' by interaction density</div></div>';
+h+='<div class="card"><div class="card-head"><div class="card-title">Contacts</div><div class="card-count">'+ppl.length+' total · sorted by recency</div></div>';
 if(!ppl.length)h+='<div style="font-size:12px;color:var(--ink-4);padding:8px 0">No contacts linked — hit Enrich to find them</div>';
 else {
   var seniorPpl = ppl.filter(function(p){return p.seniority_level&&['c_suite','vp','director'].includes(p.seniority_level)}).length;
   var connectedPpl = ppl.filter(function(p){return parseInt(p.interaction_count)>0||p.proximity_strength>0}).length;
   h+='<div style="font-size:11px;color:var(--ink-3);margin-bottom:8px">'+connectedPpl+' with activity · '+seniorPpl+' senior</div>';
-  h+=cappedList(ppl, 10, function(p){
+  h+=cappedList(ppl, 6, function(p){
     var pi=(p.full_name||'').split(' ').map(function(w){return w[0]}).join('').slice(0,2).toUpperCase();
     var ixc=parseInt(p.interaction_count)||0;
     var ix90=parseInt(p.interactions_90d)||0;
@@ -306,7 +306,7 @@ if(pls.length||c.is_client){
 // Case Studies
 if(csLib.length){
   h+='<div class="card"><div class="card-head"><div class="card-title">Past Engagements</div><div class="card-count">'+csLib.length+' case studies</div></div>';
-  h+=cappedList(csLib, 10, function(cs){
+  h+=cappedList(csLib, 6, function(cs){
     var engLabel={'executive_search':'Exec Search','board_advisory':'Board','leadership_assessment':'Assessment','team_build':'Team Build','succession':'Succession','market_mapping':'Mapping'};
     return '<div style="padding:6px 0;border-bottom:1px solid var(--rule)">' +
       '<div style="font-size:12px;font-weight:500">'+esc(cs.role_title)+'</div>' +
@@ -331,6 +331,35 @@ if(csLib.length){
     return '<div class="plrow"><div class="plinfo"><div class="plrole" style="font-size:12px">'+esc(pl.role_title||pl.candidate_name||'Placement')+'</div><div class="pldet" style="font-size:10px">'+(pl.candidate_name?esc(pl.candidate_name)+' · ':'')+fmtD(pl.placement_date)+'</div></div><div class="plfee">'+money(pl.placement_fee)+'</div></div>';
   });
   h+='</div>';
+}
+
+// Proximity Map
+var proxMap = c.proximity_map || [];
+if (proxMap.length > 0) {
+  h+='<div class="card"><div class="card-head"><div class="card-title">' + icon('link') + ' Proximity Map</div><div class="card-count">' + proxMap.length + ' connections</div></div>';
+  h+='<div style="font-size:12px">';
+  // Group by team member
+  var byMember = {};
+  proxMap.forEach(function(p) {
+    if (!byMember[p.team_member]) byMember[p.team_member] = [];
+    byMember[p.team_member].push(p);
+  });
+  Object.keys(byMember).forEach(function(member) {
+    var connections = byMember[member];
+    h+='<div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #f0ede8">';
+    h+='<div style="font-weight:600;color:var(--ink);margin-bottom:6px">' + icon('user') + ' ' + esc(member) + ' <span style="font-size:10px;color:var(--ink-4);font-weight:400">' + connections.length + ' contact' + (connections.length > 1 ? 's' : '') + '</span></div>';
+    connections.forEach(function(conn) {
+      var strength = Math.round((parseFloat(conn.relationship_strength) || 0) * 100);
+      var strengthColor = strength >= 50 ? 'var(--emerald)' : strength >= 25 ? 'var(--amber)' : 'var(--ink-4)';
+      h+='<a href="/person.html?id=' + conn.person_id + '" style="display:flex;align-items:center;gap:8px;padding:4px 0;text-decoration:none;color:inherit">';
+      h+='<span style="font-size:12px;font-weight:500;color:var(--ink)">' + esc(conn.contact_name) + '</span>';
+      if (conn.current_title) h+='<span style="font-size:10px;color:var(--ink-3)">' + esc(conn.current_title) + '</span>';
+      h+='<span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:' + strengthColor + '">' + strength + '%</span>';
+      h+='</a>';
+    });
+    h+='</div>';
+  });
+  h+='</div></div>';
 }
 
 // Details
@@ -360,12 +389,12 @@ async function enrichCompany() {
     const data = await r.json();
     if (data.error) throw new Error(data.error);
     btn.className = 'enrich-btn done';
-    btn.textContent = '✅ ' + (data.results.embedding?.message || 'Updated');
+    btn.textContent = ''+icon('check')+' ' + (data.results.embedding?.message || 'Updated');
     setTimeout(() => location.reload(), 2000);
   } catch (e) {
     btn.className = 'enrich-btn';
-    btn.textContent = '❌ ' + e.message;
-    setTimeout(() => { btn.textContent = '🔄 Refresh & Enrich'; }, 3000);
+    btn.textContent = ''+icon('x')+' ' + e.message;
+    setTimeout(() => { btn.textContent = ''+icon('refresh-cw')+' Refresh & Enrich'; }, 3000);
   }
 }
 </script>

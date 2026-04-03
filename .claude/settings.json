@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -rn \"linkedin\\\\|message\\\\|outreach\" /Users/jonathantanner/Downloads/mitchellake-signals/public/ --include=*.js --include=*.html -i)",
+      "Bash(node -e \":*)",
+      "Bash(ls -la /Users/jonathantanner/Downloads/mitchellake-signals/*.js)",
+      "Bash(node -c /Users/jonathantanner/Downloads/mitchellake-signals/scripts/mcp_server.js)",
+      "Bash(sed -n 884,$p /Users/jonathantanner/.claude/projects/-Users-jonathantanner-Downloads-mitchellake-signals/e055c206-e4f6-4f66-97af-9af977c0a4bb/tool-results/bf11tolqh.txt)",
+      "Read(//tmp/**)",
+      "Read(//private/tmp/**)",
+      "Bash(grep -rn bsearchesb --include=*.js --include=*.sql server.js lib/*.js scripts/*.js sql/*.sql)",
+      "Bash(grep -n \"idx_signal_events_megacap\" /Users/jonathantanner/Downloads/mitchellake-signals/sql/*.sql)",
+      "Read(//Users/jonathantanner/Downloads/**)",
+      "Bash(node scripts/sync_ezekia_deep.js)",
+      "Bash(git commit:*)",
+      "Bash(provides — do NOT invent, embellish, or infer fields\":*)",
+      "Bash(node -c scripts/scheduler.js)"
+    ]
+  }
+}

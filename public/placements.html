@@ -3,20 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Revenue & Placements — MLX Autonode</title>
+<title>Revenue & Placements — MitchelLake Signals</title>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;600;700&family=DM+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
   --ink: #1A1A1A; --ink-2: #4A4A4A; --ink-3: #7A7A7A; --ink-4: #AAAAAA;
   --rule: #E0DDD8; --surface-warm: #FAF9F7; --surface: #FFFFFF;
-  --blue: #2563EB; --emerald: #0D7A50; --amber: #B45309; --rose: #DC2626;
+  --blue: #2563EB; --blue-soft: #EBF1FE; --emerald: #0D7A50; --amber: #B45309; --rose: #DC2626;
   --serif: 'Source Serif 4', serif; --sans: 'DM Sans', system-ui, sans-serif; --mono: 'IBM Plex Mono', monospace;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { overflow-x: hidden; }
 body { font-family: var(--sans); background: var(--surface-warm); color: var(--ink); }
 
-/* Masthead */
 .masthead { background: var(--surface); border-bottom: 1px solid var(--rule); padding: 0 clamp(14px, 3vw, 40px); }
 .masthead-inner { max-width: 1320px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; height: 56px; }
 .mast-title { font-family: var(--serif); font-size: 16px; font-weight: 700; color: var(--ink); text-decoration: none; }
@@ -25,15 +24,11 @@ body { font-family: var(--sans); background: var(--surface-warm); color: var(--i
 .mast-nav a { font-size: 13px; font-weight: 500; color: var(--ink-3); text-decoration: none; }
 .mast-nav a:hover, .mast-nav a.active { color: var(--ink); }
 
-/* Page */
 .page { max-width: 1320px; margin: 0 auto; padding: 36px clamp(14px, 3vw, 40px) 60px; }
-
-/* Header */
 .page-header { margin-bottom: 32px; }
 .page-header h1 { font-family: var(--serif); font-size: clamp(24px, 4vw, 34px); font-weight: 700; margin-bottom: 4px; }
 .page-header .subtitle { font-size: 14px; color: var(--ink-3); }
 
-/* Stats strip */
 .stats-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--rule); margin-bottom: 32px; }
 .stat { padding: 16px 20px 16px 0; border-right: 1px solid var(--rule); }
 .stat:last-child { border-right: none; }
@@ -41,23 +36,19 @@ body { font-family: var(--sans); background: var(--surface-warm); color: var(--i
 .stat-value { font-family: var(--serif); font-size: 28px; font-weight: 600; color: var(--ink); }
 .stat-value.green { color: var(--emerald); }
 
-/* Grid layout */
 .content-grid { display: grid; grid-template-columns: 1fr 340px; gap: 32px; min-width: 0; }
 @media (max-width: 1024px) { .content-grid { grid-template-columns: 1fr; } }
 
-/* Sidebar */
 .sidebar { min-width: 0; }
 .side-section { margin-bottom: 28px; }
 .side-title { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; color: var(--ink-4); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--rule); }
 
-/* Year breakdown */
 .year-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px solid #F0EDE8; }
 .year-label { font-family: var(--mono); font-size: 14px; font-weight: 500; }
 .year-count { font-size: 12px; color: var(--ink-3); }
 .year-revenue { font-family: var(--mono); font-size: 14px; font-weight: 500; color: var(--emerald); }
 .year-bar { height: 4px; background: var(--emerald); border-radius: 2px; margin-top: 4px; opacity: 0.3; }
 
-/* Top clients */
 .client-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #F0EDE8; cursor: pointer; }
 .client-row:hover { background: var(--surface-warm); margin: 0 -8px; padding: 8px; border-radius: 4px; }
 .client-name { font-size: 13px; font-weight: 500; color: var(--ink); }
@@ -65,33 +56,66 @@ body { font-family: var(--sans); background: var(--surface-warm); color: var(--i
 .client-count { font-size: 11px; color: var(--ink-3); }
 .client-rev { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--emerald); }
 
-/* Search */
 .search-bar { margin-bottom: 20px; }
 .search-bar input { width: 100%; padding: 10px 14px; border: 1px solid var(--rule); border-radius: 8px; font-size: 13px; font-family: var(--sans); background: var(--surface); outline: none; }
 .search-bar input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
 
-/* Table */
 .placements-table { width: 100%; min-width: 0; }
 .p-row { display: grid; grid-template-columns: 2fr 2fr 1fr 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #F0EDE8; align-items: center; }
 .p-row.header { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; color: var(--ink-4); padding: 8px 0; border-bottom: 2px solid var(--rule); }
-.p-row:not(.header):hover { background: var(--surface-warm); margin: 0 -8px; padding: 12px 8px; border-radius: 4px; cursor: pointer; }
+.p-row:not(.header):hover { background: var(--surface-warm); margin: 0 -8px; padding: 12px 8px; border-radius: 4px; }
+.p-row:not(.header) { cursor: pointer; }
 
 .p-candidate { font-size: 13px; font-weight: 500; color: var(--ink); overflow-wrap: break-word; }
 .p-candidate .role { font-size: 12px; font-weight: 400; color: var(--ink-3); margin-top: 1px; }
+.p-candidate .unlinked { color: var(--ink-4); font-style: italic; }
 .p-company { font-size: 13px; color: var(--ink-2); overflow-wrap: break-word; }
 .p-company .sector { font-size: 11px; color: var(--ink-4); }
 .p-date { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
 .p-fee { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--emerald); text-align: right; }
 
-/* Load more */
+/* Sortable headers */
+.sort-btn { background: none; border: none; cursor: pointer; font: inherit; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; color: var(--ink-4); padding: 0; display: flex; align-items: center; gap: 4px; transition: color 0.15s; }
+.sort-btn:hover { color: var(--ink-2); }
+.sort-btn.active { color: var(--blue); }
+.sort-arrow { font-size: 8px; }
+
+/* Edit candidate button */
+.btn-edit { background: none; border: 1px solid var(--rule); border-radius: 4px; padding: 2px 8px; font-size: 10px; color: var(--ink-3); cursor: pointer; margin-left: 6px; transition: all 0.15s; }
+.btn-edit:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-soft); }
+
+/* Candidate edit modal */
+.modal-overlay { position: fixed; inset: 0; z-index: 999; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; padding: 24px; }
+.modal-overlay.open { display: flex; }
+.modal-box { background: var(--surface); border-radius: 12px; max-width: 480px; width: 100%; padding: 32px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+.modal-title { font-family: var(--serif); font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+.modal-sub { font-size: 13px; color: var(--ink-3); margin-bottom: 20px; }
+.modal-field { margin-bottom: 16px; }
+.modal-field label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--ink-3); margin-bottom: 6px; }
+.modal-field input { width: 100%; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 6px; font-size: 14px; font-family: var(--sans); outline: none; }
+.modal-field input:focus { border-color: var(--blue); }
+.person-results { max-height: 200px; overflow-y: auto; border: 1px solid var(--rule); border-radius: 6px; margin-top: 4px; display: none; }
+.person-results.open { display: block; }
+.person-result { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #F0EDE8; font-size: 13px; }
+.person-result:last-child { border-bottom: none; }
+.person-result:hover { background: var(--blue-soft); }
+.person-result .pr-name { font-weight: 500; }
+.person-result .pr-title { font-size: 12px; color: var(--ink-3); }
+.person-selected { background: var(--blue-soft); border: 1px solid var(--blue); border-radius: 6px; padding: 10px 12px; display: none; align-items: center; justify-content: space-between; margin-top: 8px; }
+.person-selected.show { display: flex; }
+.person-selected .ps-name { font-size: 14px; font-weight: 500; }
+.person-selected .ps-title { font-size: 12px; color: var(--ink-3); }
+.btn-clear { background: none; border: none; color: var(--rose); cursor: pointer; font-size: 12px; }
+.modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; }
+.modal-actions button { padding: 8px 20px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: var(--sans); }
+.btn-cancel { background: none; border: 1px solid var(--rule); color: var(--ink-2); }
+.btn-save { background: var(--ink); border: none; color: #fff; }
+.btn-save:disabled { opacity: 0.4; cursor: default; }
+
 .load-more { text-align: center; padding: 20px; }
 .load-more button { background: none; border: 1px solid var(--rule); padding: 8px 24px; border-radius: 6px; font-size: 13px; cursor: pointer; color: var(--ink-2); }
 .load-more button:hover { background: var(--surface-warm); border-color: var(--ink-3); }
 
-/* Empty */
-.empty { text-align: center; padding: 40px; color: var(--ink-3); font-size: 14px; }
-
-/* Mobile */
 @media (max-width: 768px) {
   .stats-strip { grid-template-columns: repeat(2, 1fr); }
   .p-row { grid-template-columns: 1fr 1fr; gap: 4px; }
@@ -99,51 +123,62 @@ body { font-family: var(--sans); background: var(--surface-warm); color: var(--i
   .p-date, .p-company .sector { font-size: 11px; }
   .mast-nav { display: none; }
 }
-@media (max-width: 480px) {
-  .stat-value { font-size: 22px; }
-}
+@media (max-width: 480px) { .stat-value { font-size: 22px; } }
 </style>
 </head>
 <body>
 
 <div class="masthead">
   <div class="masthead-inner">
-    <a class="mast-title" href="/index.html">MLX Autonode</a>
+    <a class="mast-title" href="/index.html">MitchelLake Signals</a>
     <nav class="mast-nav">
       <a href="/index.html">Dashboard</a>
       <a href="/people.html">People</a>
       <a href="/companies.html">Companies</a>
       <a href="/dispatches.html">Dispatch</a>
       <a href="/placements.html" class="active">Revenue</a>
-      <a href="/case-studies.html">Case Studies</a>
+      <a href="/case-studies.html">Case Studies</a><a href="/huddles.html">Huddles</a>
     </nav>
   </div>
 </div>
 
 <div class="page">
   <div class="page-header">
-    <h1>Revenue & Placements</h1>
-    <div class="subtitle">Historical placement data from Xero · <span id="dateRange">—</span></div>
+    <h1 id="pageTitle">Revenue & Placements</h1>
+    <div class="subtitle"><span id="sourceLabel">Invoiced revenue from Xero</span> · <span id="dateRange">—</span></div>
   </div>
 
   <div class="stats-strip">
-    <div class="stat"><div class="stat-label">Total Revenue</div><div class="stat-value green" id="totalRevenue">—</div></div>
-    <div class="stat"><div class="stat-label">Placements</div><div class="stat-value" id="totalPlacements">—</div></div>
+    <div class="stat"><div class="stat-label" id="lbl-total">Total Revenue</div><div class="stat-value green" id="totalRevenue">—</div></div>
+    <div class="stat"><div class="stat-label" id="lbl-count">Placements</div><div class="stat-value" id="totalPlacements">—</div></div>
     <div class="stat"><div class="stat-label">Clients</div><div class="stat-value" id="clientCount">—</div></div>
-    <div class="stat"><div class="stat-label">Avg Fee</div><div class="stat-value" id="avgFee">—</div></div>
+    <div class="stat"><div class="stat-label" id="lbl-avg">Avg Fee</div><div class="stat-value" id="avgFee">—</div></div>
   </div>
 
   <div class="content-grid">
     <div class="main-col" style="min-width:0">
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;justify-content:space-between;align-items:center">
+        <div style="display:flex;gap:8px" id="sourceFilter">
+          <button class="sort-btn active" data-source="xero,xero_export,myob_import" onclick="setSource(this)">Invoiced Revenue</button>
+          <button class="sort-btn" data-source="wip_workbook" onclick="setSource(this)">WIP Pipeline</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="display:flex;gap:4px" id="currencyFilter"></div>
+          <div style="display:flex;gap:8px" id="groupFilter">
+            <button class="sort-btn active" data-group="projects" onclick="setGroup(this)">Projects</button>
+            <button class="sort-btn" data-group="invoices" onclick="setGroup(this)">Invoices</button>
+          </div>
+        </div>
+      </div>
       <div class="search-bar">
-        <input type="text" placeholder="Search by candidate, role, or company…" id="searchInput" oninput="debounceSearch()">
+        <input type="text" placeholder="Search by candidate, role, or company..." id="searchInput" oninput="debounceSearch()">
       </div>
       <div class="placements-table">
         <div class="p-row header">
-          <div>Candidate / Role</div>
-          <div>Client</div>
-          <div>Date</div>
-          <div style="text-align:right">Fee</div>
+          <div><button class="sort-btn" data-sort="candidate" onclick="setSort('candidate')">Candidate / Role <span class="sort-arrow"></span></button></div>
+          <div><button class="sort-btn" data-sort="client" onclick="setSort('client')">Client <span class="sort-arrow"></span></button></div>
+          <div><button class="sort-btn active" data-sort="date" onclick="setSort('date')">Date <span class="sort-arrow">&#9660;</span></button></div>
+          <div style="text-align:right"><button class="sort-btn" data-sort="fee" onclick="setSort('fee')" style="margin-left:auto">Fee <span class="sort-arrow"></span></button></div>
         </div>
         <div id="placementsList"></div>
       </div>
@@ -165,100 +200,311 @@ body { font-family: var(--sans); background: var(--surface-warm); color: var(--i
   </div>
 </div>
 
+<!-- Candidate Edit Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal-box">
+    <div class="modal-title">Link Candidate</div>
+    <div class="modal-sub" id="editContext">—</div>
+    <div class="modal-field">
+      <label>Search People</label>
+      <input type="text" id="personSearch" placeholder="Type a name..." oninput="debouncePersonSearch()">
+      <div class="person-results" id="personResults"></div>
+      <div class="person-selected" id="personSelected">
+        <div><div class="ps-name" id="selectedName"></div><div class="ps-title" id="selectedTitle"></div></div>
+        <button class="btn-clear" onclick="clearPerson()">Remove</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeEdit()">Cancel</button>
+      <button class="btn-save" id="btnSave" onclick="savePerson()" disabled>Save</button>
+    </div>
+  </div>
+</div>
+
 <script>
-function getToken() { return localStorage.getItem('ml_token'); }
-function api(path) { return fetch(path, { headers: { Authorization: 'Bearer ' + getToken() } }).then(r => r.json()); }
+var _token = localStorage.getItem('ml_token');
+if (!_token) location.href = '/index.html';
 
-let offset = 0, searchTimeout;
-function debounceSearch() { clearTimeout(searchTimeout); searchTimeout = setTimeout(() => { offset = 0; loadPlacements(true); }, 300); }
-function loadMore() { offset += 50; loadPlacements(false); }
+function api(path, opts) {
+  return fetch(path, Object.assign({ headers: { Authorization: 'Bearer ' + _token, 'Content-Type': 'application/json' } }, opts || {})).then(function(r) { return r.json(); });
+}
 
-function fmtMoney(v) {
-  if (!v || v === 0) return '—';
-  if (v >= 1000000) return '$' + (v / 1000000).toFixed(1) + 'M';
-  if (v >= 1000) return '$' + (v / 1000).toFixed(0) + 'K';
-  return '$' + v.toLocaleString();
+var _offset = 0, _sort = 'date', _order = 'desc', _source = 'xero,xero_export,myob_import', _group = 'projects', _currency = '', _searchTimeout, _personTimeout;
+var _editId = null, _selectedPersonId = null;
+
+// Approximate FX rates to AUD (updated periodically — good enough for reporting)
+var FX_TO_AUD = { AUD: 1, USD: 1.55, GBP: 2.05, EUR: 1.72, SGD: 1.18, NZD: 0.92 };
+var CURRENCY_SYMBOLS = { AUD: 'A$', USD: 'US$', GBP: '\u00a3', EUR: '\u20ac', SGD: 'S$', NZD: 'NZ$' };
+
+function setGroup(btn) {
+  _group = btn.dataset.group;
+  _offset = 0;
+  document.querySelectorAll('#groupFilter .sort-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  loadPlacements(true);
+}
+function setCurrency(btn) {
+  _currency = btn.dataset.currency;
+  _offset = 0;
+  document.querySelectorAll('#currencyFilter .sort-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  loadPlacements(true);
+}
+function setSource(btn) {
+  _source = btn.dataset.source;
+  _currency = '';
+  _offset = 0;
+  document.querySelectorAll('#sourceFilter .sort-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  loadPlacements(true);
+}
+function debounceSearch() { clearTimeout(_searchTimeout); _searchTimeout = setTimeout(function() { _offset = 0; loadPlacements(true); }, 300); }
+function loadMore() { _offset += 50; loadPlacements(false); }
+
+function setSort(col) {
+  if (_sort === col) { _order = _order === 'desc' ? 'asc' : 'desc'; }
+  else { _sort = col; _order = (col === 'candidate' || col === 'client' || col === 'role') ? 'asc' : 'desc'; }
+  _offset = 0;
+
+  document.querySelectorAll('.sort-btn').forEach(function(b) {
+    var isActive = b.dataset.sort === _sort;
+    b.classList.toggle('active', isActive);
+    b.querySelector('.sort-arrow').innerHTML = isActive ? (_order === 'asc' ? '&#9650;' : '&#9660;') : '';
+  });
+  loadPlacements(true);
+}
+
+function fmtMoney(v, cur) {
+  if (!v || v === 0) return '\u2014';
+  var sym = (cur && CURRENCY_SYMBOLS[cur]) || '$';
+  if (v >= 1000000) return sym + (v / 1000000).toFixed(1) + 'M';
+  if (v >= 1000) return sym + (v / 1000).toFixed(0) + 'K';
+  return sym + v.toLocaleString();
+}
+function toAUD(v, cur) {
+  if (!v || !cur) return v;
+  return v * (FX_TO_AUD[cur] || 1);
 }
 function fmtDate(d) {
-  if (!d) return '—';
-  const dt = new Date(d);
+  if (!d) return '\u2014';
+  var dt = new Date(d);
   return dt.toLocaleDateString('en-AU', { year: 'numeric', month: 'short' });
 }
+function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : ''; }
 
-async function loadPlacements(reset) {
-  const q = document.getElementById('searchInput').value.trim();
-  const params = new URLSearchParams({ limit: 50, offset });
+function loadPlacements(reset) {
+  var q = document.getElementById('searchInput').value.trim();
+  var params = new URLSearchParams({ limit: 50, offset: _offset, sort: _sort, order: _order, group: _group });
+  if (_source) params.set('source', _source);
+  if (_currency) params.set('currency', _currency);
   if (q) params.set('q', q);
 
-  const data = await api('/api/conversions?' + params);
+  api('/api/placements?' + params).then(function(data) {
+    var isRevenue = _source.indexOf('xero') >= 0 || _source.indexOf('myob') >= 0;
+    var displayCur = _currency || '';
+    document.getElementById('sourceLabel').textContent = isRevenue
+      ? 'Invoiced revenue from Xero' + (displayCur ? ' (' + displayCur + ')' : '')
+      : 'WIP pipeline activity (indicative, not revenue)';
+    document.getElementById('pageTitle').textContent = isRevenue ? 'Revenue & Placements' : 'WIP Pipeline Activity';
+    document.getElementById('lbl-total').textContent = isRevenue ? 'Total Revenue' : 'Total WIP Value';
+    var isProjects = _group === 'projects';
+    document.getElementById('lbl-count').textContent = isRevenue ? (isProjects ? 'Projects' : 'Invoices') : 'WIP Entries';
+    document.getElementById('lbl-avg').textContent = isRevenue ? (isProjects ? 'Avg Project Fee' : 'Avg Invoice') : 'Avg WIP Value';
 
-  // Stats
-  document.getElementById('totalRevenue').textContent = fmtMoney(data.total_revenue);
-  document.getElementById('totalPlacements').textContent = data.total.toLocaleString();
-  document.getElementById('clientCount').textContent = data.client_count.toLocaleString();
-  const avg = data.total > 0 ? data.total_revenue / data.total : 0;
-  document.getElementById('avgFee').textContent = fmtMoney(avg);
+    // Currency breakdown for filter buttons
+    var breakdown = data.currency_breakdown || [];
+    var hasMultiCurrency = breakdown.length > 1;
 
-  if (data.date_range.earliest && data.date_range.latest) {
-    document.getElementById('dateRange').textContent = fmtDate(data.date_range.earliest) + ' — ' + fmtDate(data.date_range.latest);
-  }
+    if (!_currency && hasMultiCurrency) {
+      // "All" view — convert each currency to the display currency and sum
+      var convertTo = 'AUD';
+      var convertedTotal = 0;
+      var breakdownHtml = [];
+      breakdown.forEach(function(c) {
+        var native = parseFloat(c.revenue);
+        var converted = native * (FX_TO_AUD[c.currency] || 1);
+        convertedTotal += converted;
+        breakdownHtml.push((CURRENCY_SYMBOLS[c.currency] || '') + fmtMoney(native, c.currency).replace(/^[^\d]*/, '') + ' ' + c.currency);
+      });
+      document.getElementById('totalRevenue').innerHTML = fmtMoney(convertedTotal, convertTo) +
+        '<span style="font-size:11px;font-weight:400;color:var(--ink-3);display:block;margin-top:2px">' + breakdownHtml.join(' + ') + '</span>';
+      var convertedAvg = data.total > 0 ? convertedTotal / data.total : 0;
+      document.getElementById('avgFee').textContent = fmtMoney(convertedAvg, convertTo);
+    } else {
+      document.getElementById('totalRevenue').textContent = fmtMoney(data.total_revenue, displayCur);
+      var avg = data.total > 0 ? data.total_revenue / data.total : 0;
+      document.getElementById('avgFee').textContent = fmtMoney(avg, displayCur);
+    }
+    document.getElementById('totalPlacements').textContent = data.total.toLocaleString();
+    document.getElementById('clientCount').textContent = data.client_count.toLocaleString();
 
-  // Placements list
-  const container = document.getElementById('placementsList');
-  if (reset) container.innerHTML = '';
+    // Build currency filter buttons
+    if (isRevenue && breakdown.length > 0) {
+      var cfHtml = '';
+      if (hasMultiCurrency) {
+        cfHtml += '<button class="sort-btn' + (!_currency ? ' active' : '') + '" data-currency="" onclick="setCurrency(this)">All (A$)</button>';
+      }
+      breakdown.forEach(function(c) {
+        var sym = CURRENCY_SYMBOLS[c.currency] || '';
+        var rev = fmtMoney(parseFloat(c.revenue), c.currency);
+        cfHtml += '<button class="sort-btn' + (_currency === c.currency ? ' active' : '') + '" data-currency="' + c.currency + '" onclick="setCurrency(this)">' + c.currency + ' <span style="font-weight:400;opacity:0.6">' + rev + '</span></button>';
+      });
+      document.getElementById('currencyFilter').innerHTML = cfHtml;
+      document.getElementById('currencyFilter').style.display = 'flex';
+    } else {
+      document.getElementById('currencyFilter').innerHTML = '';
+      document.getElementById('currencyFilter').style.display = 'none';
+    }
 
-  data.placements.forEach(pl => {
-    const div = document.createElement('div');
-    div.className = 'p-row';
-    div.onclick = () => { if (pl.company_id) location.href = '/company.html?id=' + pl.company_id; };
-    div.innerHTML = `
-      <div class="p-candidate">
-        ${esc(pl.candidate_name || 'Unknown')}
-        <div class="role">${esc(pl.role_title || '')}</div>
-      </div>
-      <div class="p-company">
-        ${esc(pl.company_name || pl.company_name || '—')}
-        <div class="sector">${esc(pl.company_sector || '')}</div>
-      </div>
-      <div class="p-date">${fmtDate(pl.start_date)}</div>
-      <div class="p-fee">${fmtMoney(pl.placement_fee)}</div>
-    `;
-    container.appendChild(div);
+    if (data.date_range.earliest && data.date_range.latest) {
+      document.getElementById('dateRange').textContent = fmtDate(data.date_range.earliest) + ' \u2014 ' + fmtDate(data.date_range.latest);
+    }
+
+    var container = document.getElementById('placementsList');
+    if (reset) container.innerHTML = '';
+
+    data.placements.forEach(function(pl) {
+      var div = document.createElement('div');
+      div.className = 'p-row';
+      var hasCandidate = pl.person_id && pl.candidate_name;
+      var candidateDisplay = hasCandidate
+        ? esc(pl.candidate_name)
+        : '<span class="unlinked">' + esc(pl.candidate_name || 'No candidate linked') + '</span>';
+      var editBtn = '<button class="btn-edit" data-id="' + pl.id + '" data-role="' + esc(pl.role_title || '') + '" data-client="' + esc(pl.company_name || '') + '" data-person="' + (pl.person_id || '') + '" onclick="event.stopPropagation();openEdit(this)">edit</button>';
+      var invoiceTag = (pl.invoice_count && pl.invoice_count > 1)
+        ? ' <span style="font-size:10px;color:var(--ink-4);font-weight:400">' + pl.invoice_count + ' invoices</span>'
+        : '';
+
+      div.innerHTML = '<div class="p-candidate">' + candidateDisplay + editBtn +
+        '<div class="role">' + esc(pl.role_title || '') + invoiceTag + '</div></div>' +
+        '<div class="p-company">' + esc(pl.company_name || '\u2014') +
+        '<div class="sector">' + esc(pl.company_sector || '') + '</div></div>' +
+        '<div class="p-date">' + fmtDate(pl.start_date) + '</div>' +
+        '<div class="p-fee">' + fmtMoney(pl.placement_fee, pl.currency) + '</div>';
+      div.onclick = function() { if (pl.company_id) location.href = '/company.html?id=' + pl.company_id; };
+      container.appendChild(div);
+    });
+
+    document.getElementById('loadMore').style.display = data.placements.length >= 50 ? 'block' : 'none';
+
+    if (reset && data.by_year && data.by_year.length) {
+      var maxRev = Math.max.apply(null, data.by_year.map(function(y) { return parseFloat(y.revenue); }));
+      document.getElementById('yearBreakdown').innerHTML = data.by_year.map(function(y) {
+        var yrRev = parseFloat(y.revenue);
+        var yrDisplay = (!_currency && hasMultiCurrency) ? fmtMoney(yrRev, 'AUD') : fmtMoney(yrRev, displayCur);
+        return '<div class="year-row"><div class="year-label">' + y.year + '</div><div class="year-count">' + y.count + ' deals</div><div class="year-revenue">' + yrDisplay + '</div></div>' +
+          '<div class="year-bar" style="width:' + (parseFloat(y.revenue) / maxRev * 100).toFixed(0) + '%"></div>';
+      }).join('');
+    }
+
+    if (reset && data.top_clients && data.top_clients.length) {
+      document.getElementById('topClients').innerHTML = data.top_clients.map(function(c) {
+        return '<div class="client-row" onclick="location.href=\'/company.html?id=' + c.id + '\'">' +
+          '<div class="client-name">' + esc(c.name || 'Unknown') + '</div>' +
+          '<div class="client-stats"><span class="client-count">' + c.placement_count + ' deals</span>' +
+          '<span class="client-rev">' + fmtMoney(parseFloat(c.total_revenue), displayCur) + '</span></div></div>';
+      }).join('');
+    }
   });
-
-  document.getElementById('loadMore').style.display = data.placements.length >= 50 ? 'block' : 'none';
-
-  // Year breakdown
-  if (reset && data.by_year.length) {
-    const maxRev = Math.max(...data.by_year.map(y => parseFloat(y.revenue)));
-    document.getElementById('yearBreakdown').innerHTML = data.by_year.map(y => `
-      <div class="year-row">
-        <div class="year-label">${y.year}</div>
-        <div class="year-count">${y.count} deals</div>
-        <div class="year-revenue">${fmtMoney(parseFloat(y.revenue))}</div>
-      </div>
-      <div class="year-bar" style="width:${(parseFloat(y.revenue)/maxRev*100).toFixed(0)}%"></div>
-    `).join('');
-  }
-
-  // Top clients
-  if (reset && data.top_clients.length) {
-    document.getElementById('topClients').innerHTML = data.top_clients.map(c => `
-      <div class="client-row" onclick="location.href='/company.html?id=${c.id}'">
-        <div class="client-name">${esc(c.name || 'Unknown')}</div>
-        <div class="client-stats">
-          <span class="client-count">${c.placement_count} deals</span>
-          <span class="client-rev">${fmtMoney(parseFloat(c.total_revenue))}</span>
-        </div>
-      </div>
-    `).join('');
-  }
 }
 
-function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+// ── Candidate Edit Modal ──
 
-if (!getToken()) location.href = '/index.html';
-else loadPlacements(true);
+function openEdit(btn) {
+  _editId = btn.dataset.id;
+  _selectedPersonId = btn.dataset.person || null;
+  document.getElementById('editContext').textContent = (btn.dataset.role || 'Unknown role') + ' at ' + (btn.dataset.client || 'Unknown client');
+  document.getElementById('personSearch').value = '';
+  document.getElementById('personResults').classList.remove('open');
+
+  if (_selectedPersonId) {
+    // Load current person
+    api('/api/people/' + _selectedPersonId).then(function(data) {
+      if (data && data.full_name) showSelected(data.id, data.full_name, data.current_title);
+      else { clearPerson(); }
+    }).catch(function() { clearPerson(); });
+  } else {
+    clearPerson();
+  }
+  document.getElementById('editModal').classList.add('open');
+  document.getElementById('personSearch').focus();
+}
+
+function closeEdit() {
+  document.getElementById('editModal').classList.remove('open');
+  _editId = null;
+  _selectedPersonId = null;
+}
+
+function showSelected(id, name, title) {
+  _selectedPersonId = id;
+  document.getElementById('selectedName').textContent = name;
+  document.getElementById('selectedTitle').textContent = title || '';
+  document.getElementById('personSelected').classList.add('show');
+  document.getElementById('personSearch').style.display = 'none';
+  document.getElementById('personResults').classList.remove('open');
+  document.getElementById('btnSave').disabled = false;
+}
+
+function clearPerson() {
+  _selectedPersonId = null;
+  document.getElementById('personSelected').classList.remove('show');
+  document.getElementById('personSearch').style.display = '';
+  document.getElementById('personSearch').value = '';
+  document.getElementById('btnSave').disabled = false; // allow saving null to unlink
+}
+
+function debouncePersonSearch() {
+  clearTimeout(_personTimeout);
+  _personTimeout = setTimeout(searchPeople, 250);
+}
+
+function searchPeople() {
+  var q = document.getElementById('personSearch').value.trim();
+  if (q.length < 2) { document.getElementById('personResults').classList.remove('open'); return; }
+
+  api('/api/people?q=' + encodeURIComponent(q) + '&limit=8').then(function(data) {
+    var people = data.people || data.rows || [];
+    if (!people.length) {
+      document.getElementById('personResults').innerHTML = '<div style="padding:10px 12px;color:var(--ink-3);font-size:13px;">No matches</div>';
+      document.getElementById('personResults').classList.add('open');
+      return;
+    }
+    document.getElementById('personResults').innerHTML = people.map(function(p) {
+      return '<div class="person-result" onclick="showSelected(\'' + p.id + '\',\'' + esc(p.full_name) + '\',\'' + esc(p.current_title || '') + '\')">' +
+        '<div class="pr-name">' + esc(p.full_name) + '</div>' +
+        '<div class="pr-title">' + esc(p.current_title || '') + (p.current_company_name ? ' @ ' + esc(p.current_company_name) : '') + '</div></div>';
+    }).join('');
+    document.getElementById('personResults').classList.add('open');
+  });
+}
+
+function savePerson() {
+  if (!_editId) return;
+  var btn = document.getElementById('btnSave');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  api('/api/placements/' + _editId, {
+    method: 'PATCH',
+    body: JSON.stringify({ person_id: _selectedPersonId })
+  }).then(function() {
+    btn.textContent = 'Save';
+    closeEdit();
+    _offset = 0;
+    loadPlacements(true);
+  }).catch(function() {
+    btn.textContent = 'Save';
+    btn.disabled = false;
+    alert('Failed to save');
+  });
+}
+
+// Close modal on backdrop click / escape
+document.getElementById('editModal').addEventListener('click', function(e) { if (e.target === this) closeEdit(); });
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeEdit(); });
+
+loadPlacements(true);
 </script>
 <script src="/icons.js"></script>
 <script src="/terminology.js"></script>

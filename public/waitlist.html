@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Waitlist — Autonodal</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --serif: 'Source Serif 4', 'Georgia', serif;
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+  --bg: #FAF9F7;
+  --surface: #FFFFFF;
+  --surface-warm: #F7F5F2;
+  --ink: #1A1A1A;
+  --ink-2: #4A4A4A;
+  --ink-3: #7A7A7A;
+  --ink-4: #AAAAAA;
+  --rule: #E0DDD8;
+  --rule-bold: #C8C4BE;
+  --blue: #2563EB;
+  --blue-soft: #EBF1FE;
+  --emerald: #0D7A50;
+  --emerald-soft: #E8F5EE;
+  --amber: #B45309;
+  --amber-soft: #FEF7E8;
+  --rose: #C41D3E;
+  --rose-soft: #FDF0F2;
+  --violet: #6D28D9;
+  --violet-soft: #F3EEFE;
+  --radius: 8px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+
+.masthead { background: var(--surface); border-bottom: 2px solid var(--ink); padding: 0 40px; position: sticky; top: 0; z-index: 100; }
+.masthead-inner { display: flex; align-items: center; justify-content: space-between; height: 56px; max-width: 1200px; margin: 0 auto; }
+.masthead-title { font-family: var(--serif); font-size: 18px; font-weight: 600; }
+.masthead-title span { font-weight: 400; color: var(--ink-3); }
+.masthead-nav { display: flex; gap: 8px; align-items: center; }
+.masthead-nav a { font-size: 12px; font-weight: 500; color: var(--ink-2); text-decoration: none; padding: 6px 14px; border-radius: var(--radius); transition: background 0.15s; }
+.masthead-nav a:hover { background: var(--surface-warm); }
+.masthead-nav a.active { background: var(--ink); color: #fff; }
+
+.page { max-width: 1200px; margin: 0 auto; padding: 32px 40px; }
+
+.stats-bar { display: flex; gap: 2px; margin-bottom: 32px; }
+.stat-card { flex: 1; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 20px 24px; }
+.stat-val { font-family: var(--mono); font-size: 28px; font-weight: 500; color: var(--ink); }
+.stat-lbl { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.stat-card.hl { border-color: var(--blue); background: var(--blue-soft); }
+.stat-card.hl .stat-val { color: var(--blue); }
+
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 16px; }
+.toolbar-left { display: flex; gap: 8px; align-items: center; }
+.filter-btn { font-size: 12px; font-weight: 500; padding: 6px 14px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); color: var(--ink-2); cursor: pointer; transition: all 0.15s; }
+.filter-btn:hover { border-color: var(--ink-3); }
+.filter-btn.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.filter-count { font-family: var(--mono); font-size: 10px; margin-left: 4px; opacity: 0.6; }
+.search-input { font-family: var(--sans); font-size: 13px; padding: 7px 14px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); color: var(--ink); outline: none; width: 240px; }
+.search-input:focus { border-color: var(--blue); }
+
+.table-wrap { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+th { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--rule); background: var(--surface-warm); }
+td { padding: 14px 16px; border-bottom: 1px solid var(--rule); font-size: 13px; vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(37,99,235,0.02); }
+.td-name { font-weight: 500; color: var(--ink); }
+.td-email { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+.td-company { color: var(--ink-2); }
+.td-date { font-family: var(--mono); font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+
+.badge { display: inline-block; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 3px 10px; border-radius: 20px; }
+.badge-pending { background: var(--amber-soft); color: var(--amber); }
+.badge-approved { background: var(--emerald-soft); color: var(--emerald); }
+.badge-declined { background: var(--rose-soft); color: var(--rose); }
+.badge-contacted { background: var(--violet-soft); color: var(--violet); }
+
+.action-select { font-family: var(--sans); font-size: 11px; padding: 4px 8px; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); color: var(--ink-2); cursor: pointer; outline: none; }
+.action-select:focus { border-color: var(--blue); }
+
+.notes-input { font-family: var(--sans); font-size: 12px; padding: 4px 8px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--ink-3); width: 100%; min-width: 120px; outline: none; transition: all 0.15s; }
+.notes-input:hover { border-color: var(--rule); background: var(--surface-warm); }
+.notes-input:focus { border-color: var(--blue); background: var(--surface); color: var(--ink); }
+
+.btn-delete { font-size: 11px; color: var(--ink-4); background: none; border: none; cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: all 0.15s; }
+.btn-delete:hover { color: var(--rose); background: var(--rose-soft); }
+
+.empty { text-align: center; padding: 64px 24px; color: var(--ink-3); }
+.empty-title { font-family: var(--serif); font-size: 20px; color: var(--ink-2); margin-bottom: 8px; }
+
+#loginOverlay { position: fixed; inset: 0; background: var(--bg); z-index: 999; display: flex; align-items: center; justify-content: center; }
+#loginOverlay .login-box { text-align: center; }
+#loginOverlay .login-box h2 { font-family: var(--serif); font-size: 24px; margin-bottom: 12px; }
+#loginOverlay .login-box p { color: var(--ink-3); margin-bottom: 24px; }
+.btn-login { display: inline-block; font-size: 13px; font-weight: 500; padding: 10px 28px; background: var(--ink); color: #fff; text-decoration: none; border-radius: var(--radius); }
+
+@media (max-width: 768px) {
+  .masthead, .page { padding-left: 20px; padding-right: 20px; }
+  .stats-bar { flex-direction: column; }
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .search-input { width: 100%; }
+  table { font-size: 12px; }
+  td, th { padding: 10px 12px; }
+}
+</style>
+</head>
+<body>
+
+<div id="loginOverlay" style="display:none">
+  <div class="login-box">
+    <h2>Waitlist Management</h2>
+    <p>Admin access required</p>
+    <a href="/api/auth/google?return_to=/waitlist.html" class="btn-login">Sign in with Google</a>
+  </div>
+</div>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="masthead-title">Autonodal <span>Waitlist</span></div>
+    <nav class="masthead-nav">
+      <a href="/admin.html">Admin</a>
+      <a href="/index.html">Platform</a>
+      <a href="/autonodal.html">Landing</a>
+    </nav>
+  </div>
+</header>
+
+<div class="page" id="appContent" style="display:none">
+
+  <div class="stats-bar" id="statsBar">
+    <div class="stat-card hl"><div class="stat-val" id="statPending">-</div><div class="stat-lbl">Pending</div></div>
+    <div class="stat-card"><div class="stat-val" id="statTotal">-</div><div class="stat-lbl">Total</div></div>
+    <div class="stat-card"><div class="stat-val" id="stat24h">-</div><div class="stat-lbl">Last 24 hours</div></div>
+    <div class="stat-card"><div class="stat-val" id="stat7d">-</div><div class="stat-lbl">Last 7 days</div></div>
+    <div class="stat-card"><div class="stat-val" id="statApproved">-</div><div class="stat-lbl">Approved</div></div>
+    <div class="stat-card"><div class="stat-val" id="statDeclined">-</div><div class="stat-lbl">Declined</div></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="pending">Pending</button>
+      <button class="filter-btn" data-filter="approved">Approved</button>
+      <button class="filter-btn" data-filter="contacted">Contacted</button>
+      <button class="filter-btn" data-filter="declined">Declined</button>
+    </div>
+    <input type="text" class="search-input" id="searchInput" placeholder="Search name, email, company...">
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Company</th>
+          <th>Status</th>
+          <th>Notes</th>
+          <th>Registered</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+    <div class="empty" id="emptyState" style="display:none">
+      <div class="empty-title">No entries yet</div>
+      <p>Waitlist submissions will appear here.</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+var _entries = [];
+var _filter = 'all';
+var _search = '';
+
+function getToken() { return localStorage.getItem('ml_token'); }
+
+async function api(path, options) {
+  var token = getToken();
+  if (!token) { showLogin(); throw new Error('No token'); }
+  var res = await fetch(path, Object.assign({ headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } }, options || {}));
+  if (res.status === 401) { localStorage.removeItem('ml_token'); showLogin(); throw new Error('Unauthorized'); }
+  if (res.status === 403) { alert('Admin access required'); throw new Error('Forbidden'); }
+  return res.json();
+}
+
+function showLogin() {
+  document.getElementById('loginOverlay').style.display = 'flex';
+  document.getElementById('appContent').style.display = 'none';
+}
+
+function fmtDate(d) {
+  if (!d) return '-';
+  var dt = new Date(d);
+  var day = dt.getDate();
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var hrs = String(dt.getHours()).padStart(2, '0');
+  var min = String(dt.getMinutes()).padStart(2, '0');
+  return day + ' ' + months[dt.getMonth()] + ' ' + dt.getFullYear() + ' ' + hrs + ':' + min;
+}
+
+function render() {
+  var filtered = _entries.filter(function(e) {
+    if (_filter !== 'all' && e.status !== _filter) return false;
+    if (_search) {
+      var q = _search.toLowerCase();
+      return (e.name || '').toLowerCase().includes(q) || (e.email || '').toLowerCase().includes(q) || (e.company || '').toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  var body = document.getElementById('tableBody');
+  var empty = document.getElementById('emptyState');
+
+  if (filtered.length === 0) {
+    body.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  body.innerHTML = filtered.map(function(e) {
+    var statusClass = 'badge-' + (e.status || 'pending');
+    return '<tr data-id="' + e.id + '">' +
+      '<td class="td-name">' + (e.name || '<em style="color:var(--ink-4)">-</em>') + '</td>' +
+      '<td class="td-email">' + e.email + '</td>' +
+      '<td class="td-company">' + (e.company || '-') + '</td>' +
+      '<td><select class="action-select" data-id="' + e.id + '" data-field="status">' +
+        '<option value="pending"' + (e.status === 'pending' ? ' selected' : '') + '>Pending</option>' +
+        '<option value="approved"' + (e.status === 'approved' ? ' selected' : '') + '>Approved</option>' +
+        '<option value="contacted"' + (e.status === 'contacted' ? ' selected' : '') + '>Contacted</option>' +
+        '<option value="declined"' + (e.status === 'declined' ? ' selected' : '') + '>Declined</option>' +
+      '</select></td>' +
+      '<td><input class="notes-input" data-id="' + e.id + '" value="' + (e.notes || '').replace(/"/g, '&quot;') + '" placeholder="Add note..."></td>' +
+      '<td class="td-date">' + fmtDate(e.created_at) + '</td>' +
+      '<td><button class="btn-delete" data-id="' + e.id + '" title="Remove">&#x2715;</button></td>' +
+    '</tr>';
+  }).join('');
+
+  // Bind status selects
+  body.querySelectorAll('.action-select').forEach(function(sel) {
+    sel.addEventListener('change', function() {
+      updateEntry(sel.dataset.id, { status: sel.value });
+    });
+  });
+
+  // Bind notes inputs (save on blur)
+  body.querySelectorAll('.notes-input').forEach(function(inp) {
+    inp.addEventListener('blur', function() {
+      var entry = _entries.find(function(e) { return e.id === inp.dataset.id; });
+      if (entry && inp.value !== (entry.notes || '')) {
+        updateEntry(inp.dataset.id, { notes: inp.value });
+      }
+    });
+    inp.addEventListener('keydown', function(e) { if (e.key === 'Enter') inp.blur(); });
+  });
+
+  // Bind delete buttons
+  body.querySelectorAll('.btn-delete').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      if (confirm('Remove this waitlist entry?')) deleteEntry(btn.dataset.id);
+    });
+  });
+}
+
+async function loadWaitlist() {
+  var data = await api('/api/admin/waitlist');
+  _entries = data.entries;
+  var c = data.counts;
+
+  document.getElementById('statTotal').textContent = c.total;
+  document.getElementById('statPending').textContent = c.pending;
+  document.getElementById('statApproved').textContent = c.approved;
+  document.getElementById('statDeclined').textContent = c.declined;
+  document.getElementById('stat24h').textContent = c.last_24h;
+  document.getElementById('stat7d').textContent = c.last_7d;
+
+  render();
+}
+
+async function updateEntry(id, data) {
+  var updated = await api('/api/admin/waitlist/' + id, { method: 'PATCH', body: JSON.stringify(data) });
+  var idx = _entries.findIndex(function(e) { return e.id === id; });
+  if (idx >= 0) _entries[idx] = updated;
+  loadWaitlist(); // refresh counts
+}
+
+async function deleteEntry(id) {
+  await api('/api/admin/waitlist/' + id, { method: 'DELETE' });
+  _entries = _entries.filter(function(e) { return e.id !== id; });
+  loadWaitlist();
+}
+
+// Filter buttons
+document.querySelectorAll('.filter-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    _filter = btn.dataset.filter;
+    render();
+  });
+});
+
+// Search
+document.getElementById('searchInput').addEventListener('input', function(e) {
+  _search = e.target.value;
+  render();
+});
+
+// Init
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  if (params.get('token')) {
+    localStorage.setItem('ml_token', params.get('token'));
+    try { localStorage.setItem('ml_user', params.get('user')); } catch(e) {}
+    window.history.replaceState({}, '', '/waitlist.html');
+  }
+  if (!getToken()) { showLogin(); return; }
+  document.getElementById('appContent').style.display = 'block';
+  loadWaitlist();
+})();
+</script>
+</body>
+</html>

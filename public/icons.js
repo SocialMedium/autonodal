@@ -33,6 +33,23 @@ const LUCIDE_ICONS = {
   'search': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
   'trophy': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>',
   'zap': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>',
+  'star': '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+  'star-outline': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+  'map-pin': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
+  'briefcase': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect width="20" height="14" x="2" y="6" rx="2"/></svg>',
+  'building': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>',
+  'arrow-up-right': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>',
+  'arrow-down-right': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 7 10 10"/><path d="M17 7v10H7"/></svg>',
+  'clock': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  'edit': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>',
+  'file-text': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>',
+  'shield': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>',
+  'flag': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>',
+  'dollar-sign': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+  'trending-down': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>',
+  'smartphone': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>',
+  'circle-dot': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/></svg>',
+  'sparkle': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>',
 };
 
 // Signal type → Lucide icon name mapping
@@ -74,4 +91,110 @@ function signalIcon(signalType, size) {
 
 function interactionIcon(type, size) {
   return icon(INTERACTION_ICON_MAP[type] || 'clipboard', size);
+}
+
+// YouTube inline player — extract video ID from URL and render embed
+function youtubeVideoId(url) {
+  if (!url) return null;
+  var match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+  return match ? match[1] : null;
+}
+
+function youtubeEmbed(url, opts) {
+  var vid = youtubeVideoId(url);
+  if (!vid) return '';
+  var w = (opts && opts.width) || '100%';
+  var h = (opts && opts.height) || 200;
+  return '<div style="position:relative;border-radius:8px;overflow:hidden;margin:8px 0;background:#000">' +
+    '<iframe width="' + w + '" height="' + h + '" src="https://www.youtube.com/embed/' + vid + '?rel=0" ' +
+    'frameborder="0" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" ' +
+    'allowfullscreen loading="lazy" style="display:block;border:0"></iframe></div>';
+}
+
+// Podcast inline audio player
+function podcastPlayer(audioUrl) {
+  if (!audioUrl) return '';
+  return '<div style="margin:8px 0" onclick="event.stopPropagation()">' +
+    '<audio controls preload="none" style="width:100%;height:32px;border-radius:6px" src="' + audioUrl + '"></audio></div>';
+}
+
+function youtubeThumbnail(url) {
+  var vid = youtubeVideoId(url);
+  if (!vid) return '';
+  return '<div style="position:relative;border-radius:8px;overflow:hidden;margin:8px 0;cursor:pointer;background:#000" ' +
+    'onclick="this.innerHTML=\'' +
+    '<iframe width=100% height=200 src=https://www.youtube.com/embed/' + vid + '?autoplay=1&rel=0 frameborder=0 allow=accelerometer;autoplay;clipboard-write;encrypted-media allowfullscreen style=display:block;border:0></iframe>' +
+    '\'">' +
+    '<img src="https://img.youtube.com/vi/' + vid + '/hqdefault.jpg" style="width:100%;display:block" loading="lazy">' +
+    '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">' +
+    '<div style="width:48px;height:48px;background:rgba(0,0,0,0.7);border-radius:50%;display:flex;align-items:center;justify-content:center">' +
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg></div></div></div>';
+}
+
+// Region code → styled text label (replaces flag emoji)
+var REGION_LABELS = {
+  AU: '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#E8F5EE;color:#0D7A50">AU</span>',
+  SG: '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#F3EEFE;color:#6D28D9">SG</span>',
+  UK: '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#EBF1FE;color:#2563EB">UK</span>',
+  US: '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#FEF7E8;color:#B45309">US</span>',
+};
+
+function regionLabel(code) {
+  return REGION_LABELS[code] || '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#f0f0f0;color:#666">' + (code || '?') + '</span>';
+}
+
+// Replace common emoji patterns with Lucide icons
+// Usage: replaceEmoji(htmlString) — call on rendered HTML to swap remaining emoji
+var EMOJI_ICON_MAP = {
+  '\u2b50': 'star',           // ⭐
+  '\ud83d\udcb0': 'trending-up',  // 💰
+  '\ud83d\udd17': 'link',    // 🔗
+  '\ud83d\ude80': 'rocket',  // 🚀
+  '\ud83e\udd1d': 'handshake', // 🤝
+  '\ud83c\udf10': 'globe',   // 🌐
+  '\u2699\ufe0f': 'settings', // ⚙️
+  '\u2699': 'settings',       // ⚙
+  '\ud83d\udc64': 'user',    // 👤
+  '\ud83d\udc65': 'users',   // 👥
+  '\ud83d\udcc9': 'trending-down', // 📉
+  '\ud83d\udcca': 'bar-chart', // 📊
+  '\ud83d\udcc8': 'trending-up', // 📈
+  '\ud83d\udcdd': 'edit',    // 📝
+  '\u2709\ufe0f': 'mail',    // ✉️
+  '\ud83d\udcde': 'phone',   // 📞
+  '\ud83d\udcbc': 'briefcase', // 💼
+  '\ud83d\udcac': 'message-square', // 💬
+  '\ud83d\udccb': 'clipboard', // 📋
+  '\ud83d\udce1': 'radio',   // 📡
+  '\ud83c\udfaf': 'target',  // 🎯
+  '\ud83d\udd12': 'lock',    // 🔐
+  '\ud83d\udd13': 'unlock',  // 🔓
+  '\ud83c\udfc6': 'trophy',  // 🏆
+  '\ud83d\udcf1': 'smartphone', // 📱
+  '\u2197\ufe0f': 'arrow-up-right', // ↗️
+  '\u2198\ufe0f': 'arrow-down-right', // ↙️ (using down-right as closest)
+  '\ud83d\udd50': 'clock',   // 🕐
+  '\ud83d\ude4b': 'user',    // 🙋
+  '\u231b': 'clock',          // ⏳
+  '\u23f3': 'clock',          // ⏳ (variant)
+};
+
+// replaceEmoji(htmlString) — swap emoji in an HTML string before inserting into DOM
+// Usage: element.innerHTML = replaceEmoji(htmlString);
+function replaceEmoji(html) {
+  if (!html) return html;
+  for (var emoji in EMOJI_ICON_MAP) {
+    if (EMOJI_ICON_MAP.hasOwnProperty(emoji) && html.indexOf(emoji) >= 0) {
+      html = html.split(emoji).join(icon(EMOJI_ICON_MAP[emoji]));
+    }
+  }
+  // Replace flag emoji with region labels
+  html = html.replace(/\ud83c\udde6\ud83c\uddfa/g, regionLabel('AU'));
+  html = html.replace(/\ud83c\uddf8\ud83c\uddec/g, regionLabel('SG'));
+  html = html.replace(/\ud83c\uddec\ud83c\udde7/g, regionLabel('UK'));
+  html = html.replace(/\ud83c\uddfa\ud83c\uddf8/g, regionLabel('US'));
+  // Replace ✦ sparkle
+  html = html.replace(/\u2726/g, icon('sparkle'));
+  html = html.replace(/&#x2726;/g, icon('sparkle'));
+  return html;
 }

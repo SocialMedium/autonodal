@@ -20,6 +20,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@lemonsqueezy/lemonsqueezy.js": "^4.0.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@qdrant/js-client-rest": "^1.16.2",
     "axios": "^1.6.0",
@@ -28,13 +29,16 @@
     "csv-parser": "^3.2.0",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "express-rate-limit": "^8.3.2",
     "googleapis": "^171.4.0",
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
     "openai": "^4.28.0",
     "pdf-parse": "^1.1.1",
     "pg": "^8.11.3",
+    "resend": "^6.10.0",
     "rss-parser": "^3.13.0",
+    "stripe": "^21.0.1",
     "xlsx": "^0.18.5",
     "xml2js": "^0.6.2",
     "zod": "^3.25.76"

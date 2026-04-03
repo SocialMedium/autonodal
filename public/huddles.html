@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Huddles — MLX Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --serif: 'Source Serif 4', 'Georgia', serif;
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+  --bg: #FAF9F7; --surface: #FFFFFF; --surface-warm: #F7F5F2; --surface-cool: #F2F4F8;
+  --ink: #1A1A1A; --ink-2: #4A4A4A; --ink-3: #7A7A7A; --ink-4: #AAAAAA;
+  --rule: #E0DDD8; --rule-bold: #C8C4BE;
+  --blue: #2563EB; --blue-soft: #EBF1FE;
+  --emerald: #0D7A50; --emerald-soft: #E8F5EE;
+  --amber: #B45309; --amber-soft: #FEF7E8;
+  --rose: #C41D3E; --rose-soft: #FDF0F2;
+  --violet: #6D28D9; --violet-soft: #F3EEFE;
+  --radius: 8px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+  --shadow-hover: 0 4px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+}
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { overflow-x: hidden; }
+body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+
+/* Masthead */
+.masthead { background: var(--surface); border-bottom: 2px solid var(--ink); padding: 0 clamp(14px, 3vw, 40px); position: sticky; top: 0; z-index: 100; }
+.masthead-top { display: flex; align-items: center; justify-content: space-between; height: 56px; max-width: 1320px; margin: 0 auto; }
+.masthead-logo { font-family: var(--serif); font-size: 22px; font-weight: 600; letter-spacing: -0.2px; text-decoration: none; color: inherit; }
+.masthead-logo em { font-style: italic; color: var(--ink-3); }
+.masthead-nav { display: flex; gap: 2px; }
+.masthead-nav a { font-size: 13px; font-weight: 500; color: var(--ink-3); text-decoration: none; padding: 6px 14px; border-radius: 6px; transition: all 0.15s; }
+.masthead-nav a:hover { color: var(--ink); background: var(--surface-warm); }
+.masthead-nav a.active { color: var(--ink); background: var(--surface-warm); font-weight: 600; }
+.masthead-user { width: 34px; height: 34px; border-radius: 50%; background: var(--ink); color: white; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+/* Page */
+.page { max-width: 1320px; margin: 0 auto; padding: 36px clamp(14px, 3vw, 40px) 60px; }
+.page-rule { height: 3px; background: var(--ink); margin-bottom: 10px; }
+.page-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.page-title { font-family: var(--serif); font-size: 32px; font-weight: 600; letter-spacing: -0.3px; }
+.page-count { font-family: var(--mono); font-size: 13px; color: var(--ink-4); }
+.page-subtitle { font-size: 14px; color: var(--ink-3); margin-bottom: 28px; }
+
+/* Button */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; font-size: 13px; font-weight: 600; border-radius: 6px; border: none; cursor: pointer; transition: all 0.15s; font-family: var(--sans); }
+.btn-primary { background: var(--ink); color: white; }
+.btn-primary:hover { background: #333; }
+.btn-secondary { background: var(--surface); color: var(--ink); border: 1px solid var(--rule); }
+.btn-secondary:hover { border-color: var(--rule-bold); background: var(--surface-warm); }
+.btn-danger { background: var(--rose-soft); color: var(--rose); border: 1px solid transparent; }
+.btn-danger:hover { background: #fbe0e5; }
+
+/* Huddle cards */
+.huddle-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
+.huddle-card {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius);
+  padding: 24px 28px; box-shadow: var(--shadow-card); transition: all 0.2s; cursor: pointer;
+}
+.huddle-card:hover { box-shadow: var(--shadow-hover); border-color: var(--rule-bold); }
+.huddle-card.invited { border-left: 3px solid var(--violet); }
+.hc-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.hc-name { font-family: var(--serif); font-size: 20px; font-weight: 600; }
+.hc-purpose { font-size: 13px; color: var(--ink-2); margin-bottom: 12px; }
+.hc-stats { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.hc-stat { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-3); }
+.hc-stat .icon-wrap { display: flex; color: var(--ink-4); }
+.hc-footer { display: flex; justify-content: space-between; align-items: center; }
+.hc-role { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--ink-3); }
+.hc-joined { font-size: 11px; color: var(--ink-4); font-family: var(--mono); }
+
+/* Badge */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; font-size: 11px; font-weight: 600; border-radius: 4px; letter-spacing: 0.3px; }
+.badge-active { background: var(--emerald-soft); color: var(--emerald); }
+.badge-invited { background: var(--violet-soft); color: var(--violet); }
+
+/* Empty state */
+.empty-state { text-align: center; padding: 80px 20px; color: var(--ink-3); }
+.empty-state .es-icon { display: flex; justify-content: center; margin-bottom: 16px; color: var(--ink-4); }
+.empty-state h3 { font-family: var(--serif); font-size: 20px; font-weight: 600; color: var(--ink-2); margin-bottom: 8px; }
+.empty-state p { font-size: 14px; max-width: 400px; margin: 0 auto; }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 200; display: none; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--surface); border-radius: 12px; padding: 32px; width: 100%; max-width: 480px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+.modal h2 { font-family: var(--serif); font-size: 22px; font-weight: 600; margin-bottom: 20px; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--ink-3); margin-bottom: 6px; }
+.form-group input, .form-group textarea {
+  width: 100%; padding: 10px 14px; font-size: 14px; font-family: var(--sans);
+  border: 1px solid var(--rule); border-radius: 6px; background: var(--surface);
+  color: var(--ink); transition: border-color 0.15s; outline: none;
+}
+.form-group input:focus, .form-group textarea:focus { border-color: var(--blue); }
+.form-group textarea { resize: vertical; min-height: 80px; }
+.form-group .hint { font-size: 11px; color: var(--ink-4); margin-top: 4px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+
+@media (max-width: 600px) {
+  .huddle-grid { grid-template-columns: 1fr; }
+  .masthead-nav { gap: 0; overflow-x: auto; }
+  .page-header { flex-direction: column; gap: 10px; }
+}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-top">
+    <a href="/index.html" class="masthead-logo">MitchelLake <em>Signals</em></a>
+    <nav class="masthead-nav">
+      <a href="/index.html">Signals</a>
+      <a href="/people.html">People</a>
+      <a href="/companies.html">Companies</a>
+      <a href="/dispatches.html">Dispatch</a>
+      <a href="/placements.html">Revenue</a>
+      <a href="/case-studies.html">Case Studies</a>
+      <a href="/huddles.html" class="active">Huddles</a>
+    </nav>
+    <div class="masthead-user" id="userAvatar"></div>
+  </div>
+</header>
+
+<main class="page">
+  <div class="page-rule"></div>
+  <div class="page-header">
+    <div>
+      <div class="page-title">Huddles</div>
+    </div>
+    <button class="btn btn-primary" onclick="openCreateModal()">
+      <span class="icon-wrap"></span> Create Huddle
+    </button>
+  </div>
+  <div class="page-subtitle">Collaborative intelligence — pool proximity, share signals</div>
+
+  <div id="huddleList" class="huddle-grid"></div>
+  <div id="emptyState" class="empty-state" style="display:none;">
+    <div class="es-icon" id="emptyIcon"></div>
+    <h3>No huddles yet</h3>
+    <p>Create one or accept an invite to get started</p>
+  </div>
+</main>
+
+<!-- Create Huddle Modal -->
+<div class="modal-overlay" id="createModal">
+  <div class="modal">
+    <h2>Create Huddle</h2>
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" id="huddleName" placeholder="e.g. SEA FinTech CTO Search">
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <textarea id="huddleDesc" placeholder="What is this huddle about?"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Purpose</label>
+      <input type="text" id="huddlePurpose" placeholder="e.g. Series A prep, SEA FinTech Founders">
+    </div>
+    <div class="form-group">
+      <label>Phase Label <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+      <input type="text" id="huddlePhase" placeholder="e.g. Active sourcing, Due diligence">
+      <div class="hint">A label to track where this huddle is in its lifecycle</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
+      <button class="btn btn-primary" id="createBtn" onclick="createHuddle()">Create</button>
+    </div>
+  </div>
+</div>
+
+<script src="/icons.js"></script>
+<script>
+function api(path, opts) {
+  return fetch(path, Object.assign({
+    headers: {
+      Authorization: 'Bearer ' + localStorage.getItem('ml_token'),
+      'Content-Type': 'application/json'
+    }
+  }, opts || {})).then(function(r) { return r.json(); });
+}
+
+function formatDate(d) {
+  if (!d) return '';
+  var dt = new Date(d);
+  return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/* Modal */
+function openCreateModal() {
+  document.getElementById('createModal').classList.add('open');
+}
+function closeCreateModal() {
+  document.getElementById('createModal').classList.remove('open');
+}
+document.getElementById('createModal').addEventListener('click', function(e) {
+  if (e.target === this) closeCreateModal();
+});
+
+/* Create huddle */
+function createHuddle() {
+  var name = document.getElementById('huddleName').value.trim();
+  if (!name) { document.getElementById('huddleName').focus(); return; }
+  var btn = document.getElementById('createBtn');
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
+  api('/api/huddles', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: name,
+      description: document.getElementById('huddleDesc').value.trim(),
+      purpose: document.getElementById('huddlePurpose').value.trim(),
+      phase_label: document.getElementById('huddlePhase').value.trim() || null
+    })
+  }).then(function(data) {
+    if (data && data.id) {
+      window.location.href = '/huddle.html?id=' + data.id;
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Create';
+      alert(data.error || 'Failed to create huddle');
+    }
+  }).catch(function() {
+    btn.disabled = false;
+    btn.textContent = 'Create';
+    alert('Network error');
+  });
+}
+
+/* Load huddles */
+function loadHuddles() {
+  api('/api/huddles').then(function(data) {
+    var list = document.getElementById('huddleList');
+    var empty = document.getElementById('emptyState');
+    var huddles = data.huddles || data || [];
+    if (!Array.isArray(huddles)) huddles = [];
+
+    if (huddles.length === 0) {
+      list.style.display = 'none';
+      empty.style.display = 'block';
+      document.getElementById('emptyIcon').innerHTML = icon('users', 40);
+      return;
+    }
+
+    empty.style.display = 'none';
+    list.style.display = '';
+    list.innerHTML = huddles.map(function(h) {
+      var isInvited = h.status === 'invited';
+      var badgeClass = isInvited ? 'badge-invited' : 'badge-active';
+      var badgeText = isInvited ? 'Invited' : 'Active';
+
+      return '<div class="huddle-card' + (isInvited ? ' invited' : '') + '" onclick="goToHuddle(\'' + h.id + '\',' + isInvited + ')">'
+        + '<div class="hc-top">'
+        + '  <div class="hc-name">' + esc(h.name) + '</div>'
+        + '  <span class="badge ' + badgeClass + '">' + badgeText + '</span>'
+        + '</div>'
+        + (h.purpose ? '<div class="hc-purpose">' + esc(h.purpose) + '</div>' : '')
+        + '<div class="hc-stats">'
+        + '  <span class="hc-stat"><span class="icon-wrap">' + icon('users') + '</span>' + (h.member_count || 0) + ' members</span>'
+        + '  <span class="hc-stat"><span class="icon-wrap">' + icon('user') + '</span>' + (h.people_count || 0) + ' people</span>'
+        + '</div>'
+        + '<div class="hc-footer">'
+        + '  <span class="hc-role">' + esc(h.role || 'member') + '</span>'
+        + '  <span class="hc-joined">' + (h.joined_at ? formatDate(h.joined_at) : '') + '</span>'
+        + '</div>'
+        + (isInvited ? '<div style="margin-top:12px"><button class="btn btn-secondary" onclick="event.stopPropagation();goToHuddle(\'' + h.id + '\',true)">' + icon('arrow-up-right') + ' Preview &amp; Join</button></div>' : '')
+        + '</div>';
+    }).join('');
+  }).catch(function(err) {
+    console.error('Failed to load huddles', err);
+  });
+}
+
+function goToHuddle(id, isInvited) {
+  var url = '/huddle.html?id=' + id;
+  if (isInvited) url += '&join=true';
+  window.location.href = url;
+}
+
+function esc(s) {
+  if (!s) return '';
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+/* Init */
+(function() {
+  var btn = document.querySelector('.page-header .btn .icon-wrap');
+  if (btn) btn.innerHTML = icon('users');
+  loadHuddles();
+
+  /* user avatar */
+  try {
+    var tok = localStorage.getItem('ml_token');
+    if (tok) {
+      var payload = JSON.parse(atob(tok.split('.')[1]));
+      var initials = (payload.name || payload.email || '?').split(' ').map(function(w){return w[0];}).join('').substring(0,2).toUpperCase();
+      document.getElementById('userAvatar').textContent = initials;
+    }
+  } catch(e) {}
+})();
+</script>
+</body>
+</html>

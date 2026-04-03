@@ -13,6 +13,32 @@ const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const rateLimit = require('express-rate-limit');
+
+// Global rate limit — 200 requests per minute per IP
+app.use('/api/', rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: function(req) { return req.ip + ':' + (req.tenant_id || 'anon'); },
+  handler: function(req, res) { res.status(429).json({ error: 'Rate limit exceeded. Try again in a minute.' }); },
+}));
+
+// Strict limit on auth endpoints — 20 per minute per IP
+app.use('/api/auth/', rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: function(req) { return req.ip; },
+  handler: function(req, res) { res.status(429).json({ error: 'Too many auth requests.' }); },
+}));
+
+// Strict limit on waitlist — 5 per minute per IP
+app.use('/api/waitlist', rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  keyGenerator: function(req) { return req.ip; },
+}));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATABASE
@@ -51,7 +77,11 @@ const REGION_CODES = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.set('trust proxy', 1);
-app.use(express.json({ limit: '10mb' }));
+// Skip JSON parsing for Stripe webhook (needs raw body for signature verification)
+app.use(function(req, res, next) {
+  if (req.path === '/api/billing/webhook') return next();
+  express.json({ limit: '10mb' })(req, res, next);
+});
 
 // Serve Autonodal landing page as homepage when accessed via autonodal.com
 app.get('/', (req, res, next) => {
@@ -222,16 +252,41 @@ app.get('/api/auth/google/callback', async (req, res) => {
         [userInfo.name, user.id]
       );
     } else {
-      // Auto-create MitchelLake team member (password_hash set to placeholder — OAuth users don't use passwords)
-      const { rows: [newUser] } = await platformPool.query(
-        `INSERT INTO users (id, email, name, role, password_hash, tenant_id, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, 'consultant', 'oauth_google', $3, NOW(), NOW())
-         RETURNING id, email, name, role`,
-        [userInfo.email, userInfo.name || userInfo.email.split('@')[0], process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001']
-      );
-      user = newUser;
-      console.log(`✅ New team member created: ${user.name} (${user.email})`);
-      auditLog(user.id, 'user_registered', 'user', user.id, { name: user.name, email: user.email });
+      // New user — determine tenant assignment
+      const displayName = userInfo.name || userInfo.email.split('@')[0];
+
+      if (userInfo.email.endsWith('@mitchellake.com')) {
+        // MitchelLake domain → assign to MitchelLake tenant
+        const { rows: [newUser] } = await platformPool.query(
+          `INSERT INTO users (id, email, name, role, password_hash, tenant_id, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, 'consultant', 'oauth_google', $3, NOW(), NOW())
+           RETURNING id, email, name, role`,
+          [userInfo.email, displayName, process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001']
+        );
+        user = newUser;
+        console.log(`✅ New MitchelLake team member: ${user.name} (${user.email})`);
+      } else {
+        // External user → auto-provision a new tenant
+        const slug = userInfo.email.split('@')[0]
+          .toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 30) + '-' + Date.now().toString(36);
+
+        const { rows: [newTenant] } = await platformPool.query(
+          `INSERT INTO tenants (id, name, slug, vertical, plan, onboarding_status, profile, created_at)
+           VALUES (gen_random_uuid(), $1, $2, 'revenue', 'enterprise', 'step_1', $3, NOW())
+           RETURNING id`,
+          [displayName, slug, JSON.stringify({ provisioned_from: 'google_oauth', email: userInfo.email })]
+        );
+
+        const { rows: [newUser] } = await platformPool.query(
+          `INSERT INTO users (id, email, name, role, password_hash, tenant_id, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, 'admin', 'oauth_google', $3, NOW(), NOW())
+           RETURNING id, email, name, role`,
+          [userInfo.email, displayName, newTenant.id]
+        );
+        user = newUser;
+        console.log(`✅ New tenant provisioned: ${displayName} (${slug}) for ${userInfo.email}`);
+      }
+      auditLog(user.id, 'user_registered', 'user', user.id, { name: user.name || displayName, email: user.email });
     }
 
     // Create session
@@ -283,9 +338,20 @@ app.get('/api/auth/google/callback', async (req, res) => {
       return res.redirect(connectUrl);
     }
 
-    // Redirect to app with token (frontend picks it up from URL)
-    const sep = returnTo.includes('?') ? '&' : '?';
-    res.redirect(`${returnTo}${sep}token=${sessionToken}&user=${encodeURIComponent(JSON.stringify({ id: user.id, email: user.email, name: user.name, role: user.role }))}`);
+    // Check onboarding status — redirect new tenants to wizard
+    const { rows: [tenantStatus] } = await platformPool.query(
+      'SELECT onboarding_status FROM tenants WHERE id = (SELECT tenant_id FROM users WHERE id = $1)',
+      [user.id]
+    );
+    const userJson = encodeURIComponent(JSON.stringify({ id: user.id, email: user.email, name: user.name, role: user.role }));
+
+    if (tenantStatus && tenantStatus.onboarding_status !== 'complete') {
+      const step = tenantStatus.onboarding_status || 'step_1';
+      res.redirect(`/onboarding.html?step=${step}&token=${sessionToken}&user=${userJson}`);
+    } else {
+      const sep = returnTo.includes('?') ? '&' : '?';
+      res.redirect(`${returnTo}${sep}token=${sessionToken}&user=${userJson}`);
+    }
   } catch (err) {
     console.error('Google auth error:', err);
     res.redirect(returnTo + '?auth_error=server_error');
@@ -1185,31 +1251,35 @@ app.get('/api/signals/hero', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
     const { rows } = await db.query(`
-      SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
-             se.evidence_summary, se.detected_at, se.source_url, se.image_url,
-             c.sector, c.geography, c.is_client, c.domain,
-             ed.title AS doc_title, ed.source_name, ed.image_url AS doc_image_url, ed.audio_url AS doc_audio_url, ed.source_type AS doc_source_type,
-             (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) AS contact_count,
-             (SELECT COUNT(DISTINCT tp2.person_id) FROM team_proximity tp2
-              JOIN people p2 ON p2.id = tp2.person_id AND p2.current_company_id = se.company_id AND p2.tenant_id = $1
-              WHERE tp2.tenant_id = $1 AND tp2.relationship_strength >= 0.25
-             ) AS prox_count
-      FROM signal_events se
-      LEFT JOIN companies c ON c.id = se.company_id
-      LEFT JOIN external_documents ed ON ed.id = se.source_document_id
-      WHERE se.tenant_id = $1
-        AND se.detected_at > NOW() - INTERVAL '7 days'
-        AND COALESCE(se.is_megacap, false) = false
-        AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')
-        AND se.company_name IS NOT NULL
-        AND se.company_name NOT ILIKE '%mitchellake%' AND se.company_name NOT ILIKE '%mitchel lake%'
-      ORDER BY
-        CASE WHEN c.is_client = true THEN 100 ELSE 0 END +
-        CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) > 0 THEN 50 ELSE 0 END +
-        (se.confidence_score * 30) +
-        CASE WHEN se.image_url IS NOT NULL OR ed.image_url IS NOT NULL THEN 20 ELSE 0 END
-        DESC
-      LIMIT 3
+      SELECT * FROM (
+        SELECT DISTINCT ON (se.company_id)
+          se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
+          se.evidence_summary, se.detected_at, se.source_url, se.image_url,
+          c.sector, c.geography, c.is_client, c.domain,
+          ed.title AS doc_title, ed.source_name, ed.image_url AS doc_image_url, ed.audio_url AS doc_audio_url, ed.source_type AS doc_source_type,
+          (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) AS contact_count,
+          (SELECT COUNT(DISTINCT tp2.person_id) FROM team_proximity tp2
+            JOIN people p2 ON p2.id = tp2.person_id AND p2.current_company_id = se.company_id AND p2.tenant_id = $1
+            WHERE tp2.tenant_id = $1 AND tp2.relationship_strength >= 0.25
+          ) AS prox_count,
+          CASE WHEN c.is_client = true THEN 100 ELSE 0 END +
+          CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) > 0 THEN 50 ELSE 0 END +
+          (se.confidence_score * 30) +
+          CASE WHEN se.image_url IS NOT NULL OR ed.image_url IS NOT NULL THEN 20 ELSE 0 END
+          AS hero_score
+        FROM signal_events se
+        LEFT JOIN companies c ON c.id = se.company_id
+        LEFT JOIN external_documents ed ON ed.id = se.source_document_id
+        WHERE se.tenant_id = $1
+          AND se.detected_at > NOW() - INTERVAL '7 days'
+          AND COALESCE(se.is_megacap, false) = false
+          AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')
+          AND se.company_name IS NOT NULL
+          AND se.company_name NOT ILIKE '%mitchellake%' AND se.company_name NOT ILIKE '%mitchel lake%'
+        ORDER BY se.company_id, se.confidence_score DESC, se.detected_at DESC
+      ) deduped
+      ORDER BY hero_score DESC
+      LIMIT 5
     `, [req.tenant_id]);
 
     // Use doc_image_url as fallback
@@ -1892,10 +1962,25 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
 
     const [signalsResult, countResult] = await Promise.all([
       db.query(`
+        WITH ranked_signals AS (
+          SELECT se.*,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY se.company_id, date_trunc('day', se.detected_at)
+                   ORDER BY se.confidence_score DESC, se.detected_at DESC
+                 ) AS rn,
+                 COUNT(*) OVER (
+                   PARTITION BY se.company_id, date_trunc('day', se.detected_at)
+                 ) AS signals_in_cluster
+          FROM signal_events se
+          LEFT JOIN companies c ON se.company_id = c.id
+          LEFT JOIN external_documents ed ON se.source_document_id = ed.id
+          ${where}
+        )
         SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
                se.evidence_summary, se.evidence_snippet, se.triage_status,
                se.detected_at, se.signal_date, se.source_url, se.signal_category,
                se.hiring_implications, se.is_megacap, se.image_url,
+               se.signals_in_cluster,
                c.sector, c.geography, c.is_client, c.country_code, c.company_tier,
                ed.source_name, ed.source_type AS doc_source_type,
                ed.title AS doc_title, ed.summary AS doc_summary,
@@ -1915,7 +2000,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
                 WHERE cl.company_id = se.company_id AND pl.tenant_id = $1) AS placement_count,
                sd.id AS dispatch_id, sd.status AS dispatch_status,
                sd.claimed_by, sd.claimed_by_name, sd.blog_title AS dispatch_blog_title
-        FROM signal_events se
+        FROM ranked_signals se
         LEFT JOIN companies c ON se.company_id = c.id
         LEFT JOIN external_documents ed ON se.source_document_id = ed.id
         LEFT JOIN LATERAL (
@@ -1926,7 +2011,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
           WHERE sd2.signal_event_id = se.id
           ORDER BY sd2.generated_at DESC LIMIT 1
         ) sd ON true
-        ${where}
+        WHERE se.rn = 1
         ORDER BY
           CASE WHEN c.company_tier = 'tenant_company' THEN 2 WHEN se.is_megacap = true THEN 1 ELSE 0 END,
           CASE WHEN c.is_client = true THEN 0 ELSE 1 END,
@@ -2486,6 +2571,23 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
       colleagues = rows;
     }
 
+    // Proximity — which team members are connected to this person
+    let proximity = [];
+    try {
+      const { rows } = await db.query(`
+        SELECT u.name AS team_member, u.id AS team_member_id,
+               tp.relationship_strength, tp.proximity_type, tp.source AS proximity_source,
+               (SELECT MAX(i.interaction_at) FROM interactions i WHERE i.person_id = $1 AND i.user_id = u.id) AS last_contact,
+               (SELECT COUNT(*) FROM interactions i WHERE i.person_id = $1 AND i.user_id = u.id) AS interaction_count
+        FROM team_proximity tp
+        JOIN users u ON u.id = tp.team_member_id
+        WHERE tp.person_id = $1 AND tp.relationship_strength >= 0.1
+        ORDER BY tp.relationship_strength DESC
+        LIMIT 10
+      `, [req.params.id]);
+      proximity = rows;
+    } catch (e) {}
+
     res.json({
       ...person,
       research_notes: notes,
@@ -2494,6 +2596,7 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
       company_signals: companySignals,
       interaction_stats: stats,
       colleagues,
+      proximity,
     });
   } catch (err) {
     console.error('Person detail error:', err.message);
@@ -2552,10 +2655,30 @@ app.patch('/api/people/:id', authenticateToken, async (req, res) => {
 
     // If company name changed, try to link to company record
     if (req.body.current_company_name) {
-      const { rows: [match] } = await db.query(
-        `SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 LIMIT 1`,
-        [req.body.current_company_name, req.tenant_id]
+      const compName = req.body.current_company_name.trim();
+      // Try exact match first, then fuzzy (first significant word)
+      let match = await db.queryOne(
+        `SELECT id FROM companies WHERE LOWER(TRIM(name)) = LOWER($1) AND tenant_id = $2 LIMIT 1`,
+        [compName, req.tenant_id]
       );
+      if (!match) {
+        // Fuzzy: match on first word that's 4+ chars
+        const words = compName.replace(/[()]/g, '').split(/\s+/).filter(function(w) { return w.length >= 4; });
+        if (words.length > 0) {
+          match = await db.queryOne(
+            `SELECT id FROM companies WHERE name ILIKE $1 AND tenant_id = $2 ORDER BY LENGTH(name) LIMIT 1`,
+            ['%' + words[0] + '%', req.tenant_id]
+          );
+        }
+      }
+      if (!match) {
+        // Create new company record
+        const created = await db.queryOne(
+          `INSERT INTO companies (name, tenant_id, source, created_at) VALUES ($1, $2, 'manual_edit', NOW()) RETURNING id`,
+          [compName, req.tenant_id]
+        );
+        match = created;
+      }
       if (match) {
         idx++;
         updates.push(`current_company_id = $${idx}`);
@@ -3941,9 +4064,12 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
       ) tp_agg ON true
       WHERE (p.current_company_id = $1 OR LOWER(TRIM(p.current_company_name)) = LOWER(TRIM($3)))
         AND p.tenant_id = $2
-      ORDER BY COALESCE(ix.cnt, 0) DESC, tp_agg.max_strength DESC NULLS LAST,
-        CASE WHEN p.seniority_level IN ('c_suite','vp','director') THEN 0 ELSE 1 END, p.full_name
-      LIMIT 50
+      ORDER BY ix.last_at DESC NULLS LAST,
+        COALESCE(ix.cnt, 0) DESC,
+        tp_agg.max_strength DESC NULLS LAST,
+        CASE WHEN p.seniority_level IN ('c_suite','vp','director') THEN 0 ELSE 1 END,
+        p.full_name
+      LIMIT 200
     `, [companyId, req.tenant_id, company.name]);
 
     // Placements at this company — linked via account OR name match in role_title/client_name_raw
@@ -4061,7 +4187,31 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
       if (is && parseInt(is.total_interactions) > 0) interaction_summary = is;
     } catch (e) {}
 
-    res.json({ ...company, signals, people, placements, documents, financials, opportunities, pipeline_total: pipelineTotal, case_studies, interaction_summary });
+    // Proximity map — which team members have connections to people at this company
+    let proximity_map = [];
+    try {
+      const { rows } = await db.query(`
+        SELECT u.name AS team_member, u.id AS team_member_id,
+               p.full_name AS contact_name, p.id AS person_id,
+               p.current_title, tp.relationship_strength,
+               tp.proximity_type, tp.source AS proximity_source,
+               MAX(i.interaction_at) AS last_contact,
+               COUNT(i.id) AS interaction_count
+        FROM team_proximity tp
+        JOIN users u ON u.id = tp.team_member_id
+        JOIN people p ON p.id = tp.person_id
+        LEFT JOIN interactions i ON i.person_id = p.id AND i.user_id = u.id
+        WHERE p.current_company_id = $1
+          AND tp.relationship_strength >= 0.15
+        GROUP BY u.name, u.id, p.full_name, p.id, p.current_title,
+                 tp.relationship_strength, tp.proximity_type, tp.source
+        ORDER BY tp.relationship_strength DESC
+        LIMIT 30
+      `, [companyId]);
+      proximity_map = rows;
+    } catch (e) {}
+
+    res.json({ ...company, signals, people, placements, documents, financials, opportunities, pipeline_total: pipelineTotal, case_studies, interaction_summary, proximity_map });
   } catch (err) {
     console.error('Company detail error:', err.message);
     res.status(500).json({ error: 'Failed to fetch company' });
@@ -4910,6 +5060,842 @@ app.delete('/api/admin/waitlist/:id', authenticateToken, requireAdmin, async (re
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LEMON SQUEEZY BILLING
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Env vars needed:
+//   LEMONSQUEEZY_API_KEY     — from app.lemonsqueezy.com → Settings → API Keys
+//   LEMONSQUEEZY_STORE_ID    — from Store → Settings → Store ID
+//   LEMONSQUEEZY_VARIANT_ID  — from Products → your €10/mo plan → Variant ID
+//   LEMONSQUEEZY_WEBHOOK_SECRET — from Settings → Webhooks → Signing Secret
+//
+
+const lsEnabled = !!process.env.LEMONSQUEEZY_API_KEY;
+const LS_API = 'https://api.lemonsqueezy.com/v1';
+const lsHeaders = lsEnabled ? {
+  'Authorization': 'Bearer ' + process.env.LEMONSQUEEZY_API_KEY,
+  'Accept': 'application/vnd.api+json',
+  'Content-Type': 'application/vnd.api+json',
+} : {};
+
+// POST /api/billing/checkout — create Lemon Squeezy checkout URL
+app.post('/api/billing/checkout', authenticateToken, async (req, res) => {
+  if (!lsEnabled) return res.status(503).json({ error: 'Billing not configured' });
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const user = await db.queryOne('SELECT email, name FROM users WHERE id = $1', [req.user.user_id]);
+    const tenant = await db.queryOne('SELECT id, name FROM tenants WHERE id = $1', [req.tenant_id]);
+
+    var storeId = process.env.LEMONSQUEEZY_STORE_ID;
+    var variantId = req.body.variant_id || process.env.LEMONSQUEEZY_VARIANT_ID;
+    if (!storeId || !variantId) return res.status(400).json({ error: 'Billing product not configured' });
+
+    var response = await fetch(LS_API + '/checkouts', {
+      method: 'POST',
+      headers: lsHeaders,
+      body: JSON.stringify({
+        data: {
+          type: 'checkouts',
+          attributes: {
+            checkout_data: {
+              email: user.email,
+              name: user.name || tenant.name,
+              custom: { tenant_id: req.tenant_id },
+            },
+            product_options: {
+              redirect_url: (process.env.BASE_URL || 'https://www.autonodal.com') + '/index.html?billing=success',
+              enabled_variants: [parseInt(variantId)],
+            },
+          },
+          relationships: {
+            store: { data: { type: 'stores', id: storeId } },
+            variant: { data: { type: 'variants', id: variantId } },
+          },
+        },
+      }),
+    });
+
+    var result = await response.json();
+    if (!response.ok) {
+      console.error('[Billing] Checkout creation failed:', JSON.stringify(result));
+      return res.status(500).json({ error: 'Failed to create checkout' });
+    }
+
+    var checkoutUrl = result.data?.attributes?.url;
+    res.json({ url: checkoutUrl });
+  } catch (err) {
+    console.error('Billing checkout error:', err.message);
+    res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+});
+
+// POST /api/billing/portal — customer portal URL
+app.post('/api/billing/portal', authenticateToken, async (req, res) => {
+  if (!lsEnabled) return res.status(503).json({ error: 'Billing not configured' });
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const tenant = await db.queryOne('SELECT stripe_customer_id, subscription_id FROM tenants WHERE id = $1', [req.tenant_id]);
+    if (!tenant || !tenant.stripe_customer_id) return res.status(400).json({ error: 'No billing account' });
+
+    // Lemon Squeezy customer portal URL
+    var response = await fetch(LS_API + '/customers/' + tenant.stripe_customer_id, {
+      headers: lsHeaders,
+    });
+    var result = await response.json();
+    var portalUrl = result.data?.attributes?.urls?.customer_portal;
+
+    if (!portalUrl) return res.status(400).json({ error: 'Portal not available' });
+    res.json({ url: portalUrl });
+  } catch (err) {
+    console.error('Billing portal error:', err.message);
+    res.status(500).json({ error: 'Failed to open billing portal' });
+  }
+});
+
+// GET /api/billing/status — current plan info
+app.get('/api/billing/status', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const tenant = await db.queryOne(
+      'SELECT subscription_status, subscription_plan, subscription_ends_at, stripe_customer_id FROM tenants WHERE id = $1',
+      [req.tenant_id]
+    );
+    res.json({
+      status: tenant?.subscription_status || 'free',
+      plan: tenant?.subscription_plan || 'free',
+      ends_at: tenant?.subscription_ends_at,
+      has_billing: !!tenant?.stripe_customer_id,
+      billing_enabled: lsEnabled,
+      provider: 'lemonsqueezy',
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load billing status' });
+  }
+});
+
+// POST /api/billing/webhook — Lemon Squeezy webhook handler
+app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  var webhookSecret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET;
+
+  // Verify signature if secret is set
+  if (webhookSecret) {
+    var crypto = require('crypto');
+    var sig = req.headers['x-signature'];
+    var expected = crypto.createHmac('sha256', webhookSecret).update(req.body).digest('hex');
+    if (sig !== expected) {
+      console.error('[Billing] Webhook signature mismatch');
+      return res.status(400).send('Invalid signature');
+    }
+  }
+
+  var event;
+  try {
+    event = JSON.parse(req.body);
+  } catch (err) {
+    return res.status(400).send('Invalid JSON');
+  }
+
+  var eventName = event.meta?.event_name;
+  var customData = event.meta?.custom_data || {};
+  var tenantId = customData.tenant_id;
+  var attrs = event.data?.attributes || {};
+  var subscriptionId = String(event.data?.id || '');
+  var customerId = String(attrs.customer_id || '');
+
+  console.log('[Billing] Webhook:', eventName, '| tenant:', tenantId, '| sub:', subscriptionId);
+
+  try {
+    switch (eventName) {
+      case 'subscription_created':
+        if (tenantId) {
+          await platformPool.query(`
+            UPDATE tenants SET
+              subscription_status = 'active',
+              subscription_plan = 'pro',
+              subscription_id = $1,
+              stripe_customer_id = $2,
+              updated_at = NOW()
+            WHERE id = $3
+          `, [subscriptionId, customerId, tenantId]);
+          console.log('[Billing] Subscription created for tenant', tenantId);
+        }
+        break;
+
+      case 'subscription_updated':
+        var lsStatus = attrs.status; // active, past_due, unpaid, cancelled, expired, paused
+        var endsAt = attrs.ends_at || attrs.renews_at;
+        if (subscriptionId) {
+          await platformPool.query(`
+            UPDATE tenants SET
+              subscription_status = $1,
+              subscription_ends_at = $2,
+              updated_at = NOW()
+            WHERE subscription_id = $3
+          `, [lsStatus, endsAt, subscriptionId]);
+        }
+        break;
+
+      case 'subscription_cancelled':
+        if (subscriptionId) {
+          await platformPool.query(`
+            UPDATE tenants SET
+              subscription_status = 'cancelled',
+              subscription_ends_at = $1,
+              updated_at = NOW()
+            WHERE subscription_id = $2
+          `, [attrs.ends_at || new Date().toISOString(), subscriptionId]);
+          console.log('[Billing] Subscription cancelled:', subscriptionId);
+        }
+        break;
+
+      case 'subscription_expired':
+        if (subscriptionId) {
+          await platformPool.query(`
+            UPDATE tenants SET
+              subscription_status = 'expired',
+              updated_at = NOW()
+            WHERE subscription_id = $1
+          `, [subscriptionId]);
+        }
+        break;
+
+      case 'subscription_payment_success':
+        if (subscriptionId) {
+          await platformPool.query(`
+            UPDATE tenants SET
+              subscription_status = 'active',
+              updated_at = NOW()
+            WHERE subscription_id = $1
+          `, [subscriptionId]);
+        }
+        break;
+
+      case 'subscription_payment_failed':
+        if (subscriptionId) {
+          await platformPool.query(`
+            UPDATE tenants SET
+              subscription_status = 'past_due',
+              updated_at = NOW()
+            WHERE subscription_id = $1
+          `, [subscriptionId]);
+          console.log('[Billing] Payment failed:', subscriptionId);
+        }
+        break;
+    }
+
+    res.json({ received: true });
+  } catch (err) {
+    console.error('[Billing] Webhook handler error:', err.message);
+    res.status(500).send('Webhook handler error');
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EMAIL NOTIFICATIONS (Resend)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const resendEnabled = !!process.env.RESEND_API_KEY;
+const resend = resendEnabled ? new (require('resend').Resend)(process.env.RESEND_API_KEY) : null;
+const EMAIL_FROM = process.env.EMAIL_FROM || 'Autonodal <notifications@autonodal.com>';
+
+async function sendEmail(to, subject, html) {
+  if (!resend) { console.log('[Email] Skipped (not configured):', subject, '→', to); return null; }
+  try {
+    var result = await resend.emails.send({ from: EMAIL_FROM, to: to, subject: subject, html: html });
+    console.log('[Email] Sent:', subject, '→', to);
+    return result;
+  } catch (err) {
+    console.error('[Email] Failed:', subject, '→', to, err.message);
+    return null;
+  }
+}
+
+// POST /api/email/invite — send huddle invite email
+app.post('/api/email/invite', authenticateToken, async (req, res) => {
+  try {
+    var { email, huddle_name, invite_url, inviter_name } = req.body;
+    if (!email) return res.status(400).json({ error: 'email required' });
+
+    await sendEmail(email,
+      (inviter_name || 'Someone') + ' invited you to ' + (huddle_name || 'a huddle') + ' on Autonodal',
+      '<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:24px">' +
+        '<h2 style="font-size:20px;margin-bottom:8px">You\'ve been invited to a huddle</h2>' +
+        '<p style="color:#4a4a4a;line-height:1.6">' +
+          '<strong>' + (inviter_name || 'A colleague') + '</strong> wants you to join ' +
+          '<strong>' + (huddle_name || 'their huddle') + '</strong> on Autonodal — ' +
+          'collaborative signal intelligence powered by your combined networks.</p>' +
+        '<p style="margin:24px 0"><a href="' + (invite_url || 'https://www.autonodal.com') + '" ' +
+          'style="background:#1a1a1a;color:#fff;padding:12px 28px;text-decoration:none;border-radius:6px;font-size:14px;font-weight:500">' +
+          'Join Huddle</a></p>' +
+        '<p style="color:#aaa;font-size:12px">Autonodal — Act when it matters</p>' +
+      '</div>'
+    );
+
+    res.json({ sent: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to send invite' });
+  }
+});
+
+// POST /api/email/test — send test email (admin only)
+app.post('/api/email/test', authenticateToken, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  var target = req.body.email || req.user.email;
+  var result = await sendEmail(target, 'Autonodal test email', '<p>Email delivery is working.</p>');
+  res.json({ sent: !!result, to: target, resend_enabled: resendEnabled });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ONBOARDING WIZARD API
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/onboarding/platforms — grouped catalog for pick-and-mix UI
+app.get('/api/onboarding/platforms', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await platformPool.query(`
+      SELECT
+        pg.slug as group_slug, pg.name as group_name,
+        pg.icon as group_icon, pg.display_order as group_order,
+        json_agg(
+          json_build_object(
+            'slug', pc.slug, 'name', pc.name, 'icon', pc.icon,
+            'status', pc.status, 'auth_type', pc.auth_type,
+            'value_prop', pc.value_prop, 'typical_records', pc.typical_records
+          ) ORDER BY pc.display_order
+        ) as platforms
+      FROM platform_groups pg
+      JOIN platform_catalog pc ON pc.group_slug = pg.slug
+      GROUP BY pg.slug, pg.name, pg.icon, pg.display_order
+      ORDER BY pg.display_order
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error('Onboarding platforms error:', err.message);
+    res.status(500).json({ error: 'Failed to load platforms' });
+  }
+});
+
+// POST /api/onboarding/step1 — save profile, infer vertical
+app.post('/api/onboarding/step1', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { display_name, role, company, home_location,
+            focus_geographies, sectors } = req.body;
+
+    await db.query(`
+      UPDATE tenants SET
+        profile = $1,
+        onboarding_status = 'step_2a',
+        vertical = CASE
+          WHEN $2 ILIKE ANY(ARRAY['%recruiter%','%talent%','%search%','%headhunt%'])
+            THEN 'talent'
+          WHEN $2 ILIKE ANY(ARRAY['%restructur%','%advisor%','%consult%','%tax%','%legal%','%accountant%','%audit%'])
+            THEN 'mandate'
+          ELSE 'revenue'
+        END,
+        updated_at = NOW()
+      WHERE id = $3
+    `, [
+      JSON.stringify({ display_name, role, company, home_location, focus_geographies, sectors }),
+      role || '',
+      req.tenant_id,
+    ]);
+
+    if (display_name) {
+      await db.query('UPDATE users SET name = $1 WHERE id = $2', [display_name, req.user.user_id]);
+    }
+
+    res.json({ status: 'ok', next_step: 'step_2a' });
+  } catch (err) {
+    console.error('Onboarding step1 error:', err.message);
+    res.status(500).json({ error: 'Failed to save profile' });
+  }
+});
+
+// POST /api/onboarding/step2a — record selected platforms
+app.post('/api/onboarding/step2a', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { platforms } = req.body;
+
+    if (platforms && platforms.length > 0) {
+      for (const slug of platforms) {
+        await db.query(`
+          INSERT INTO onboarding_connections (tenant_id, platform_slug, status)
+          VALUES ($1, $2, 'selected')
+          ON CONFLICT (tenant_id, platform_slug) DO NOTHING
+        `, [req.tenant_id, slug]);
+      }
+    }
+
+    await db.query(`
+      UPDATE tenants SET
+        onboarding_status = 'step_2b',
+        profile = profile || jsonb_build_object('selected_platforms', $1::jsonb),
+        updated_at = NOW()
+      WHERE id = $2
+    `, [JSON.stringify(platforms || []), req.tenant_id]);
+
+    res.json({ status: 'ok', next_step: 'step_2b' });
+  } catch (err) {
+    console.error('Onboarding step2a error:', err.message);
+    res.status(500).json({ error: 'Failed to save platforms' });
+  }
+});
+
+// POST /api/onboarding/complete — graduate tenant to active
+app.post('/api/onboarding/complete', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    await db.query(`
+      UPDATE tenants SET
+        onboarding_status = 'complete',
+        onboarding_completed_at = NOW(),
+        updated_at = NOW()
+      WHERE id = $1
+    `, [req.tenant_id]);
+    res.json({ status: 'ok' });
+  } catch (err) {
+    console.error('Onboarding complete error:', err.message);
+    res.status(500).json({ error: 'Failed to complete onboarding' });
+  }
+});
+
+// POST /api/onboarding/trigger-harvest — async first harvest
+app.post('/api/onboarding/trigger-harvest', authenticateToken, async (req, res) => {
+  const tenantId = req.tenant_id;
+  res.json({ status: 'harvest_triggered' });
+
+  setImmediate(async () => {
+    try {
+      const { HarvestService } = require('./lib/platform/HarvestService');
+      const { EmbedService } = require('./lib/platform/EmbedService');
+      const { SignalEngine } = require('./lib/platform/SignalEngine');
+      console.log(`[Onboarding] Starting first harvest for tenant ${tenantId}`);
+      await new HarvestService(tenantId).run();
+      await new EmbedService(tenantId).run();
+      await new SignalEngine(tenantId).run();
+      console.log(`[Onboarding] First harvest complete for tenant ${tenantId}`);
+    } catch (err) {
+      console.error(`[Onboarding] Harvest failed for ${tenantId}:`, err.message);
+    }
+  });
+});
+
+// GET /api/onboarding/status — for wizard resume
+app.get('/api/onboarding/status', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const tenant = await db.queryOne(
+      'SELECT onboarding_status, profile FROM tenants WHERE id = $1',
+      [req.tenant_id]
+    );
+    const { rows: connections } = await db.query(
+      'SELECT platform_slug, status, records_imported FROM onboarding_connections WHERE tenant_id = $1',
+      [req.tenant_id]
+    );
+    res.json({ ...(tenant || {}), connections });
+  } catch (err) {
+    console.error('Onboarding status error:', err.message);
+    res.status(500).json({ error: 'Failed to load status' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HUDDLE ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var { HuddleEngine } = require('./lib/platform/HuddleEngine');
+var huddleEngine = new HuddleEngine();
+
+// Helper: verify caller is an active member of a huddle
+async function verifyHuddleMember(huddleId, tenantId) {
+  var { rows } = await platformPool.query(
+    `SELECT role, status FROM huddle_members
+     WHERE huddle_id = $1 AND tenant_id = $2 AND status = 'active'`,
+    [huddleId, tenantId]
+  );
+  return rows[0] || null;
+}
+
+// POST /api/huddles — create a new huddle
+app.post('/api/huddles', authenticateToken, async function(req, res) {
+  try {
+    var { name, description, purpose, visibility, phase_label, target_date } = req.body;
+    if (!name) return res.status(400).json({ error: 'name is required' });
+
+    var slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    slug = slug + '-' + Date.now().toString(36);
+
+    var { rows } = await platformPool.query(
+      `INSERT INTO huddles (name, slug, description, purpose, creator_tenant_id, visibility, phase_label, target_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [name, slug, description || null, purpose || null, req.tenant_id,
+       visibility || 'private', phase_label || null, target_date || null]
+    );
+    var huddle = rows[0];
+
+    // Creator auto-joins as admin
+    await platformPool.query(
+      `INSERT INTO huddle_members (huddle_id, tenant_id, role, status, invited_by, joined_at)
+       VALUES ($1, $2, 'admin', 'active', $2, NOW())`,
+      [huddle.id, req.tenant_id]
+    );
+
+    res.status(201).json(huddle);
+  } catch (err) {
+    console.error('Create huddle error:', err.message);
+    res.status(500).json({ error: 'Failed to create huddle' });
+  }
+});
+
+// GET /api/huddles — list my huddles
+app.get('/api/huddles', authenticateToken, async function(req, res) {
+  try {
+    var { rows } = await platformPool.query(
+      `SELECT h.*, hm.role, hm.status as member_status,
+              (SELECT COUNT(*) FROM huddle_members WHERE huddle_id = h.id AND status = 'active') as member_count,
+              (SELECT COUNT(*) FROM huddle_people WHERE huddle_id = h.id) as people_count
+       FROM huddles h
+       JOIN huddle_members hm ON hm.huddle_id = h.id
+       WHERE hm.tenant_id = $1 AND hm.status IN ('active', 'invited')
+         AND h.status = 'active'
+       ORDER BY h.updated_at DESC`,
+      [req.tenant_id]
+    );
+    res.json({ huddles: rows });
+  } catch (err) {
+    console.error('List huddles error:', err.message);
+    res.status(500).json({ error: 'Failed to list huddles' });
+  }
+});
+
+// GET /api/huddles/:id — huddle detail with members
+app.get('/api/huddles/:id', authenticateToken, async function(req, res) {
+  try {
+    var membership = await verifyHuddleMember(req.params.id, req.tenant_id);
+    if (!membership) return res.status(403).json({ error: 'Not a member of this huddle' });
+
+    var { rows: huddles } = await platformPool.query(
+      'SELECT * FROM huddles WHERE id = $1', [req.params.id]
+    );
+    if (!huddles.length) return res.status(404).json({ error: 'Huddle not found' });
+
+    var { rows: members } = await platformPool.query(
+      `SELECT hm.tenant_id, hm.role, hm.status, hm.joined_at,
+              hm.contributed_people_count, hm.net_new_people_count,
+              t.name as tenant_name, t.slug as tenant_slug
+       FROM huddle_members hm
+       JOIN tenants t ON t.id = hm.tenant_id
+       WHERE hm.huddle_id = $1 AND hm.status IN ('active', 'invited')
+       ORDER BY hm.joined_at ASC`,
+      [req.params.id]
+    );
+
+    var { rows: stats } = await platformPool.query(
+      `SELECT COUNT(*) as people_count,
+              ROUND(AVG(best_strength_score)::numeric, 3) as avg_strength
+       FROM huddle_people WHERE huddle_id = $1`,
+      [req.params.id]
+    );
+
+    var huddle = huddles[0];
+    huddle.members = members;
+    huddle.people_count = parseInt(stats[0].people_count) || 0;
+    huddle.avg_strength = parseFloat(stats[0].avg_strength) || 0;
+    huddle.my_role = membership.role;
+
+    res.json(huddle);
+  } catch (err) {
+    console.error('Huddle detail error:', err.message);
+    res.status(500).json({ error: 'Failed to load huddle' });
+  }
+});
+
+// POST /api/huddles/:id/invite — generate invite token
+app.post('/api/huddles/:id/invite', authenticateToken, async function(req, res) {
+  try {
+    var membership = await verifyHuddleMember(req.params.id, req.tenant_id);
+    if (!membership) return res.status(403).json({ error: 'Not a member of this huddle' });
+
+    var { email, role } = req.body || {};
+    var { rows } = await platformPool.query(
+      `INSERT INTO huddle_invites (huddle_id, invited_by, email, role)
+       VALUES ($1, $2, $3, $4) RETURNING id, token, email, role, expires_at`,
+      [req.params.id, req.tenant_id, email || null, role || 'member']
+    );
+
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('Huddle invite error:', err.message);
+    res.status(500).json({ error: 'Failed to create invite' });
+  }
+});
+
+// POST /api/huddles/:id/join — join with preview/confirm flow
+app.post('/api/huddles/:id/join', authenticateToken, async function(req, res) {
+  try {
+    var huddleId = req.params.id;
+    var mode = req.body.mode || 'preview'; // 'preview' or 'confirm'
+    var inviteToken = req.body.invite_token;
+
+    // Verify huddle exists
+    var { rows: huddles } = await platformPool.query(
+      'SELECT id, status FROM huddles WHERE id = $1', [huddleId]
+    );
+    if (!huddles.length || huddles[0].status !== 'active') {
+      return res.status(404).json({ error: 'Huddle not found or inactive' });
+    }
+
+    // Check if already a member
+    var { rows: existing } = await platformPool.query(
+      `SELECT status FROM huddle_members WHERE huddle_id = $1 AND tenant_id = $2`,
+      [huddleId, req.tenant_id]
+    );
+    if (existing.length && existing[0].status === 'active') {
+      return res.status(409).json({ error: 'Already an active member' });
+    }
+
+    if (mode === 'preview') {
+      var preview = await huddleEngine.previewJoin(huddleId, req.tenant_id);
+      return res.json({ mode: 'preview', ...preview });
+    }
+
+    // Confirm mode — validate invite if not already invited
+    if (!existing.length) {
+      if (!inviteToken) {
+        return res.status(400).json({ error: 'invite_token required to join' });
+      }
+      var { rows: invites } = await platformPool.query(
+        `SELECT id, role FROM huddle_invites
+         WHERE huddle_id = $1 AND token = $2 AND status = 'pending' AND expires_at > NOW()`,
+        [huddleId, inviteToken]
+      );
+      if (!invites.length) return res.status(403).json({ error: 'Invalid or expired invite' });
+
+      // Create membership row
+      await platformPool.query(
+        `INSERT INTO huddle_members (huddle_id, tenant_id, role, status, invited_by)
+         VALUES ($1, $2, $3, 'invited', (SELECT invited_by FROM huddle_invites WHERE id = $4))`,
+        [huddleId, req.tenant_id, invites[0].role, invites[0].id]
+      );
+
+      // Mark invite accepted
+      await platformPool.query(
+        `UPDATE huddle_invites SET status = 'accepted', accepted_at = NOW() WHERE id = $1`,
+        [invites[0].id]
+      );
+    }
+
+    var role = req.body.role || 'member';
+    var result = await huddleEngine.join(huddleId, req.tenant_id, role);
+    res.json({ mode: 'confirmed', ...result });
+  } catch (err) {
+    console.error('Huddle join error:', err.message);
+    res.status(500).json({ error: 'Failed to join huddle' });
+  }
+});
+
+// POST /api/huddles/:id/exit — clean exit
+app.post('/api/huddles/:id/exit', authenticateToken, async function(req, res) {
+  try {
+    var membership = await verifyHuddleMember(req.params.id, req.tenant_id);
+    if (!membership) return res.status(403).json({ error: 'Not a member of this huddle' });
+
+    await huddleEngine.exit(req.params.id, req.tenant_id);
+    res.json({ status: 'detached' });
+  } catch (err) {
+    console.error('Huddle exit error:', err.message);
+    res.status(500).json({ error: 'Failed to exit huddle' });
+  }
+});
+
+// GET /api/huddles/:id/network — merged proximity graph with search/filter/paginate
+app.get('/api/huddles/:id/network', authenticateToken, async function(req, res) {
+  try {
+    var membership = await verifyHuddleMember(req.params.id, req.tenant_id);
+    if (!membership) return res.status(403).json({ error: 'Not a member of this huddle' });
+
+    var page = Math.max(1, parseInt(req.query.page) || 1);
+    var limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    var offset = (page - 1) * limit;
+    var search = req.query.search || null;
+    var minStrength = parseFloat(req.query.min_strength) || 0;
+    var depthType = req.query.depth_type || null;
+    var sortBy = req.query.sort === 'connections' ? 'member_connection_count' : 'best_strength_score';
+
+    var conditions = ['hp.huddle_id = $1'];
+    var params = [req.params.id];
+    var paramIdx = 2;
+
+    if (minStrength > 0) {
+      conditions.push('hp.best_strength_score >= $' + paramIdx);
+      params.push(minStrength);
+      paramIdx++;
+    }
+    if (depthType) {
+      conditions.push('hp.best_depth_type = $' + paramIdx);
+      params.push(depthType);
+      paramIdx++;
+    }
+    if (search) {
+      conditions.push('(p.full_name ILIKE $' + paramIdx + ' OR p.current_company ILIKE $' + paramIdx + ' OR p.current_title ILIKE $' + paramIdx + ')');
+      params.push('%' + search + '%');
+      paramIdx++;
+    }
+
+    var where = conditions.join(' AND ');
+
+    // Count total
+    var countQuery = `SELECT COUNT(*) FROM huddle_people hp LEFT JOIN people p ON p.id = hp.person_id WHERE ${where}`;
+    var { rows: countRows } = await platformPool.query(countQuery, params);
+    var total = parseInt(countRows[0].count) || 0;
+
+    // Fetch page — source_platform intentionally excluded
+    var dataQuery = `
+      SELECT hp.person_id, hp.best_member_tenant_id, hp.best_strength_score,
+             hp.best_depth_type, hp.best_entry_label, hp.best_entry_reason,
+             hp.member_connection_count, hp.total_team_interactions, hp.contributor_count,
+             p.full_name, p.current_title, p.current_company, p.linkedin_url, p.location
+      FROM huddle_people hp
+      LEFT JOIN people p ON p.id = hp.person_id
+      WHERE ${where}
+      ORDER BY ${sortBy} DESC NULLS LAST
+      LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`;
+    params.push(limit, offset);
+
+    var { rows } = await platformPool.query(dataQuery, params);
+
+    res.json({
+      people: rows,
+      pagination: { page: page, limit: limit, total: total, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    console.error('Huddle network error:', err.message);
+    res.status(500).json({ error: 'Failed to load network' });
+  }
+});
+
+// GET /api/huddles/:id/network/:personId — single person entry point detail
+app.get('/api/huddles/:id/network/:personId', authenticateToken, async function(req, res) {
+  try {
+    var membership = await verifyHuddleMember(req.params.id, req.tenant_id);
+    if (!membership) return res.status(403).json({ error: 'Not a member of this huddle' });
+
+    // Person summary
+    var { rows: personRows } = await platformPool.query(
+      `SELECT hp.person_id, hp.best_member_tenant_id, hp.best_strength_score,
+              hp.best_depth_type, hp.best_entry_label, hp.best_entry_reason,
+              hp.member_connection_count, hp.total_team_interactions, hp.contributor_count,
+              p.full_name, p.current_title, p.current_company, p.linkedin_url, p.location
+       FROM huddle_people hp
+       LEFT JOIN people p ON p.id = hp.person_id
+       WHERE hp.huddle_id = $1 AND hp.person_id = $2`,
+      [req.params.id, req.params.personId]
+    );
+    if (!personRows.length) return res.status(404).json({ error: 'Person not in this huddle' });
+
+    // All member paths — source_platform intentionally excluded
+    var { rows: paths } = await platformPool.query(
+      `SELECT prox.member_tenant_id, prox.strength_score, prox.depth_type,
+              prox.currency_label, prox.entry_recommendation, prox.entry_action,
+              prox.last_contact, prox.interaction_count,
+              t.name as member_name, t.slug as member_slug
+       FROM huddle_proximity prox
+       JOIN tenants t ON t.id = prox.member_tenant_id
+       WHERE prox.huddle_id = $1 AND prox.person_id = $2
+       ORDER BY prox.strength_score DESC`,
+      [req.params.id, req.params.personId]
+    );
+
+    res.json({ person: personRows[0], paths: paths });
+  } catch (err) {
+    console.error('Person entry detail error:', err.message);
+    res.status(500).json({ error: 'Failed to load person detail' });
+  }
+});
+
+// GET /api/me/influence — individual influence dashboard
+app.get('/api/me/influence', authenticateToken, async function(req, res) {
+  try {
+    // Core influence stats
+    var { rows: influence } = await platformPool.query(
+      'SELECT * FROM individual_influence WHERE tenant_id = $1',
+      [req.tenant_id]
+    );
+
+    // Active huddle memberships
+    var { rows: huddles } = await platformPool.query(
+      `SELECT h.id, h.name, h.slug, hm.role,
+              hm.contributed_people_count, hm.net_new_people_count,
+              (SELECT COUNT(*) FROM huddle_people WHERE huddle_id = h.id) as huddle_people_count
+       FROM huddle_members hm
+       JOIN huddles h ON h.id = hm.huddle_id
+       WHERE hm.tenant_id = $1 AND hm.status = 'active' AND h.status = 'active'
+       ORDER BY h.updated_at DESC`,
+      [req.tenant_id]
+    );
+
+    // Proximity summary from sandbox
+    var db = new TenantDB(req.tenant_id);
+    var { rows: proxStats } = await db.query(
+      `SELECT COUNT(*) as total_people,
+              ROUND(AVG(strength_score)::numeric, 3) as avg_strength,
+              COUNT(*) FILTER (WHERE strength_score >= 0.7) as strong_count,
+              COUNT(*) FILTER (WHERE strength_score >= 0.45 AND strength_score < 0.7) as warm_count,
+              COUNT(*) FILTER (WHERE strength_score >= 0.2 AND strength_score < 0.45) as cool_count,
+              COUNT(*) FILTER (WHERE strength_score < 0.2) as cold_count
+       FROM person_proximity`
+    );
+
+    res.json({
+      influence: influence[0] || null,
+      huddles: huddles,
+      proximity_summary: proxStats[0] || null,
+    });
+  } catch (err) {
+    console.error('Influence dashboard error:', err.message);
+    res.status(500).json({ error: 'Failed to load influence data' });
+  }
+});
+
+// GET /api/me/export — GDPR data export (download all user's tenant data as JSON)
+app.get('/api/me/export', authenticateToken, async function(req, res) {
+  try {
+    var db = new TenantDB(req.tenant_id);
+
+    var [people, companies, interactions, signalEvents, proximity, feedSubs, tenantProfile] = await Promise.all([
+      db.query('SELECT * FROM people'),
+      db.query('SELECT * FROM companies'),
+      db.query('SELECT * FROM interactions'),
+      db.query("SELECT * FROM signal_events WHERE created_at >= NOW() - INTERVAL '90 days' ORDER BY created_at DESC"),
+      db.query('SELECT * FROM person_proximity'),
+      db.query('SELECT * FROM feed_subscriptions'),
+      platformPool.query('SELECT id, name, slug, domain, created_at FROM tenants WHERE id = $1', [req.tenant_id]),
+    ]);
+
+    var exportData = {
+      exported_at: new Date().toISOString(),
+      tenant_id: req.tenant_id,
+      tenant_profile: tenantProfile.rows[0] || null,
+      people: people.rows,
+      companies: companies.rows,
+      interactions: interactions.rows,
+      signal_events_last_90_days: signalEvents.rows,
+      team_proximity: proximity.rows,
+      feed_subscriptions: feedSubs.rows,
+    };
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename="data-export-' + req.tenant_id + '-' + Date.now() + '.json"');
+    res.json(exportData);
+  } catch (err) {
+    console.error('GDPR export error:', err.message);
+    res.status(500).json({ error: 'Failed to export data' });
   }
 });
 
@@ -9760,15 +10746,16 @@ app.post('/api/xero/sync', authenticateToken, async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-// PIPELINE SCHEDULER
-// ─────────────────────────────────────────────────────────────────────────────
+// PIPELINE SCHEDULER — DISABLED in web process
+// Background jobs run in separate worker process (orchestrator.js)
+// Pipeline status API still available via scheduler routes
 try {
   const scheduler = require('./scripts/scheduler.js');
   scheduler.registerRoutes(app, authenticateToken);
-  scheduler.startScheduler().catch(e => console.log('Scheduler error:', e.message));
-  console.log('  ✅ Pipeline scheduler started');
+  // Do NOT start the scheduler — worker process handles this
+  console.log('  ✅ Pipeline routes registered (scheduler runs in worker process)');
 } catch(e) {
-  console.log('  ⚠️  Scheduler skipped:', e.message);
+  console.log('  ⚠️  Pipeline routes skipped:', e.message);
 }
 // MCP ENDPOINT — Claude.ai remote MCP integration at POST /mcp
 // ─────────────────────────────────────────────────────────────────────────────
@@ -10881,6 +11868,88 @@ app.post('/api/admin/events/fetch/:sourceId', authenticateToken, requireAdmin, a
   }
 });
 
+// POST /api/admin/dedup-companies — find and merge duplicate companies by normalised name
+app.post('/api/admin/dedup-companies', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+
+    // Fetch all companies
+    const { rows: allCompanies } = await db.query('SELECT * FROM companies ORDER BY id');
+
+    // Normalise company name for grouping
+    function normaliseName(name) {
+      if (!name) return '';
+      return name
+        .toLowerCase()
+        .replace(/\b(pty\.?\s*ltd\.?|ltd\.?|inc\.?|llc\.?|australia|group|holdings?|corp\.?|corporation)\b/gi, '')
+        .replace(/^the\s+/i, '')
+        .replace(/[.,\-_()\[\]{}!@#$%^&*+=~`'"]+/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    // Group by normalised name
+    var groups = {};
+    for (var c of allCompanies) {
+      var key = normaliseName(c.name);
+      if (!key) continue;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(c);
+    }
+
+    var totalMerged = 0;
+    var mergeDetails = [];
+
+    for (var key in groups) {
+      var group = groups[key];
+      if (group.length < 2) continue;
+
+      // Score each company: count of linked people + signal events
+      var scored = [];
+      for (var company of group) {
+        var [peopleRes, signalsRes] = await Promise.all([
+          db.query('SELECT COUNT(*)::int as cnt FROM people WHERE current_company_id = $1', [company.id]),
+          db.query('SELECT COUNT(*)::int as cnt FROM signal_events WHERE company_id = $1', [company.id]),
+        ]);
+        scored.push({
+          company: company,
+          score: (peopleRes.rows[0].cnt || 0) + (signalsRes.rows[0].cnt || 0),
+        });
+      }
+
+      // Keep the one with highest score
+      scored.sort(function(a, b) { return b.score - a.score; });
+      var keeper = scored[0].company;
+      var dupes = scored.slice(1).map(function(s) { return s.company; });
+
+      for (var dupe of dupes) {
+        // Update foreign keys to point to keeper
+        await db.query('UPDATE people SET current_company_id = $1 WHERE current_company_id = $2', [keeper.id, dupe.id]);
+        await db.query('UPDATE signal_events SET company_id = $1 WHERE company_id = $2', [keeper.id, dupe.id]);
+        await db.query('UPDATE accounts SET company_id = $1 WHERE company_id = $2', [keeper.id, dupe.id]);
+        // Delete the duplicate
+        await db.query('DELETE FROM companies WHERE id = $1', [dupe.id]);
+        totalMerged++;
+      }
+
+      mergeDetails.push({
+        kept: keeper.name,
+        kept_id: keeper.id,
+        merged: dupes.map(function(d) { return d.name; }),
+      });
+    }
+
+    res.json({
+      merged_count: totalMerged,
+      groups_processed: mergeDetails.length,
+      details: mergeDetails,
+    });
+  } catch (err) {
+    console.error('Company dedup error:', err.message);
+    res.status(500).json({ error: 'Failed to deduplicate companies' });
+  }
+});
+
 app.get('*', (req, res) => {
   // Serve the requested HTML file or fall back to dashboard
   const page = req.path === '/' ? 'index.html' : req.path;
@@ -10894,6 +11963,21 @@ app.get('*', (req, res) => {
 });
 
 app.get('/autonodal', (req, res) => res.sendFile(path.join(__dirname, 'public/autonodal.html')));
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ERROR HANDLING MIDDLEWARE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// 404 handler for API routes
+app.use('/api', function(req, res) {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
+
+// Global error handler
+app.use(function(err, req, res, next) {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // START SERVER
