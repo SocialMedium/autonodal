@@ -215,6 +215,44 @@ h+='</div>';
 
 h+='<div class="card-grid">';
 
+// ── PROXIMITY MAP (top-right, facing client info) ──
+var proxMap = c.proximity_map || [];
+if (proxMap.length > 0) {
+  var byMember = {};
+  proxMap.forEach(function(p) {
+    if (!byMember[p.team_member]) byMember[p.team_member] = [];
+    byMember[p.team_member].push(p);
+  });
+  var memberCount = Object.keys(byMember).length;
+  h+='<div class="card" style="grid-row:1/3;order:-1"><div class="card-head"><div class="card-title">' + icon('link') + ' Proximity Map</div><div class="card-count">' + memberCount + ' team · ' + proxMap.length + ' connections</div></div>';
+  h+='<div style="font-size:11px;color:var(--ink-3);margin-bottom:10px">Who on the team knows people here — sorted by relationship strength</div>';
+  h+='<div style="font-size:12px">';
+  Object.keys(byMember).forEach(function(member) {
+    var connections = byMember[member];
+    h+='<div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--rule)">';
+    h+='<div style="font-weight:600;color:var(--ink);margin-bottom:6px;display:flex;align-items:center;gap:6px">' + icon('user') + ' ' + esc(member) + ' <span style="font-size:10px;color:var(--ink-4);font-weight:400">' + connections.length + ' contact' + (connections.length > 1 ? 's' : '') + '</span></div>';
+    connections.forEach(function(conn) {
+      var strength = Math.round((parseFloat(conn.relationship_strength) || 0) * 100);
+      var strengthColor = strength >= 50 ? 'var(--emerald)' : strength >= 25 ? 'var(--amber)' : 'var(--ink-4)';
+      var strengthLabel = strength >= 50 ? 'Strong' : strength >= 25 ? 'Warm' : 'Cool';
+      h+='<a href="/person.html?id=' + conn.person_id + '" style="display:flex;align-items:center;gap:8px;padding:5px 0;text-decoration:none;color:inherit">';
+      h+='<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:500;color:var(--ink)">' + esc(conn.contact_name) + '</div>';
+      if (conn.current_title) h+='<div style="font-size:10px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(conn.current_title) + '</div>';
+      h+='</div>';
+      h+='<div style="text-align:right;flex-shrink:0"><div style="font-family:var(--mono);font-size:11px;font-weight:600;color:' + strengthColor + '">' + strength + '%</div>';
+      h+='<div style="font-size:8px;color:' + strengthColor + ';text-transform:uppercase;letter-spacing:.5px">' + strengthLabel + '</div></div>';
+      h+='</a>';
+    });
+    h+='</div>';
+  });
+  h+='</div></div>';
+} else {
+  // Empty state — still show the card so users know what it is
+  h+='<div class="card" style="order:-1"><div class="card-head"><div class="card-title">' + icon('link') + ' Proximity Map</div></div>';
+  h+='<div style="font-size:12px;color:var(--ink-4);padding:8px 0">No team connections mapped to this company yet. Connect Gmail to build your proximity graph.</div>';
+  h+='</div>';
+}
+
 // ── SIGNALS ──
 var sigTypes = {};
 sigs.forEach(function(s){ sigTypes[s.signal_type] = (sigTypes[s.signal_type]||0)+1; });
@@ -332,35 +370,6 @@ if(csLib.length){
     return '<div class="plrow"><div class="plinfo"><div class="plrole" style="font-size:12px">'+esc(pl.role_title||pl.candidate_name||'Placement')+'</div><div class="pldet" style="font-size:10px">'+(pl.candidate_name?esc(pl.candidate_name)+' · ':'')+fmtD(pl.placement_date)+'</div></div><div class="plfee">'+money(pl.placement_fee)+'</div></div>';
   });
   h+='</div>';
-}
-
-// Proximity Map
-var proxMap = c.proximity_map || [];
-if (proxMap.length > 0) {
-  h+='<div class="card"><div class="card-head"><div class="card-title">' + icon('link') + ' Proximity Map</div><div class="card-count">' + proxMap.length + ' connections</div></div>';
-  h+='<div style="font-size:12px">';
-  // Group by team member
-  var byMember = {};
-  proxMap.forEach(function(p) {
-    if (!byMember[p.team_member]) byMember[p.team_member] = [];
-    byMember[p.team_member].push(p);
-  });
-  Object.keys(byMember).forEach(function(member) {
-    var connections = byMember[member];
-    h+='<div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #f0ede8">';
-    h+='<div style="font-weight:600;color:var(--ink);margin-bottom:6px">' + icon('user') + ' ' + esc(member) + ' <span style="font-size:10px;color:var(--ink-4);font-weight:400">' + connections.length + ' contact' + (connections.length > 1 ? 's' : '') + '</span></div>';
-    connections.forEach(function(conn) {
-      var strength = Math.round((parseFloat(conn.relationship_strength) || 0) * 100);
-      var strengthColor = strength >= 50 ? 'var(--emerald)' : strength >= 25 ? 'var(--amber)' : 'var(--ink-4)';
-      h+='<a href="/person.html?id=' + conn.person_id + '" style="display:flex;align-items:center;gap:8px;padding:4px 0;text-decoration:none;color:inherit">';
-      h+='<span style="font-size:12px;font-weight:500;color:var(--ink)">' + esc(conn.contact_name) + '</span>';
-      if (conn.current_title) h+='<span style="font-size:10px;color:var(--ink-3)">' + esc(conn.current_title) + '</span>';
-      h+='<span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:' + strengthColor + '">' + strength + '%</span>';
-      h+='</a>';
-    });
-    h+='</div>';
-  });
-  h+='</div></div>';
 }
 
 // Details
