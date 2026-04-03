@@ -232,12 +232,11 @@ app.get('/api/auth/google/callback', async (req, res) => {
     });
     const userInfo = await userInfoRes.json();
 
-    // Enforce mitchellake.com domain + approved external emails
-    const APPROVED_EXTERNAL_EMAILS = [
-      'kikanoyen@gmail.com',
-    ];
-    if (!userInfo.email || (!userInfo.email.endsWith('@mitchellake.com') && !APPROVED_EXTERNAL_EMAILS.includes(userInfo.email.toLowerCase()))) {
-      return res.redirect('/index.html?auth_error=domain_restricted');
+    // Domain enforcement — mitchellake.com users go to company tenant,
+    // all other Google accounts self-provision as individual tenants.
+    // No whitelist needed — anyone with a Google account can sign up.
+    if (!userInfo.email) {
+      return res.redirect('/index.html?auth_error=no_email');
     }
 
     // Find or create user
@@ -271,8 +270,8 @@ app.get('/api/auth/google/callback', async (req, res) => {
           .toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 30) + '-' + Date.now().toString(36);
 
         const { rows: [newTenant] } = await platformPool.query(
-          `INSERT INTO tenants (id, name, slug, vertical, plan, onboarding_status, profile, created_at)
-           VALUES (gen_random_uuid(), $1, $2, 'revenue', 'enterprise', 'step_1', $3, NOW())
+          `INSERT INTO tenants (id, name, slug, vertical, plan, tenant_type, onboarding_status, subscription_status, profile, created_at)
+           VALUES (gen_random_uuid(), $1, $2, 'revenue', 'free', 'individual', 'step_1', 'free', $3, NOW())
            RETURNING id`,
           [displayName, slug, JSON.stringify({ provisioned_from: 'google_oauth', email: userInfo.email })]
         );
