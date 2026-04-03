@@ -2673,7 +2673,7 @@ app.patch('/api/people/:id', authenticateToken, async (req, res) => {
       if (!match) {
         // Create new company record
         const created = await db.queryOne(
-          `INSERT INTO companies (name, tenant_id, created_by, created_at) VALUES ($1, $2, 'manual_edit', NOW()) RETURNING id`,
+          `INSERT INTO companies (name, tenant_id, created_at) VALUES ($1, $2, NOW()) RETURNING id`,
           [compName, req.tenant_id]
         );
         match = created;
