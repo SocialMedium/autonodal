@@ -5378,6 +5378,104 @@ app.get('/api/onboarding/platforms', authenticateToken, async (req, res) => {
   }
 });
 
+// POST /api/onboarding/converse — AI-powered profile extraction via conversation
+app.post('/api/onboarding/converse', authenticateToken, async (req, res) => {
+  try {
+    var _msg = req.body.message;
+    var _history = req.body.history || [];
+    var _exchangeCount = parseInt(req.body.exchange_count) || 0;
+
+    var { SYSTEM_PROMPT } = require('./lib/onboarding/systemPrompt');
+
+    var messages = _history.concat([{ role: 'user', content: _msg }]);
+
+    // After 3 exchanges, force extraction
+    var systemText = SYSTEM_PROMPT;
+    if (_exchangeCount >= 3) {
+      systemText += '\n\nThis is exchange ' + _exchangeCount + '. Output the PROFILE_READY JSON now regardless of completeness. Use sensible defaults for any missing fields.';
+    }
+
+    var Anthropic = require('@anthropic-ai/sdk');
+    var client = new Anthropic();
+
+    var response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 600,
+      system: systemText,
+      messages: messages,
+    });
+
+    var assistantText = response.content[0].text;
+
+    if (assistantText.indexOf('PROFILE_READY:') >= 0) {
+      var jsonStr = assistantText.split('PROFILE_READY:')[1].trim();
+      var profile;
+      try { profile = JSON.parse(jsonStr); } catch (e) {
+        return res.json({ type: 'question', message: assistantText, history: messages.concat([{ role: 'assistant', content: assistantText }]) });
+      }
+
+      var { mapProfileToConfig } = require('./lib/onboarding/ProfileMapper');
+      var config = mapProfileToConfig(profile);
+
+      var db = new TenantDB(req.tenant_id);
+      await db.query(
+        'UPDATE tenants SET profile = $1, onboarding_status = \'step_2\', vertical = $2, signal_dial = $3, updated_at = NOW() WHERE id = $4',
+        [JSON.stringify(config.profile), config.vertical, JSON.stringify(config.signal_dial), req.tenant_id]
+      );
+
+      var displayMsg = assistantText.split('PROFILE_READY:')[0].trim();
+      return res.json({ type: 'profile_ready', profile: profile, config: config, message: displayMsg || 'Perfect — I\'ve got what I need.' });
+    }
+
+    return res.json({
+      type: 'question',
+      message: assistantText,
+      history: messages.concat([{ role: 'assistant', content: assistantText }]),
+    });
+  } catch (err) {
+    console.error('Onboarding converse error:', err.message);
+    res.status(500).json({ error: 'Conversation failed' });
+  }
+});
+
+// POST /api/onboarding/complete-conversation — save extracted profile + config
+app.post('/api/onboarding/complete-conversation', authenticateToken, async (req, res) => {
+  try {
+    var db = new TenantDB(req.tenant_id);
+    var _profile = req.body.profile;
+    var _config = req.body.config;
+
+    await db.query(
+      'UPDATE tenants SET profile = $1, vertical = $2, signal_dial = $3, onboarding_status = \'step_3\', updated_at = NOW() WHERE id = $4',
+      [JSON.stringify(_config && _config.profile ? _config.profile : _profile), _config ? _config.vertical : 'revenue', JSON.stringify(_config ? _config.signal_dial : {}), req.tenant_id]
+    );
+
+    if (_profile && _profile.display_name) {
+      await db.query('UPDATE users SET name = $1 WHERE id = $2', [_profile.display_name, req.user.user_id]);
+    }
+
+    res.json({ status: 'ok' });
+  } catch (err) {
+    console.error('Onboarding complete-conversation error:', err.message);
+    res.status(500).json({ error: 'Failed to save profile' });
+  }
+});
+
+// POST /api/onboarding/finalize — mark tenant as onboarded + active
+app.post('/api/onboarding/finalize', authenticateToken, async (req, res) => {
+  try {
+    var db = new TenantDB(req.tenant_id);
+    await db.query(
+      'UPDATE tenants SET onboarding_status = \'complete\', onboarding_completed_at = NOW(), updated_at = NOW() WHERE id = $1',
+      [req.tenant_id]
+    );
+    res.json({ status: 'ok' });
+  } catch (err) {
+    console.error('Onboarding finalize error:', err.message);
+    res.status(500).json({ error: 'Failed to finalize' });
+  }
+});
+
 // POST /api/onboarding/step1 — save profile, infer vertical
 app.post('/api/onboarding/step1', authenticateToken, async (req, res) => {
   try {
