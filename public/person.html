@@ -148,6 +148,18 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .save-indicator { display: inline-block; font-size: 11px; color: var(--emerald); margin-left: 6px; opacity: 0; transition: opacity 0.3s; }
 .save-indicator.show { opacity: 1; }
 
+/* Proximity tooltip */
+.prox-tip { position: absolute; z-index: 999; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 14px 16px; min-width: 280px; max-width: 360px; pointer-events: auto; opacity: 0; transform: translateY(4px); transition: opacity .15s, transform .15s; }
+.prox-tip.show { opacity: 1; transform: translateY(0); }
+.prox-tip-title { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+.prox-tip-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--rule); font-size: 12px; }
+.prox-tip-row:last-child { border-bottom: none; }
+.prox-tip-name { font-weight: 500; color: var(--ink); flex: 1; }
+.prox-tip-bar { width: 48px; height: 4px; border-radius: 2px; background: var(--rule); overflow: hidden; }
+.prox-tip-fill { height: 100%; border-radius: 2px; }
+.prox-tip-pct { font-family: var(--mono); font-size: 10px; font-weight: 600; min-width: 32px; text-align: right; }
+.prox-tip-label { font-size: 8px; text-transform: uppercase; letter-spacing: .5px; }
+
 @media (min-width: 1024px) {
   .card-grid { grid-template-columns: 1fr 1fr 300px; }
 }
@@ -202,6 +214,7 @@ const p=await api('/api/people/'+id);if(!p)return;
 document.title=(p.full_name||'Person')+' — MitchelLake Signals';
 const ini=(p.full_name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
 const notes=p.research_notes||[];const ixs=p.interactions||[];const csig=p.company_signals||[];const psig=p.person_signals||[];const colls=p.colleagues||[];const s=p.interaction_stats||{};const prox=p.proximity||[];
+window.proxData=prox;
 
 const coId=p.company_id_linked||p.current_company_id||'';
 
@@ -227,7 +240,11 @@ h+='<div class="pinfo">';
 h+='<div class="pname"><span class="editable" onclick="editField(this,\'full_name\',\''+esc(p.full_name)+'\')">'+esc(p.full_name)+'</span></div>';
 h+='<div class="ptitle"><span class="editable" onclick="editField(this,\'current_title\',\''+esc(p.current_title||p.headline||'')+'\')">'+esc(p.current_title||p.headline||'Add title')+'</span></div>';
 h+='<div class="pmeta">';
-h+='<span>'+icon('building')+' <span class="editable" onclick="editField(this,\'current_company_name\',\''+esc(p.current_company_name||'')+'\')">'+esc(p.current_company_name||'Add company')+'</span>'+(p.company_sector?' · '+esc(p.company_sector):'')+'</span>';
+h+='<span style="position:relative">'+icon('building')+' <span class="editable" onclick="editField(this,\'current_company_name\',\''+esc(p.current_company_name||'')+'\')">'+esc(p.current_company_name||'Add company')+'</span>'+(p.company_sector?' · '+esc(p.company_sector):'');
+if(prox.length>0 && p.current_company_name){
+  h+=' <span class="prox-hover-trigger" style="cursor:pointer;font-size:10px;color:var(--emerald);font-weight:600" onmouseenter="showProxTip(this,proxData)" onmouseleave="hideProxTip()">'+icon('link',12)+' '+prox.length+'</span>';
+}
+h+='</span>';
 if(p.location)h+='<span>'+icon('map-pin')+' <span class="editable" onclick="editField(this,\'location\',\''+esc(p.location)+'\')">'+esc(p.location)+'</span></span>';
 else h+='<span>'+icon('map-pin')+' <span class="editable" onclick="editField(this,\'location\',\'\')">Add location</span></span>';
 if(p.functional_area)h+='<span>'+icon('zap')+' '+esc(p.functional_area)+'</span>';
@@ -542,6 +559,53 @@ function toggleIx(el) {
     if (preview) preview.style.display = showing ? '' : 'none';
     fulls.forEach(f => f.style.display = showing ? 'none' : 'block');
   }
+}
+
+/* ─── Proximity Tooltip ─── */
+var proxTipEl = null;
+var proxHideTimer = null;
+
+function showProxTip(trigger, data) {
+  if (proxHideTimer) { clearTimeout(proxHideTimer); proxHideTimer = null; }
+  if (!data || !data.length) return;
+
+  if (!proxTipEl) {
+    proxTipEl = document.createElement('div');
+    proxTipEl.className = 'prox-tip';
+    document.body.appendChild(proxTipEl);
+    proxTipEl.addEventListener('mouseenter', function() { if (proxHideTimer) { clearTimeout(proxHideTimer); proxHideTimer = null; } });
+    proxTipEl.addEventListener('mouseleave', function() { hideProxTip(); });
+  }
+
+  var html = '<div class="prox-tip-title">' + (typeof icon === 'function' ? icon('link', 12) : '') + ' Team Proximity</div>';
+  data.forEach(function(pr) {
+    var str = Math.round((parseFloat(pr.relationship_strength) || 0) * 100);
+    var col = str >= 50 ? 'var(--emerald)' : str >= 25 ? 'var(--amber)' : 'var(--ink-4)';
+    var label = str >= 50 ? 'Strong' : str >= 25 ? 'Warm' : 'Cool';
+    var ixCount = parseInt(pr.interaction_count) || 0;
+    var last = pr.last_contact ? fmtD(pr.last_contact) : '';
+    html += '<div class="prox-tip-row">';
+    html += '<span class="prox-tip-name">' + esc(pr.team_member) + '</span>';
+    if (ixCount > 0) html += '<span style="font-size:10px;color:var(--ink-4)">' + ixCount + '</span>';
+    html += '<div class="prox-tip-bar"><div class="prox-tip-fill" style="width:' + str + '%;background:' + col + '"></div></div>';
+    html += '<span class="prox-tip-pct" style="color:' + col + '">' + str + '%</span>';
+    html += '<span class="prox-tip-label" style="color:' + col + '">' + label + '</span>';
+    html += '</div>';
+  });
+  proxTipEl.innerHTML = html;
+
+  var rect = trigger.getBoundingClientRect();
+  proxTipEl.style.position = 'fixed';
+  proxTipEl.style.left = Math.min(rect.left, window.innerWidth - 380) + 'px';
+  proxTipEl.style.top = (rect.bottom + 8) + 'px';
+  proxTipEl.classList.add('show');
+}
+
+function hideProxTip() {
+  if (proxHideTimer) clearTimeout(proxHideTimer);
+  proxHideTimer = setTimeout(function() {
+    if (proxTipEl) proxTipEl.classList.remove('show');
+  }, 200);
 }
 </script>
 <script src="/terminology.js"></script>

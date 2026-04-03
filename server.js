@@ -2570,18 +2570,21 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
       colleagues = rows;
     }
 
-    // Proximity — which team members are connected to this person
+    // Proximity — which team members are connected to this person (deduplicated)
     let proximity = [];
     try {
       const { rows } = await db.query(`
         SELECT u.name AS team_member, u.id AS team_member_id,
-               tp.relationship_strength, tp.relationship_type AS proximity_type, tp.source AS proximity_source,
+               MAX(tp.relationship_strength) AS relationship_strength,
+               string_agg(DISTINCT tp.relationship_type, ', ') AS proximity_type,
+               string_agg(DISTINCT tp.source, ', ') AS proximity_source,
                (SELECT MAX(i.interaction_at) FROM interactions i WHERE i.person_id = $1 AND i.user_id = u.id) AS last_contact,
                (SELECT COUNT(*) FROM interactions i WHERE i.person_id = $1 AND i.user_id = u.id) AS interaction_count
         FROM team_proximity tp
         JOIN users u ON u.id = tp.team_member_id
         WHERE tp.person_id = $1 AND tp.relationship_strength >= 0.1
-        ORDER BY tp.relationship_strength DESC
+        GROUP BY u.name, u.id
+        ORDER BY MAX(tp.relationship_strength) DESC
         LIMIT 10
       `, [req.params.id]);
       proximity = rows;
@@ -4186,25 +4189,26 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
       if (is && parseInt(is.total_interactions) > 0) interaction_summary = is;
     } catch (e) {}
 
-    // Proximity map — which team members have connections to people at this company
+    // Proximity map — which team members have connections to people at this company (deduplicated)
     let proximity_map = [];
     try {
       const { rows } = await db.query(`
         SELECT u.name AS team_member, u.id AS team_member_id,
                p.full_name AS contact_name, p.id AS person_id,
-               p.current_title, tp.relationship_strength,
-               tp.relationship_type AS proximity_type, tp.source AS proximity_source,
+               p.current_title,
+               MAX(tp.relationship_strength) AS relationship_strength,
+               string_agg(DISTINCT tp.relationship_type, ', ') AS proximity_type,
+               string_agg(DISTINCT tp.source, ', ') AS proximity_source,
                MAX(i.interaction_at) AS last_contact,
-               COUNT(i.id) AS interaction_count
+               COUNT(DISTINCT i.id) AS interaction_count
         FROM team_proximity tp
         JOIN users u ON u.id = tp.team_member_id
         JOIN people p ON p.id = tp.person_id
         LEFT JOIN interactions i ON i.person_id = p.id AND i.user_id = u.id
         WHERE p.current_company_id = $1
           AND tp.relationship_strength >= 0.15
-        GROUP BY u.name, u.id, p.full_name, p.id, p.current_title,
-                 tp.relationship_strength, tp.relationship_type, tp.source
-        ORDER BY tp.relationship_strength DESC
+        GROUP BY u.name, u.id, p.full_name, p.id, p.current_title
+        ORDER BY MAX(tp.relationship_strength) DESC
         LIMIT 30
       `, [companyId]);
       proximity_map = rows;
