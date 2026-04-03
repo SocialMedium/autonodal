@@ -597,6 +597,18 @@ var currentStep = 0;
 var conversationHistory = [];
 var extractedProfile = null;
 var derivedConfig = null;
+// Extract token from URL params (set by OAuth callback) and persist
+(function() {
+  var p = new URLSearchParams(window.location.search);
+  if (p.get('token')) {
+    localStorage.setItem('ml_token', p.get('token'));
+    if (p.get('user')) localStorage.setItem('ml_user', p.get('user'));
+    // Clean URL but keep step param
+    var step = p.get('step');
+    var clean = '/onboarding.html' + (step ? '?step=' + step : '');
+    window.history.replaceState({}, '', clean);
+  }
+})();
 var token = localStorage.getItem('ml_token') || '';
 
 /* ─── API helper ─── */
