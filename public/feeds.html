@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your Feeds — Autonodal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400;1,500&family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0e1a;
+  --surface:#111627;
+  --surface-warm:rgba(245,158,11,0.06);
+  --elevated:#1a1f35;
+  --border:#2a3050;
+  --ink:#e2e8f0;
+  --muted:#94a3b8;
+  --accent:#f59e0b;
+  --accent-dim:#d97706;
+  --accent-bg:rgba(245,158,11,0.12);
+  --green:#10b981;
+  --red:#ef4444;
+  --mono:'IBM Plex Mono',monospace;
+  --sans:'IBM Plex Sans',sans-serif;
+  --display:'Playfair Display',Georgia,serif;
+}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--sans);
+  background:var(--bg);
+  color:var(--ink);
+  font-size:16px;
+  line-height:1.6;
+  min-height:100vh;
+}
+
+/* ─── Top bar ─── */
+.top-bar{
+  padding:16px 24px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:16px;
+  background:var(--surface);
+}
+.top-bar a{
+  color:var(--muted);font-size:14px;
+  text-decoration:none;transition:color .2s;
+}
+.top-bar a:hover{color:var(--ink)}
+.top-bar .sep{color:var(--border)}
+.top-bar .current{font-size:14px;color:var(--ink);font-weight:500}
+
+/* ─── Layout ─── */
+.feeds-layout{
+  display:grid;
+  grid-template-columns:1fr 2fr;
+  gap:24px;
+  max-width:1100px;
+  margin:0 auto;
+  padding:32px 24px;
+}
+@media(max-width:768px){
+  .feeds-layout{grid-template-columns:1fr}
+}
+
+/* ─── Stats bar ─── */
+.stats-bar{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px;margin-bottom:24px;
+}
+.stat-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:2px;padding:12px;text-align:center;
+}
+.stat-num{font-size:22px;font-weight:600;display:block;font-family:var(--mono)}
+.stat-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em}
+
+/* ─── Panel headers ─── */
+.panel-header{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:16px;
+}
+.panel-header h2{
+  font-family:var(--display);font-size:18px;font-weight:500;
+}
+
+/* ─── Always-on ─── */
+.always-on-chip{
+  display:flex;align-items:center;gap:8px;
+  background:rgba(16,185,129,0.08);
+  border:1px solid rgba(16,185,129,0.2);
+  border-radius:2px;padding:12px 14px;margin-bottom:8px;
+}
+.chip-label{
+  font-family:var(--mono);font-size:11px;
+  color:var(--green);text-transform:uppercase;
+  letter-spacing:0.05em;font-weight:500;margin-bottom:2px;
+}
+.chip-sources{font-size:12px;color:var(--muted)}
+
+/* ─── Active bundle rows ─── */
+.active-bundle-row{
+  display:flex;align-items:center;gap:12px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:2px;padding:14px;margin-bottom:6px;
+  transition:border-color .15s;
+}
+.active-bundle-row:hover{border-color:var(--accent)}
+.active-bundle-row .bundle-info{flex:1}
+.active-bundle-row .bundle-info strong{display:block;font-size:14px}
+.active-bundle-row .bundle-info span{font-size:12px;color:var(--muted)}
+.btn-remove{
+  background:none;
+  border:1px solid var(--border);
+  border-radius:2px;color:var(--muted);
+  cursor:pointer;font-family:var(--sans);
+  font-size:12px;padding:4px 10px;
+  transition:border-color .15s,color .15s;
+}
+.btn-remove:hover{border-color:var(--red);color:var(--red)}
+
+/* ─── Catalog panel ─── */
+.catalog-panel h2{
+  font-family:var(--display);font-size:18px;font-weight:500;
+  margin-bottom:16px;
+}
+
+/* ─── Browser controls ─── */
+.browser-search{
+  width:100%;background:var(--surface);
+  border:1px solid var(--border);border-radius:2px;
+  color:var(--ink);font-family:var(--sans);font-size:14px;
+  padding:10px 14px;outline:none;margin-bottom:12px;
+}
+.browser-search:focus{border-color:var(--accent)}
+.browser-search::placeholder{color:var(--muted)}
+.browser-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.filter-chip{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:20px;color:var(--muted);cursor:pointer;
+  font-family:var(--sans);font-size:12px;padding:4px 12px;
+  transition:background .15s,border-color .15s,color .15s;
+}
+.filter-chip.active{
+  background:var(--accent-bg);
+  border-color:rgba(245,158,11,0.4);color:var(--accent);
+}
+
+/* ─── Browse rows ─── */
+.browser-group-label{
+  font-family:var(--mono);font-size:11px;
+  letter-spacing:0.06em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:8px;margin-top:16px;
+}
+.browse-row{
+  display:flex;align-items:center;gap:12px;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:2px;padding:12px 14px;margin-bottom:6px;
+  transition:border-color .15s;
+}
+.browse-row.active{border-color:rgba(245,158,11,0.4)}
+.browse-row .browse-meta{flex:1;min-width:0}
+.browse-row .browse-meta strong{font-size:13px;display:block}
+.browse-row .browse-meta span{font-size:12px;color:var(--muted)}
+.btn-toggle{
+  background:none;border:1px solid var(--border);
+  border-radius:2px;color:var(--muted);cursor:pointer;
+  font-family:var(--sans);font-size:12px;padding:5px 12px;white-space:nowrap;
+  transition:background .15s,border-color .15s,color .15s;
+}
+.btn-toggle.active{
+  background:var(--accent-bg);
+  border-color:rgba(245,158,11,0.4);color:var(--accent);
+}
+
+/* ─── Empty states ─── */
+.empty-state{color:var(--muted);font-size:14px;padding:16px 0}
+.loading-state{color:var(--muted);font-size:13px;padding:12px 0}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="/index.html">&larr; Dashboard</a>
+  <span class="sep">&middot;</span>
+  <span class="current">Your feeds</span>
+</div>
+
+<div class="feeds-layout">
+
+  <!-- LEFT: Active feeds -->
+  <div class="active-feeds-panel">
+
+    <div class="stats-bar">
+      <div class="stat-card">
+        <span class="stat-num" id="statFeeds">&ndash;</span>
+        <span class="stat-lbl">Active feeds</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-num" id="statSignals">&ndash;</span>
+        <span class="stat-lbl">Signals / week</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-num" id="statSources">&ndash;</span>
+        <span class="stat-lbl">Sources</span>
+      </div>
+    </div>
+
+    <div class="panel-header">
+      <h2>Active feeds</h2>
+    </div>
+
+    <div class="always-on-chip">
+      <div>
+        <div class="chip-label">Always on &middot; Global macro</div>
+        <div class="chip-sources">SEC &middot; PR Newswire &middot; Business Wire &middot; Reuters &middot; FT</div>
+      </div>
+    </div>
+
+    <div id="activeBundlesList">
+      <div class="loading-state">Loading your feeds...</div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT: Feed catalog -->
+  <div class="catalog-panel">
+    <h2>Add feeds</h2>
+    <div id="feedBrowser"></div>
+  </div>
+
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Feeds — Self-serve feed management
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+var token = localStorage.getItem('ml_token') || '';
+if (!token) { window.location.href = '/login.html?return_to=/feeds.html'; }
+
+function apiFetch(url, method, body) {
+  var opts = {
+    method: method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token
+    }
+  };
+  if (body) opts.body = JSON.stringify(body);
+  return fetch(url, opts).then(function(r) {
+    if (!r.ok) throw new Error('API ' + r.status);
+    return r.json();
+  });
+}
+
+/* ─── State ─── */
+var activeBundleIds = {};
+var activeFilter = '';
+
+/* ─── Active feeds panel ─── */
+function loadActiveFeeds() {
+  Promise.all([
+    apiFetch('/api/feeds/my'),
+    apiFetch('/api/feeds/stats')
+  ]).then(function(results) {
+    var subs = (results[0].subscriptions || results[0] || []);
+    var stats = (results[1].stats || results[1] || []);
+
+    /* Reset tracked IDs */
+    activeBundleIds = {};
+    for (var s = 0; s < subs.length; s++) {
+      if (subs[s].bundle_id) activeBundleIds[subs[s].bundle_id] = true;
+    }
+
+    /* Stats bar */
+    var totalSignals = 0;
+    var totalSources = 0;
+    for (var st = 0; st < stats.length; st++) {
+      totalSignals += (stats[st].signals_7d || 0);
+      totalSources++;
+    }
+    document.getElementById('statFeeds').textContent = subs.length;
+    document.getElementById('statSignals').textContent = totalSignals;
+    document.getElementById('statSources').textContent = totalSources;
+
+    /* Render active list */
+    var list = document.getElementById('activeBundlesList');
+    var bundleSubs = [];
+    for (var i = 0; i < subs.length; i++) {
+      if (subs[i].bundle_id) bundleSubs.push(subs[i]);
+    }
+
+    if (!bundleSubs.length) {
+      list.innerHTML = '<p class="empty-state">No feeds selected yet. Browse the catalog &rarr;</p>';
+      return;
+    }
+
+    var html = '';
+    for (var j = 0; j < bundleSubs.length; j++) {
+      var sub = bundleSubs[j];
+      html +=
+        '<div class="active-bundle-row" id="active-' + sub.bundle_id + '">' +
+          '<div class="bundle-info">' +
+            '<strong>' + (sub.bundle_name || sub.name || 'Feed') + '</strong>' +
+            '<span>' + (sub.bundle_type || '') +
+              (sub.source_count ? ' &middot; ' + sub.source_count + ' sources' : '') +
+            '</span>' +
+          '</div>' +
+          '<button class="btn-remove" onclick="removeBundle(\'' + sub.bundle_id + '\')">Remove</button>' +
+        '</div>';
+    }
+    list.innerHTML = html;
+  }).catch(function(err) {
+    console.error('Failed to load feeds:', err);
+    document.getElementById('activeBundlesList').innerHTML =
+      '<p class="empty-state">Failed to load feeds.</p>';
+  });
+}
+
+function removeBundle(bundleId) {
+  if (!confirm('Remove this feed?')) return;
+  apiFetch('/api/feeds/subscribe/' + bundleId, 'DELETE').then(function() {
+    delete activeBundleIds[bundleId];
+    var el = document.getElementById('active-' + bundleId);
+    if (el) el.remove();
+    /* Sync catalog browser */
+    var browseBtn = document.querySelector('#browse-' + bundleId + ' .btn-toggle');
+    if (browseBtn) {
+      browseBtn.textContent = '+ Add';
+      browseBtn.className = 'btn-toggle';
+      var row = document.getElementById('browse-' + bundleId);
+      if (row) row.className = 'browse-row';
+    }
+    loadActiveFeeds();
+  }).catch(function(err) {
+    console.error('Remove failed:', err);
+  });
+}
+
+/* ─── Catalog browser ─── */
+function loadFeedBrowser() {
+  var container = document.getElementById('feedBrowser');
+  var filterTypes = [
+    { label: 'All', value: '' },
+    { label: 'Region', value: 'region' },
+    { label: 'Sector', value: 'sector' },
+    { label: 'Signal type', value: 'signal_type' },
+    { label: 'Investor type', value: 'investor_type' }
+  ];
+
+  var filtersHtml = '';
+  for (var f = 0; f < filterTypes.length; f++) {
+    filtersHtml += '<button class="filter-chip' + (f === 0 ? ' active' : '') +
+      '" onclick="filterByType(this,\'' + filterTypes[f].value + '\')">' +
+      filterTypes[f].label + '</button>';
+  }
+
+  container.innerHTML =
+    '<input type="text" id="browserSearch" class="browser-search" ' +
+      'placeholder="Search by name, sector, or region..." ' +
+      'oninput="filterBrowser(this.value)" />' +
+    '<div class="browser-filters">' + filtersHtml + '</div>' +
+    '<div id="browserGrid"><div class="loading-state">Loading catalog...</div></div>';
+
+  renderBrowserGrid('', '');
+}
+
+function renderBrowserGrid(typeFilter, searchQuery) {
+  var params = [];
+  if (typeFilter) params.push('type=' + encodeURIComponent(typeFilter));
+  if (searchQuery) params.push('search=' + encodeURIComponent(searchQuery));
+  params.push('limit=100');
+
+  apiFetch('/api/feeds/bundles?' + params.join('&')).then(function(data) {
+    var bundles = data.bundles || [];
+    var grid = document.getElementById('browserGrid');
+
+    if (!bundles.length) {
+      grid.innerHTML = '<p class="empty-state">No feeds found.</p>';
+      return;
+    }
+
+    var TYPE_LABELS = {
+      investor_type: 'Investor type',
+      sector: 'Sector',
+      region: 'Region',
+      signal_type: 'Signal type',
+      stage: 'Stage'
+    };
+
+    var grouped = {};
+    for (var i = 0; i < bundles.length; i++) {
+      var key = bundles[i].bundle_type || 'other';
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(bundles[i]);
+    }
+
+    var html = '';
+    var keys = Object.keys(grouped);
+    for (var k = 0; k < keys.length; k++) {
+      var type = keys[k];
+      var items = grouped[type];
+      html += '<div class="browser-group-label">' + (TYPE_LABELS[type] || type) + '</div>';
+      for (var j = 0; j < items.length; j++) {
+        var b = items[j];
+        var isActive = !!activeBundleIds[b.id];
+        html +=
+          '<div class="browse-row' + (isActive ? ' active' : '') + '" id="browse-' + b.id + '">' +
+            '<div class="browse-meta">' +
+              '<strong>' + b.name + '</strong>' +
+              '<span>' + (b.source_count || 0) + ' sources' +
+                (b.description ? ' &middot; ' + b.description.substring(0, 60) +
+                  (b.description.length > 60 ? '...' : '') : '') +
+              '</span>' +
+            '</div>' +
+            '<button class="btn-toggle' + (isActive ? ' active' : '') + '" ' +
+              'onclick="toggleCatalogBundle(\'' + b.id + '\', this)">' +
+              (isActive ? '\u2713 Added' : '+ Add') +
+            '</button>' +
+          '</div>';
+      }
+    }
+    grid.innerHTML = html;
+  }).catch(function() {
+    document.getElementById('browserGrid').innerHTML =
+      '<p class="empty-state">Failed to load catalog.</p>';
+  });
+}
+
+function toggleCatalogBundle(bundleId, btn) {
+  if (activeBundleIds[bundleId]) {
+    /* Remove */
+    apiFetch('/api/feeds/subscribe/' + bundleId, 'DELETE').then(function() {
+      delete activeBundleIds[bundleId];
+      btn.textContent = '+ Add';
+      btn.className = 'btn-toggle';
+      var row = document.getElementById('browse-' + bundleId);
+      if (row) row.className = 'browse-row';
+      var activeEl = document.getElementById('active-' + bundleId);
+      if (activeEl) activeEl.remove();
+      loadActiveFeeds();
+    });
+  } else {
+    /* Add */
+    apiFetch('/api/feeds/subscribe', 'POST', { bundle_ids: [bundleId] }).then(function() {
+      activeBundleIds[bundleId] = true;
+      btn.textContent = '\u2713 Added';
+      btn.className = 'btn-toggle active';
+      var row = document.getElementById('browse-' + bundleId);
+      if (row) row.className = 'browse-row active';
+      loadActiveFeeds();
+    });
+  }
+}
+
+function filterBrowser(query) {
+  renderBrowserGrid(activeFilter, query);
+}
+
+function filterByType(btn, type) {
+  var chips = document.querySelectorAll('.filter-chip');
+  for (var i = 0; i < chips.length; i++) chips[i].classList.remove('active');
+  btn.classList.add('active');
+  activeFilter = type;
+  var search = document.getElementById('browserSearch');
+  renderBrowserGrid(type, search ? search.value : '');
+}
+
+/* ─── Init ─── */
+loadActiveFeeds();
+loadFeedBrowser();
+</script>
+</body>
+</html>

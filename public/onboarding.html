@@ -238,7 +238,7 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
   flex-shrink:0;
 }
 
-/* ─── Step 4: Confirm ─── */
+/* ─── Step 4: Confirm + Feed Selection ─── */
 .profile-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0}
 .profile-card{
   background:var(--bg-surface);
@@ -271,33 +271,120 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
   resize:none;
   line-height:1.45;
 }
-.source-section{margin:24px 0}
-.source-section h3{margin-bottom:12px}
-.source-toggle{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:12px 0;
-  border-bottom:1px solid var(--border);
+
+/* Always-on bar */
+.always-on-bar{
+  display:flex;align-items:center;gap:12px;
+  background:rgba(16,185,129,0.06);
+  border:1px solid rgba(16,185,129,0.15);
+  border-radius:2px;
+  padding:12px 14px;margin-bottom:16px;font-size:13px;
 }
-.source-toggle span{font-size:14px}
-.source-toggle .always{
+.always-on-label{
+  color:#10b981;font-family:var(--mono);font-size:11px;
+  letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;
+}
+.always-on-sources{color:var(--cream-dim);font-size:12px}
+
+/* Bundle selection */
+.feed-section{margin-bottom:16px}
+.feed-section-label{
   font-family:var(--mono);font-size:11px;
-  color:var(--cream-dim);letter-spacing:0.04em;
+  letter-spacing:0.06em;text-transform:uppercase;
+  color:var(--cream-dim);margin-bottom:10px;
 }
-.toggle-switch{
-  position:relative;width:40px;height:22px;
-  background:var(--bg-elevated);border:1px solid var(--border);
-  border-radius:11px;cursor:pointer;transition:background .2s;
-  flex-shrink:0;
+.bundle-select-grid{display:flex;flex-direction:column;gap:8px}
+.bundle-card{
+  background:var(--bg-surface);
+  border:1px solid var(--border);
+  border-radius:2px;padding:14px;
+  cursor:pointer;transition:border-color .15s,background .15s;
 }
-.toggle-switch.on{background:var(--amber);border-color:var(--amber)}
-.toggle-switch::after{
-  content:'';position:absolute;
-  top:2px;left:2px;
-  width:16px;height:16px;
-  background:var(--cream);border-radius:50%;
-  transition:transform .2s;
+.bundle-card:hover{border-color:rgba(245,158,11,0.5)}
+.bundle-card.selected{
+  background:rgba(245,158,11,0.06);
+  border-color:rgba(245,158,11,0.4);
 }
-.toggle-switch.on::after{transform:translateX(18px)}
+.bundle-card-header{
+  display:flex;align-items:center;gap:10px;margin-bottom:4px;
+}
+.bundle-card-header .bundle-meta{flex:1}
+.bundle-card-header .bundle-meta strong{display:block;font-size:14px}
+.bundle-card-header .bundle-source-count{font-size:12px;color:var(--cream-dim)}
+.bundle-check{
+  font-size:14px;color:var(--cream-dim);width:24px;text-align:center;
+  font-family:var(--mono);
+}
+.bundle-check.checked{color:var(--amber)}
+.bundle-desc{font-size:12px;color:var(--cream-dim);margin:0}
+.bundle-quality{font-size:11px;color:var(--cream-dim);margin-top:6px;font-family:var(--mono)}
+
+/* Browse more toggle */
+.browse-more-toggle{
+  background:none;
+  border:1px dashed var(--border);
+  border-radius:2px;color:var(--cream-dim);
+  cursor:pointer;font-size:13px;font-family:var(--sans);
+  padding:10px;width:100%;margin:12px 0;
+  transition:border-color .2s,color .2s;
+}
+.browse-more-toggle:hover{border-color:var(--amber);color:var(--amber)}
+
+/* Inline feed browser */
+.feed-browser{margin-bottom:16px}
+.browser-search{
+  width:100%;background:var(--bg-surface);
+  border:1px solid var(--border);border-radius:2px;
+  color:var(--cream);font-family:var(--sans);font-size:14px;
+  padding:10px 14px;outline:none;margin-bottom:12px;
+}
+.browser-search:focus{border-color:var(--amber)}
+.browser-search::placeholder{color:var(--cream-dim)}
+.browser-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.filter-chip{
+  background:var(--bg-surface);border:1px solid var(--border);
+  border-radius:20px;color:var(--cream-dim);cursor:pointer;
+  font-family:var(--sans);font-size:12px;padding:4px 12px;
+  transition:background .15s,border-color .15s,color .15s;
+}
+.filter-chip.active{
+  background:rgba(245,158,11,0.15);
+  border-color:rgba(245,158,11,0.4);color:var(--amber);
+}
+.browser-group-label{
+  font-family:var(--mono);font-size:11px;
+  letter-spacing:0.06em;text-transform:uppercase;
+  color:var(--cream-dim);margin-bottom:8px;
+}
+.browse-row{
+  display:flex;align-items:center;gap:12px;
+  background:var(--bg-surface);border:1px solid var(--border);
+  border-radius:2px;padding:12px 14px;margin-bottom:6px;
+  transition:border-color .15s;
+}
+.browse-row.active{border-color:rgba(245,158,11,0.4)}
+.browse-row .browse-meta{flex:1;min-width:0}
+.browse-row .browse-meta strong{font-size:13px;display:block}
+.browse-row .browse-meta span{font-size:12px;color:var(--cream-dim)}
+.btn-toggle{
+  background:none;border:1px solid var(--border);
+  border-radius:2px;color:var(--cream-dim);cursor:pointer;
+  font-family:var(--sans);font-size:12px;padding:5px 12px;white-space:nowrap;
+  transition:background .15s,border-color .15s,color .15s;
+}
+.btn-toggle.active{
+  background:rgba(245,158,11,0.15);
+  border-color:rgba(245,158,11,0.4);color:var(--amber);
+}
+
+/* Activate footer */
+.activate-footer{
+  margin-top:20px;border-top:1px solid var(--border);padding-top:16px;
+}
+.feed-summary{
+  font-family:var(--mono);font-size:12px;
+  color:var(--cream-dim);text-align:center;margin-bottom:8px;
+}
 
 /* ─── Step 5: Activating ─── */
 .activating-center{
@@ -444,25 +531,34 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
     </div>
   </div>
 
-  <!-- Step 4: Confirm + Activate -->
+  <!-- Step 4: Confirm + Feed Selection -->
   <div class="step" id="step4">
-    <h2>Your signal feed is ready</h2>
-    <p class="sub">Review your profile and signal sources, then activate.</p>
+    <h2>Your signal feed</h2>
+    <p class="sub">We've suggested sources based on your mission. Add or remove anything before activating.</p>
+
+    <!-- Editable profile cards -->
     <div class="profile-cards" id="profileCards"></div>
-    <div class="source-section">
-      <h3>Your intelligence sources</h3>
-      <div id="sourceBundles"></div>
-      <div class="source-toggle">
-        <span>SEC, PR Newswire, Business Wire, Reuters</span>
-        <span class="always">always on</span>
-      </div>
+
+    <!-- Always-on global macro -->
+    <div class="always-on-bar">
+      <span class="always-on-label">Always on</span>
+      <span class="always-on-sources">SEC &middot; PR Newswire &middot; Business Wire &middot; Reuters &middot; FT</span>
     </div>
-    <div class="privacy-trust" style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:16px;margin-top:16px">
-      <div style="font-size:13px;font-weight:500;color:#10b981;margin-bottom:6px">🔒 This is your private profile.</div>
-      <p style="font-size:13px;color:#94a3b8;line-height:1.5;margin:0">Only you see these details. In any huddle or collaborative context, others see only your proximity scores — never this profile.</p>
+
+    <!-- Recommended bundles — pre-selected -->
+    <div class="feed-section">
+      <div class="feed-section-label">Recommended for you</div>
+      <div id="recommendedBundles" class="bundle-select-grid"></div>
     </div>
-    <div style="margin-top:20px">
-      <button class="btn-primary" onclick="activateFeed()">Activate my feed →</button>
+
+    <!-- Browse more -->
+    <button class="browse-more-toggle" id="browseToggle" onclick="toggleBrowseCatalog()">+ Browse all feeds</button>
+    <div id="feedBrowser" class="feed-browser" style="display:none"></div>
+
+    <!-- Activate footer -->
+    <div class="activate-footer">
+      <p id="feedSummary" class="feed-summary">0 feeds selected</p>
+      <button class="btn-primary" id="btnActivate" onclick="activateFeed()" disabled style="width:100%">Select at least one feed</button>
     </div>
   </div>
 
@@ -664,7 +760,11 @@ function connectGoogleContacts() {
   window.location.href = '/api/auth/google-contacts/connect?token=' + encodeURIComponent(token) + '&return_to=/onboarding.html?step=connect';
 }
 
-/* ─── Step 4: Confirm ─── */
+/* ─── Step 4: Confirm + Feed Selection ─── */
+var selectedBundleIds = {};
+var allCatalogBundles = [];
+var activeBrowserFilter = '';
+
 function renderConfirmStep() {
   var profile = extractedProfile || {};
   var config = derivedConfig || {};
@@ -726,7 +826,7 @@ function renderConfirmStep() {
     })(cards[i]);
   }
 
-  renderSourceBundles();
+  loadRecommendedBundles();
 }
 
 function formatRoleFirm(profile) {
@@ -768,58 +868,272 @@ function updateProfileField(key, value) {
   }
 }
 
-function renderSourceBundles() {
-  var bundles = (derivedConfig && derivedConfig.recommended_bundles) || [];
-  var container = document.getElementById('sourceBundles');
-  container.innerHTML = '';
-
-  for (var i = 0; i < bundles.length; i++) {
-    (function(bundle) {
-      var row = document.createElement('div');
-      row.className = 'source-toggle';
-
-      var label = document.createElement('span');
-      label.textContent = bundle.name || bundle;
-
-      var toggle = document.createElement('div');
-      toggle.className = 'toggle-switch on';
-      toggle.addEventListener('click', function() {
-        toggle.classList.toggle('on');
-        bundle._enabled = toggle.classList.contains('on');
-      });
-
-      row.appendChild(label);
-      row.appendChild(toggle);
-      container.appendChild(row);
-    })(typeof bundles[i] === 'string' ? { name: bundles[i], _enabled: true } : bundles[i]);
+/* ─── Recommended bundles from profile ─── */
+function loadRecommendedBundles() {
+  var bundles = (derivedConfig && derivedConfig.bundles) || [];
+  if (!bundles.length) {
+    document.getElementById('recommendedBundles').innerHTML =
+      '<p style="color:var(--cream-dim);font-size:13px">No specific bundles recommended — browse the catalog below.</p>';
+    updateActivateButton();
+    return;
   }
+
+  var params = bundles.map(function(s) { return 'slug=' + encodeURIComponent(s); }).join('&');
+  api('GET', '/api/feeds/bundles?' + params + '&limit=20').then(function(data) {
+    var rows = data.bundles || [];
+    var container = document.getElementById('recommendedBundles');
+
+    if (!rows.length) {
+      container.innerHTML = '<p style="color:var(--cream-dim);font-size:13px">Bundles loading... browse below if needed.</p>';
+      updateActivateButton();
+      return;
+    }
+
+    container.innerHTML = '';
+    for (var i = 0; i < rows.length; i++) {
+      selectedBundleIds[rows[i].id] = true;
+      container.appendChild(createBundleCard(rows[i], true));
+    }
+    updateActivateButton();
+  }).catch(function() {
+    updateActivateButton();
+  });
+}
+
+function createBundleCard(bundle, preSelected) {
+  var isSelected = preSelected || !!selectedBundleIds[bundle.id];
+  var el = document.createElement('div');
+  el.className = 'bundle-card' + (isSelected ? ' selected' : '');
+  el.id = 'bundle-' + bundle.id;
+
+  var qualityHtml = '';
+  if (bundle.avg_quality_score) {
+    var filled = Math.round(parseFloat(bundle.avg_quality_score) * 5);
+    var bar = '';
+    for (var q = 0; q < 5; q++) bar += q < filled ? '\u25CF' : '\u25CB';
+    qualityHtml = '<div class="bundle-quality">Signal quality: ' + bar + '</div>';
+  }
+
+  el.innerHTML =
+    '<div class="bundle-card-header">' +
+      '<div class="bundle-meta">' +
+        '<strong>' + (bundle.name || bundle.slug) + '</strong>' +
+        '<span class="bundle-source-count">' + (bundle.source_count || 0) + ' sources</span>' +
+      '</div>' +
+      '<span class="bundle-check ' + (isSelected ? 'checked' : '') + '">' +
+        (isSelected ? '\u2713' : '+') +
+      '</span>' +
+    '</div>' +
+    '<p class="bundle-desc">' + (bundle.description || '') + '</p>' +
+    qualityHtml;
+
+  el.addEventListener('click', function() {
+    toggleBundleSelection(bundle.id, el);
+  });
+
+  return el;
+}
+
+function toggleBundleSelection(bundleId, el) {
+  if (selectedBundleIds[bundleId]) {
+    delete selectedBundleIds[bundleId];
+    el.classList.remove('selected');
+    var chk = el.querySelector('.bundle-check');
+    if (chk) { chk.textContent = '+'; chk.classList.remove('checked'); }
+  } else {
+    selectedBundleIds[bundleId] = true;
+    el.classList.add('selected');
+    var chk2 = el.querySelector('.bundle-check');
+    if (chk2) { chk2.textContent = '\u2713'; chk2.classList.add('checked'); }
+  }
+  updateActivateButton();
+  /* Sync browse card if open */
+  var browseBtn = document.querySelector('#browse-' + bundleId + ' .btn-toggle');
+  if (browseBtn) {
+    var isNowActive = !!selectedBundleIds[bundleId];
+    browseBtn.textContent = isNowActive ? '\u2713 Added' : '+ Add';
+    browseBtn.className = 'btn-toggle' + (isNowActive ? ' active' : '');
+    var browseRow = document.getElementById('browse-' + bundleId);
+    if (browseRow) browseRow.className = 'browse-row' + (isNowActive ? ' active' : '');
+  }
+}
+
+function updateActivateButton() {
+  var count = Object.keys(selectedBundleIds).length;
+  var btn = document.getElementById('btnActivate');
+  btn.disabled = count === 0;
+  btn.textContent = count > 0
+    ? 'Activate ' + count + ' feed' + (count > 1 ? 's' : '') + ' \u2192'
+    : 'Select at least one feed';
+
+  var est = count * 85;
+  document.getElementById('feedSummary').textContent =
+    count + ' feed' + (count > 1 ? 's' : '') + ' selected \u00B7 ~' + est + ' signals/week';
+}
+
+/* ─── Browse catalog ─── */
+function toggleBrowseCatalog() {
+  var browser = document.getElementById('feedBrowser');
+  var btn = document.getElementById('browseToggle');
+  var isOpen = browser.style.display !== 'none';
+  browser.style.display = isOpen ? 'none' : 'block';
+  btn.textContent = isOpen ? '+ Browse all feeds' : '\u2212 Hide catalog';
+  if (!isOpen) loadFeedBrowser();
+}
+
+function loadFeedBrowser() {
+  var container = document.getElementById('feedBrowser');
+  var filterTypes = [
+    { label: 'All', value: '' },
+    { label: 'Region', value: 'region' },
+    { label: 'Sector', value: 'sector' },
+    { label: 'Signal type', value: 'signal_type' },
+    { label: 'Investor type', value: 'investor_type' }
+  ];
+
+  var filtersHtml = '';
+  for (var f = 0; f < filterTypes.length; f++) {
+    filtersHtml += '<button class="filter-chip' + (f === 0 ? ' active' : '') +
+      '" onclick="filterByType(this,\'' + filterTypes[f].value + '\')">' +
+      filterTypes[f].label + '</button>';
+  }
+
+  container.innerHTML =
+    '<input type="text" id="browserSearch" class="browser-search" ' +
+      'placeholder="Search by name, sector, or region..." ' +
+      'oninput="filterBrowser(this.value)" />' +
+    '<div class="browser-filters">' + filtersHtml + '</div>' +
+    '<div id="browserGrid"></div>';
+
+  renderBrowserGrid('', '');
+}
+
+function renderBrowserGrid(typeFilter, searchQuery) {
+  var params = [];
+  if (typeFilter) params.push('type=' + encodeURIComponent(typeFilter));
+  if (searchQuery) params.push('search=' + encodeURIComponent(searchQuery));
+  params.push('limit=100');
+
+  api('GET', '/api/feeds/bundles?' + params.join('&')).then(function(data) {
+    var bundles = data.bundles || [];
+    allCatalogBundles = bundles;
+    var grid = document.getElementById('browserGrid');
+
+    if (!bundles.length) {
+      grid.innerHTML = '<p style="color:var(--cream-dim);font-size:13px;padding:8px 0">No feeds found.</p>';
+      return;
+    }
+
+    var TYPE_LABELS = {
+      investor_type: 'Investor type',
+      sector: 'Sector',
+      region: 'Region',
+      signal_type: 'Signal type',
+      stage: 'Stage'
+    };
+
+    var grouped = {};
+    for (var i = 0; i < bundles.length; i++) {
+      var key = bundles[i].bundle_type || 'other';
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(bundles[i]);
+    }
+
+    var html = '';
+    var keys = Object.keys(grouped);
+    for (var k = 0; k < keys.length; k++) {
+      var type = keys[k];
+      var items = grouped[type];
+      html += '<div style="margin-bottom:20px">';
+      html += '<div class="browser-group-label">' + (TYPE_LABELS[type] || type) + '</div>';
+      for (var j = 0; j < items.length; j++) {
+        var b = items[j];
+        var isActive = !!selectedBundleIds[b.id];
+        html +=
+          '<div class="browse-row' + (isActive ? ' active' : '') + '" id="browse-' + b.id + '">' +
+            '<div class="browse-meta">' +
+              '<strong>' + b.name + '</strong>' +
+              '<span>' + (b.source_count || 0) + ' sources' +
+                (b.description ? ' \u00B7 ' + b.description.substring(0, 60) + (b.description.length > 60 ? '...' : '') : '') +
+              '</span>' +
+            '</div>' +
+            '<button class="btn-toggle' + (isActive ? ' active' : '') + '" ' +
+              'onclick="toggleFromBrowser(\'' + b.id + '\', this)">' +
+              (isActive ? '\u2713 Added' : '+ Add') +
+            '</button>' +
+          '</div>';
+      }
+      html += '</div>';
+    }
+    grid.innerHTML = html;
+  }).catch(function() {
+    document.getElementById('browserGrid').innerHTML =
+      '<p style="color:var(--cream-dim);font-size:13px">Failed to load catalog.</p>';
+  });
+}
+
+function toggleFromBrowser(bundleId, btn) {
+  if (selectedBundleIds[bundleId]) {
+    delete selectedBundleIds[bundleId];
+    btn.textContent = '+ Add';
+    btn.className = 'btn-toggle';
+    var row = document.getElementById('browse-' + bundleId);
+    if (row) row.className = 'browse-row';
+  } else {
+    selectedBundleIds[bundleId] = true;
+    btn.textContent = '\u2713 Added';
+    btn.className = 'btn-toggle active';
+    var row2 = document.getElementById('browse-' + bundleId);
+    if (row2) row2.className = 'browse-row active';
+  }
+  /* Sync recommended card if present */
+  var recCard = document.getElementById('bundle-' + bundleId);
+  if (recCard) {
+    var isNow = !!selectedBundleIds[bundleId];
+    recCard.className = 'bundle-card' + (isNow ? ' selected' : '');
+    var chk = recCard.querySelector('.bundle-check');
+    if (chk) {
+      chk.textContent = isNow ? '\u2713' : '+';
+      chk.className = 'bundle-check' + (isNow ? ' checked' : '');
+    }
+  }
+  updateActivateButton();
+}
+
+function filterBrowser(query) {
+  renderBrowserGrid(activeBrowserFilter, query);
+}
+
+function filterByType(btn, type) {
+  var chips = document.querySelectorAll('.filter-chip');
+  for (var i = 0; i < chips.length; i++) chips[i].classList.remove('active');
+  btn.classList.add('active');
+  activeBrowserFilter = type;
+  var search = document.getElementById('browserSearch');
+  renderBrowserGrid(type, search ? search.value : '');
 }
 
 /* ─── Step 5: Activate ─── */
 function activateFeed() {
+  var bundleIds = Object.keys(selectedBundleIds);
+  if (!bundleIds.length) return;
+
   goToStep(5);
-
-  var enabledBundles = [];
-  var bundleToggles = document.querySelectorAll('#sourceBundles .toggle-switch');
-  var bundleLabels = document.querySelectorAll('#sourceBundles .source-toggle span:first-child');
-  for (var i = 0; i < bundleToggles.length; i++) {
-    if (bundleToggles[i].classList.contains('on')) {
-      enabledBundles.push(bundleLabels[i] ? bundleLabels[i].textContent : '');
-    }
-  }
-
   var msgEl = document.getElementById('activateMsg');
   msgEl.textContent = 'Saving your profile...';
 
   api('POST', '/api/onboarding/complete-conversation', {
     profile: extractedProfile,
     config: derivedConfig,
-    bundles: enabledBundles
+    bundles: bundleIds
   }).then(function() {
-    msgEl.textContent = 'Subscribing to signal bundles...';
-    return api('POST', '/api/onboarding/trigger-harvest', {});
+    msgEl.textContent = 'Subscribing to ' + bundleIds.length + ' signal feeds...';
+    return api('POST', '/api/feeds/subscribe', { bundle_ids: bundleIds });
   }).then(function() {
     msgEl.textContent = 'Starting your first harvest...';
+    return api('POST', '/api/onboarding/trigger-harvest', {});
+  }).then(function() {
+    msgEl.textContent = 'Finalizing...';
     return api('POST', '/api/onboarding/finalize', {});
   }).then(function() {
     msgEl.textContent = 'Done. Redirecting...';

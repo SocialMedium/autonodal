@@ -11524,7 +11524,7 @@ app.post('/api/webhooks/crm/:connectionId', async (req, res) => {
 app.get('/api/feeds/bundles', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
-    const { type, sector, geo, search, featured } = req.query;
+    const { type, sector, geo, search, featured, slug, limit } = req.query;
     let where = ['fb.is_active = true'];
     const params = [req.tenant_id]; let idx = 2;
     if (type) { where.push(`fb.bundle_type = $${idx++}`); params.push(type); }
@@ -11532,6 +11532,8 @@ app.get('/api/feeds/bundles', authenticateToken, async (req, res) => {
     if (geo) { where.push(`$${idx++} = ANY(fb.geographies)`); params.push(geo); }
     if (featured === 'true') where.push('fb.is_featured = true');
     if (search) { where.push(`(fb.name ILIKE $${idx} OR fb.description ILIKE $${idx})`); params.push(`%${search}%`); idx++; }
+    const slugs = Array.isArray(slug) ? slug : slug ? [slug] : [];
+    if (slugs.length) { where.push(`fb.slug = ANY($${idx++})`); params.push(slugs); }
     const { rows } = await db.query(`
       SELECT fb.*,
         EXISTS(SELECT 1 FROM tenant_feed_subscriptions tfs WHERE tfs.bundle_id = fb.id AND tfs.tenant_id = $1 AND tfs.is_enabled = true) AS is_subscribed,
@@ -11541,7 +11543,8 @@ app.get('/api/feeds/bundles', authenticateToken, async (req, res) => {
       LEFT JOIN feed_catalog fc ON fc.id = fbs.source_id AND fc.is_active = true
       WHERE ${where.join(' AND ')}
       GROUP BY fb.id ORDER BY fb.is_featured DESC, fb.display_order ASC
-    `, params);
+      LIMIT $${idx}
+    `, [...params, parseInt(limit) || 100]);
     res.json({ bundles: rows });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
