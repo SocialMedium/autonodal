@@ -2575,7 +2575,7 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
     try {
       const { rows } = await db.query(`
         SELECT u.name AS team_member, u.id AS team_member_id,
-               tp.relationship_strength, tp.proximity_type, tp.source AS proximity_source,
+               tp.relationship_strength, tp.relationship_type AS proximity_type, tp.source AS proximity_source,
                (SELECT MAX(i.interaction_at) FROM interactions i WHERE i.person_id = $1 AND i.user_id = u.id) AS last_contact,
                (SELECT COUNT(*) FROM interactions i WHERE i.person_id = $1 AND i.user_id = u.id) AS interaction_count
         FROM team_proximity tp
@@ -4193,7 +4193,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
         SELECT u.name AS team_member, u.id AS team_member_id,
                p.full_name AS contact_name, p.id AS person_id,
                p.current_title, tp.relationship_strength,
-               tp.proximity_type, tp.source AS proximity_source,
+               tp.relationship_type AS proximity_type, tp.source AS proximity_source,
                MAX(i.interaction_at) AS last_contact,
                COUNT(i.id) AS interaction_count
         FROM team_proximity tp
@@ -4203,7 +4203,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
         WHERE p.current_company_id = $1
           AND tp.relationship_strength >= 0.15
         GROUP BY u.name, u.id, p.full_name, p.id, p.current_title,
-                 tp.relationship_strength, tp.proximity_type, tp.source
+                 tp.relationship_strength, tp.relationship_type, tp.source
         ORDER BY tp.relationship_strength DESC
         LIMIT 30
       `, [companyId]);
