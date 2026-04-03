@@ -11964,6 +11964,12 @@ app.get('*', (req, res) => {
 
 app.get('/autonodal', (req, res) => res.sendFile(path.join(__dirname, 'public/autonodal.html')));
 
+// Clean URLs for public compliance pages (no .html required)
+app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, 'public/privacy.html')));
+app.get('/terms', (req, res) => res.sendFile(path.join(__dirname, 'public/terms.html')));
+app.get('/home', (req, res) => res.sendFile(path.join(__dirname, 'public/home.html')));
+app.get('/data-deletion', (req, res) => res.sendFile(path.join(__dirname, 'public/data-deletion.html')));
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ERROR HANDLING MIDDLEWARE
 // ═══════════════════════════════════════════════════════════════════════════════

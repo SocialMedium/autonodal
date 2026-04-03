@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delete Your Data — Autonodal</title>
+<meta name="description" content="How to delete your Autonodal account and all associated data.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;700&family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --au-bg:#0a0e1a;
+  --au-surface:#111827;
+  --au-border:#1e2d3d;
+  --au-text:#e2e8f0;
+  --au-muted:#64748b;
+  --au-accent:#f59e0b;
+  --au-accent-dim:#92400e;
+  --au-code:#10b981;
+}
+html{scroll-behavior:smooth}
+body{font-family:'IBM Plex Sans',sans-serif;background:var(--au-bg);color:var(--au-text);font-size:16px;line-height:1.8;overflow-x:hidden}
+a{color:var(--au-accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+.nav{padding:24px 32px;display:flex;align-items:center;border-bottom:1px solid var(--au-border)}
+.nav-mark{font-family:'Playfair Display',serif;font-size:19px;font-weight:700;letter-spacing:-0.02em;color:var(--au-text);text-decoration:none}
+.nav-mark:hover{color:var(--au-accent);text-decoration:none}
+
+.content{max-width:720px;margin:0 auto;padding:64px 24px 80px}
+h1{font-family:'Playfair Display',serif;font-size:clamp(32px,5vw,48px);font-weight:400;line-height:1.15;letter-spacing:-0.02em;margin-bottom:12px}
+.subtitle{font-size:14px;color:var(--au-muted);margin-bottom:48px;font-family:'IBM Plex Mono',monospace;letter-spacing:0.04em}
+h2{font-family:'Playfair Display',serif;font-size:24px;font-weight:500;line-height:1.3;margin-top:48px;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid var(--au-border)}
+p{margin-bottom:16px;color:rgba(226,232,240,0.78);font-weight:300}
+code{font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--au-code)}
+
+.never-box{border-left:3px solid var(--au-accent);background:rgba(245,158,11,0.06);padding:16px 20px;margin:16px 0 24px;border-radius:0 4px 4px 0}
+.never-box p{margin-bottom:0;color:var(--au-text);font-weight:400}
+.never-box strong{color:var(--au-accent)}
+
+.step{background:var(--au-surface);border:1px solid var(--au-border);padding:24px 28px;margin:20px 0;border-radius:4px}
+.step-num{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:var(--au-accent);margin-bottom:8px}
+.step p{margin-bottom:0}
+.step a{font-weight:500}
+
+.footer{border-top:1px solid var(--au-border);padding:32px 24px;text-align:center}
+.footer-links{display:flex;justify-content:center;gap:24px;flex-wrap:wrap;margin-bottom:12px;font-size:13px}
+.footer-links a{color:var(--au-muted)}
+.footer-links a:hover{color:var(--au-accent)}
+.footer-copy{font-size:12px;color:var(--au-muted)}
+
+@media(max-width:600px){
+  .nav{padding:16px 20px}
+  .content{padding:40px 20px 60px}
+  h1{font-size:28px}
+  h2{font-size:20px;margin-top:36px}
+  .step{padding:20px}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="/autonodal.html" class="nav-mark">Autonodal</a>
+</nav>
+
+<main class="content">
+  <h1>Delete Your Data</h1>
+  <p class="subtitle">Your data, your choice</p>
+
+  <p>Autonodal gives you full control over your data. You can delete your account and all associated data at any time using either of the methods below.</p>
+
+  <h2>Option 1: Account Settings</h2>
+  <div class="step">
+    <div class="step-num">Self-service</div>
+    <p>Sign in and navigate to your <a href="/profile.html">Account Settings</a>. Under the account management section, select <strong>Delete Account</strong>. This will immediately begin the deletion process.</p>
+  </div>
+
+  <h2>Option 2: Email Request</h2>
+  <div class="step">
+    <div class="step-num">Manual request</div>
+    <p>Send an email to <a href="mailto:privacy@autonodal.com">privacy@autonodal.com</a> from the email address associated with your account. Include "Data Deletion Request" in the subject line. We will process your request and confirm within 5 business days.</p>
+  </div>
+
+  <h2>What Happens When You Delete</h2>
+  <p>Upon initiating account deletion:</p>
+  <div class="never-box">
+    <p>All personal data, <code>proximity graphs</code>, connected account metadata, and <code>signal subscriptions</code> are permanently and irrecoverably deleted within <strong>30 days</strong>.</p>
+  </div>
+  <p>This includes:</p>
+  <ul style="margin:0 0 16px 24px;color:rgba(226,232,240,0.78);font-weight:300">
+    <li style="margin-bottom:6px">Your account profile and credentials</li>
+    <li style="margin-bottom:6px">All <code>proximity scores</code> and connection metadata</li>
+    <li style="margin-bottom:6px">All connected service data (Gmail, Drive, Contacts)</li>
+    <li style="margin-bottom:6px">All signal feed subscriptions and history</li>
+    <li style="margin-bottom:6px">Any data contributed to <code>Huddles</code></li>
+  </ul>
+
+  <div class="never-box">
+    <p>We <strong>NEVER</strong> retain identifiable personal data after the 30-day deletion window. Aggregated, anonymised statistics may be retained but cannot be linked back to you.</p>
+  </div>
+
+  <h2>Questions</h2>
+  <p>If you have any questions about data deletion, contact us at <a href="mailto:privacy@autonodal.com">privacy@autonodal.com</a>.</p>
+</main>
+
+<footer class="footer">
+  <div class="footer-links">
+    <a href="/privacy.html">Privacy Policy</a>
+    <a href="/terms.html">Terms of Service</a>
+    <a href="/data-deletion.html">Data Deletion</a>
+    <a href="/home.html">Home</a>
+  </div>
+  <p class="footer-copy">&copy; 2026 Autonodal</p>
+</footer>
+
+</body>
+</html>

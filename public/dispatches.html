@@ -189,7 +189,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
       <a href="/placements.html">Revenue</a>
       <a href="/case-studies.html">Case Studies</a><a href="/huddles.html">Huddles</a>
     </nav>
-    <div class="masthead-user" id="userAvatar">JT</div>
+    <div class="masthead-user" id="userAvatar">?</div>
   </div>
 </header>
 
@@ -978,6 +978,7 @@ loadGrabs();
 <script src="/icons.js"></script>
 <script src="/terminology.js"></script>
 <script src="/chat.js"></script>
+<script>try{var _u=JSON.parse(localStorage.getItem('ml_user')||'{}');var _i=(_u.name||_u.email||'?').split(' ').map(function(w){return w[0]}).join('').toUpperCase().slice(0,2);var _el=document.getElementById('userAvatar');if(_el)_el.textContent=_i;}catch(e){}</script>
 <div id="signal-ticker"></div>
 <script src="/signal-ticker.js" data-position="top"></script>
 </body>

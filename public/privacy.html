@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — Autonodal</title>
+<meta name="description" content="Autonodal Privacy Policy. How we collect, use, and protect your data.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;700&family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --au-bg:#0a0e1a;
+  --au-surface:#111827;
+  --au-border:#1e2d3d;
+  --au-text:#e2e8f0;
+  --au-muted:#64748b;
+  --au-accent:#f59e0b;
+  --au-accent-dim:#92400e;
+  --au-code:#10b981;
+}
+html{scroll-behavior:smooth}
+body{font-family:'IBM Plex Sans',sans-serif;background:var(--au-bg);color:var(--au-text);font-size:16px;line-height:1.8;overflow-x:hidden}
+a{color:var(--au-accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Nav */
+.nav{padding:24px 32px;display:flex;align-items:center;border-bottom:1px solid var(--au-border)}
+.nav-mark{font-family:'Playfair Display',serif;font-size:19px;font-weight:700;letter-spacing:-0.02em;color:var(--au-text);text-decoration:none}
+.nav-mark:hover{color:var(--au-accent);text-decoration:none}
+
+/* Content */
+.content{max-width:720px;margin:0 auto;padding:64px 24px 80px}
+h1{font-family:'Playfair Display',serif;font-size:clamp(32px,5vw,48px);font-weight:400;line-height:1.15;letter-spacing:-0.02em;margin-bottom:12px}
+.subtitle{font-size:14px;color:var(--au-muted);margin-bottom:48px;font-family:'IBM Plex Mono',monospace;letter-spacing:0.04em}
+h2{font-family:'Playfair Display',serif;font-size:24px;font-weight:500;line-height:1.3;margin-top:56px;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid var(--au-border)}
+h3{font-size:16px;font-weight:500;margin-top:24px;margin-bottom:8px;color:var(--au-text)}
+p{margin-bottom:16px;color:rgba(226,232,240,0.78);font-weight:300}
+ul,ol{margin:0 0 16px 24px;color:rgba(226,232,240,0.78);font-weight:300}
+li{margin-bottom:6px}
+code,.mono{font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--au-code)}
+
+/* Never box */
+.never-box{border-left:3px solid var(--au-accent);background:rgba(245,158,11,0.06);padding:16px 20px;margin:16px 0 24px;border-radius:0 4px 4px 0}
+.never-box p{margin-bottom:0;color:var(--au-text);font-weight:400}
+.never-box strong{color:var(--au-accent)}
+
+/* Footer */
+.footer{border-top:1px solid var(--au-border);padding:32px 24px;text-align:center}
+.footer-links{display:flex;justify-content:center;gap:24px;flex-wrap:wrap;margin-bottom:12px;font-size:13px}
+.footer-links a{color:var(--au-muted)}
+.footer-links a:hover{color:var(--au-accent)}
+.footer-copy{font-size:12px;color:var(--au-muted)}
+
+@media(max-width:600px){
+  .nav{padding:16px 20px}
+  .content{padding:40px 20px 60px}
+  h1{font-size:28px}
+  h2{font-size:20px;margin-top:40px}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="/autonodal.html" class="nav-mark">Autonodal</a>
+</nav>
+
+<main class="content">
+  <h1>Privacy Policy</h1>
+  <p class="subtitle">Last updated: April 2026</p>
+
+  <h2>1. Overview</h2>
+  <p>Autonodal is a <code>signal intelligence</code> platform that builds <code>proximity graphs</code> from your professional network and surfaces <code>market feeds</code> so you can act on what matters. This policy explains how we collect, process, and protect your data.</p>
+
+  <h2>2. Data We Collect</h2>
+  <p>When you use Autonodal, we may collect the following categories of information:</p>
+  <ul>
+    <li><strong>Account data</strong> &mdash; name, email address, authentication credentials</li>
+    <li><strong>Profile data</strong> &mdash; job title, company, professional context you provide</li>
+    <li><strong>Connection metadata</strong> &mdash; who you communicate with and how frequently</li>
+    <li><strong>Interaction metadata</strong> &mdash; timestamps, frequency patterns, communication channels</li>
+    <li><strong>Signals</strong> &mdash; RSS feeds, market data, and curated intelligence you subscribe to</li>
+  </ul>
+
+  <h2>3. Gmail Data &mdash; Proximity Extraction Only</h2>
+  <p>When you connect your Gmail account, Autonodal extracts <code>proximity signals</code> only. This means we process:</p>
+  <ul>
+    <li><strong>WHO</strong> &mdash; sender and recipient email addresses</li>
+    <li><strong>WHEN</strong> &mdash; timestamps of messages</li>
+    <li><strong>HOW OFTEN</strong> &mdash; frequency and recency of communication</li>
+  </ul>
+  <div class="never-box">
+    <p>We <strong>NEVER</strong> read, store, or process email subject lines, message bodies, or attachments. We extract mathematical proximity scores from metadata only.</p>
+  </div>
+
+  <h2>4. Google Drive Data</h2>
+  <p>When you connect Google Drive, Autonodal may access:</p>
+  <ul>
+    <li>File names and metadata for documents you explicitly select</li>
+    <li>Text content of documents you explicitly choose to index</li>
+  </ul>
+  <div class="never-box">
+    <p>We <strong>NEVER</strong> access files you have not explicitly selected. We do not scan, index, or read any document unless you grant specific permission for that file.</p>
+  </div>
+
+  <h2>5. Google Contacts Data</h2>
+  <p>When you connect Google Contacts, we access:</p>
+  <ul>
+    <li>Contact names and email addresses</li>
+    <li>Company and job title information</li>
+  </ul>
+  <p>This data is used to enrich your <code>proximity graph</code> and help you understand the strength and nature of your professional relationships.</p>
+
+  <h2>6. The Proximity-Only Model</h2>
+  <p>Autonodal operates on a <code>proximity-only</code> extraction model. We perform local extraction of messaging metadata to build mathematical relationship scores. No content is ever read, stored, or transmitted.</p>
+  <p>The output is a set of <code>proximity_scores</code> that represent the strength and recency of your professional connections &mdash; not the substance of your communications.</p>
+  <div class="never-box">
+    <p>We <strong>NEVER</strong> use message content for any purpose. Our model is architecturally incapable of reading your emails, messages, or documents unless you explicitly select them.</p>
+  </div>
+
+  <h2>7. Huddle Collaboration</h2>
+  <p>When you join a <code>Huddle</code> (collaborative workspace), the following applies:</p>
+  <ul>
+    <li>Only <code>proximity strength scores</code> are shared with other Huddle members</li>
+    <li>The <code>source_platform</code> of a connection is never exposed to other users</li>
+    <li>You can detach from any Huddle at any time, cleanly removing your contributed data</li>
+  </ul>
+
+  <h2>8. Data Sharing</h2>
+  <p>We do not sell your data. We do not use your data for advertising. We do not share your data with third parties for their marketing purposes.</p>
+  <div class="never-box">
+    <p>We <strong>NEVER</strong> sell your data. We <strong>NEVER</strong> use it for advertising. Your data is yours.</p>
+  </div>
+  <p>We use the following infrastructure providers to operate the platform:</p>
+  <ul>
+    <li><code>OpenAI</code> &mdash; text embeddings for semantic search</li>
+    <li><code>Qdrant</code> &mdash; vector database for proximity and signal storage</li>
+    <li><code>Railway</code> &mdash; application hosting infrastructure</li>
+  </ul>
+  <p>All providers are bound by data processing agreements and do not retain your data beyond processing.</p>
+
+  <h2>9. Data Retention and Deletion</h2>
+  <p>You may delete your account at any time from your account settings. Upon deletion:</p>
+  <ul>
+    <li>All personal data is marked for deletion immediately</li>
+    <li>Data is permanently and irrecoverably deleted within <strong>30 days</strong></li>
+    <li>Aggregated, anonymised statistics may be retained but cannot be linked back to you</li>
+  </ul>
+  <p>You can also request deletion by emailing <a href="mailto:privacy@autonodal.com">privacy@autonodal.com</a>.</p>
+
+  <h2>10. Contact</h2>
+  <p>For any privacy-related questions or requests, contact us at:</p>
+  <p><a href="mailto:privacy@autonodal.com">privacy@autonodal.com</a></p>
+
+  <h2>11. Last Updated</h2>
+  <p>This policy was last updated in <strong>April 2026</strong>.</p>
+</main>
+
+<footer class="footer">
+  <div class="footer-links">
+    <a href="/privacy.html">Privacy Policy</a>
+    <a href="/terms.html">Terms of Service</a>
+    <a href="/data-deletion.html">Data Deletion</a>
+    <a href="/home.html">Home</a>
+  </div>
+  <p class="footer-copy">&copy; 2026 Autonodal</p>
+</footer>
+
+</body>
+</html>
