@@ -224,14 +224,16 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
     <div class="card">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div>
-          <div class="card-label">Primary Region</div>
-          <select id="regionSelect" onchange="updateRegion(this.value)" style="font-size:13px;padding:6px 10px;border:1px solid var(--rule);border-radius:6px;width:100%">
-            <option value="">Select region</option>
-            <option value="AU">Australia & NZ</option>
-            <option value="SG">Singapore & SEA</option>
-            <option value="UK">United Kingdom & Europe</option>
-            <option value="US">United States & Americas</option>
-          </select>
+          <div class="card-label">Regions <span style="font-size:10px;color:var(--ink-4);font-weight:400">(select all that apply)</span></div>
+          <div id="regionCheckboxes" style="display:flex;flex-wrap:wrap;gap:6px">
+            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--rule);border-radius:6px"><input type="checkbox" value="GLOBAL" onchange="updateRegions()" style="margin:0"> Global</label>
+            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--rule);border-radius:6px"><input type="checkbox" value="AU" onchange="updateRegions()" style="margin:0"> Australia & NZ</label>
+            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--rule);border-radius:6px"><input type="checkbox" value="SG" onchange="updateRegions()" style="margin:0"> Singapore & SEA</label>
+            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--rule);border-radius:6px"><input type="checkbox" value="UK" onchange="updateRegions()" style="margin:0"> UK & Europe</label>
+            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--rule);border-radius:6px"><input type="checkbox" value="US" onchange="updateRegions()" style="margin:0"> Americas</label>
+          </div>
+          <!-- Keep hidden select for backward compat -->
+          <select id="regionSelect" style="display:none"></select>
         </div>
         <div>
           <div class="card-label">Account</div>
@@ -298,7 +300,10 @@ async function loadProfile() {
     document.getElementById('pageEmail').textContent = USER.email + (USER.role ? ' \u00B7 ' + USER.role : '');
     document.getElementById('userAvatar').textContent = (USER.name || 'U').split(' ').map(function(w) { return w[0]; }).join('').slice(0,2).toUpperCase();
 
-    if (USER.region) document.getElementById('regionSelect').value = USER.region;
+    if (USER.region) {
+      document.getElementById('regionSelect').value = USER.region;
+      setRegionCheckboxes(USER.region);
+    }
 
     // Google status
     if (google.connected && google.accounts.length > 0) {
@@ -537,6 +542,23 @@ async function updateRegion(val) {
     await api('/api/auth/me', { method: 'PATCH', body: { region: val } });
     toast('Region updated');
   } catch(e) { toast('Failed'); }
+}
+
+async function updateRegions() {
+  var boxes = document.querySelectorAll('#regionCheckboxes input[type=checkbox]:checked');
+  var regions = Array.from(boxes).map(function(b) { return b.value; });
+  try {
+    await api('/api/auth/me', { method: 'PATCH', body: { region: regions.join(',') } });
+    toast('Regions updated');
+  } catch(e) { toast('Failed'); }
+}
+
+function setRegionCheckboxes(regionStr) {
+  if (!regionStr) return;
+  var regions = regionStr.split(',').map(function(r) { return r.trim(); });
+  document.querySelectorAll('#regionCheckboxes input[type=checkbox]').forEach(function(cb) {
+    cb.checked = regions.includes(cb.value);
+  });
 }
 </script>
 <div id="signal-ticker"></div>

@@ -325,32 +325,32 @@ app.get('/api/auth/google/callback', async (req, res) => {
       `, [tokenData.access_token, user.id, userInfo.email]).catch(() => {});
     }
 
-    // Verify Gmail/Drive connection exists — if not, force re-consent to get refresh_token
-    const { rows: [googleAccount] } = await platformPool.query(
-      'SELECT id FROM user_google_accounts WHERE user_id = $1 AND refresh_token IS NOT NULL LIMIT 1',
-      [user.id]
-    );
-    if (!googleAccount) {
-      // No valid Google connection — redirect to Gmail connect flow (which forces consent with refresh_token)
-      console.log(`⚠️ ${userInfo.email} has no Gmail/Drive connection — redirecting to connect flow`);
-      const connectUrl = `/api/auth/gmail/connect?token=${sessionToken}&return_to=${encodeURIComponent(returnTo)}`;
-      return res.redirect(connectUrl);
-    }
-
-    // Check onboarding status — redirect new tenants to wizard
+    // Check onboarding status FIRST — new users need onboarding before Gmail connect
     const { rows: [tenantStatus] } = await platformPool.query(
       'SELECT onboarding_status FROM tenants WHERE id = (SELECT tenant_id FROM users WHERE id = $1)',
       [user.id]
     );
     const userJson = encodeURIComponent(JSON.stringify({ id: user.id, email: user.email, name: user.name, role: user.role }));
 
-    if (tenantStatus && tenantStatus.onboarding_status !== 'complete') {
+    if (tenantStatus && tenantStatus.onboarding_status && tenantStatus.onboarding_status !== 'complete') {
       const step = tenantStatus.onboarding_status || 'step_1';
-      res.redirect(`/onboarding.html?step=${step}&token=${sessionToken}&user=${userJson}`);
-    } else {
-      const sep = returnTo.includes('?') ? '&' : '?';
-      res.redirect(`${returnTo}${sep}token=${sessionToken}&user=${userJson}`);
+      return res.redirect(`/onboarding.html?step=${step}&token=${sessionToken}&user=${userJson}`);
     }
+
+    // Verify Gmail/Drive connection exists — if not, force re-consent to get refresh_token
+    const { rows: [googleAccount] } = await platformPool.query(
+      'SELECT id FROM user_google_accounts WHERE user_id = $1 AND refresh_token IS NOT NULL LIMIT 1',
+      [user.id]
+    );
+    if (!googleAccount) {
+      console.log(`⚠️ ${userInfo.email} has no Gmail/Drive connection — redirecting to connect flow`);
+      const connectUrl = `/api/auth/gmail/connect?token=${sessionToken}&return_to=${encodeURIComponent(returnTo)}`;
+      return res.redirect(connectUrl);
+    }
+
+    // Onboarding complete + Gmail connected → go to dashboard
+    const sep = returnTo.includes('?') ? '&' : '?';
+    res.redirect(`${returnTo}${sep}token=${sessionToken}&user=${userJson}`);
   } catch (err) {
     console.error('Google auth error:', err);
     res.redirect(returnTo + '?auth_error=server_error');
