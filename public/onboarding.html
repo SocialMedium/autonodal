@@ -351,10 +351,14 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
       </svg>
       <span>Autonodal</span>
     </div>
-    <h1>Your intelligence platform.<br>Let's configure it.</h1>
-    <p class="sub">Three quick questions and you're live. Your data stays private throughout.</p>
+    <h1>Your network,<br>on your terms.</h1>
+    <p class="sub">Signal intelligence built around you. Three quick questions and your feed is live.</p>
+    <div class="privacy-trust" style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:16px;margin:20px 0">
+      <div style="font-size:13px;font-weight:500;color:#10b981;margin-bottom:6px">🔒 Your data. Your control. Always.</div>
+      <p style="font-size:13px;color:#94a3b8;line-height:1.5;margin:0">Your network stays in your private sandbox. It is never merged, sold, or used to train AI models. You lend your influence to collaborations — your data never moves.</p>
+    </div>
     <div>
-      <button class="btn-primary" onclick="goToStep(1)">Get started</button>
+      <button class="btn-primary" onclick="goToStep(1)">Get started →</button>
     </div>
   </div>
 
@@ -366,12 +370,17 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
       <textarea id="chatInput" rows="1" placeholder="Type your response..."></textarea>
       <button class="chat-send" id="chatSend" onclick="sendMessage()">Send</button>
     </div>
+    <p style="font-size:12px;color:#64748b;margin-top:8px;text-align:center">🔒 Your responses configure your feed. Nothing is shared.</p>
   </div>
 
   <!-- Step 2: Upload -->
   <div class="step" id="step2">
     <h2>Add context <span class="badge-optional">optional</span></h2>
     <p class="sub">Help us build a richer profile. You can always add these later.</p>
+    <div class="privacy-trust" style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:16px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:500;color:#10b981;margin-bottom:6px">🔒 Your documents stay private.</div>
+      <p style="font-size:13px;color:#94a3b8;line-height:1.5;margin:0">Uploaded files are used only to build your personal profile. They are stored securely in your private sandbox and never shared or used for AI training.</p>
+    </div>
     <div class="upload-options">
       <div class="upload-card">
         <label>Upload CV</label>
@@ -395,7 +404,16 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
   <!-- Step 3: Connect -->
   <div class="step" id="step3">
     <h2>Map your network</h2>
-    <p class="sub">Connect your accounts so we can surface the signals that matter to you.</p>
+    <p class="sub">Connect your email to see who in your network is closest to the signals that matter.</p>
+    <div class="privacy-trust" style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:16px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:500;color:#10b981;margin-bottom:6px">🔒 We never read your messages.</div>
+      <p style="font-size:13px;color:#94a3b8;line-height:1.5;margin:0 0 8px 0">Connecting Gmail maps your real relationship graph — who you talk to, how often, how recently. The content of every email you have ever written remains yours, always.</p>
+      <ul style="margin:0;padding:0;list-style:none">
+        <li style="font-size:12px;color:#64748b;padding:2px 0 2px 16px;position:relative"><span style="position:absolute;left:0;color:#10b981">→</span> We extract: who, when, frequency, reciprocity</li>
+        <li style="font-size:12px;color:#64748b;padding:2px 0 2px 16px;position:relative"><span style="position:absolute;left:0;color:#10b981">→</span> We never access: subject lines, message body, attachments</li>
+        <li style="font-size:12px;color:#64748b;padding:2px 0 2px 16px;position:relative"><span style="position:absolute;left:0;color:#10b981">→</span> Nothing leaves your session context</li>
+      </ul>
+    </div>
     <div class="connect-cards">
       <div class="connect-card" onclick="connectGmail()">
         <div class="card-icon">
@@ -405,7 +423,7 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
         </div>
         <div class="card-body">
           <strong>Gmail</strong>
-          <small>Scan sent mail to map your professional network</small>
+          <small>Your real relationship graph — who you know and how well, sourced from ground truth</small>
         </div>
         <span class="badge-value">highest value</span>
       </div>
@@ -417,7 +435,7 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
         </div>
         <div class="card-body">
           <strong>Google Contacts</strong>
-          <small>Import your contact list for network enrichment</small>
+          <small>Your full address book as a starting network</small>
         </div>
       </div>
     </div>
@@ -439,8 +457,12 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
         <span class="always">always on</span>
       </div>
     </div>
+    <div class="privacy-trust" style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:16px;margin-top:16px">
+      <div style="font-size:13px;font-weight:500;color:#10b981;margin-bottom:6px">🔒 This is your private profile.</div>
+      <p style="font-size:13px;color:#94a3b8;line-height:1.5;margin:0">Only you see these details. In any huddle or collaborative context, others see only your proximity scores — never this profile.</p>
+    </div>
     <div style="margin-top:20px">
-      <button class="btn-primary" onclick="activateFeed()">Activate my feed</button>
+      <button class="btn-primary" onclick="activateFeed()">Activate my feed →</button>
     </div>
   </div>
 
