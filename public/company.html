@@ -70,7 +70,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 /* Card-based grid */
 .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
 .card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow-card); overflow: hidden; min-width: 0; }
-.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media(max-width:960px){ .card-grid { grid-template-columns: 1fr 1fr; } }
+@media(max-width:600px){ .card-grid { grid-template-columns: 1fr; } }
 .card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
 .card-title { font-family: var(--serif); font-size: 17px; font-weight: 600; }
 .card-count { font-family: var(--mono); font-size: 11px; color: var(--ink-4); }
@@ -215,7 +217,29 @@ h+='</div>';
 
 h+='<div class="card-grid">';
 
-// ── PROXIMITY MAP (top-right, facing client info) ──
+// ── SIGNALS (cols 1-2) ──
+var sigTypes = {};
+sigs.forEach(function(s){ sigTypes[s.signal_type] = (sigTypes[s.signal_type]||0)+1; });
+var sigSummary = Object.entries(sigTypes).map(function(e){ return e[1]+' '+e[0].replace(/_/g,' '); }).join(' · ');
+
+h+='<div class="card" style="grid-column:span 2"><div class="card-head"><div class="card-title">Signals</div><div class="card-count">'+sigs.length+'</div></div>';
+if(sigSummary)h+='<div style="font-size:11px;color:var(--ink-3);margin-bottom:8px">'+sigSummary+'</div>';
+if(!sigs.length)h+='<div style="font-size:12px;color:var(--ink-4);padding:8px 0">No signals detected</div>';
+else {
+  h+=cappedList(sigs, 6, function(s){
+    var icon=SI[s.signal_type]||''+icon('radio')+'';
+    var conf=Math.round((s.confidence_score||0)*100);
+    var cc=conf>=80?'hi':conf>=50?'md':'lo';
+    var type=s.signal_type.replace(/_/g,' ');
+    return '<div class="sigcard"><div class="sigcard-top"><div class="sigcard-hl">'+icon+' '+esc((s.evidence_summary||s.doc_title||type).slice(0,120))+'</div><div class="sigcard-conf '+cc+'">'+conf+'%</div></div>'+
+      '<div class="sigcard-badges"><span class="sbadge">'+type.toUpperCase()+'</span><span class="sbadge">'+ago(s.detected_at)+'</span></div>'+
+      (s.source_url?'<div class="sigcard-src"><a href="'+esc(s.source_url)+'" target="_blank" style="font-size:10px;color:var(--blue);text-decoration:none">↗ Source</a></div>':'')+
+    '</div>';
+  });
+}
+h+='</div>'; // close signals card
+
+// ── PROXIMITY MAP (col 3, spanning rows alongside signals + contacts) ──
 var proxMap = c.proximity_map || [];
 if (proxMap.length > 0) {
   var byMember = {};
@@ -224,13 +248,13 @@ if (proxMap.length > 0) {
     byMember[p.team_member].push(p);
   });
   var memberCount = Object.keys(byMember).length;
-  h+='<div class="card" style="grid-row:1/3;order:-1"><div class="card-head"><div class="card-title">' + icon('link') + ' Proximity Map</div><div class="card-count">' + memberCount + ' team · ' + proxMap.length + ' connections</div></div>';
-  h+='<div style="font-size:11px;color:var(--ink-3);margin-bottom:10px">Who on the team knows people here — sorted by relationship strength</div>';
+  h+='<div class="card" style="grid-column:3;grid-row:1/span 3"><div class="card-head"><div class="card-title">' + icon('link') + ' Proximity Map</div><div class="card-count">' + memberCount + ' team · ' + proxMap.length + '</div></div>';
+  h+='<div style="font-size:11px;color:var(--ink-3);margin-bottom:10px">Who on the team knows people here</div>';
   h+='<div style="font-size:12px">';
   Object.keys(byMember).forEach(function(member) {
     var connections = byMember[member];
     h+='<div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--rule)">';
-    h+='<div style="font-weight:600;color:var(--ink);margin-bottom:6px;display:flex;align-items:center;gap:6px">' + icon('user') + ' ' + esc(member) + ' <span style="font-size:10px;color:var(--ink-4);font-weight:400">' + connections.length + ' contact' + (connections.length > 1 ? 's' : '') + '</span></div>';
+    h+='<div style="font-weight:600;color:var(--ink);margin-bottom:6px;display:flex;align-items:center;gap:6px">' + icon('user') + ' ' + esc(member) + ' <span style="font-size:10px;color:var(--ink-4);font-weight:400">' + connections.length + '</span></div>';
     connections.forEach(function(conn) {
       var strength = Math.round((parseFloat(conn.relationship_strength) || 0) * 100);
       var strengthColor = strength >= 50 ? 'var(--emerald)' : strength >= 25 ? 'var(--amber)' : 'var(--ink-4)';
@@ -247,33 +271,10 @@ if (proxMap.length > 0) {
   });
   h+='</div></div>';
 } else {
-  // Empty state — still show the card so users know what it is
-  h+='<div class="card" style="order:-1"><div class="card-head"><div class="card-title">' + icon('link') + ' Proximity Map</div></div>';
-  h+='<div style="font-size:12px;color:var(--ink-4);padding:8px 0">No team connections mapped to this company yet. Connect Gmail to build your proximity graph.</div>';
+  h+='<div class="card" style="grid-column:3;grid-row:1"><div class="card-head"><div class="card-title">' + icon('link') + ' Proximity Map</div></div>';
+  h+='<div style="font-size:12px;color:var(--ink-4);padding:8px 0">No team connections mapped yet. Connect Gmail to build your proximity graph.</div>';
   h+='</div>';
 }
-
-// ── SIGNALS ──
-var sigTypes = {};
-sigs.forEach(function(s){ sigTypes[s.signal_type] = (sigTypes[s.signal_type]||0)+1; });
-var sigSummary = Object.entries(sigTypes).map(function(e){ return e[1]+' '+e[0].replace(/_/g,' '); }).join(' · ');
-
-h+='<div class="card" style="grid-column:1/-1"><div class="card-head"><div class="card-title">Signals</div><div class="card-count">'+sigs.length+'</div></div>';
-if(sigSummary)h+='<div style="font-size:11px;color:var(--ink-3);margin-bottom:8px">'+sigSummary+'</div>';
-if(!sigs.length)h+='<div style="font-size:12px;color:var(--ink-4);padding:8px 0">No signals detected</div>';
-else {
-  h+=cappedList(sigs, 6, function(s){
-    var icon=SI[s.signal_type]||''+icon('radio')+'';
-    var conf=Math.round((s.confidence_score||0)*100);
-    var cc=conf>=80?'hi':conf>=50?'md':'lo';
-    var type=s.signal_type.replace(/_/g,' ');
-    return '<div class="sigcard"><div class="sigcard-top"><div class="sigcard-hl">'+icon+' '+esc((s.evidence_summary||s.doc_title||type).slice(0,120))+'</div><div class="sigcard-conf '+cc+'">'+conf+'%</div></div>'+
-      '<div class="sigcard-badges"><span class="sbadge">'+type.toUpperCase()+'</span><span class="sbadge">'+ago(s.detected_at)+'</span></div>'+
-      (s.source_url?'<div class="sigcard-src"><a href="'+esc(s.source_url)+'" target="_blank" style="font-size:10px;color:var(--blue);text-decoration:none">↗ Source</a></div>':'')+
-    '</div>';
-  });
-}
-h+='</div>'; // close signals card
 
 // ── PEOPLE (employees/contacts at this company) ──
 h+='<div class="card"><div class="card-head"><div class="card-title">Contacts</div><div class="card-count">'+ppl.length+' total · sorted by recency</div></div>';
