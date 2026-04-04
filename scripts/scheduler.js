@@ -1391,6 +1391,159 @@ async function pipelineIngestEvents() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PIPELINE 10: DAILY NETWORK INSIGHTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function pipelineNetworkInsights() {
+  if (!ANTHROPIC_API_KEY) { console.log('     ⚠️  No API key, skipping insights'); return; }
+
+  console.log('   🧭 Generating daily network insights...');
+
+  // Get all users with network data
+  const { rows: users } = await pool.query(`
+    SELECT u.id, u.name, u.email, u.region, u.tenant_id,
+           t.vertical, t.profile, t.focus_geographies, t.focus_sectors
+    FROM users u
+    JOIN tenants t ON t.id = u.tenant_id
+    WHERE t.onboarding_status = 'complete'
+      OR (SELECT COUNT(*) FROM team_proximity WHERE team_member_id = u.id) > 10
+  `);
+
+  let generated = 0;
+
+  for (const user of users) {
+    try {
+      // Skip if already generated today
+      const { rows: existing } = await pool.query(
+        `SELECT id FROM daily_insights WHERE tenant_id = $1 AND user_id = $2 AND insight_date = CURRENT_DATE`,
+        [user.tenant_id, user.id]
+      );
+      if (existing.length > 0) continue;
+
+      // Get network geo distribution
+      const { rows: geoDist } = await pool.query(`
+        SELECT
+          CASE
+            WHEN p.country_code IN ('AU','NZ') OR p.location ILIKE '%australia%' THEN 'OCE'
+            WHEN p.country_code IN ('SG','MY','ID','TH','VN','PH','JP','KR','IN','HK','CN') OR p.location ILIKE '%singapore%' OR p.location ILIKE '%india%' OR p.location ILIKE '%asia%' THEN 'ASIA'
+            WHEN p.country_code IN ('GB','UK','IE','DE','FR','NL') OR p.location ILIKE '%london%' OR p.location ILIKE '%europe%' THEN 'EUR'
+            WHEN p.country_code IN ('AE','SA','IL','TR') OR p.location ILIKE '%dubai%' THEN 'MENA'
+            WHEN p.country_code IN ('US','CA','BR','MX') OR p.location ILIKE '%united states%' OR p.location ILIKE '%new york%' THEN 'AMER'
+            ELSE 'OTHER' END AS region,
+          COUNT(DISTINCT tp.person_id) AS cnt
+        FROM team_proximity tp
+        JOIN people p ON p.id = tp.person_id AND p.tenant_id = $1
+        WHERE tp.team_member_id = $2 AND tp.tenant_id = $1
+        GROUP BY region ORDER BY cnt DESC
+      `, [user.tenant_id, user.id]);
+
+      // Get sector distribution
+      const { rows: sectorDist } = await pool.query(`
+        SELECT c.sector, COUNT(DISTINCT tp.person_id) AS cnt
+        FROM team_proximity tp
+        JOIN people p ON p.id = tp.person_id AND p.tenant_id = $1
+        JOIN companies c ON c.id = p.current_company_id AND c.sector IS NOT NULL
+        WHERE tp.team_member_id = $2 AND tp.tenant_id = $1
+        GROUP BY c.sector ORDER BY cnt DESC LIMIT 5
+      `, [user.tenant_id, user.id]);
+
+      // Get signals in user's focus areas
+      const userRegion = user.region || '';
+      const { rows: focusSignals } = await pool.query(`
+        SELECT se.signal_type, se.company_name, c.geography
+        FROM signal_events se
+        LEFT JOIN companies c ON c.id = se.company_id
+        WHERE se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '24 hours'
+          AND se.confidence_score >= 0.6
+        ORDER BY se.confidence_score DESC LIMIT 20
+      `, [user.tenant_id]);
+
+      // Get signals in network-strong but NON-focus areas (the crossover)
+      const networkRegions = geoDist.filter(g => g.region !== 'OTHER').map(g => g.region);
+      const focusRegions = userRegion.split(',').map(r => r.trim()).filter(Boolean);
+      const crossoverRegions = networkRegions.filter(r => !focusRegions.includes(r));
+
+      // Parse user profile for intents
+      let intents = [];
+      let sectors = [];
+      try {
+        const profile = typeof user.profile === 'string' ? JSON.parse(user.profile) : user.profile;
+        intents = profile?.intents || [];
+        sectors = profile?.sectors || [];
+      } catch {}
+
+      if (geoDist.length === 0 && focusSignals.length === 0) continue;
+
+      // Build Claude prompt
+      const networkSummary = geoDist.map(g => `${g.region}: ${g.cnt} contacts`).join(', ');
+      const sectorSummary = sectorDist.map(s => `${s.sector}: ${s.cnt}`).join(', ');
+      const signalSummary = focusSignals.slice(0, 10).map(s => `${s.company_name} (${s.signal_type})`).join(', ');
+      const crossoverNote = crossoverRegions.length > 0
+        ? `Network is strong in ${crossoverRegions.join(', ')} but user focus is ${focusRegions.join(', ') || 'not set'}.`
+        : '';
+
+      const prompt = `Generate a 3-4 sentence daily network intelligence insight for a professional.
+
+User: ${user.name || user.email}
+Role/Vertical: ${user.vertical || 'revenue'}
+Focus regions: ${focusRegions.join(', ') || 'Global'}
+Intents: ${intents.join(', ') || 'general intelligence'}
+Focus sectors: ${sectors.join(', ') || 'cross-sector'}
+
+Network distribution: ${networkSummary}
+Sector presence: ${sectorSummary}
+${crossoverNote}
+
+Today's signals (last 24h): ${signalSummary || 'No signals detected'}
+
+Write a concise, actionable insight. Highlight:
+1. Any geographic arbitrage (network strength vs focus gap)
+2. Cross-sector signals that affect their intents
+3. One specific action they could take today
+
+No greetings. No filler. Start with the insight. 3-4 sentences max.`;
+
+      const insightText = await callClaude(
+        'You generate brief, actionable daily intelligence insights for professionals. No filler. No greetings. Direct observations only.',
+        prompt, 300
+      );
+
+      // Generate headline
+      const headline = await callClaude(
+        'Generate a 6-8 word headline for this insight. No quotes. No period.',
+        insightText, 30
+      );
+
+      // Store
+      await pool.query(`
+        INSERT INTO daily_insights (tenant_id, user_id, insight_date, insight_type, headline, body, structured_data, network_snapshot)
+        VALUES ($1, $2, CURRENT_DATE, 'daily_crossover', $3, $4, $5, $6)
+        ON CONFLICT (tenant_id, user_id, insight_date, insight_type) DO UPDATE SET
+          headline = EXCLUDED.headline, body = EXCLUDED.body,
+          structured_data = EXCLUDED.structured_data, network_snapshot = EXCLUDED.network_snapshot,
+          generated_at = NOW()
+      `, [
+        user.tenant_id, user.id,
+        headline.trim(),
+        insightText.trim(),
+        JSON.stringify({ intents, sectors, focus_regions: focusRegions, crossover_regions: crossoverRegions, signal_count: focusSignals.length }),
+        JSON.stringify({ geography: geoDist, sectors: sectorDist, total_contacts: geoDist.reduce((s, g) => s + parseInt(g.cnt), 0) }),
+      ]);
+
+      generated++;
+      console.log(`     ✅ ${user.name || user.email}: "${headline.trim().slice(0, 50)}"`);
+    } catch (err) {
+      console.log(`     ⚠️  ${user.name || user.email}: ${err.message}`);
+    }
+
+    await sleep(500); // Rate limit
+  }
+
+  console.log(`     ${generated} insights generated`);
+  return { generated };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // PIPELINE REGISTRY
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1436,6 +1589,13 @@ const PIPELINES = {
     fn: pipelineDailyBrief,
     schedule: '0 6 * * *',
     description: 'Generate daily intelligence briefing via Claude'
+  },
+  network_insights: {
+    name: 'Network Insights',
+    icon: '🧭',
+    fn: pipelineNetworkInsights,
+    schedule: '30 6 * * *',
+    description: 'Daily crossover intelligence — network vs focus gap analysis per user'
   },
   waitlist_digest: {
     name: 'Waitlist Digest',

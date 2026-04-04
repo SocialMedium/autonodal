@@ -139,6 +139,28 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
     <div class="stat-mini"><div class="val" id="sFeeds">-</div><div class="lbl">Feeds Added</div></div>
   </div>
 
+  <!-- Network Analysis -->
+  <div class="section" id="networkAnalysisSection" style="display:none">
+    <div class="section-title">Your Network</div>
+    <div class="card">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:16px" id="networkStats"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div class="card-label">Geographic Distribution</div>
+          <div id="networkGeo" style="margin-top:6px"></div>
+        </div>
+        <div>
+          <div class="card-label">Sector Presence</div>
+          <div id="networkSectors" style="margin-top:6px"></div>
+        </div>
+      </div>
+      <div style="margin-top:16px">
+        <div class="card-label">Top Contacts</div>
+        <div id="networkTopContacts" style="margin-top:6px"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Google Connection -->
   <div class="section">
     <div class="section-title">Connections</div>
@@ -264,6 +286,7 @@ var USER = null;
   if (!TOKEN) { document.getElementById('loginPrompt').style.display = 'block'; return; }
   document.getElementById('appContent').style.display = 'block';
   loadProfile();
+  loadNetworkAnalysis();
 })();
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
@@ -536,6 +559,52 @@ async function triggerSync() {
     var data = await api('/api/profile/trigger-sync', { method: 'POST' });
     toast(data.message || 'Sync triggered');
   } catch(e) { toast('Failed'); }
+}
+
+async function loadNetworkAnalysis() {
+  try {
+    var data = await api('/api/network/my-analysis');
+    if (!data.totals || parseInt(data.totals.total_contacts) === 0) return;
+    document.getElementById('networkAnalysisSection').style.display = 'block';
+
+    // Stats row
+    var t = data.totals;
+    document.getElementById('networkStats').innerHTML =
+      '<div style="text-align:center"><div style="font-family:var(--mono);font-size:20px;font-weight:600">' + num(t.total_contacts) + '</div><div style="font-size:10px;color:var(--ink-4)">Contacts</div></div>' +
+      '<div style="text-align:center"><div style="font-family:var(--mono);font-size:20px;font-weight:600">' + num(t.strong_contacts) + '</div><div style="font-size:10px;color:var(--ink-4)">Strong</div></div>' +
+      '<div style="text-align:center"><div style="font-family:var(--mono);font-size:20px;font-weight:600">' + num(t.active_30d) + '</div><div style="font-size:10px;color:var(--ink-4)">Active (30d)</div></div>' +
+      '<div style="text-align:center"><div style="font-family:var(--mono);font-size:20px;font-weight:600">' + num(t.companies_reached) + '</div><div style="font-size:10px;color:var(--ink-4)">Companies</div></div>';
+
+    // Geo bars
+    var regionNames = { AMER: 'Americas', EUR: 'Europe', MENA: 'MENA', ASIA: 'Asia', OCE: 'Oceania', OTHER: 'Other' };
+    var regionColors = { AMER: '#B45309', EUR: '#2563EB', MENA: '#D4537E', ASIA: '#6D28D9', OCE: '#0D7A50', OTHER: '#AAAAAA' };
+    document.getElementById('networkGeo').innerHTML = (data.geography || []).filter(function(g) { return g.contacts > 0; }).map(function(g) {
+      var c = regionColors[g.region] || '#888';
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+        '<span style="font-size:11px;min-width:50px;color:var(--ink-3)">' + (regionNames[g.region] || g.region) + '</span>' +
+        '<div style="flex:1;height:8px;background:var(--surface-warm);border-radius:4px;overflow:hidden"><div style="height:100%;width:' + g.pct + '%;background:' + c + ';border-radius:4px"></div></div>' +
+        '<span style="font-size:10px;font-family:var(--mono);color:var(--ink-4);min-width:30px;text-align:right">' + g.pct + '%</span>' +
+      '</div>';
+    }).join('');
+
+    // Sectors
+    document.getElementById('networkSectors').innerHTML = (data.sectors || []).slice(0, 6).map(function(s) {
+      return '<div style="font-size:11px;display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--rule)">' +
+        '<span style="color:var(--ink-2)">' + esc(s.sector) + '</span>' +
+        '<span style="font-family:var(--mono);color:var(--ink-4)">' + s.contacts + '</span></div>';
+    }).join('') || '<div style="font-size:11px;color:var(--ink-4)">No sector data</div>';
+
+    // Top contacts
+    document.getElementById('networkTopContacts').innerHTML = (data.top_contacts || []).slice(0, 8).map(function(c) {
+      var ini = (c.full_name || '').split(' ').map(function(w) { return w[0]; }).join('').slice(0, 2).toUpperCase();
+      var str = Math.round((c.relationship_strength || 0) * 100);
+      return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--rule);cursor:pointer" onclick="location.href=\'/person.html?id=' + c.id + '\'">' +
+        '<div style="width:28px;height:28px;border-radius:50%;background:var(--blue-soft);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:var(--blue);flex-shrink:0">' + ini + '</div>' +
+        '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(c.full_name) + '</div>' +
+        '<div style="font-size:10px;color:var(--ink-4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(c.current_title || '') + (c.current_company_name ? ' · ' + esc(c.current_company_name) : '') + '</div></div>' +
+        '<span style="font-size:10px;font-family:var(--mono);color:' + (str >= 70 ? 'var(--emerald)' : str >= 40 ? 'var(--blue)' : 'var(--ink-4)') + '">' + str + '%</span></div>';
+    }).join('') || '<div style="font-size:11px;color:var(--ink-4)">Connect Gmail or import contacts to see your top relationships</div>';
+  } catch(e) { /* Network analysis not available */ }
 }
 
 async function updateRegion(val) {

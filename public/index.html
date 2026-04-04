@@ -1691,6 +1691,18 @@ body {
         <!-- Region cards injected by JS -->
       </div>
 
+      <!-- Today's Insight -->
+      <div id="insightCard" style="display:none;margin-bottom:20px">
+        <div style="background:linear-gradient(135deg,#111827 0%,#1e293b 100%);border:1px solid #1e2d3d;border-radius:var(--radius);padding:18px 20px;color:#e2e8f0">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#f59e0b">🧭 Today's Insight</span>
+            <span id="insightDate" style="font-size:10px;color:#64748b"></span>
+          </div>
+          <div id="insightHeadline" style="font-family:var(--serif);font-size:16px;font-weight:600;margin-bottom:6px;color:#f1f5f9"></div>
+          <div id="insightBody" style="font-size:13px;line-height:1.55;color:#94a3b8"></div>
+        </div>
+      </div>
+
       <!-- Events to Watch -->
       <div style="margin-bottom:28px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -2176,6 +2188,18 @@ async function generateDispatchForSignal(signalId, btn) {
     btn.innerHTML = icon('target') + ' Dispatch Created';
     btn.style.background = 'var(--blue-soft)'; btn.style.color = 'var(--blue)'; btn.style.cursor = 'default';
   } catch (e) { btn.textContent = 'Failed'; btn.disabled = false; }
+}
+
+async function loadTodayInsight() {
+  try {
+    var data = await api('/api/insights/today');
+    if (!data.insights || !data.insights.length) return;
+    var insight = data.insights[0];
+    document.getElementById('insightHeadline').textContent = insight.headline || '';
+    document.getElementById('insightBody').textContent = insight.body || '';
+    document.getElementById('insightDate').textContent = insight.insight_date ? new Date(insight.insight_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+    document.getElementById('insightCard').style.display = 'block';
+  } catch(e) {}
 }
 
 async function loadDashboardEvents() {
@@ -3301,6 +3325,7 @@ async function init() {
   loadNetworkSignals();
   loadRegionCards();
   loadDashboardEvents();
+  loadTodayInsight();
   loadSignals();
   loadTopPodcasts();
   loadTalentInMotion();

@@ -11573,6 +11573,156 @@ app.post('/api/webhooks/crm/:connectionId', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// NETWORK ANALYSIS & DAILY INSIGHTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Instant network topology — runs after Gmail connect or LinkedIn import
+app.get('/api/network/my-analysis', authenticateToken, async (req, res) => {
+  try {
+    const tid = req.tenant_id;
+    const uid = req.user.user_id;
+
+    // Geographic distribution of contacts
+    const { rows: geoDist } = await pool.query(`
+      SELECT
+        CASE
+          WHEN p.country_code IN ('AU','NZ') OR p.location ILIKE '%australia%' OR p.location ILIKE '%new zealand%' THEN 'OCE'
+          WHEN p.country_code IN ('SG','MY','ID','TH','VN','PH','JP','KR','IN','HK','CN','TW') OR p.location ILIKE '%singapore%' OR p.location ILIKE '%india%' OR p.location ILIKE '%japan%' OR p.location ILIKE '%hong kong%' THEN 'ASIA'
+          WHEN p.country_code IN ('GB','UK','IE','DE','FR','NL','SE','DK','NO','FI','ES','IT') OR p.location ILIKE '%london%' OR p.location ILIKE '%united kingdom%' OR p.location ILIKE '%europe%' THEN 'EUR'
+          WHEN p.country_code IN ('AE','SA','QA','IL','TR','EG') OR p.location ILIKE '%dubai%' OR p.location ILIKE '%saudi%' OR p.location ILIKE '%israel%' THEN 'MENA'
+          WHEN p.country_code IN ('US','CA','BR','MX') OR p.location ILIKE '%united states%' OR p.location ILIKE '%new york%' OR p.location ILIKE '%san francisco%' OR p.location ILIKE '%canada%' THEN 'AMER'
+          ELSE 'OTHER'
+        END AS region,
+        COUNT(DISTINCT tp.person_id) AS contacts
+      FROM team_proximity tp
+      JOIN people p ON p.id = tp.person_id AND p.tenant_id = $1
+      WHERE tp.tenant_id = $1
+        AND ($2::uuid IS NULL OR tp.team_member_id = $2)
+      GROUP BY region
+      ORDER BY contacts DESC
+    `, [tid, uid]);
+
+    // Sector/industry distribution from companies
+    const { rows: sectorDist } = await pool.query(`
+      SELECT c.sector, COUNT(DISTINCT tp.person_id) AS contacts
+      FROM team_proximity tp
+      JOIN people p ON p.id = tp.person_id AND p.tenant_id = $1
+      JOIN companies c ON c.id = p.current_company_id AND c.sector IS NOT NULL
+      WHERE tp.tenant_id = $1
+        AND ($2::uuid IS NULL OR tp.team_member_id = $2)
+      GROUP BY c.sector
+      ORDER BY contacts DESC
+      LIMIT 10
+    `, [tid, uid]);
+
+    // Top contacts by interaction density + recency
+    const { rows: topContacts } = await pool.query(`
+      SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.location,
+             tp.relationship_strength, tp.last_interaction_date,
+             tp.interaction_count,
+             c.sector AS company_sector
+      FROM team_proximity tp
+      JOIN people p ON p.id = tp.person_id AND p.tenant_id = $1
+      LEFT JOIN companies c ON c.id = p.current_company_id
+      WHERE tp.tenant_id = $1
+        AND ($2::uuid IS NULL OR tp.team_member_id = $2)
+        AND tp.relationship_strength >= 0.2
+      ORDER BY tp.relationship_strength DESC, tp.last_interaction_date DESC NULLS LAST
+      LIMIT 15
+    `, [tid, uid]);
+
+    // Network totals
+    const { rows: [totals] } = await pool.query(`
+      SELECT
+        COUNT(DISTINCT tp.person_id) AS total_contacts,
+        COUNT(DISTINCT CASE WHEN tp.relationship_strength >= 0.5 THEN tp.person_id END) AS strong_contacts,
+        COUNT(DISTINCT CASE WHEN tp.last_interaction_date > NOW() - INTERVAL '30 days' THEN tp.person_id END) AS active_30d,
+        COUNT(DISTINCT p.current_company_id) AS companies_reached,
+        AVG(tp.relationship_strength) AS avg_strength
+      FROM team_proximity tp
+      JOIN people p ON p.id = tp.person_id AND p.tenant_id = $1
+      WHERE tp.tenant_id = $1
+        AND ($2::uuid IS NULL OR tp.team_member_id = $2)
+    `, [tid, uid]);
+
+    // Recency heat — how fresh is the network
+    const { rows: recencyHeat } = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE tp.last_interaction_date > NOW() - INTERVAL '7 days') AS last_7d,
+        COUNT(*) FILTER (WHERE tp.last_interaction_date > NOW() - INTERVAL '30 days') AS last_30d,
+        COUNT(*) FILTER (WHERE tp.last_interaction_date > NOW() - INTERVAL '90 days') AS last_90d,
+        COUNT(*) AS total
+      FROM team_proximity tp
+      WHERE tp.tenant_id = $1
+        AND ($2::uuid IS NULL OR tp.team_member_id = $2)
+    `, [tid, uid]);
+
+    const totalContacts = parseInt(totals?.total_contacts) || 0;
+    const geoWithPct = geoDist.map(g => ({
+      region: g.region,
+      contacts: parseInt(g.contacts),
+      pct: totalContacts > 0 ? Math.round(parseInt(g.contacts) / totalContacts * 100) : 0
+    }));
+
+    res.json({
+      totals: {
+        total_contacts: totalContacts,
+        strong_contacts: parseInt(totals?.strong_contacts) || 0,
+        active_30d: parseInt(totals?.active_30d) || 0,
+        companies_reached: parseInt(totals?.companies_reached) || 0,
+        avg_strength: parseFloat(totals?.avg_strength || 0).toFixed(2),
+      },
+      geography: geoWithPct,
+      sectors: sectorDist.map(s => ({ sector: s.sector, contacts: parseInt(s.contacts) })),
+      top_contacts: topContacts,
+      recency: recencyHeat.rows?.[0] || recencyHeat[0] || {},
+    });
+  } catch (err) {
+    console.error('Network analysis error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Daily insights — get latest for current user
+app.get('/api/insights/today', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT * FROM daily_insights
+      WHERE tenant_id = $1 AND (user_id = $2 OR user_id IS NULL)
+      AND insight_date >= CURRENT_DATE - 1
+      ORDER BY insight_date DESC, generated_at DESC
+      LIMIT 3
+    `, [req.tenant_id, req.user.user_id]);
+
+    // Mark as read
+    if (rows.length && !rows[0].read_at) {
+      await pool.query('UPDATE daily_insights SET read_at = NOW() WHERE id = $1', [rows[0].id]).catch(() => {});
+    }
+
+    res.json({ insights: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// All insights history
+app.get('/api/insights', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, insight_date, insight_type, headline, body, generated_at, read_at
+      FROM daily_insights
+      WHERE tenant_id = $1 AND (user_id = $2 OR user_id IS NULL)
+      ORDER BY insight_date DESC
+      LIMIT 30
+    `, [req.tenant_id, req.user.user_id]);
+    res.json({ insights: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // FEED CATALOG & BUNDLES (Platform-level curation + tenant subscriptions)
 // ═══════════════════════════════════════════════════════════════════════════════
 
