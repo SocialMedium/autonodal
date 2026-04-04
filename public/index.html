@@ -3356,7 +3356,7 @@ function showOnboarding(user) {
           <p style="font-size:14px;color:var(--ink-3)">Let's set up your Signal Intelligence dashboard</p>
         </div>
         <div style="font-size:14px;color:var(--ink-2);margin-bottom:16px">
-          <strong>Select your primary region</strong> — this personalises your morning brief, dispatch queue, and signal priority.
+          <strong>Select your regions</strong> — choose all that apply. This personalises your signal feed, dispatches, and morning brief.
         </div>
         <div id="regionSelect" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           ${[
@@ -3365,18 +3365,16 @@ function showOnboarding(user) {
             { code: 'MENA', flag: regionLabel('MENA'), name: 'Middle East & Africa' },
             { code: 'ASIA', flag: regionLabel('ASIA'), name: 'Asia' },
             { code: 'OCE', flag: regionLabel('OCE'), name: 'Oceania' },
-            { code: 'APAC', flag: '🌏', name: 'APAC (all)' },
-            { code: 'EMEA', flag: '🌍', name: 'EMEA (all)' },
           ].map(r => `
-            <div class="region-opt" data-code="${r.code}" onclick="selectOnboardRegion(this, '${r.code}')"
-                 style="border:2px solid var(--rule);border-radius:8px;padding:14px;cursor:pointer;text-align:center;transition:all 0.15s${user.region === r.code ? ';border-color:var(--blue);background:var(--blue-soft)' : ''}">
+            <div class="region-opt" data-code="${r.code}" onclick="toggleOnboardRegion(this, '${r.code}')"
+                 style="border:2px solid var(--rule);border-radius:8px;padding:14px;cursor:pointer;text-align:center;transition:all 0.15s${(user.region || '').includes(r.code) ? ';border-color:var(--blue);background:var(--blue-soft)' : ''}">
               <div style="font-size:24px;margin-bottom:4px">${r.flag}</div>
               <div style="font-size:13px;font-weight:600">${r.name}</div>
             </div>
           `).join('')}
         </div>
         <div style="text-align:right;margin-top:16px">
-          <button onclick="onboardNext()" id="onboardNextBtn" style="padding:8px 24px;border-radius:6px;border:none;background:var(--blue);color:white;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans);opacity:${user.region ? 1 : 0.5}" ${user.region ? '' : 'disabled'}>Continue →</button>
+          <button onclick="onboardNext()" id="onboardNextBtn" style="padding:8px 24px;border-radius:6px;border:none;background:var(--blue);color:white;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)">Continue →</button>
         </div>`;
     } else if (step === 2) {
       body.innerHTML = `
@@ -3428,18 +3426,24 @@ function showOnboarding(user) {
   }
 
   window._onboardRegion = user.region || '';
-  window.selectOnboardRegion = function(el, code) {
-    document.querySelectorAll('.region-opt').forEach(o => { o.style.borderColor = 'var(--rule)'; o.style.background = 'var(--surface)'; });
-    el.style.borderColor = 'var(--blue)';
-    el.style.background = 'var(--blue-soft)';
-    window._onboardRegion = code;
-    const btn = document.getElementById('onboardNextBtn');
-    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+  window._onboardRegions = new Set((user.region || '').split(',').filter(Boolean));
+
+  window.toggleOnboardRegion = function(el, code) {
+    if (window._onboardRegions.has(code)) {
+      window._onboardRegions.delete(code);
+      el.style.borderColor = 'var(--rule)';
+      el.style.background = 'var(--surface)';
+    } else {
+      window._onboardRegions.add(code);
+      el.style.borderColor = 'var(--blue)';
+      el.style.background = 'var(--blue-soft)';
+    }
   };
 
   window.onboardNext = async function() {
-    if (step === 1 && window._onboardRegion) {
-      await api('/api/auth/me', { method: 'PATCH', body: { region: window._onboardRegion } });
+    if (step === 1) {
+      var regions = [...window._onboardRegions].join(',') || 'GLOBAL';
+      await api('/api/auth/me', { method: 'PATCH', body: { region: regions } });
     }
     step++;
     renderStep();
