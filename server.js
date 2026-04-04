@@ -5399,17 +5399,31 @@ app.post('/api/onboarding/converse', authenticateToken, async (req, res) => {
       systemText += '\n\nThis is exchange ' + _exchangeCount + '. Output the PROFILE_READY JSON now regardless of completeness. Use sensible defaults for any missing fields.';
     }
 
-    var Anthropic = require('@anthropic-ai/sdk');
-    var client = new Anthropic();
+    var apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
 
-    var response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 600,
-      system: systemText,
-      messages: messages,
+    var response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 600,
+        system: systemText,
+        messages: messages,
+      })
     });
 
-    var assistantText = response.content[0].text;
+    if (!response.ok) {
+      var errText = await response.text();
+      throw new Error('Claude API ' + response.status + ': ' + errText.slice(0, 200));
+    }
+
+    var data = await response.json();
+    var assistantText = data.content[0].text;
 
     if (assistantText.indexOf('PROFILE_READY:') >= 0) {
       var jsonStr = assistantText.split('PROFILE_READY:')[1].trim();
