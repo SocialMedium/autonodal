@@ -470,21 +470,18 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
     </div>
     <div class="upload-options">
       <div class="upload-card">
-        <label>Upload CV</label>
+        <label>Paste your LinkedIn profile URL</label>
+        <input type="text" id="linkedinUrl" placeholder="https://linkedin.com/in/your-name" style="width:100%;padding:10px;border:1px solid #1e2d3d;border-radius:6px;background:#111827;color:#e2e8f0;font-size:14px;margin-top:6px">
+        <span style="font-size:11px;color:#64748b;margin-top:4px;display:block">We use this to enrich your profile with career context.</span>
+      </div>
+      <div class="upload-card">
+        <label>Upload CV <span style="font-size:11px;color:#64748b;font-weight:400">optional</span></label>
         <input type="file" id="uploadCV" accept=".pdf">
       </div>
-      <div class="upload-card">
-        <label>Paste LinkedIn URL</label>
-        <input type="text" id="linkedinUrl" placeholder="https://linkedin.com/in/...">
-      </div>
-      <div class="upload-card">
-        <label>LinkedIn data export</label>
-        <input type="file" id="uploadLinkedin" accept=".csv,.zip">
-      </div>
     </div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px">
       <button class="btn-primary" onclick="submitUploads()">Continue</button>
-      <button class="btn-ghost" onclick="goToStep(3)">Skip — I'll add this later</button>
+      <button class="btn-ghost" onclick="goToStep(3)">Skip — I'll add later</button>
     </div>
   </div>
 
@@ -1128,7 +1125,6 @@ function filterByType(btn, type) {
 /* ─── Step 5: Activate ─── */
 function activateFeed() {
   var bundleIds = Object.keys(selectedBundleIds);
-  if (!bundleIds.length) return;
 
   goToStep(5);
   var msgEl = document.getElementById('activateMsg');
@@ -1139,22 +1135,26 @@ function activateFeed() {
     config: derivedConfig,
     bundles: bundleIds
   }).then(function() {
-    msgEl.textContent = 'Subscribing to ' + bundleIds.length + ' signal feeds...';
-    return api('POST', '/api/feeds/subscribe', { bundle_ids: bundleIds });
-  }).then(function() {
-    msgEl.textContent = 'Starting your first harvest...';
-    return api('POST', '/api/onboarding/trigger-harvest', {});
+    if (bundleIds.length) {
+      msgEl.textContent = 'Subscribing to ' + bundleIds.length + ' signal feeds...';
+      return api('POST', '/api/feeds/subscribe', { bundle_ids: bundleIds });
+    }
   }).then(function() {
     msgEl.textContent = 'Finalizing...';
     return api('POST', '/api/onboarding/finalize', {});
   }).then(function() {
-    msgEl.textContent = 'Done. Redirecting...';
+    msgEl.textContent = 'Your feed is live.';
     setTimeout(function() {
       window.location.href = '/index.html?onboarded=true';
     }, 800);
   }).catch(function(err) {
     console.error('Activation error:', err);
-    msgEl.textContent = 'Something went wrong. Please refresh and try again.';
+    // Still try to finalize even if subscription failed
+    api('POST', '/api/onboarding/finalize', {}).then(function() {
+      window.location.href = '/index.html?onboarded=true';
+    }).catch(function() {
+      msgEl.textContent = 'Something went wrong. Please refresh and try again.';
+    });
   });
 }
 
