@@ -25,6 +25,19 @@ app.use('/api/', rateLimit({
   handler: function(req, res) { res.status(429).json({ error: 'Rate limit exceeded. Try again in a minute.' }); },
 }));
 
+// Security headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
 // Strict limit on auth endpoints — 20 per minute per IP
 app.use('/api/auth/', rateLimit({
   windowMs: 60 * 1000,
@@ -6363,13 +6376,12 @@ app.get('/api/public/events', ...publicEmbed, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 
-app.get('/api/db-test', async (req, res) => {
-  const url = (process.env.DATABASE_URL || '').replace(/:([^@]+)@/, ':***@');
+app.get('/api/db-test', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const result = await platformPool.query('SELECT NOW() as time, current_database() as db');
-    res.json({ ok: true, url, ...result.rows[0] });
+    res.json({ ok: true, ...result.rows[0] });
   } catch(e) {
-    res.json({ ok: false, url, error: e.message, code: e.code });
+    res.json({ ok: false, error: e.message });
   }
 });
 app.get('/api/health', (req, res) => {
