@@ -1544,6 +1544,75 @@ No greetings. No filler. Start with the insight. 3-4 sentences max.`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PIPELINE 11: DAILY DIGEST EMAIL
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function pipelineDailyDigestEmail() {
+  let sent = 0;
+  try {
+    const { sendDailyDigest } = require('../lib/email');
+
+    // Get all users in active tenants
+    const { rows: users } = await pool.query(`
+      SELECT u.id, u.email, u.name, u.tenant_id
+      FROM users u
+      JOIN tenants t ON t.id = u.tenant_id
+      WHERE t.onboarding_status = 'complete'
+        AND u.email IS NOT NULL
+    `);
+
+    for (const user of users) {
+      try {
+        // Get top signals for this user's tenant (last 24h)
+        const { rows: signals } = await pool.query(`
+          SELECT signal_type, company_name, confidence_score, evidence_summary
+          FROM signal_events
+          WHERE (tenant_id IS NULL OR tenant_id = $1)
+            AND detected_at > NOW() - INTERVAL '24 hours'
+          ORDER BY confidence_score DESC
+          LIMIT 5
+        `, [user.tenant_id]);
+
+        if (signals.length === 0) continue; // Skip if no signals
+
+        // Get today's insight
+        const { rows: [insight] } = await pool.query(`
+          SELECT headline, body FROM daily_insights
+          WHERE (user_id = $1 OR user_id IS NULL) AND tenant_id = $2
+          AND insight_date >= CURRENT_DATE - 1
+          ORDER BY insight_date DESC LIMIT 1
+        `, [user.id, user.tenant_id]);
+
+        // Get upcoming event count
+        const { rows: [ev] } = await pool.query(`
+          SELECT COUNT(*) AS cnt FROM events
+          WHERE (tenant_id IS NULL OR tenant_id = $1)
+            AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 7
+        `, [user.tenant_id]);
+
+        await sendDailyDigest({
+          to: user.email,
+          name: user.name,
+          signals,
+          insight: insight || null,
+          eventCount: parseInt(ev?.cnt) || 0,
+        });
+
+        sent++;
+        await sleep(200); // Rate limit
+      } catch (e) {
+        console.log(`     ⚠️  ${user.email}: ${e.message}`);
+      }
+    }
+  } catch (e) {
+    console.log('     ⚠️  Daily digest error:', e.message);
+  }
+
+  console.log(`     ${sent} digest emails sent`);
+  return { sent };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // PIPELINE REGISTRY
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1596,6 +1665,13 @@ const PIPELINES = {
     fn: pipelineNetworkInsights,
     schedule: '30 6 * * *',
     description: 'Daily crossover intelligence — network vs focus gap analysis per user'
+  },
+  daily_digest_email: {
+    name: 'Daily Digest Email',
+    icon: '📧',
+    fn: pipelineDailyDigestEmail,
+    schedule: '45 6 * * *',
+    description: 'Email daily signal digest + insight to all active users'
   },
   waitlist_digest: {
     name: 'Waitlist Digest',

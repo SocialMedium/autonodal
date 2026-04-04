@@ -5537,6 +5537,13 @@ app.post('/api/onboarding/finalize', authenticateToken, async (req, res) => {
       'UPDATE tenants SET onboarding_status = \'complete\', onboarding_completed_at = NOW(), updated_at = NOW() WHERE id = $1',
       [req.tenant_id]
     );
+
+    // Send welcome email (async, don't block response)
+    try {
+      const { sendWelcome } = require('./lib/email');
+      sendWelcome({ to: req.user.email, name: req.user.name }).catch(e => console.error('[email] Welcome failed:', e.message));
+    } catch (e) { /* email module not critical */ }
+
     res.json({ status: 'ok' });
   } catch (err) {
     console.error('Onboarding finalize error:', err.message);
