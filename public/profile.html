@@ -227,10 +227,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
           <div class="card-label">Regions <span style="font-size:10px;color:var(--ink-4);font-weight:400">(select all that apply)</span></div>
           <div id="regionCheckboxes" style="display:flex;flex-wrap:wrap;gap:6px">
             <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--rule);border-radius:6px"><input type="checkbox" value="GLOBAL" onchange="updateRegions()" style="margin:0"> Global</label>
-            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--rule);border-radius:6px"><input type="checkbox" value="AU" onchange="updateRegions()" style="margin:0"> Australia & NZ</label>
-            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--rule);border-radius:6px"><input type="checkbox" value="SG" onchange="updateRegions()" style="margin:0"> Singapore & SEA</label>
-            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--rule);border-radius:6px"><input type="checkbox" value="UK" onchange="updateRegions()" style="margin:0"> UK & Europe</label>
-            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--rule);border-radius:6px"><input type="checkbox" value="US" onchange="updateRegions()" style="margin:0"> Americas</label>
+            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--rule);border-radius:6px"><input type="checkbox" value="AMER" onchange="updateRegions()" style="margin:0"> Americas</label>
+            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--rule);border-radius:6px"><input type="checkbox" value="EUR" onchange="updateRegions()" style="margin:0"> Europe</label>
+            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--rule);border-radius:6px"><input type="checkbox" value="MENA" onchange="updateRegions()" style="margin:0"> Middle East & Africa</label>
+            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--rule);border-radius:6px"><input type="checkbox" value="ASIA" onchange="updateRegions()" style="margin:0"> Asia</label>
+            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--rule);border-radius:6px"><input type="checkbox" value="OCE" onchange="updateRegions()" style="margin:0"> Oceania</label>
           </div>
           <!-- Keep hidden select for backward compat -->
           <select id="regionSelect" style="display:none"></select>

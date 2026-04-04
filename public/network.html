@@ -71,10 +71,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); overf
   <span style="width:1px;height:16px;background:var(--rule);margin:0 4px"></span>
   <span style="font-size:9px;color:var(--ink4);margin-right:2px;white-space:nowrap">GEO:</span>
   <button class="filt-btn active" data-region="all" onclick="setRegion(this)">All</button>
-  <button class="filt-btn" data-region="AU" onclick="setRegion(this)" style="border-color:rgba(93,202,165,.4);color:#5DCAA5">AU</button>
-  <button class="filt-btn" data-region="SG" onclick="setRegion(this)" style="border-color:rgba(175,169,236,.4);color:#AFA9EC">SG</button>
-  <button class="filt-btn" data-region="UK" onclick="setRegion(this)" style="border-color:rgba(55,138,221,.4);color:#378ADD">UK</button>
-  <button class="filt-btn" data-region="US" onclick="setRegion(this)" style="border-color:rgba(239,159,39,.4);color:#EF9F27">US</button>
+  <button class="filt-btn" data-region="AMER" onclick="setRegion(this)" style="border-color:rgba(239,159,39,.4);color:#EF9F27">AMER</button>
+  <button class="filt-btn" data-region="EUR" onclick="setRegion(this)" style="border-color:rgba(55,138,221,.4);color:#378ADD">EUR</button>
+  <button class="filt-btn" data-region="MENA" onclick="setRegion(this)" style="border-color:rgba(212,83,126,.4);color:#D4537E">MENA</button>
+  <button class="filt-btn" data-region="ASIA" onclick="setRegion(this)" style="border-color:rgba(175,169,236,.4);color:#AFA9EC">ASIA</button>
+  <button class="filt-btn" data-region="OCE" onclick="setRegion(this)" style="border-color:rgba(93,202,165,.4);color:#5DCAA5">OCE</button>
 </div>
 
 <svg id="graph-canvas"></svg>
@@ -108,10 +109,16 @@ let fullGraphData = null;
 
 // Geographic region layout — positions as fraction of canvas width
 const GEO_LAYOUT = {
-  AU: { x: 0.12, label: 'Australia & NZ', color: '#5DCAA5' },
-  SG: { x: 0.34, label: 'Singapore & Asia', color: '#AFA9EC' },
-  UK: { x: 0.56, label: 'UK & Europe', color: '#378ADD' },
-  US: { x: 0.78, label: 'Americas', color: '#EF9F27' },
+  AMER: { x: 0.10, label: 'Americas', color: '#EF9F27' },
+  EUR:  { x: 0.30, label: 'Europe', color: '#378ADD' },
+  MENA: { x: 0.50, label: 'MENA', color: '#D4537E' },
+  ASIA: { x: 0.70, label: 'Asia', color: '#AFA9EC' },
+  OCE:  { x: 0.90, label: 'Oceania', color: '#5DCAA5' },
+  // Legacy aliases
+  AU: { x: 0.90, label: 'Oceania', color: '#5DCAA5' },
+  SG: { x: 0.70, label: 'Asia', color: '#AFA9EC' },
+  UK: { x: 0.30, label: 'Europe', color: '#378ADD' },
+  US: { x: 0.10, label: 'Americas', color: '#EF9F27' },
 };
 
 function setRegion(btn) {

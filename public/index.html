@@ -1724,10 +1724,11 @@ body {
         <span style="font-family:var(--serif);font-size:18px;font-weight:600">All Signals</span>
         <div class="zone-filters" id="regionFilterBtns" style="margin:0">
           <button class="filter-btn active" onclick="filterRegion('all', this)">All</button>
-          <button class="filter-btn" onclick="filterRegion('AU', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#E8F5EE;color:#0D7A50">AU</span></button>
-          <button class="filter-btn" onclick="filterRegion('SG', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#F3EEFE;color:#6D28D9">SG</span></button>
-          <button class="filter-btn" onclick="filterRegion('UK', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#EBF1FE;color:#2563EB">UK</span></button>
-          <button class="filter-btn" onclick="filterRegion('US', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#FEF7E8;color:#B45309">US</span></button>
+          <button class="filter-btn" onclick="filterRegion('AMER', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#FEF7E8;color:#B45309">AMER</span></button>
+          <button class="filter-btn" onclick="filterRegion('EUR', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#EBF1FE;color:#2563EB">EUR</span></button>
+          <button class="filter-btn" onclick="filterRegion('MENA', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#FDF0F2;color:#D4537E">MENA</span></button>
+          <button class="filter-btn" onclick="filterRegion('ASIA', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#F3EEFE;color:#6D28D9">ASIA</span></button>
+          <button class="filter-btn" onclick="filterRegion('OCE', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#E8F5EE;color:#0D7A50">OCE</span></button>
         </div>
       </div>
 
@@ -2223,10 +2224,11 @@ async function loadDashboardEvents() {
 
 async function loadRegionCards() {
   const regions = [
-    { code: 'AU', flag: regionLabel('AU'), name: 'Australia', color: '#0D7A50' },
-    { code: 'SG', flag: regionLabel('SG'), name: 'Singapore & SEA', color: '#6D28D9' },
-    { code: 'UK', flag: regionLabel('UK'), name: 'United Kingdom', color: '#2563EB' },
-    { code: 'US', flag: regionLabel('US'), name: 'United States', color: '#B45309' },
+    { code: 'AMER', flag: regionLabel('AMER'), name: 'Americas', color: '#B45309' },
+    { code: 'EUR', flag: regionLabel('EUR'), name: 'Europe', color: '#2563EB' },
+    { code: 'MENA', flag: regionLabel('MENA'), name: 'Middle East & Africa', color: '#D4537E' },
+    { code: 'ASIA', flag: regionLabel('ASIA'), name: 'Asia', color: '#6D28D9' },
+    { code: 'OCE', flag: regionLabel('OCE'), name: 'Oceania', color: '#0D7A50' },
   ];
 
   const grid = document.getElementById('regionGrid');
@@ -3329,10 +3331,11 @@ function showOnboarding(user) {
         </div>
         <div id="regionSelect" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           ${[
-            { code: 'AU', flag: regionLabel('AU'), name: 'Australia' },
-            { code: 'SG', flag: regionLabel('SG'), name: 'Singapore & SEA' },
-            { code: 'UK', flag: regionLabel('UK'), name: 'United Kingdom' },
-            { code: 'US', flag: regionLabel('US'), name: 'United States' },
+            { code: 'AMER', flag: regionLabel('AMER'), name: 'Americas' },
+            { code: 'EUR', flag: regionLabel('EUR'), name: 'Europe' },
+            { code: 'MENA', flag: regionLabel('MENA'), name: 'Middle East & Africa' },
+            { code: 'ASIA', flag: regionLabel('ASIA'), name: 'Asia' },
+            { code: 'OCE', flag: regionLabel('OCE'), name: 'Oceania' },
             { code: 'APAC', flag: '🌏', name: 'APAC (all)' },
             { code: 'EMEA', flag: '🌍', name: 'EMEA (all)' },
           ].map(r => `

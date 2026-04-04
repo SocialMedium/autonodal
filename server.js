@@ -57,19 +57,25 @@ const { TenantDB, platformPool } = require('./lib/TenantDB');
 // ─────────────────────────────────────────────────────────────────────────────
 
 const REGION_MAP = {
-  'AU': ['Australia', 'Australian', 'Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'ASX', 'Canberra', 'CSIRO'],
-  'SG': ['Singapore', 'Southeast Asia', 'ASEAN', 'Jakarta', 'Kuala Lumpur', 'Bangkok', 'Vietnam', 'Philippines', 'Indonesia', 'Malaysia', 'Thailand'],
-  'UK': ['United Kingdom', 'London', 'England', 'Britain', 'British', 'Manchester', 'Edinburgh', 'FTSE', 'LSE'],
-  'US': ['United States', 'Silicon Valley', 'New York', 'San Francisco', 'California', 'Texas', 'Boston', 'Seattle', 'NASDAQ', 'NYSE', 'SEC', 'Federal'],
-  'APAC': ['Australia', 'Australian', 'Singapore', 'Asia', 'APAC', 'Japan', 'Japanese', 'Korea', 'Korean', 'India', 'Indian', 'Hong Kong', 'Southeast Asia', 'ASEAN', 'Sydney', 'Melbourne', 'China', 'Chinese', 'Taiwan', 'New Zealand'],
-  'EMEA': ['United Kingdom', 'Europe', 'European', 'EMEA', 'London', 'Germany', 'German', 'France', 'French', 'Netherlands', 'Ireland', 'Middle East', 'Africa', 'Nordics', 'Sweden', 'Denmark', 'EU'],
-  'AMER': ['United States', 'North America', 'Canada', 'Canadian', 'Latin America', 'Brazil', 'Brazilian', 'Mexico', 'Silicon Valley', 'New York', 'NASDAQ', 'NYSE'],
+  'AMER': ['United States', 'North America', 'Canada', 'Canadian', 'Latin America', 'Brazil', 'Brazilian', 'Mexico', 'Silicon Valley', 'New York', 'NASDAQ', 'NYSE', 'SEC', 'Federal', 'San Francisco', 'California', 'Texas', 'Boston', 'Seattle', 'Chicago', 'Colombia', 'Argentina'],
+  'EUR':  ['United Kingdom', 'Europe', 'European', 'London', 'England', 'Britain', 'British', 'Germany', 'German', 'France', 'French', 'Netherlands', 'Ireland', 'Nordics', 'Sweden', 'Denmark', 'EU', 'FTSE', 'LSE', 'Manchester', 'Edinburgh', 'Spain', 'Italy', 'Switzerland', 'Belgium', 'Portugal', 'Austria', 'Finland', 'Norway'],
+  'MENA': ['Middle East', 'Dubai', 'UAE', 'Saudi', 'Riyadh', 'Abu Dhabi', 'Qatar', 'Bahrain', 'Kuwait', 'Oman', 'Israel', 'Tel Aviv', 'Turkey', 'Istanbul', 'Egypt', 'Cairo', 'Morocco', 'North Africa', 'Gulf', 'GCC'],
+  'ASIA': ['Singapore', 'Southeast Asia', 'ASEAN', 'Jakarta', 'Kuala Lumpur', 'Bangkok', 'Vietnam', 'Philippines', 'Indonesia', 'Malaysia', 'Thailand', 'Asia', 'APAC', 'Japan', 'Japanese', 'Korea', 'Korean', 'India', 'Indian', 'Hong Kong', 'China', 'Chinese', 'Taiwan', 'Mumbai', 'Delhi', 'Bangalore', 'Shenzhen', 'Shanghai', 'Tokyo', 'Seoul'],
+  'OCE':  ['Australia', 'Australian', 'Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'ASX', 'Canberra', 'New Zealand', 'Auckland', 'Wellington', 'Oceania', 'Pacific'],
+  // Legacy aliases — map old codes to new
+  'AU': ['Australia', 'Australian', 'Sydney', 'Melbourne', 'Brisbane', 'Perth', 'New Zealand'],
+  'SG': ['Singapore', 'Southeast Asia', 'ASEAN', 'Jakarta', 'Bangkok', 'Vietnam'],
+  'UK': ['United Kingdom', 'London', 'England', 'Britain'],
+  'US': ['United States', 'Silicon Valley', 'New York', 'San Francisco'],
 };
 const REGION_CODES = {
-  'AU': ['AU','NZ'], 'SG': ['SG','MY','ID','TH','VN','PH'], 'UK': ['UK','GB','IE'],
-  'US': ['US','CA'], 'APAC': ['AU','NZ','SG','MY','ID','TH','VN','PH','JP','KR','IN','HK','CN','TW'],
-  'EMEA': ['UK','GB','IE','DE','FR','NL','SE','DK','NO','FI','ES','IT','PT','AT','CH','BE'],
-  'AMER': ['US','CA','BR','MX','AR','CL','CO'],
+  'AMER': ['US','CA','BR','MX','AR','CL','CO','PE'],
+  'EUR':  ['UK','GB','IE','DE','FR','NL','SE','DK','NO','FI','ES','IT','PT','AT','CH','BE','PL','CZ','GR','RO','HU'],
+  'MENA': ['AE','SA','QA','BH','KW','OM','IL','TR','EG','MA','TN','JO','LB'],
+  'ASIA': ['SG','MY','ID','TH','VN','PH','JP','KR','IN','HK','CN','TW','BD','PK','LK','MM','KH','NP'],
+  'OCE':  ['AU','NZ','FJ','PG'],
+  // Legacy aliases
+  'AU': ['AU','NZ'], 'SG': ['SG','MY','ID','TH','VN','PH'], 'UK': ['UK','GB','IE'], 'US': ['US','CA'],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4963,7 +4969,7 @@ app.get('/api/public/stats', async (req, res) => {
       events_this_week: parseInt(s.events_this_week || 0),
       upcoming_events_30d: parseInt(s.upcoming_events_30d || 0),
       active_event_sources: parseInt(s.active_event_sources || 0),
-      regions: ['AU', 'SG', 'UK', 'US'],
+      regions: ['AMER', 'EUR', 'MENA', 'ASIA', 'OCE'],
       updated_at: new Date().toISOString()
     };
 
@@ -6233,10 +6239,10 @@ app.get('/api/public/market-temperature', ...publicEmbed, async (req, res) => {
     const { rows: byRegion } = await platformPool.query(`
       SELECT
         CASE
-          WHEN c.geography ILIKE '%Australia%' OR c.country_code = 'AU' THEN 'AU'
-          WHEN c.geography ILIKE '%Singapore%' OR c.country_code = 'SG' OR c.geography ILIKE '%Southeast Asia%' THEN 'SG'
-          WHEN c.geography ILIKE '%United Kingdom%' OR c.country_code IN ('UK','GB') OR c.geography ILIKE '%London%' THEN 'UK'
-          WHEN c.geography ILIKE '%United States%' OR c.country_code = 'US' OR c.geography ILIKE '%America%' THEN 'US'
+          WHEN c.country_code IN ('AU','NZ') OR c.geography ILIKE '%australia%' OR c.geography ILIKE '%oceania%' OR c.geography ILIKE '%new zealand%' THEN 'OCE'
+          WHEN c.country_code IN ('SG','MY','ID','TH','VN','PH','JP','KR','IN','HK','CN','TW') OR c.geography ILIKE '%singapore%' OR c.geography ILIKE '%asia%' OR c.geography ILIKE '%india%' THEN 'ASIA'
+          WHEN c.country_code IN ('GB','UK','IE','DE','FR','NL','SE','DK','NO','FI','ES','IT') OR c.geography ILIKE '%united kingdom%' OR c.geography ILIKE '%europe%' OR c.geography ILIKE '%london%' THEN 'EUR'
+          WHEN c.country_code IN ('US','CA','BR','MX') OR c.geography ILIKE '%united states%' OR c.geography ILIKE '%america%' OR c.geography ILIKE '%canada%' THEN 'AMER'
           ELSE 'OTHER'
         END AS region,
         se.signal_type, COUNT(*) as cnt
@@ -6270,7 +6276,7 @@ app.get('/api/public/market-temperature', ...publicEmbed, async (req, res) => {
 
     // Build region map
     const regions = {};
-    for (const r of ['AU', 'SG', 'UK', 'US']) {
+    for (const r of ['AMER', 'EUR', 'MENA', 'ASIA', 'OCE']) {
       const regionTypes = byRegion.filter(x => x.region === r);
       regions[r] = calcTemp(regionTypes);
       regions[r].signal_count = regionTypes.reduce((s, t) => s + parseInt(t.cnt), 0);
@@ -6293,7 +6299,7 @@ app.get('/api/public/market-temperature', ...publicEmbed, async (req, res) => {
 app.get('/api/public/events', ...publicEmbed, async (req, res) => {
   res.set('Cache-Control', 'public, max-age=3600');
   try {
-    const regions = ['UK','Australia','Singapore','US'];
+    const regions = ['AMER','EUR','MENA','ASIA','OCE'];
     const result = {};
 
     for (const region of regions) {
@@ -10259,10 +10265,11 @@ app.get('/api/ecosystem', authenticateToken, async (req, res) => {
 
     res.json({
       regions: {
-        AU: { lat: -33.87, lng: 151.21, name: 'Australia & NZ', color: '#0D7A50', flag: 'AU' },
-        SG: { lat: 1.35, lng: 103.82, name: 'Singapore & SEA', color: '#6D28D9', flag: 'SG' },
-        UK: { lat: 51.51, lng: -0.13, name: 'United Kingdom & Europe', color: '#2563EB', flag: 'UK' },
-        US: { lat: 37.77, lng: -122.42, name: 'United States & Americas', color: '#B45309', flag: 'US' },
+        AMER: { lat: 37.77, lng: -95.0, name: 'Americas', color: '#B45309', flag: 'AMER' },
+        EUR:  { lat: 50.85, lng: 4.35, name: 'Europe', color: '#2563EB', flag: 'EUR' },
+        MENA: { lat: 25.20, lng: 55.27, name: 'Middle East & Africa', color: '#D4537E', flag: 'MENA' },
+        ASIA: { lat: 13.75, lng: 100.52, name: 'Asia', color: '#6D28D9', flag: 'ASIA' },
+        OCE:  { lat: -33.87, lng: 151.21, name: 'Oceania', color: '#0D7A50', flag: 'OCE' },
       },
       signals: regionSignals,
       density: density,

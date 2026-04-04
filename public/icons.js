@@ -133,10 +133,16 @@ function youtubeThumbnail(url) {
 
 // Region code → styled text label (replaces flag emoji)
 var REGION_LABELS = {
-  AU: '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#E8F5EE;color:#0D7A50">AU</span>',
-  SG: '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#F3EEFE;color:#6D28D9">SG</span>',
-  UK: '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#EBF1FE;color:#2563EB">UK</span>',
-  US: '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#FEF7E8;color:#B45309">US</span>',
+  AMER: '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#FEF7E8;color:#B45309">AMER</span>',
+  EUR:  '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#EBF1FE;color:#2563EB">EUR</span>',
+  MENA: '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#FDF0F2;color:#D4537E">MENA</span>',
+  ASIA: '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#F3EEFE;color:#6D28D9">ASIA</span>',
+  OCE:  '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#E8F5EE;color:#0D7A50">OCE</span>',
+  // Legacy aliases
+  AU: '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#E8F5EE;color:#0D7A50">OCE</span>',
+  SG: '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#F3EEFE;color:#6D28D9">ASIA</span>',
+  UK: '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#EBF1FE;color:#2563EB">EUR</span>',
+  US: '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 5px;border-radius:3px;background:#FEF7E8;color:#B45309">AMER</span>',
 };
 
 function regionLabel(code) {
