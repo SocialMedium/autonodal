@@ -2415,6 +2415,14 @@ app.get('/api/people', authenticateToken, async (req, res) => {
       where += ` AND p.current_company_name ILIKE $${paramIdx}`;
       params.push(`%${req.query.company}%`);
     }
+    if (req.query.skill) {
+      const skills = Array.isArray(req.query.skill) ? req.query.skill : [req.query.skill];
+      skills.forEach(s => {
+        paramIdx++;
+        where += ` AND $${paramIdx} = ANY(p.expertise_tags)`;
+        params.push(s);
+      });
+    }
 
     paramIdx++;
     params.push(limit);
@@ -2504,6 +2512,38 @@ app.get('/api/people/stream/signal-connected', authenticateToken, async (req, re
   } catch (err) {
     console.error('Signal-connected error:', err.message);
     res.status(500).json({ error: 'Failed to fetch signal-connected people' });
+  }
+});
+
+// Skill/industry facets for filter UI
+app.get('/api/people/facets', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const [skillsResult, industriesResult, senioritiesResult] = await Promise.all([
+      db.query(`
+        SELECT unnest(expertise_tags) AS val, COUNT(*) AS cnt
+        FROM people WHERE tenant_id = $1 AND expertise_tags IS NOT NULL
+        GROUP BY val ORDER BY cnt DESC LIMIT 30
+      `, [req.tenant_id]),
+      db.query(`
+        SELECT unnest(industries) AS val, COUNT(*) AS cnt
+        FROM people WHERE tenant_id = $1 AND industries IS NOT NULL
+        GROUP BY val ORDER BY cnt DESC LIMIT 20
+      `, [req.tenant_id]),
+      db.query(`
+        SELECT seniority_level AS val, COUNT(*) AS cnt
+        FROM people WHERE tenant_id = $1 AND seniority_level IS NOT NULL
+        GROUP BY seniority_level ORDER BY cnt DESC
+      `, [req.tenant_id]),
+    ]);
+    res.json({
+      skills: skillsResult.rows.map(r => ({ name: r.val, count: parseInt(r.cnt) })),
+      industries: industriesResult.rows.map(r => ({ name: r.val, count: parseInt(r.cnt) })),
+      seniorities: senioritiesResult.rows.map(r => ({ name: r.val, count: parseInt(r.cnt) })),
+    });
+  } catch (err) {
+    console.error('People facets error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch facets' });
   }
 });
 

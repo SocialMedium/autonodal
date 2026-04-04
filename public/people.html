@@ -98,6 +98,18 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .badge.score { background: var(--emerald-soft); color: var(--emerald); }
 .badge.type { background: var(--violet-soft); color: var(--violet); }
 
+/* Skill chips on person cards */
+.person-skills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.skill-chip { font-size: 10px; padding: 2px 8px; border-radius: 12px; background: var(--surface-cool); border: 1px solid var(--rule); color: var(--ink-3); white-space: nowrap; }
+.skill-more { background: var(--blue-soft); border-color: rgba(37,99,235,0.2); color: var(--blue); font-weight: 600; }
+
+/* Skill facet filter bar */
+.facet-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
+.facet-label { font-size: 11px; color: var(--ink-4); text-transform: uppercase; letter-spacing: .5px; font-weight: 600; }
+.facet-btn { font-size: 11px; padding: 3px 10px; border-radius: 14px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink-3); cursor: pointer; font-family: var(--sans); transition: all .15s; }
+.facet-btn:hover { border-color: var(--rule-bold); }
+.facet-btn.active { background: var(--ink); color: white; border-color: var(--ink); }
+
 /* Contact stream card extras */
 .contact-meta { display: flex; gap: 12px; margin-top: 8px; font-size: 12px; color: var(--ink-3); flex-wrap: wrap; }
 .contact-meta-item { display: flex; align-items: center; gap: 4px; }
@@ -210,6 +222,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
       <div class="chip" onclick="setChip(this, 'vp')">VP+</div>
       <div class="chip" onclick="setChip(this, 'director')">Director</div>
     </div>
+    <div class="facet-bar" id="skillFacets"></div>
     <div class="person-grid" id="browseGrid"></div>
     <button class="load-more" id="loadMore" onclick="loadMoreBrowse()">Load more</button>
   </div>
@@ -304,6 +317,18 @@ function personCard(p, opts = {}) {
       ' <span style="opacity:0.7">(' + ago(sig.signal_detected_at) + ')</span></div>';
   }
 
+  // Expertise chips (max 3 on card)
+  var skillChips = '';
+  var tags = p.expertise_tags || [];
+  if (tags.length) {
+    var display = tags.slice(0, 3);
+    var more = tags.length > 3 ? tags.length - 3 : 0;
+    skillChips = '<div class="person-skills">' +
+      display.map(function(s) { return '<span class="skill-chip">' + esc(s) + '</span>'; }).join('') +
+      (more ? '<span class="skill-chip skill-more">+' + more + '</span>' : '') +
+    '</div>';
+  }
+
   const personId = p.id || p.person_id;
   return '<div class="person-card' + (hasNotes ? ' has-notes' : '') + '" onclick="location.href=\'/person.html?id=' + personId + '\'">' +
     '<div class="person-top">' +
@@ -315,6 +340,7 @@ function personCard(p, opts = {}) {
       '</div>' +
     '</div>' +
     (badges ? '<div class="person-badges">' + badges + '</div>' : '') +
+    skillChips +
     extra +
   '</div>';
 }
@@ -364,6 +390,30 @@ async function loadSignalConnected() {
   }
 }
 
+// ── Skill facets ──
+var activeSkillFilters = [];
+async function loadSkillFacets() {
+  try {
+    var data = await api('/api/people/facets');
+    if (!data || !data.skills || !data.skills.length) return;
+    var bar = document.getElementById('skillFacets');
+    var html = '<span class="facet-label">Skills</span>';
+    data.skills.slice(0, 15).forEach(function(s) {
+      html += '<button class="facet-btn" data-skill="' + esc(s.name) + '" onclick="toggleSkillFacet(this)">' + esc(s.name) + ' <span style="opacity:0.5;font-size:9px">' + s.count + '</span></button>';
+    });
+    bar.innerHTML = html;
+  } catch(e) {}
+}
+function toggleSkillFacet(btn) {
+  var skill = btn.getAttribute('data-skill');
+  var idx = activeSkillFilters.indexOf(skill);
+  if (idx >= 0) { activeSkillFilters.splice(idx, 1); btn.classList.remove('active'); }
+  else { activeSkillFilters.push(skill); btn.classList.add('active'); }
+  browseOffset = 0;
+  document.getElementById('browseGrid').innerHTML = '';
+  loadBrowse();
+}
+
 // ── Browse all ──
 let browseOffset = 0, browseFilter = '';
 
@@ -383,6 +433,7 @@ async function loadBrowse() {
   if (browseFilter === 'vp') params.set('seniority', 'VP');
   if (browseFilter === 'director') params.set('seniority', 'Director');
   if (browseFilter.startsWith('industry:')) params.set('industry', browseFilter.replace('industry:', ''));
+  activeSkillFilters.forEach(function(s) { params.append('skill', s); });
 
   try {
     const data = await api('/api/people?' + params);
@@ -448,6 +499,7 @@ function loadMoreBrowse() {
   loadContacts();
   loadSignalConnected();
   loadBrowse();
+  loadSkillFacets();
 })();
 </script>
 <script src="/icons.js"></script>

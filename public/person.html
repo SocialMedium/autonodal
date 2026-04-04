@@ -303,6 +303,122 @@ if(s.last_interaction)h+='<span style="font-size:10px;color:var(--ink-4);margin-
 h+='</div>';
 if(p.bio)h+='<div style="font-size:11px;color:var(--ink-3);line-height:1.45;overflow-wrap:break-word;max-height:34px;overflow:hidden;margin-bottom:12px">'+esc(p.bio)+'</div>';
 
+// ── Expertise & Skills ──
+var expTags = p.expertise_tags || [];
+var indTags = p.industries || [];
+var senLvl = p.seniority_level;
+var expYrs = p.years_experience;
+if(expTags.length || indTags.length || senLvl) {
+  h+='<div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px">';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">';
+  h+='<span style="font-size:13px;font-weight:600;color:var(--ink)">'+icon('zap',14)+' Expertise</span>';
+  if(senLvl)h+='<span style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;padding:1px 7px;border-radius:4px;font-weight:500;'+
+    (senLvl==='c_suite'?'background:rgba(245,158,11,0.12);color:#d97706':
+     senLvl==='vp'||senLvl==='director'?'background:rgba(37,99,235,0.10);color:#2563eb':
+     'background:rgba(100,116,139,0.1);color:#64748b')+'">'+esc(senLvl.replace(/_/g,' '))+'</span>';
+  if(expYrs)h+='<span style="font-size:11px;color:var(--ink-3)">'+expYrs+' years</span>';
+  h+='</div>';
+  if(expTags.length){
+    h+='<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">';
+    expTags.forEach(function(t){
+      h+='<span style="font-size:11px;padding:2px 9px;border-radius:12px;background:var(--surface-cool);border:1px solid var(--rule);color:var(--ink-3);white-space:nowrap">'+esc(t)+'</span>';
+    });
+    h+='</div>';
+  }
+  if(indTags.length){
+    h+='<div style="display:flex;flex-wrap:wrap;gap:4px">';
+    indTags.forEach(function(t){
+      h+='<span style="font-size:11px;padding:2px 9px;border-radius:12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);color:#059669;white-space:nowrap">'+esc(t)+'</span>';
+    });
+    h+='</div>';
+  }
+  h+='</div>';
+}
+
+// ── Career Timeline ──
+var career = p.career_history || [];
+// Filter out Ruby object artifacts
+career = career.filter(function(r){ return r && r.company && !String(r.company).startsWith('#<'); });
+if(!career.length && p.current_title && p.current_company_name){
+  career = [{ title: p.current_title, company: p.current_company_name, current: true }];
+}
+if(career.length){
+  // Sort most recent first
+  career.sort(function(a,b){ return new Date(b.start_date||0) - new Date(a.start_date||0); });
+  h+='<div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px">';
+  h+='<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px"><span style="font-size:13px;font-weight:600;color:var(--ink)">'+icon('briefcase',14)+' Career History</span><span style="font-family:var(--mono);font-size:10px;color:var(--ink-4)">'+career.length+' roles</span></div>';
+  var careerVisible = career.slice(0, 5);
+  var careerHidden = career.slice(5);
+  careerVisible.forEach(function(role, i){
+    var startYr = role.start_date ? new Date(role.start_date).getFullYear() : null;
+    var endYr = role.end_date ? new Date(role.end_date).getFullYear() : (role.current ? 'now' : null);
+    var dateStr = startYr ? startYr + ' \u2192 ' + (endYr || '?') : '';
+    var tenureMonths = null;
+    if(role.start_date && (role.end_date || role.current)){
+      tenureMonths = Math.round((new Date(role.end_date || Date.now()) - new Date(role.start_date)) / (1000*60*60*24*30));
+    }
+    var tenureStr = '';
+    if(tenureMonths && tenureMonths > 0){
+      tenureStr = tenureMonths >= 12 ? Math.floor(tenureMonths/12) + 'y ' + (tenureMonths%12) + 'm' : tenureMonths + 'm';
+    }
+    h+='<div style="display:flex;gap:12px;padding-bottom:'+(i < careerVisible.length-1 ? '14' : '0')+'px">';
+    // Timeline marker
+    h+='<div style="display:flex;flex-direction:column;align-items:center;width:16px">';
+    h+='<div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:4px;'+
+      (role.current ? 'background:#10b981;box-shadow:0 0 0 2px rgba(16,185,129,0.2)' : 'background:var(--rule);box-shadow:0 0 0 2px var(--surface)')+'"></div>';
+    if(i < careerVisible.length-1 || careerHidden.length) h+='<div style="width:2px;flex:1;background:var(--rule);margin-top:4px"></div>';
+    h+='</div>';
+    // Content
+    h+='<div style="flex:1;min-width:0">';
+    h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px"><strong style="font-size:13px">'+esc(role.title || '\u2014')+'</strong>';
+    if(role.current)h+='<span style="font-size:9px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);border-radius:4px;color:#10b981;padding:1px 6px">Current</span>';
+    h+='</div>';
+    h+='<div style="display:flex;align-items:center;gap:8px;font-size:12px">';
+    h+='<span style="color:var(--ink-3)">'+esc(role.company || '\u2014')+'</span>';
+    if(dateStr)h+='<span style="color:var(--ink-4);font-size:11px">'+dateStr+'</span>';
+    if(tenureStr)h+='<span style="font-size:10px;background:var(--surface-cool);border:1px solid var(--rule);border-radius:4px;padding:1px 6px;color:var(--ink-4)">'+tenureStr+'</span>';
+    h+='</div>';
+    if(role.description && !role.description.match(/^\s*at\s+\(/)){
+      h+='<div style="font-size:11px;color:var(--ink-3);margin-top:3px;line-height:1.4;max-height:32px;overflow:hidden">'+esc(String(role.description).slice(0,150))+'</div>';
+    }
+    h+='</div></div>';
+  });
+  if(careerHidden.length){
+    h+='<div id="careerMore" style="display:none">';
+    careerHidden.forEach(function(role, i){
+      var startYr = role.start_date ? new Date(role.start_date).getFullYear() : null;
+      var endYr = role.end_date ? new Date(role.end_date).getFullYear() : null;
+      var dateStr = startYr ? startYr + ' \u2192 ' + (endYr || '?') : '';
+      h+='<div style="display:flex;gap:12px;padding:8px 0">';
+      h+='<div style="width:16px;display:flex;flex-direction:column;align-items:center"><div style="width:8px;height:8px;border-radius:50%;background:var(--rule);margin-top:4px"></div>';
+      if(i < careerHidden.length-1) h+='<div style="width:2px;flex:1;background:var(--rule);margin-top:4px"></div>';
+      h+='</div>';
+      h+='<div style="flex:1"><strong style="font-size:12px">'+esc(role.title||'\u2014')+'</strong><div style="font-size:11px;color:var(--ink-3)">'+esc(role.company||'')+' '+dateStr+'</div></div></div>';
+    });
+    h+='</div>';
+    h+='<button onclick="document.getElementById(\'careerMore\').style.display=\'block\';this.style.display=\'none\'" style="width:100%;padding:6px;margin-top:8px;font-size:11px;color:var(--blue);background:var(--surface-cool);border:1px solid var(--rule);border-radius:6px;cursor:pointer;font-family:var(--sans)">Show '+careerHidden.length+' earlier roles</button>';
+  }
+  h+='</div>';
+}
+
+// ── Education (compact) ──
+var edu = p.education || [];
+if(Array.isArray(edu) && edu.length && edu[0] && edu[0].institution){
+  h+='<div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px">';
+  h+='<div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:8px">'+icon('award',14)+' Education</div>';
+  edu.forEach(function(e){
+    h+='<div style="padding:6px 0;border-bottom:1px solid var(--rule);font-size:12px">';
+    h+='<strong>'+esc(e.institution||'\u2014')+'</strong>';
+    var detail = [];
+    if(e.degree) detail.push(esc(e.degree));
+    if(e.field) detail.push(esc(e.field));
+    if(e.year) detail.push(e.year);
+    if(detail.length) h+='<div style="color:var(--ink-3);font-size:11px">'+detail.join(' \u00B7 ')+'</div>';
+    h+='</div>';
+  });
+  h+='</div>';
+}
+
 // Signals + Interactions — SIDE BY SIDE
 h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px" class="sig-ix-grid">';
 
