@@ -1958,6 +1958,18 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
       )`;
     }
 
+    // User's geographic focus — for relevance boosting in ORDER BY
+    const userRegion = req.user.region || '';
+    const userRegionCodes = [];
+    // Expand user region to country codes for matching
+    userRegion.split(',').forEach(r => {
+      const codes = REGION_CODES[r.trim()];
+      if (codes) userRegionCodes.push(...codes);
+    });
+    paramIdx++;
+    const geoBoostParam = paramIdx;
+    params.push(userRegionCodes.length > 0 ? userRegionCodes : ['__none__']);
+
     paramIdx++;
     const limitParam = paramIdx;
     params.push(limit);
@@ -2004,7 +2016,8 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
                (SELECT COUNT(*) FROM conversions pl JOIN accounts cl ON cl.id = pl.client_id
                 WHERE cl.company_id = se.company_id AND pl.tenant_id = $1) AS placement_count,
                sd.id AS dispatch_id, sd.status AS dispatch_status,
-               sd.claimed_by, sd.claimed_by_name, sd.blog_title AS dispatch_blog_title
+               sd.claimed_by, sd.claimed_by_name, sd.blog_title AS dispatch_blog_title,
+               CASE WHEN c.country_code = ANY($${geoBoostParam}) THEN true ELSE false END AS geo_relevant
         FROM ranked_signals se
         LEFT JOIN companies c ON se.company_id = c.id
         LEFT JOIN external_documents ed ON se.source_document_id = ed.id
@@ -2020,9 +2033,14 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
         ORDER BY
           CASE WHEN c.company_tier = 'tenant_company' THEN 2 WHEN se.is_megacap = true THEN 1 ELSE 0 END,
           CASE WHEN c.is_client = true THEN 0 ELSE 1 END,
+          -- Geographic relevance: boost signals matching user's focus countries
+          CASE WHEN c.country_code = ANY($${geoBoostParam}) THEN 0 ELSE 1 END,
           CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) > 0 THEN 0 ELSE 1 END,
-          CASE WHEN se.signal_type = 'geographic_expansion' THEN 0 ELSE 1 END,
-          CASE WHEN se.signal_type IN ('capital_raising', 'strategic_hiring') THEN 0 ELSE 1 END,
+          -- Hiring-intent signals ranked highest
+          CASE se.signal_type
+            WHEN 'strategic_hiring' THEN 0 WHEN 'geographic_expansion' THEN 1 WHEN 'capital_raising' THEN 1
+            WHEN 'product_launch' THEN 2 WHEN 'partnership' THEN 3
+            ELSE 4 END,
           se.confidence_score DESC NULLS LAST,
           se.detected_at DESC NULLS LAST
         LIMIT $${limitParam} OFFSET $${offsetParam}
