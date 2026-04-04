@@ -6436,6 +6436,26 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+app.get('/api/health/pipelines', async (req, res) => {
+  try {
+    const { rows } = await platformPool.query(`
+      SELECT pipeline_name,
+        COUNT(*) FILTER (WHERE started_at > NOW() - INTERVAL '24 hours') AS runs_24h,
+        COUNT(*) FILTER (WHERE status = 'completed' AND started_at > NOW() - INTERVAL '24 hours') AS success_24h,
+        COUNT(*) FILTER (WHERE status IN ('failed','partial') AND started_at > NOW() - INTERVAL '24 hours') AS failed_24h,
+        MAX(completed_at) AS last_completed,
+        AVG(duration_ms)::int FILTER (WHERE status = 'completed' AND started_at > NOW() - INTERVAL '7 days') AS avg_duration_ms,
+        SUM(records_processed) FILTER (WHERE started_at > NOW() - INTERVAL '24 hours') AS records_24h
+      FROM pipeline_runs WHERE started_at > NOW() - INTERVAL '7 days'
+      GROUP BY pipeline_name ORDER BY pipeline_name
+    `);
+    var allHealthy = rows.every(function(r) { return parseInt(r.failed_24h) === 0; });
+    res.status(allHealthy ? 200 : 206).json({ status: allHealthy ? 'healthy' : 'degraded', pipelines: rows, checked_at: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // NETWORK TOPOLOGY — RANKED OPPORTUNITIES & DENSITY
 // ═══════════════════════════════════════════════════════════════════════════════
