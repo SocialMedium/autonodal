@@ -530,7 +530,7 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
 
   <!-- Step 4: Confirm + Feed Selection -->
   <div class="step" id="step4">
-    <h2>Your signal feed</h2>
+    <h2>Your signal feed <span class="hint-icon" data-hint="Your signal dial is automatically configured from your declared mission and sectors. It filters always-on sources like PR Newswire and Business Wire so you see signals relevant to your themes, not everything they publish." data-hint-title="Your signal dial" data-hint-id="onboard-signal-dial" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1px solid rgba(245,158,11,0.4);color:#f59e0b;font-size:10px;cursor:help;vertical-align:middle;margin-left:4px">\u24d8</span></h2>
     <p class="sub">We've suggested sources based on your mission. Add or remove anything before activating.</p>
 
     <!-- Editable profile cards -->
@@ -1203,6 +1203,7 @@ function activateFeed() {
   });
 })();
 </script>
-
+<link rel="stylesheet" href="/css/tour.css">
+<script src="/js/hints.js"></script>
 </body>
 </html>

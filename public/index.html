@@ -1562,6 +1562,10 @@ body {
           <div class="sep"></div>
           <a href="/admin.html" id="adminLink" style="display:none">Admin Dashboard</a>
           <div class="sep" id="adminSep" style="display:none"></div>
+          <div class="sep"></div>
+          <button onclick="restartTour()" style="font-size:12px">\ud83c\udfaf Restart guided tour</button>
+          <button onclick="window._hints&&window._hints.resetAll()" style="font-size:12px">\u24d8 Reset feature hints</button>
+          <div class="sep"></div>
           <button onclick="doLogout()">Sign Out</button>
         </div>
       </div>
@@ -3471,6 +3475,7 @@ setInterval(() => { if (getToken()) loadStats(); }, 5 * 60 * 1000);
 <link rel="stylesheet" href="/css/tour.css">
 <script src="/js/tour.js"></script>
 <script src="/js/hints.js"></script>
+<script src="/js/empty-states.js"></script>
 <script>
 // Guided tour — first visit only
 if (AufonodaTour.shouldRun('autonodal_dash_tour')) {
