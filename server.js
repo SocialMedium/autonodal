@@ -57,8 +57,9 @@ app.use('/api/waitlist', rateLimit({
 // DATABASE
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Application pool — non-superuser (autonodal_app), RLS enforced
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: process.env.DATABASE_URL_APP || process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
