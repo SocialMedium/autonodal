@@ -5385,13 +5385,25 @@ app.get('/api/onboarding/platforms', authenticateToken, async (req, res) => {
 // POST /api/onboarding/converse — AI-powered profile extraction via conversation
 app.post('/api/onboarding/converse', authenticateToken, async (req, res) => {
   try {
-    var _msg = req.body.message;
-    var _history = req.body.history || [];
-    var _exchangeCount = parseInt(req.body.exchange_count) || 0;
+    // Frontend sends { messages: [...full history] } — extract what we need
+    var rawMessages = req.body.messages || [];
+    var _msg = req.body.message || (rawMessages.length ? rawMessages[rawMessages.length - 1]?.content : '');
+    var _exchangeCount = parseInt(req.body.exchange_count) || rawMessages.filter(m => m.role === 'user').length;
 
     var { SYSTEM_PROMPT } = require('./lib/onboarding/systemPrompt');
 
-    var messages = _history.concat([{ role: 'user', content: _msg }]);
+    // Build messages for Claude — must start with user, alternate user/assistant
+    // Filter out empty content and ensure valid structure
+    var messages = (rawMessages.length ? rawMessages : (req.body.history || []).concat([{ role: 'user', content: _msg }]))
+      .filter(m => m && m.role && m.content && m.content.trim());
+
+    // Claude requires first message to be from user — skip leading assistant messages
+    while (messages.length && messages[0].role === 'assistant') {
+      messages.shift();
+    }
+    if (!messages.length) {
+      messages = [{ role: 'user', content: _msg || 'Hello' }];
+    }
 
     // After 3 exchanges, force extraction
     var systemText = SYSTEM_PROMPT;
