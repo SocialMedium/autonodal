@@ -11819,7 +11819,8 @@ app.post('/api/feeds/subscribe', authenticateToken, async (req, res) => {
         `, [bid]);
         for (const src of sources) {
           await db.query(`INSERT INTO rss_sources (name, url, source_type, enabled, poll_interval_minutes, catalog_source_id, tenant_id)
-            VALUES ($1, $2, 'rss', true, $3, $4, $5) ON CONFLICT DO NOTHING`,
+            VALUES ($1, $2, 'rss', true, $3, $4, $5)
+            ON CONFLICT (tenant_id, url) DO UPDATE SET enabled = true`,
             [src.name, src.url, src.fetch_interval_min, src.id, req.tenant_id]).catch(() => {});
         }
       }
@@ -11830,7 +11831,8 @@ app.post('/api/feeds/subscribe', authenticateToken, async (req, res) => {
       const { rows: [src] } = await db.query('SELECT * FROM feed_catalog WHERE id = $1', [source_id]);
       if (src) {
         await db.query(`INSERT INTO rss_sources (name, url, source_type, enabled, poll_interval_minutes, catalog_source_id, tenant_id)
-          VALUES ($1, $2, 'rss', true, $3, $4, $5) ON CONFLICT DO NOTHING`,
+          VALUES ($1, $2, 'rss', true, $3, $4, $5)
+          ON CONFLICT (tenant_id, url) DO UPDATE SET enabled = true`,
           [src.name, src.url, src.fetch_interval_min, src.id, req.tenant_id]).catch(() => {});
       }
       res.json({ status: 'subscribed', source_id });

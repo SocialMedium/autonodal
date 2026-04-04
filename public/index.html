@@ -3301,7 +3301,7 @@ async function init() {
     var dn = document.getElementById('dropdownName'); if (dn) dn.textContent = user.name || user.email;
     var de = document.getElementById('dropdownEmail'); if (de) de.textContent = user.email || '';
     var dr = document.getElementById('dropdownRole'); if (dr) dr.textContent = user.role || '';
-    if (user.role === 'admin') {
+    if (user.role === 'admin' && user.tenant_id === '00000000-0000-0000-0000-000000000001') {
       var al = document.getElementById('adminLink'); if (al) al.style.display = 'block';
       var as = document.getElementById('adminSep'); if (as) as.style.display = 'block';
     }
