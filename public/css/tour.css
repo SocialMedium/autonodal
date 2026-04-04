@@ -1,0 +1,52 @@
+/* Tour overlay + spotlight */
+#tour-overlay { position:fixed; inset:0; z-index:9000; pointer-events:none; }
+#tour-spotlight { position:fixed; transition:all 0.25s cubic-bezier(0.4,0,0.2,1); }
+
+/* Tour tooltip card */
+#tour-tooltip { position:fixed; z-index:9001; width:320px; background:#111827; border:1px solid rgba(245,158,11,0.35); border-radius:12px; padding:20px; box-shadow:0 24px 64px rgba(0,0,0,0.6); font-family:'IBM Plex Sans','DM Sans',system-ui,sans-serif; animation:tour-in 0.2s ease; }
+@keyframes tour-in { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+#tour-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+#tour-step-label { font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:0.05em; }
+#tour-skip { background:none; border:none; color:#64748b; font-size:12px; cursor:pointer; padding:0; font-family:inherit; }
+#tour-skip:hover { color:#e2e8f0; }
+
+#tour-icon { font-size:24px; margin-bottom:8px; }
+#tour-title { font-size:16px; font-weight:600; color:#e2e8f0; margin:0 0 8px; line-height:1.3; }
+#tour-body { font-size:13px; color:#94a3b8; line-height:1.6; margin:0 0 16px; }
+#tour-body strong { color:#e2e8f0; }
+#tour-body code { background:rgba(245,158,11,0.12); color:#f59e0b; border-radius:3px; padding:1px 5px; font-size:12px; }
+
+#tour-footer { display:flex; justify-content:space-between; align-items:center; }
+#tour-dots { display:flex; gap:5px; }
+.tour-dot { width:6px; height:6px; border-radius:50%; background:#1e2d3d; transition:background 0.2s; }
+.tour-dot.active { background:#f59e0b; }
+
+#tour-actions { display:flex; gap:6px; }
+#tour-back, #tour-next { background:#1e2d3d; border:1px solid #2d3f51; border-radius:6px; color:#e2e8f0; cursor:pointer; font-family:inherit; font-size:13px; padding:7px 14px; transition:all 0.15s; }
+#tour-next:hover { background:#f59e0b; color:#0a0e1a; border-color:#f59e0b; }
+#tour-back:hover { background:#1e2d3d; }
+#tour-next.btn-got-it { background:#f59e0b; color:#0a0e1a; border-color:#f59e0b; }
+
+/* Hint system */
+.hint-icon { display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:50%; border:1px solid rgba(245,158,11,0.4); color:#f59e0b; font-size:10px; font-weight:600; cursor:help; flex-shrink:0; transition:all 0.15s; user-select:none; vertical-align:middle; margin-left:4px; }
+.hint-icon:hover { background:rgba(245,158,11,0.15); }
+.hint-icon.hint-dismissed { border-color:#2d3f51; color:#3d5166; }
+.hint-icon.hint-dismissed:hover { border-color:rgba(245,158,11,0.2); color:#5a7a94; }
+
+.hint-popup { background:#111827; border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:12px 14px; box-shadow:0 8px 32px rgba(0,0,0,0.5); font-family:'IBM Plex Sans','DM Sans',system-ui,sans-serif; animation:hint-in 0.15s ease; pointer-events:all; }
+@keyframes hint-in { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+.hint-popup-title { font-size:12px; font-weight:600; color:#e2e8f0; margin-bottom:6px; }
+.hint-popup-body { font-size:12px; color:#94a3b8; line-height:1.5; margin-bottom:10px; }
+.hint-popup-body strong { color:#e2e8f0; }
+.hint-popup-footer { display:flex; justify-content:flex-end; }
+.hint-got-it { background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:4px; color:#f59e0b; cursor:pointer; font-family:inherit; font-size:11px; padding:3px 10px; }
+.hint-got-it:hover { background:rgba(245,158,11,0.2); }
+
+/* Empty states */
+.empty-state { text-align:center; padding:40px 24px; border:1px dashed var(--rule, #E0DDD8); border-radius:12px; margin:16px 0; }
+.empty-icon { font-size:28px; display:block; margin-bottom:12px; }
+.empty-title { font-size:15px; font-weight:600; color:var(--ink, #1A1A1A); margin-bottom:8px; }
+.empty-body { font-size:13px; color:var(--ink-4, #AAAAAA); margin-bottom:16px; line-height:1.5; }
+.empty-action { display:inline-block; background:var(--emerald-soft, #E8F5EE); border:1px solid var(--emerald, #0D7A50); border-radius:6px; color:var(--emerald, #0D7A50); cursor:pointer; font-family:inherit; font-size:13px; padding:7px 16px; text-decoration:none; }
+.empty-action:hover { background:var(--emerald, #0D7A50); color:white; }
