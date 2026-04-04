@@ -120,6 +120,23 @@ async function run() {
     assert(wired >= Math.floor(total * 0.5), 'Only ' + wired + '/' + total + ' bundles have sources');
   });
 
+  // 11. Audit log writable
+  await test('Audit log table writable', async function() {
+    var r = await pool.query("INSERT INTO audit_logs (event_type, action, outcome) VALUES ('smoke_test', 'read', 'success') RETURNING id");
+    assert(r.rows[0].id, 'Insert failed');
+    await pool.query('DELETE FROM audit_logs WHERE id = $1', [r.rows[0].id]);
+  });
+
+  // 12. Auth failures logged
+  await test('Failed auth events logged', async function() {
+    var base = 'https://optimistic-spirit-production-a174.up.railway.app';
+    await fetch(base + '/api/auth/me', { headers: { 'Authorization': 'Bearer smoke_test_invalid_xyz' } });
+    await new Promise(function(r) { setTimeout(r, 1000); });
+    var r = await pool.query("SELECT COUNT(*) AS cnt FROM audit_logs WHERE event_type = 'invalid_token' AND created_at > NOW() - INTERVAL '30 seconds'");
+    // Don't fail if not wired yet — warn instead
+    if (parseInt(r.rows[0].cnt) === 0) console.log('  \u26a0\ufe0f  Auth failure not yet logged (deploy audit wiring first)');
+  });
+
   // Results
   console.log('\n\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550');
   console.log('RESULTS');

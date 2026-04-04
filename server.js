@@ -144,7 +144,11 @@ async function authenticateToken(req, res, next) {
       [token]
     );
 
-    if (rows.length === 0) return res.status(401).json({ error: 'Invalid or expired token' });
+    if (rows.length === 0) {
+      // Log invalid token attempt (fire-and-forget)
+      try { const { audit } = require('./lib/auditLogger'); audit.invalidToken(req); } catch(e) {}
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
 
     req.user = rows[0];
     // Ensure tenant_id is always available (fallback to ML tenant)
@@ -315,6 +319,9 @@ app.get('/api/auth/google/callback', async (req, res) => {
        VALUES (gen_random_uuid(), $1, $2, NOW() + INTERVAL '30 days', NOW())`,
       [user.id, sessionToken]
     );
+
+    // Audit: login success
+    try { const { audit: _audit } = require('./lib/auditLogger'); _audit.loginSuccess(req, user.id, user.email); } catch(e) {}
 
     // Clean up expired sessions
     await platformPool.query('DELETE FROM sessions WHERE expires_at < NOW()');
@@ -11803,6 +11810,55 @@ app.get('/api/insights', authenticateToken, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUDIT LOG API
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/audit/my', authenticateToken, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const { rows } = await pool.query(`
+      SELECT event_type, resource_type, resource_id, action, outcome, ip_address, created_at,
+        CASE WHEN event_type IN ('signal_triaged') THEN jsonb_build_object('triage_action', metadata->>'triage_action')
+             WHEN event_type IN ('bundle_subscribed') THEN jsonb_build_object('bundle_slug', metadata->>'bundle_slug')
+             ELSE '{}'::jsonb END AS safe_metadata
+      FROM audit_logs WHERE tenant_id = $1 AND user_id = $2
+      ORDER BY created_at DESC LIMIT $3
+    `, [req.tenant_id, req.user.user_id, limit]);
+    res.json({ events: rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/audit/tenant', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT al.event_type, al.resource_type, al.action, al.outcome,
+             al.ip_address, al.created_at, al.user_email
+      FROM audit_logs al WHERE al.tenant_id = $1
+      ORDER BY al.created_at DESC LIMIT 500
+    `, [req.tenant_id]);
+    res.json({ events: rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/audit/security-summary', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows: summary } = await pool.query(`
+      SELECT event_type, outcome, COUNT(*) AS count, COUNT(DISTINCT ip_address) AS unique_ips, MAX(created_at) AS last_seen
+      FROM audit_logs WHERE created_at > NOW() - INTERVAL '24 hours' AND outcome IN ('blocked','failed')
+      AND ($1::uuid IS NULL OR tenant_id = $1)
+      GROUP BY event_type, outcome ORDER BY count DESC
+    `, [req.tenant_id === process.env.ML_TENANT_ID ? null : req.tenant_id]);
+    const { rows: recent } = await pool.query(`
+      SELECT event_type, ip_address, user_email, created_at, failure_reason
+      FROM audit_logs WHERE created_at > NOW() - INTERVAL '24 hours' AND outcome IN ('blocked','failed')
+      AND ($1::uuid IS NULL OR tenant_id = $1)
+      ORDER BY created_at DESC LIMIT 20
+    `, [req.tenant_id === process.env.ML_TENANT_ID ? null : req.tenant_id]);
+    res.json({ summary: summary, recent_failures: recent });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // FEED CATALOG & BUNDLES (Platform-level curation + tenant subscriptions)
 // ═══════════════════════════════════════════════════════════════════════════════
 
