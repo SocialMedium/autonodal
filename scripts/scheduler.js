@@ -1666,6 +1666,16 @@ const PIPELINES = {
     schedule: '30 6 * * *',
     description: 'Daily crossover intelligence — network vs focus gap analysis per user'
   },
+  company_relationships: {
+    name: 'Company Relationships',
+    icon: '🏢',
+    fn: async () => {
+      const { compute } = require('./compute_company_relationships');
+      return compute();
+    },
+    schedule: '0 3 * * *',
+    description: 'Score company-level relationship quality from interaction data'
+  },
   daily_digest_email: {
     name: 'Daily Digest Email',
     icon: '📧',

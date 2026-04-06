@@ -11884,6 +11884,50 @@ app.get('/api/audit/security-summary', authenticateToken, requireAdmin, async (r
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPANY RELATIONSHIPS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/companies/:id/relationship', authenticateToken, async (req, res) => {
+  try {
+    const { rows: [rel] } = await pool.query(`
+      SELECT cr.*, c.name AS company_name, c.domain
+      FROM company_relationships cr JOIN companies c ON c.id = cr.company_id
+      WHERE cr.company_id = $1 AND cr.tenant_id = $2
+    `, [req.params.id, req.tenant_id]);
+    if (!rel) return res.status(404).json({ error: 'No relationship data' });
+    res.json(rel);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/companies/relationships/summary', authenticateToken, async (req, res) => {
+  try {
+    const { tier, min_score, limit = 50, offset = 0 } = req.query;
+    let where = 'cr.tenant_id = $1'; const params = [req.tenant_id]; let idx = 2;
+    if (tier) { where += ` AND cr.relationship_tier = $${idx++}`; params.push(tier); }
+    if (min_score) { where += ` AND cr.relationship_score >= $${idx++}`; params.push(parseFloat(min_score)); }
+    params.push(Math.min(parseInt(limit) || 50, 200)); params.push(parseInt(offset) || 0);
+    const { rows } = await pool.query(`
+      SELECT cr.company_id, c.name AS company_name, c.domain, c.sector, c.geography,
+             cr.relationship_tier, cr.relationship_score, cr.active_contact_count,
+             cr.total_contact_count, cr.team_member_count,
+             cr.last_interaction_at, cr.last_interaction_type, cr.is_stale, cr.computed_at
+      FROM company_relationships cr JOIN companies c ON c.id = cr.company_id
+      WHERE ${where} ORDER BY cr.relationship_score DESC LIMIT $${idx} OFFSET $${idx + 1}
+    `, params);
+    const { rows: [cnt] } = await pool.query('SELECT COUNT(*) AS cnt FROM company_relationships cr WHERE ' + where, params.slice(0, idx - 1));
+    res.json({ companies: rows, total: parseInt(cnt.cnt) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/compute-company-relationships', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { compute } = require('./scripts/compute_company_relationships');
+    res.json({ message: 'Company relationship scoring triggered' });
+    compute().catch(function(e) { console.error('Company rel compute error:', e.message); });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // FEED CATALOG & BUNDLES (Platform-level curation + tenant subscriptions)
 // ═══════════════════════════════════════════════════════════════════════════════
 
