@@ -27,6 +27,30 @@ const TENANT_ID = (() => {
 // SCORING FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Signal type weights
+var SIGNAL_WEIGHTS = {
+  capital_raising: 1.0, ma_activity: 0.95, geographic_expansion: 0.85,
+  strategic_hiring: 0.80, leadership_change: 0.75, product_launch: 0.65,
+  restructuring: 0.70, layoffs: 0.60, partnership: 0.55,
+};
+
+function signalRecencyMultiplier(days) {
+  if (days <= 7) return 1.0;
+  if (days <= 14) return 0.9;
+  if (days <= 30) return 0.75;
+  if (days <= 60) return 0.5;
+  if (days <= 90) return 0.25;
+  return 0.1;
+}
+
+function getElevationTier(relScore, sigScore) {
+  if (relScore >= 0.45 && sigScore >= 0.6) return 'critical';
+  if (relScore >= 0.20 && sigScore >= 0.3) return 'active';
+  if (relScore >= 0.01 && sigScore >= 0.1) return 'monitor';
+  if (relScore < 0.20 && sigScore >= 0.3) return 'gap';
+  return 'quiet';
+}
+
 function currencyScore(daysSince) {
   if (daysSince === null || daysSince === undefined) return 0;
   if (daysSince <= 14) return 1.0;
@@ -118,13 +142,30 @@ async function compute() {
     `, [co.id, TENANT_ID]);
 
     if (interactions.length === 0) {
-      // No real interactions — score as none
+      // No real interactions — but may have signals
+      var { rows: noIxSignals } = await pool.query(`
+        SELECT signal_type, detected_at, EXTRACT(EPOCH FROM (NOW() - detected_at))/86400 AS days_ago
+        FROM signal_events WHERE company_id = $1 AND detected_at > NOW() - INTERVAL '90 days'
+          AND (tenant_id IS NULL OR tenant_id = $2)
+        ORDER BY detected_at DESC
+      `, [co.id, TENANT_ID]);
+      var noIxSigScores = noIxSignals.map(function(s) { return { type: s.signal_type, score: (SIGNAL_WEIGHTS[s.signal_type]||0.3) * signalRecencyMultiplier(s.days_ago), at: s.detected_at }; }).sort(function(a,b) { return b.score - a.score; });
+      var noIxSigScore = Math.min(1.0, noIxSigScores.slice(0,3).reduce(function(s,x){return s+x.score},0));
+      var noIxSig30 = noIxSignals.filter(function(s){return s.days_ago<=30});
+      var noIxElevTier = noIxSigScore >= 0.3 ? 'gap' : 'quiet';
+
       await upsert(co.id, {
         tier: 'none', score: 0,
         activeContacts: 0, totalContacts: parseInt(co.people_count),
         teamMembers: 0, lastAt: null, lastType: null,
         inboundRatio: null, isStale: true, staleReason: 'no_interactions',
-        factors: { currency: 0, depth: 0, coverage: 0, reciprocity: 0, total_interactions_12m: 0 },
+        signalScore: noIxSigScore, signalCount30d: noIxSig30.length,
+        signalTypesActive: [...new Set(noIxSig30.map(function(s){return s.signal_type}))],
+        highestSignalType: noIxSigScores[0]?.type || null,
+        highestSignalAt: noIxSigScores[0]?.at || null,
+        elevatedScore: Math.round(noIxSigScore * 0.4 * 1000) / 1000,
+        elevationTier: noIxElevTier,
+        factors: { currency: 0, depth: 0, coverage: 0, reciprocity: 0, signal_score: noIxSigScore, total_interactions_12m: 0 },
       });
       stats.none++;
       stats.total++;
@@ -184,6 +225,30 @@ async function compute() {
     var isStale = daysSince > 365;
     var staleReason = isStale ? 'no_recent_contact' : null;
 
+    // Signal scoring — company-level market activity
+    var { rows: signals } = await pool.query(`
+      SELECT signal_type, detected_at,
+        EXTRACT(EPOCH FROM (NOW() - detected_at)) / 86400 AS days_ago
+      FROM signal_events
+      WHERE company_id = $1 AND detected_at > NOW() - INTERVAL '90 days'
+        AND (tenant_id IS NULL OR tenant_id = $2)
+      ORDER BY detected_at DESC
+    `, [co.id, TENANT_ID]);
+
+    var signalScores = signals.map(function(s) {
+      var w = SIGNAL_WEIGHTS[s.signal_type] || 0.3;
+      return { type: s.signal_type, score: w * signalRecencyMultiplier(s.days_ago), at: s.detected_at };
+    }).sort(function(a, b) { return b.score - a.score; });
+
+    var signalScore = Math.min(1.0, signalScores.slice(0, 3).reduce(function(s, x) { return s + x.score; }, 0));
+    var signals30d = signals.filter(function(s) { return s.days_ago <= 30; });
+    var signalTypes30d = [...new Set(signals30d.map(function(s) { return s.signal_type; }))];
+    var highestSignal = signalScores[0] || null;
+
+    // Elevated score
+    var elevatedScore = Math.round((score * 0.6 + signalScore * 0.4) * 1000) / 1000;
+    var elevationTier = getElevationTier(score, signalScore);
+
     await upsert(co.id, {
       tier: tier, score: score,
       activeContacts: activeContacts, totalContacts: totalContacts,
@@ -192,11 +257,17 @@ async function compute() {
       lastType: interactions[0].interaction_type,
       inboundRatio: inboundRatio,
       isStale: isStale, staleReason: staleReason,
+      signalScore: signalScore, signalCount30d: signals30d.length,
+      signalTypesActive: signalTypes30d,
+      highestSignalType: highestSignal?.type || null,
+      highestSignalAt: highestSignal?.at || null,
+      elevatedScore: elevatedScore, elevationTier: elevationTier,
       factors: {
         currency: currency, currency_days_since: Math.round(daysSince),
         depth: depth, depth_best_type: bestType,
         coverage: coverage, coverage_active_contacts: activeContacts, coverage_team_members: teamMembers,
         reciprocity: reciprocity, reciprocity_inbound_ratio: inboundRatio,
+        signal_score: signalScore, signal_count_90d: signals.length,
         total_interactions_90d: recent90.length,
         total_interactions_12m: recent12m.length,
       },
@@ -233,8 +304,11 @@ async function upsert(companyId, data) {
       tenant_id, company_id, relationship_tier, relationship_score,
       active_contact_count, total_contact_count, team_member_count,
       last_interaction_at, last_interaction_type, inbound_ratio,
-      is_stale, stale_reason, stale_since, score_factors, computed_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+      is_stale, stale_reason, stale_since, score_factors,
+      signal_score, signal_count_30d, signal_types_active,
+      highest_signal_type, highest_signal_at,
+      elevated_score, elevation_tier, computed_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,NOW())
     ON CONFLICT (tenant_id, company_id) DO UPDATE SET
       relationship_tier = EXCLUDED.relationship_tier,
       relationship_score = EXCLUDED.relationship_score,
@@ -248,6 +322,13 @@ async function upsert(companyId, data) {
       stale_reason = EXCLUDED.stale_reason,
       stale_since = CASE WHEN EXCLUDED.is_stale AND NOT company_relationships.is_stale THEN NOW() ELSE company_relationships.stale_since END,
       score_factors = EXCLUDED.score_factors,
+      signal_score = EXCLUDED.signal_score,
+      signal_count_30d = EXCLUDED.signal_count_30d,
+      signal_types_active = EXCLUDED.signal_types_active,
+      highest_signal_type = EXCLUDED.highest_signal_type,
+      highest_signal_at = EXCLUDED.highest_signal_at,
+      elevated_score = EXCLUDED.elevated_score,
+      elevation_tier = EXCLUDED.elevation_tier,
       computed_at = NOW(),
       updated_at = NOW()
   `, [
@@ -257,6 +338,10 @@ async function upsert(companyId, data) {
     data.isStale, data.staleReason,
     data.isStale ? new Date() : null,
     JSON.stringify(data.factors),
+    data.signalScore || 0, data.signalCount30d || 0,
+    data.signalTypesActive || [],
+    data.highestSignalType || null, data.highestSignalAt || null,
+    data.elevatedScore || 0, data.elevationTier || 'quiet',
   ]);
 }
 

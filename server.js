@@ -11948,6 +11948,47 @@ app.get('/api/companies/relationships/stale', authenticateToken, async (req, res
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.get('/api/companies/relationships/elevated', authenticateToken, async (req, res) => {
+  try {
+    const { tier, min_elevated_score = 0.3, exclude_stale = 'true', include_gaps, limit = 25, offset = 0 } = req.query;
+    let where = 'cr.tenant_id = $1'; const params = [req.tenant_id]; let idx = 2;
+    if (tier) { where += ` AND cr.elevation_tier = $${idx++}`; params.push(tier); }
+    where += ` AND cr.elevated_score >= $${idx++}`; params.push(parseFloat(min_elevated_score));
+    if (exclude_stale === 'true') where += ' AND cr.is_stale = false';
+    if (include_gaps !== 'true') where += ` AND cr.elevation_tier != 'gap'`;
+    params.push(Math.min(parseInt(limit) || 25, 100)); params.push(parseInt(offset) || 0);
+    const { rows } = await pool.query(`
+      SELECT cr.company_id, c.name AS company_name, c.domain, cr.relationship_tier, cr.relationship_score,
+             cr.signal_score, cr.elevated_score, cr.elevation_tier, cr.signal_count_30d,
+             cr.signal_types_active, cr.highest_signal_type, cr.highest_signal_at,
+             cr.active_contact_count, cr.last_interaction_at, cr.is_stale
+      FROM company_relationships cr JOIN companies c ON c.id = cr.company_id
+      WHERE ${where} ORDER BY cr.elevated_score DESC LIMIT $${idx} OFFSET $${idx + 1}
+    `, params);
+    const { rows: summary } = await pool.query(`
+      SELECT elevation_tier, COUNT(*) AS cnt FROM company_relationships
+      WHERE tenant_id = $1 AND elevation_tier IS NOT NULL GROUP BY elevation_tier
+    `, [req.tenant_id]);
+    const sumObj = {}; summary.forEach(function(s) { sumObj[s.elevation_tier] = parseInt(s.cnt); });
+    res.json({ companies: rows, total: rows.length, summary: sumObj });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/companies/relationships/gaps', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT cr.company_id, c.name AS company_name, c.domain, c.sector,
+             cr.signal_score, cr.signal_types_active, cr.relationship_tier, cr.relationship_score,
+             cr.active_contact_count, cr.signal_count_30d,
+             CASE WHEN cr.signal_score >= 0.6 THEN 'high' WHEN cr.signal_score >= 0.3 THEN 'medium' ELSE 'low' END AS gap_severity
+      FROM company_relationships cr JOIN companies c ON c.id = cr.company_id
+      WHERE cr.tenant_id = $1 AND cr.elevation_tier = 'gap'
+      ORDER BY cr.signal_score DESC LIMIT 50
+    `, [req.tenant_id]);
+    res.json({ gaps: rows, total: rows.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/admin/compute-company-relationships', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { compute } = require('./scripts/compute_company_relationships');
