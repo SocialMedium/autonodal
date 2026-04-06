@@ -384,10 +384,16 @@ async function pollAndProcess(snapshotId, mapping = null) {
           updateParams.push(profile.about);
         }
 
-        // Derive seniority from best available title
-        const titleSrc = careerHistory.length
-          ? (careerHistory.find(r => r.current) || careerHistory[0])?.title
-          : (profile.position || null);
+        // Derive seniority from best available title — check career, then BD profile, then existing DB title
+        let titleSrc = null;
+        if (careerHistory.length) titleSrc = (careerHistory.find(r => r.current) || careerHistory[0])?.title;
+        if (!titleSrc && profile.position) titleSrc = profile.position;
+        if (!titleSrc && currentCo?.title) titleSrc = currentCo.title;
+        // Fallback: look up existing title from DB for this person
+        if (!titleSrc) {
+          const existing = await pool.query('SELECT current_title FROM people WHERE id = $1', [personId]);
+          if (existing.rows[0]?.current_title) titleSrc = existing.rows[0].current_title;
+        }
         if (titleSrc) {
           const t = titleSrc.toLowerCase();
           let sen = null;
