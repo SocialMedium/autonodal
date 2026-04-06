@@ -66,11 +66,13 @@
 
   // Bind to all [data-hint] elements — use event delegation for dynamic content
   document.addEventListener('mouseenter', function(e) {
+    if (!e.target || !e.target.closest) return;
     var el = e.target.closest('[data-hint]');
     if (el) showHint(el);
   }, true);
 
   document.addEventListener('mouseleave', function(e) {
+    if (!e.target || !e.target.closest) return;
     var el = e.target.closest('[data-hint]');
     if (el) scheduleHide();
   }, true);
