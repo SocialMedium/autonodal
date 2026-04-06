@@ -362,27 +362,25 @@ async function pollAndProcess(snapshotId, mapping = null) {
             updateParams.push(currentRole.title);
           }
         }
-        // Update name fields if missing
+        // Always overwrite with LinkedIn data — it's the freshest source
         if (profile.first_name) {
-          idx++; updates.push(`first_name = COALESCE(first_name, $${idx})`);
+          idx++; updates.push(`first_name = $${idx}`);
           updateParams.push(profile.first_name);
         }
         if (profile.last_name) {
-          idx++; updates.push(`last_name = COALESCE(last_name, $${idx})`);
+          idx++; updates.push(`last_name = $${idx}`);
           updateParams.push(profile.last_name);
         }
-        // Update location/city — always take LinkedIn's as it's more current
         if (profile.city) {
           idx++; updates.push(`location = $${idx}`);
           updateParams.push(profile.city);
         }
         if (profile.country_code) {
-          idx++; updates.push(`country = COALESCE(country, $${idx})`);
+          idx++; updates.push(`country = $${idx}`);
           updateParams.push(profile.country_code);
         }
-        // Update about/bio if we got it and existing is empty
         if (profile.about && profile.about.length > 10) {
-          idx++; updates.push(`bio = COALESCE(NULLIF(bio, ''), $${idx})`);
+          idx++; updates.push(`bio = $${idx}`);
           updateParams.push(profile.about);
         }
 
@@ -398,7 +396,7 @@ async function pollAndProcess(snapshotId, mapping = null) {
           else if (/\b(director|head of|general manager)\b/.test(t)) sen = 'director';
           else if (/\b(senior|lead|principal|staff)\b/.test(t)) sen = 'senior';
           else if (/\b(manager|supervisor)\b/.test(t)) sen = 'manager';
-          if (sen) { idx++; updates.push(`seniority_level = COALESCE(seniority_level, $${idx})`); updateParams.push(sen); }
+          if (sen) { idx++; updates.push(`seniority_level = $${idx}`); updateParams.push(sen); }
         }
 
         // Extract industry from profile
