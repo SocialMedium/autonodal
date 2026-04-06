@@ -11920,6 +11920,34 @@ app.get('/api/companies/relationships/summary', authenticateToken, async (req, r
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.get('/api/companies/:id/relationship/history', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT cre.event_type, cre.previous_tier, cre.new_tier, cre.previous_score, cre.new_score,
+             cre.stale_reason, cre.detected_at, cre.metadata
+      FROM company_relationship_events cre
+      WHERE cre.company_id = $1 AND cre.tenant_id = $2
+      ORDER BY cre.detected_at DESC LIMIT 20
+    `, [req.params.id, req.tenant_id]);
+    const { rows: [co] } = await pool.query('SELECT name FROM companies WHERE id = $1', [req.params.id]);
+    res.json({ company_id: req.params.id, company_name: co?.name, events: rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/companies/relationships/stale', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT cr.company_id, c.name AS company_name, c.sector, c.geography,
+             cr.stale_reason, cr.stale_since, cr.last_interaction_at,
+             cr.total_contact_count, cr.relationship_tier, cr.relationship_score
+      FROM company_relationships cr JOIN companies c ON c.id = cr.company_id
+      WHERE cr.tenant_id = $1 AND cr.is_stale = true
+      ORDER BY cr.last_interaction_at DESC NULLS LAST
+    `, [req.tenant_id]);
+    res.json({ stale_companies: rows, total: rows.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/admin/compute-company-relationships', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { compute } = require('./scripts/compute_company_relationships');

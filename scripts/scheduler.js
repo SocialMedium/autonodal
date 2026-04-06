@@ -1676,6 +1676,16 @@ const PIPELINES = {
     schedule: '0 3 * * *',
     description: 'Score company-level relationship quality from interaction data'
   },
+  detect_rel_changes: {
+    name: 'Relationship Changes',
+    icon: '🔄',
+    fn: async () => {
+      const { detect } = require('./detect_relationship_changes');
+      return detect();
+    },
+    schedule: '0 */6 * * *',
+    description: 'Detect staleness and relationship tier changes every 6h'
+  },
   daily_digest_email: {
     name: 'Daily Digest Email',
     icon: '📧',
