@@ -259,6 +259,7 @@ if(p.phone)h+='<div class="ci">'+icon('phone')+' <span class="editable" onclick=
 h+='</div>';
 h+='<div class="pheader-actions">';
 h+='<button class="enrich-btn" id="enrichBtn" onclick="enrichPerson()">'+icon('refresh-cw')+' Refresh &amp; Enrich</button>';
+h+='<button class="enrich-btn" id="searchEnrichBtn" onclick="searchEnrichPerson()">'+icon('search')+' News Search</button>';
 const isPrivate = p.visibility === 'private';
 h+='<button class="enrich-btn'+(isPrivate?' done':'')+'" id="privacyBtn" onclick="togglePrivacy()">'+(isPrivate?icon('lock')+' Private':icon('globe')+' Visible to team')+'</button>';
 h+='</div>';
@@ -570,6 +571,39 @@ async function enrichPerson() {
     btn.className = 'enrich-btn';
     btn.textContent = ''+icon('x')+' ' + e.message;
     setTimeout(() => { btn.textContent = ''+icon('refresh-cw')+' Refresh & Enrich'; }, 3000);
+  }
+}
+
+async function searchEnrichPerson() {
+  const btn = document.getElementById('searchEnrichBtn');
+  if (!btn) return;
+  btn.className = 'enrich-btn loading';
+  btn.innerHTML = icon('clock') + ' Searching news\u2026';
+  try {
+    const id = new URLSearchParams(location.search).get('id');
+    const r = await fetch('/api/people/' + id + '/search-enrich', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('ml_token') },
+    });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    if (!data.enriched) {
+      btn.className = 'enrich-btn';
+      btn.innerHTML = icon('search') + ' ' + (data.reason || 'No results');
+      setTimeout(function() { btn.innerHTML = icon('search') + ' News Search'; }, 3000);
+      return;
+    }
+    btn.className = 'enrich-btn done';
+    var msgs = [];
+    if (data.articles_searched) msgs.push(data.articles_searched + ' articles found');
+    if (data.career_roles) msgs.push(data.career_roles + ' career roles');
+    if (data.signals_stored) msgs.push(data.signals_stored + ' signals');
+    btn.innerHTML = icon('check') + ' ' + msgs.join(' \u00B7 ');
+    setTimeout(function() { location.reload(); }, 2500);
+  } catch (e) {
+    btn.className = 'enrich-btn';
+    btn.innerHTML = icon('x') + ' ' + e.message;
+    setTimeout(function() { btn.innerHTML = icon('search') + ' News Search'; }, 3000);
   }
 }
 

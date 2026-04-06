@@ -3452,6 +3452,19 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── Google News Search Enrichment ───
+app.post('/api/people/:id/search-enrich', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { enrichPersonFromSearch } = require('./lib/search-enrichment');
+    const result = await enrichPersonFromSearch(db, req.params.id, req.tenant_id);
+    res.json(result);
+  } catch (err) {
+    console.error('Search enrich error:', err.message);
+    res.status(500).json({ error: 'Search enrichment failed: ' + err.message });
+  }
+});
+
 // ─── Reconcile Account → Company (create companies record for unlinked clients) ───
 app.post('/api/clients/:id/reconcile', authenticateToken, async (req, res) => {
   try {
