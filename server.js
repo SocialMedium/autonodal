@@ -3453,6 +3453,18 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 });
 
 // ─── Google News Search Enrichment ───
+app.post('/api/companies/:id/search-enrich', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { enrichCompanyFromSearch } = require('./lib/company-search-enrichment');
+    const result = await enrichCompanyFromSearch(db, req.params.id, req.tenant_id);
+    res.json(result);
+  } catch (err) {
+    console.error('Company search enrich error:', err.message);
+    res.status(500).json({ error: 'Search enrichment failed: ' + err.message });
+  }
+});
+
 app.post('/api/people/:id/search-enrich', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
