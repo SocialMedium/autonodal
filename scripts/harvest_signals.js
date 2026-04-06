@@ -281,12 +281,30 @@ async function storeSignals(document, analysis, source) {
           document.source_url
         ]);
       }
-      // If person doesn't exist, we could create them - but skip for now
+      // If person doesn't exist, career enrichment will create them below
     } catch (err) {
       // Ignore duplicate errors
     }
   }
-  
+
+  // Career enrichment — extract structured career data from people-relevant signals
+  const hasPeopleSignals = (analysis.signals || []).some(s =>
+    ['leadership_change', 'new_appointment', 'departure', 'promotion', 'board_appointment'].includes(s.type)
+  ) || (analysis.people_mentioned || []).length > 0;
+
+  if (hasPeopleSignals) {
+    try {
+      const { enrichCareersFromDocument } = require('../lib/career-enrichment');
+      const careerResult = await enrichCareersFromDocument(db, document.id, db.tenantId);
+      if (careerResult.enriched > 0 || careerResult.created > 0) {
+        console.log(`    📋 Career enrichment: ${careerResult.enriched} updated, ${careerResult.created} created`);
+      }
+    } catch (err) {
+      // Non-fatal — signal storage already succeeded
+      console.error(`    Career enrichment error:`, err.message);
+    }
+  }
+
   // Update document with analysis
   await db.query(`
     UPDATE external_documents 
