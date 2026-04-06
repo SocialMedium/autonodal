@@ -1687,10 +1687,10 @@ const PIPELINES = {
     description: 'Detect staleness and relationship tier changes every 6h'
   },
   daily_digest_email: {
-    name: 'Daily Digest Email',
+    name: 'Weekly Digest Email',
     icon: '📧',
     fn: pipelineDailyDigestEmail,
-    schedule: '45 6 * * *',
+    schedule: '45 6 * * 1',
     description: 'Email daily signal digest + insight to all active users'
   },
   waitlist_digest: {
