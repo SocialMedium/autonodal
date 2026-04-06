@@ -15,6 +15,7 @@
 //   node scripts/enrich_linkedin_brightdata.js --dry-run      # Preview only
 //   node scripts/enrich_linkedin_brightdata.js --resume=s_xxx # Resume from snapshot
 //   node scripts/enrich_linkedin_brightdata.js --source=linkedin_import  # Filter by source
+//   node scripts/enrich_linkedin_brightdata.js --all                   # Include people who already have career (refresh titles)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 require('dotenv').config();
@@ -31,7 +32,7 @@ const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const BD_API_KEY = process.env.BRIGHTDATA_API_KEY;
 const BD_DATASET_ID = 'gd_l1viktl72bvl7bjuj0'; // LinkedIn People Profile
 const BD_BASE = 'https://api.brightdata.com/datasets/v3';
-const BATCH_SIZE = 500; // Bright Data handles large batches well
+const BATCH_SIZE = 1000; // Bright Data handles large batches well
 const POLL_INTERVAL_MS = 15000; // 15s between status checks
 const CHECKPOINT_FILE = './brightdata_enrich_checkpoint.json';
 
@@ -83,7 +84,7 @@ async function run() {
     return;
   }
 
-  // 1. Find people with LinkedIn URLs but no career history
+  // 1. Find people with LinkedIn URLs (all — refresh titles/companies + backfill career)
   let sourceWhere = '';
   const params = [TENANT_ID];
   if (SOURCE_FILTER) {
@@ -91,15 +92,19 @@ async function run() {
     params.push(SOURCE_FILTER);
   }
 
+  const REFRESH_ALL = args.includes('--all');
+
   const { rows: candidates } = await pool.query(`
-    SELECT p.id, p.full_name, p.linkedin_url, p.source
+    SELECT p.id, p.full_name, p.linkedin_url, p.source,
+           (p.career_history IS NOT NULL AND p.career_history != 'null'::jsonb AND p.career_history != '[]'::jsonb) AS has_career
     FROM people p
     WHERE p.tenant_id = $1
       AND p.linkedin_url IS NOT NULL
       AND p.linkedin_url != ''
-      AND (p.career_history IS NULL OR p.career_history = 'null'::jsonb OR p.career_history = '[]'::jsonb)
+      ${!REFRESH_ALL ? "AND (p.career_history IS NULL OR p.career_history = 'null'::jsonb OR p.career_history = '[]'::jsonb)" : ''}
       ${sourceWhere}
     ORDER BY
+      CASE WHEN p.career_history IS NULL OR p.career_history = 'null'::jsonb OR p.career_history = '[]'::jsonb THEN 0 ELSE 1 END,
       CASE p.source
         WHEN 'linkedin_import' THEN 1
         WHEN 'linkedin_import_pending' THEN 2
@@ -233,10 +238,28 @@ async function pollAndProcess(snapshotId, mapping = null) {
 
   console.log('\n  Results ready. Downloading...');
 
-  // 4. Download results
+  // 4. Download results (may return 202 while preparing — retry)
   try {
-    const results = await bdFetch(`/snapshot/${snapshotId}?format=json`);
-    const profiles = Array.isArray(results) ? results : [results];
+    let profiles = [];
+    for (let dl = 0; dl < 10; dl++) {
+      const res = await fetch(`${BD_BASE}/snapshot/${snapshotId}?format=json`, {
+        headers: { 'Authorization': `Bearer ${BD_API_KEY}` },
+      });
+      if (res.status === 202) {
+        console.log('  Download preparing... retrying in 10s');
+        await sleep(10000);
+        continue;
+      }
+      if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+      const text = await res.text();
+      // Could be JSON array or NDJSON
+      if (text.startsWith('[')) {
+        profiles = JSON.parse(text);
+      } else {
+        profiles = text.trim().split('\n').filter(l => l.trim()).map(l => JSON.parse(l));
+      }
+      break;
+    }
     console.log(`  Downloaded ${profiles.length} profiles`);
 
     // 5. Process and update
@@ -324,15 +347,37 @@ async function pollAndProcess(snapshotId, mapping = null) {
           idx++; updates.push(`expertise_tags = $${idx}`);
           updateParams.push(skills);
         }
-        // Update location/city if we got it and person doesn't have one
+        // Always refresh current title + company from LinkedIn (most up-to-date source)
+        const currentCo = typeof profile.current_company === 'object' ? profile.current_company : null;
+        if (currentCo?.title) {
+          idx++; updates.push(`current_title = $${idx}`);
+          updateParams.push(currentCo.title);
+        }
+        if (currentCo?.name) {
+          idx++; updates.push(`current_company_name = $${idx}`);
+          updateParams.push(currentCo.name);
+        }
+        // Update name if we got a better one
+        if (profile.name && profile.first_name) {
+          idx++; updates.push(`first_name = COALESCE(first_name, $${idx})`);
+          updateParams.push(profile.first_name);
+          idx++; updates.push(`last_name = COALESCE(last_name, $${idx})`);
+          updateParams.push(profile.last_name || '');
+        }
+        // Update location/city if we got it
         if (profile.city) {
-          idx++; updates.push(`location = COALESCE(location, $${idx})`);
+          idx++; updates.push(`location = $${idx}`);
           updateParams.push(profile.city);
         }
         // Update about/bio if we got it
         if (profile.about && profile.about.length > 10) {
           idx++; updates.push(`bio = COALESCE(NULLIF(bio, ''), $${idx})`);
           updateParams.push(profile.about);
+        }
+        // Update headline
+        if (profile.position) {
+          idx++; updates.push(`headline = $${idx}`);
+          updateParams.push(profile.position);
         }
 
         // Derive seniority from title
