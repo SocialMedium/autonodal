@@ -102,6 +102,7 @@ async function run() {
       AND p.linkedin_url IS NOT NULL
       AND p.linkedin_url != ''
       ${!REFRESH_ALL ? "AND (p.career_history IS NULL OR p.career_history = 'null'::jsonb OR p.career_history = '[]'::jsonb)" : ''}
+      AND (p.enriched_at IS NULL OR p.enriched_at < NOW() - INTERVAL '1 day')
       ${sourceWhere}
     ORDER BY
       CASE WHEN p.career_history IS NULL OR p.career_history = 'null'::jsonb OR p.career_history = '[]'::jsonb THEN 0 ELSE 1 END,
@@ -347,43 +348,48 @@ async function pollAndProcess(snapshotId, mapping = null) {
           idx++; updates.push(`expertise_tags = $${idx}`);
           updateParams.push(skills);
         }
-        // Always refresh current title + company from LinkedIn (most up-to-date source)
+        // Refresh current company name from LinkedIn (COALESCE — don't overwrite good data with null)
         const currentCo = typeof profile.current_company === 'object' ? profile.current_company : null;
-        if (currentCo?.title) {
-          idx++; updates.push(`current_title = $${idx}`);
-          updateParams.push(currentCo.title);
-        }
         if (currentCo?.name) {
           idx++; updates.push(`current_company_name = $${idx}`);
           updateParams.push(currentCo.name);
         }
-        // Update name if we got a better one
-        if (profile.name && profile.first_name) {
+        // Title from career history current role (Bright Data doesn't have a top-level title field)
+        if (careerHistory.length) {
+          const currentRole = careerHistory.find(r => r.current) || careerHistory[0];
+          if (currentRole?.title) {
+            idx++; updates.push(`current_title = $${idx}`);
+            updateParams.push(currentRole.title);
+          }
+        }
+        // Update name fields if missing
+        if (profile.first_name) {
           idx++; updates.push(`first_name = COALESCE(first_name, $${idx})`);
           updateParams.push(profile.first_name);
-          idx++; updates.push(`last_name = COALESCE(last_name, $${idx})`);
-          updateParams.push(profile.last_name || '');
         }
-        // Update location/city if we got it
+        if (profile.last_name) {
+          idx++; updates.push(`last_name = COALESCE(last_name, $${idx})`);
+          updateParams.push(profile.last_name);
+        }
+        // Update location/city — always take LinkedIn's as it's more current
         if (profile.city) {
           idx++; updates.push(`location = $${idx}`);
           updateParams.push(profile.city);
         }
-        // Update about/bio if we got it
+        if (profile.country_code) {
+          idx++; updates.push(`country = COALESCE(country, $${idx})`);
+          updateParams.push(profile.country_code);
+        }
+        // Update about/bio if we got it and existing is empty
         if (profile.about && profile.about.length > 10) {
           idx++; updates.push(`bio = COALESCE(NULLIF(bio, ''), $${idx})`);
           updateParams.push(profile.about);
         }
-        // Update headline
-        if (profile.position) {
-          idx++; updates.push(`headline = $${idx}`);
-          updateParams.push(profile.position);
-        }
 
-        // Derive seniority from title
+        // Derive seniority from best available title
         const titleSrc = careerHistory.length
           ? (careerHistory.find(r => r.current) || careerHistory[0])?.title
-          : (typeof profile.current_company === 'object' ? profile.current_company?.title : null);
+          : (profile.position || null);
         if (titleSrc) {
           const t = titleSrc.toLowerCase();
           let sen = null;
