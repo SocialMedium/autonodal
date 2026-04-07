@@ -1857,6 +1857,28 @@ const PIPELINES = {
     description: 'Scan connected Google accounts for new/modified Drive documents, ingest as companion data'
   },
 
+  sync_contacts: {
+    name: 'Google Contacts Sync',
+    icon: '👥',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'sync_contacts_delta.js'), { timeout: 300000, stdio: 'inherit' });
+    },
+    schedule: '45 */6 * * *',  // Every 6 hours at :45
+    description: 'Delta sync Google Contacts → fill-blank enrichment on people records'
+  },
+
+  sync_calendar: {
+    name: 'Google Calendar Sync',
+    icon: '📅',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'sync_calendar.js'), { timeout: 300000, stdio: 'inherit' });
+    },
+    schedule: '20 */4 * * *',  // Every 4 hours at :20
+    description: 'Sync calendar events → meeting interactions + team_proximity + upcoming meeting signals'
+  },
+
   migrate_wip_schema: {
     name: 'WIP Schema Migration',
     icon: '🔧',

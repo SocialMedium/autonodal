@@ -524,8 +524,8 @@ const SIGNIN_SCOPES = 'openid email profile';
 const GMAIL_CONNECT_SCOPES = 'openid email profile https://www.googleapis.com/auth/gmail.readonly';
 const DRIVE_CONNECT_SCOPES = 'openid email profile https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents.readonly https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/presentations.readonly';
 
-// Legacy alias for backward compatibility with existing code that references this
-const GOOGLE_CONNECT_SCOPES = GMAIL_CONNECT_SCOPES;
+// Full Google connect: Gmail + Contacts + Calendar (read-only across the board)
+const GOOGLE_CONNECT_SCOPES = 'openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/calendar.readonly';
 
 app.get('/api/auth/gmail/connect', async (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' });
@@ -616,7 +616,7 @@ app.get('/api/auth/gmail/callback', async (req, res) => {
       GOOGLE_CONNECT_SCOPES.split(' ')
     ]);
 
-    console.log(`✅ Google connected (Gmail + Drive): ${userInfo.email} for user ${stateData.userId}`);
+    console.log(`✅ Google connected (Gmail + Contacts + Calendar): ${userInfo.email} for user ${stateData.userId}`);
 
     // Trigger async Drive ingestion in background
     setImmediate(async () => {
@@ -9914,8 +9914,8 @@ app.get('/api/profile/stats', authenticateToken, async (req, res) => {
     const tid = req.tenant_id;
     const { rows: [s] } = await db.query(`
       SELECT
-        (SELECT COUNT(*) FROM team_proximity WHERE team_member_id = $1 AND tenant_id = $2) AS connections,
-        (SELECT COUNT(*) FROM interactions WHERE (user_id = $1 OR created_by = $1) AND tenant_id = $2) AS interactions,
+        (SELECT COUNT(*) FROM team_proximity WHERE team_member_id = $1) AS connections,
+        (SELECT COUNT(*) FROM interactions WHERE user_id = $1 OR created_by = $1) AS interactions,
         (SELECT COUNT(*) FROM signal_dispatches WHERE claimed_by = $1 AND tenant_id = $2) AS dispatches,
         (SELECT COUNT(*) FROM feed_proposals WHERE proposed_by = $1) AS feeds
     `, [uid, tid]);
