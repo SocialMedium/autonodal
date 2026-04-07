@@ -2244,7 +2244,7 @@ async function loadDashboardEvents() {
     document.getElementById('eventsCount').textContent = data.total + ' upcoming';
 
     if (!events.length) {
-      container.innerHTML = '<div style="padding:16px;color:var(--ink-4);font-size:12px;text-align:center">No upcoming events. <a href="/signals.html?tab=events" style="color:var(--blue)">Browse all →</a></div>';
+      container.innerHTML = '<div style="padding:16px;color:var(--ink-4);font-size:12px;text-align:center">No upcoming events. <a href="https://www.eventmedium.ai/events.html" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">Browse all on EventMedium →</a></div>';
       return;
     }
 
