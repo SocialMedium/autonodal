@@ -3755,7 +3755,14 @@ app.post('/api/companies/:id/enrich', authenticateToken, async (req, res) => {
     // 5. Google News search — fetch recent news + instant signal detection
     try {
       const searchName = company.name.replace(/\s+(Pty|Ltd|Limited|Inc|Corp|plc|AG|S\.A\.|Group|Holdings)\b/gi, '').trim();
-      const newsUrl = `https://news.google.com/rss/search?q=${encodeURIComponent('"' + searchName + '"')}&hl=en&gl=AU&ceid=AU:en`;
+      // Add sector/geography context for short or ambiguous company names
+      // SCIENCE: Reduces false positive rate for names like PAM, EY, AWS
+      const sectorCtx = company.sector ? ' ' + company.sector : '';
+      const geoCtx = company.geography ? ' ' + company.geography.split('&')[0].trim() : '';
+      const qualifiedName = searchName.length <= 4
+        ? searchName + sectorCtx + geoCtx  // Short names need context
+        : '"' + searchName + '"' + (sectorCtx ? ' ' + sectorCtx : '');
+      const newsUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(qualifiedName)}&hl=en&gl=AU&ceid=AU:en`;
       const newsXml = await new Promise((resolve, reject) => {
         const client = newsUrl.startsWith('https') ? https : require('http');
         const nReq = client.get(newsUrl, { timeout: 10000, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MLX-Intelligence/1.0)' } }, (res) => {
