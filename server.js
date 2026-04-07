@@ -10707,18 +10707,140 @@ app.get('/api/profile/messaging-status', authenticateToken, async (req, res) => 
       `SELECT telegram_chat_id, whatsapp_phone, whatsapp_verified FROM users WHERE id = $1`, [req.user.user_id]
     );
     const u = rows[0] || {};
+
+    // Check for MTProto session
+    const { rows: tgRows } = await db.query(
+      `SELECT phone, sync_enabled, last_sync_at FROM user_telegram_accounts WHERE user_id = $1 LIMIT 1`, [req.user.user_id]
+    ).catch(() => ({ rows: [] }));
+    const tgAccount = tgRows[0];
+
     res.json({
-      telegram: { connected: !!u.telegram_chat_id },
+      telegram: {
+        connected: !!(u.telegram_chat_id || tgAccount),
+        mode: tgAccount ? 'mtproto' : u.telegram_chat_id ? 'bot' : null,
+        phone: tgAccount?.phone || null,
+        sync_enabled: tgAccount?.sync_enabled || false,
+        last_sync: tgAccount?.last_sync_at || null,
+      },
       whatsapp: { connected: !!u.whatsapp_verified, phone: u.whatsapp_phone || null },
     });
   } catch (err) { res.json({ telegram: { connected: false }, whatsapp: { connected: false } }); }
 });
 
-// Telegram — generate bot link with user token
+// Telegram MTProto — Step 1: Send code
+app.post('/api/profile/telegram/send-code', authenticateToken, async (req, res) => {
+  const phone = (req.body.phone || '').replace(/[\s\-()]/g, '');
+  if (!phone || phone.length < 8) return res.status(400).json({ error: 'Valid phone number with country code required' });
+  if (!process.env.TELEGRAM_API_ID || !process.env.TELEGRAM_API_HASH) {
+    return res.status(500).json({ error: 'Telegram API credentials not configured (TELEGRAM_API_ID + TELEGRAM_API_HASH)' });
+  }
+
+  try {
+    const { TelegramClient } = require('telegram');
+    const { StringSession } = require('telegram/sessions');
+    const client = new TelegramClient(
+      new StringSession(''),
+      parseInt(process.env.TELEGRAM_API_ID),
+      process.env.TELEGRAM_API_HASH,
+      { connectionRetries: 3 }
+    );
+    await client.connect();
+
+    const result = await client.sendCode(
+      { apiId: parseInt(process.env.TELEGRAM_API_ID), apiHash: process.env.TELEGRAM_API_HASH },
+      phone
+    );
+
+    // Store pending auth state (temporary, expires in 10 min)
+    const pendingKey = `tg_auth_${req.user.user_id}`;
+    global._tgPendingAuth = global._tgPendingAuth || {};
+    global._tgPendingAuth[pendingKey] = {
+      client,
+      phone,
+      phoneCodeHash: result.phoneCodeHash,
+      expiresAt: Date.now() + 600000,
+    };
+
+    res.json({ ok: true, phone });
+  } catch (err) {
+    console.error('Telegram send-code error:', err.message);
+    res.status(400).json({ error: err.message.includes('PHONE_NUMBER_INVALID') ? 'Invalid phone number — include country code (e.g. +61...)' : err.message });
+  }
+});
+
+// Telegram MTProto — Step 2: Verify code
+app.post('/api/profile/telegram/verify-code', authenticateToken, async (req, res) => {
+  const code = (req.body.code || '').trim();
+  const password = req.body.password || null; // 2FA password if needed
+  if (!code) return res.status(400).json({ error: 'Enter the code from Telegram' });
+
+  const pendingKey = `tg_auth_${req.user.user_id}`;
+  const pending = (global._tgPendingAuth || {})[pendingKey];
+  if (!pending || pending.expiresAt < Date.now()) {
+    return res.status(400).json({ error: 'Session expired — request a new code' });
+  }
+
+  try {
+    const client = pending.client;
+
+    try {
+      await client.invoke(
+        new (require('telegram/tl').Api.auth.SignIn)({
+          phoneNumber: pending.phone,
+          phoneCodeHash: pending.phoneCodeHash,
+          phoneCode: code,
+        })
+      );
+    } catch (err) {
+      if (err.errorMessage === 'SESSION_PASSWORD_NEEDED') {
+        if (!password) {
+          return res.json({ needs_2fa: true, message: 'Two-factor authentication enabled — enter your Telegram password' });
+        }
+        const { computeCheck } = require('telegram/Password');
+        const srpResult = await client.invoke(new (require('telegram/tl').Api.account.GetPassword)());
+        const srpCheck = await computeCheck(srpResult, password);
+        await client.invoke(new (require('telegram/tl').Api.auth.CheckPassword)({ password: srpCheck }));
+      } else {
+        throw err;
+      }
+    }
+
+    // Success — save session string
+    const sessionString = client.session.save();
+
+    // Get Telegram user info
+    const me = await client.getMe();
+
+    await platformPool.query(`
+      INSERT INTO user_telegram_accounts (user_id, phone, telegram_user_id, session_string, sync_enabled, first_name, username, created_at)
+      VALUES ($1, $2, $3, $4, true, $5, $6, NOW())
+      ON CONFLICT (user_id) DO UPDATE SET
+        phone = EXCLUDED.phone, telegram_user_id = EXCLUDED.telegram_user_id,
+        session_string = EXCLUDED.session_string, sync_enabled = true,
+        first_name = EXCLUDED.first_name, username = EXCLUDED.username, updated_at = NOW()
+    `, [req.user.user_id, pending.phone, String(me.id), sessionString, me.firstName || '', me.username || '']);
+
+    // Also store chat_id for bot notifications
+    await platformPool.query(
+      `UPDATE users SET telegram_chat_id = $1 WHERE id = $2`,
+      [String(me.id), req.user.user_id]
+    );
+
+    // Cleanup
+    await client.disconnect();
+    delete global._tgPendingAuth[pendingKey];
+
+    res.json({ ok: true, username: me.username, first_name: me.firstName });
+  } catch (err) {
+    console.error('Telegram verify error:', err.message);
+    res.status(400).json({ error: err.errorMessage || err.message });
+  }
+});
+
+// Telegram — generate bot link with user token (fallback for bot-only mode)
 app.get('/api/profile/telegram/link', authenticateToken, (req, res) => {
   const botUsername = process.env.TELEGRAM_BOT_USERNAME;
   if (!botUsername) return res.json({ bot_url: null, error: 'Telegram bot not configured' });
-  // Encode user_id as start parameter so bot can link account
   const linkToken = Buffer.from(JSON.stringify({ userId: req.user.user_id, ts: Date.now() })).toString('base64url');
   res.json({ bot_url: `https://t.me/${botUsername}?start=${linkToken}` });
 });
@@ -10846,6 +10968,7 @@ app.post('/api/profile/messaging/:channel/disconnect', authenticateToken, async 
   const { channel } = req.params;
   if (channel === 'telegram') {
     await platformPool.query(`UPDATE users SET telegram_chat_id = NULL WHERE id = $1`, [req.user.user_id]);
+    await platformPool.query(`DELETE FROM user_telegram_accounts WHERE user_id = $1`, [req.user.user_id]);
   } else if (channel === 'whatsapp') {
     await platformPool.query(`UPDATE users SET whatsapp_phone = NULL, whatsapp_verified = false WHERE id = $1`, [req.user.user_id]);
   }
@@ -13267,6 +13390,27 @@ app.listen(PORT, async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_verified BOOLEAN DEFAULT false;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_verify_code VARCHAR(10);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_verify_expires TIMESTAMPTZ;
+    `);
+  } catch (e) {}
+
+  // Telegram MTProto accounts table
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS user_telegram_accounts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+        phone VARCHAR(50),
+        telegram_user_id VARCHAR(50),
+        session_string TEXT,
+        sync_enabled BOOLEAN DEFAULT true,
+        first_name VARCHAR(100),
+        username VARCHAR(100),
+        last_sync_at TIMESTAMPTZ,
+        last_message_id BIGINT DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_tg_accounts_user ON user_telegram_accounts(user_id);
     `);
   } catch (e) {}
 

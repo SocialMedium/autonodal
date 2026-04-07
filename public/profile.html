@@ -670,30 +670,64 @@ async function triggerSync() {
   } catch(e) { toast('Sync failed'); if (btn) { btn.disabled = false; btn.innerHTML = 'Sync Now'; } }
 }
 
-// ── Telegram Connect ──
-async function connectTelegram() {
+// ── Telegram Connect (MTProto — full history sync) ──
+function connectTelegram() {
+  var card = document.getElementById('telegramAction');
+  card.innerHTML =
+    '<div style="display:flex;gap:6px;align-items:center">' +
+      '<input type="tel" id="tgPhone" placeholder="+61 400 000 000" style="font-size:12px;padding:5px 10px;border:1px solid var(--rule);border-radius:6px;width:160px;font-family:var(--sans)">' +
+      '<button class="btn btn-sm" onclick="sendTelegramCode()" style="border-color:#0088CC;color:#0088CC">Send Code</button>' +
+    '</div>';
+  document.getElementById('tgPhone').focus();
+}
+
+async function sendTelegramCode() {
+  var phone = document.getElementById('tgPhone').value.trim();
+  if (!phone || phone.length < 8) { toast('Enter phone with country code (e.g. +61...)'); return; }
+  var btn = document.querySelector('#telegramAction button');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span>';
   try {
-    var data = await api('/api/profile/telegram/link');
-    if (data.bot_url) {
-      window.open(data.bot_url, '_blank');
-      toast('Open Telegram and press Start to connect');
-      // Poll for connection
-      var attempts = 0;
-      var poll = setInterval(async function() {
-        attempts++;
-        if (attempts > 30) { clearInterval(poll); return; }
-        var status = await api('/api/profile/messaging-status');
-        if (status.telegram && status.telegram.connected) {
-          clearInterval(poll);
-          document.getElementById('telegramStatus').innerHTML = '<span class="dot dot-green"></span>Connected';
-          document.getElementById('telegramAction').innerHTML = '<span class="pill pill-green">Active</span>';
-          toast('Telegram connected!');
-        }
-      }, 3000);
+    var data = await api('/api/profile/telegram/send-code', { method: 'POST', body: { phone: phone } });
+    if (data.ok) {
+      document.getElementById('telegramAction').innerHTML =
+        '<div style="display:flex;flex-direction:column;gap:6px">' +
+          '<div style="display:flex;gap:6px;align-items:center">' +
+            '<input type="text" id="tgCode" placeholder="Code from Telegram" maxlength="6" style="font-size:12px;padding:5px 10px;border:1px solid var(--rule);border-radius:6px;width:130px;font-family:var(--mono);text-align:center">' +
+            '<button class="btn btn-sm" onclick="verifyTelegramCode()" style="border-color:#0088CC;color:#0088CC">Verify</button>' +
+          '</div>' +
+          '<div id="tg2fa" style="display:none;display:flex;gap:6px;align-items:center">' +
+            '<input type="password" id="tg2faPass" placeholder="2FA password" style="font-size:12px;padding:5px 10px;border:1px solid var(--rule);border-radius:6px;width:130px;font-family:var(--sans)">' +
+          '</div>' +
+        '</div>';
+      toast('Check Telegram for your login code');
     } else {
-      toast('Telegram bot not configured — ask admin to set TELEGRAM_BOT_TOKEN');
+      toast(data.error || 'Failed'); btn.disabled = false; btn.textContent = 'Send Code';
     }
-  } catch(e) { toast('Failed to generate Telegram link'); }
+  } catch(e) { toast('Failed to send code'); btn.disabled = false; btn.textContent = 'Send Code'; }
+}
+
+async function verifyTelegramCode() {
+  var code = document.getElementById('tgCode').value.trim();
+  var password = document.getElementById('tg2faPass') ? document.getElementById('tg2faPass').value : null;
+  if (!code) { toast('Enter the code from Telegram'); return; }
+  var btn = document.querySelector('#telegramAction button');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span>';
+  try {
+    var data = await api('/api/profile/telegram/verify-code', { method: 'POST', body: { code: code, password: password } });
+    if (data.needs_2fa) {
+      document.getElementById('tg2fa').style.display = 'flex';
+      document.getElementById('tg2faPass').focus();
+      toast('Enter your Telegram 2FA password');
+      btn.disabled = false; btn.textContent = 'Verify';
+      return;
+    }
+    if (data.ok) {
+      document.getElementById('telegramStatus').innerHTML = '<span class="dot dot-green"></span>Connected' + (data.username ? ' (@' + esc(data.username) + ')' : '');
+      document.getElementById('telegramAction').innerHTML = '<span class="pill pill-green">Syncing</span> <button class="btn btn-sm" onclick="disconnectMessaging(\'telegram\')" style="margin-left:6px;font-size:10px;color:var(--ink-4)">Disconnect</button>';
+      document.getElementById('telegramCard').querySelector('.card-sub').textContent = 'Full chat history sync — runs every 4 hours';
+      toast('Telegram connected! History sync will run shortly.');
+    } else { toast(data.error || 'Verification failed'); btn.disabled = false; btn.textContent = 'Verify'; }
+  } catch(e) { toast('Failed'); btn.disabled = false; btn.textContent = 'Verify'; }
 }
 
 // ── WhatsApp Connect ──
@@ -743,8 +777,13 @@ async function checkMessagingStatus() {
   try {
     var data = await api('/api/profile/messaging-status');
     if (data.telegram && data.telegram.connected) {
-      document.getElementById('telegramStatus').innerHTML = '<span class="dot dot-green"></span>Connected';
-      document.getElementById('telegramAction').innerHTML = '<span class="pill pill-green">Active</span> <button class="btn btn-sm" onclick="disconnectMessaging(\'telegram\')" style="margin-left:6px;font-size:10px;color:var(--ink-4)">Disconnect</button>';
+      var tgLabel = data.telegram.mode === 'mtproto' ? 'Syncing' : 'Active';
+      var tgDetail = data.telegram.mode === 'mtproto'
+        ? 'Full chat history sync — runs every 4 hours' + (data.telegram.last_sync ? ' · Last: ' + ago(data.telegram.last_sync) : '')
+        : 'Bot notifications connected';
+      document.getElementById('telegramStatus').innerHTML = '<span class="dot dot-green"></span>Connected' + (data.telegram.phone ? ' (' + esc(data.telegram.phone) + ')' : '');
+      document.getElementById('telegramAction').innerHTML = '<span class="pill pill-green">' + tgLabel + '</span> <button class="btn btn-sm" onclick="disconnectMessaging(\'telegram\')" style="margin-left:6px;font-size:10px;color:var(--ink-4)">Disconnect</button>';
+      document.getElementById('telegramCard').querySelector('.card-sub').textContent = tgDetail;
     }
     if (data.whatsapp && data.whatsapp.connected) {
       document.getElementById('whatsappStatus').innerHTML = '<span class="dot dot-green"></span>' + esc(data.whatsapp.phone);

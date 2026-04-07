@@ -1879,6 +1879,17 @@ const PIPELINES = {
     description: 'Sync calendar events → meeting interactions + team_proximity + upcoming meeting signals'
   },
 
+  sync_telegram: {
+    name: 'Telegram Sync',
+    icon: '💬',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'sync_telegram.js'), { timeout: 600000, stdio: 'inherit' });
+    },
+    schedule: '40 */4 * * *',  // Every 4 hours at :40
+    description: 'MTProto sync of Telegram private chats → interactions + team_proximity'
+  },
+
   migrate_wip_schema: {
     name: 'WIP Schema Migration',
     icon: '🔧',
