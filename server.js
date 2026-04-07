@@ -1969,11 +1969,14 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
     // User's geographic focus — for relevance boosting in ORDER BY
     const userRegion = req.user.region || '';
     const userRegionCodes = [];
-    // Expand user region to country codes for matching
     userRegion.split(',').forEach(r => {
       const codes = REGION_CODES[r.trim()];
       if (codes) userRegionCodes.push(...codes);
     });
+
+    // Snapshot params for count query BEFORE adding boost/limit/offset
+    const countParams = params.slice();
+
     paramIdx++;
     const geoBoostParam = paramIdx;
     params.push(userRegionCodes.length > 0 ? userRegionCodes : ['__none__']);
@@ -2053,7 +2056,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
           se.detected_at DESC NULLS LAST
         LIMIT $${limitParam} OFFSET $${offsetParam}
       `, params),
-      db.query(`SELECT COUNT(*) AS cnt FROM signal_events se LEFT JOIN companies c ON se.company_id = c.id LEFT JOIN external_documents ed ON se.source_document_id = ed.id ${where}`, params.slice(0, -2)),
+      db.query(`SELECT COUNT(*) AS cnt FROM signal_events se LEFT JOIN companies c ON se.company_id = c.id LEFT JOIN external_documents ed ON se.source_document_id = ed.id ${where}`, countParams),
     ]);
 
     // Compute region stats for the header — search across company geo, evidence, doc title
