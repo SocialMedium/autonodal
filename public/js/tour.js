@@ -114,7 +114,7 @@ class AufonodaTour {
   _positionTooltip(el) {
     var tt = this.tooltip;
     var vw = window.innerWidth, vh = window.innerHeight;
-    var tw = 320, th = tt.offsetHeight || 220;
+    var tw = Math.min(420, window.innerWidth - 24), th = tt.offsetHeight || 220;
 
     if (!el) {
       tt.style.cssText = 'position:fixed;top:' + ((vh - th) / 2) + 'px;left:' + ((vw - tw) / 2) + 'px;width:' + tw + 'px;';

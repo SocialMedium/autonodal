@@ -40,7 +40,7 @@
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <!-- Page Header -->
     <div class="mb-8">
-      <h1 class="text-2xl font-bold text-slate-900">Signal Intelligence <span class="hint-icon" data-hint="Your curated signal feed \u2014 events matching your declared mission, sectors, and geographies. Sourced from your active bundles and filtered by your signal dial." data-hint-title="Signal feed" data-hint-id="sig-feed-header">\u24d8</span></h1>
+      <h1 class="text-2xl font-bold text-slate-900">Signal Intelligence <span class="hint-icon" data-hint="Your curated signal feed \u2014 events matching your declared mission, sectors, and geographies. Sourced from your active bundles and filtered by your signal dial." data-hint-title="Signal feed" data-hint-id="sig-feed-header">ⓘ</span></h1>
       <p class="text-slate-500 mt-1">Triage and act on market signals detected from news and data sources</p>
     </div>
 
@@ -715,7 +715,7 @@ var SIGNALS_TOUR_STEPS = [
   { target: '#signalsTabContent', icon: '\ud83d\udccb', title: 'Signal triage board', body: 'Signals are organised into columns: <strong>New</strong>, <strong>Reviewing</strong>, and <strong>Qualified</strong>. Click any signal to see full detail, source link, and network proximity.' },
   { target: '#signalFiltersBar', icon: '\ud83d\udd0d', title: 'Filter your feed', body: 'Filter by signal type, status, or confidence level. Combine filters to focus on exactly what matters to your mission right now.' },
   { target: '#tabEvents', icon: '\ud83d\udcc5', title: 'Events tab', body: 'Switch to the Events tab to see forward-looking signals \u2014 conferences, summits, and meetups matching your sectors and geographies.' },
-  { target: null, icon: '\ud83d\ude80', title: 'Your feed improves over time', body: 'The more signals you triage, the more precisely your signal dial is tuned. Hover <span style="color:#f59e0b">\u24d8</span> icons any time for help.' },
+  { target: null, icon: '\ud83d\ude80', title: 'Your feed improves over time', body: 'The more signals you triage, the more precisely your signal dial is tuned. Hover <span style="color:#f59e0b">ⓘ</span> icons any time for help.' },
 ];
 if (typeof AufonodaTour !== 'undefined' && AufonodaTour.shouldRun('autonodal_signals_tour')) {
   setTimeout(function() { new AufonodaTour(SIGNALS_TOUR_STEPS, { storageKey: 'autonodal_signals_tour' }).start(); }, 700);

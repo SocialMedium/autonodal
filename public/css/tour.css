@@ -3,7 +3,7 @@
 #tour-spotlight { position:fixed; transition:all 0.25s cubic-bezier(0.4,0,0.2,1); }
 
 /* Tour tooltip card */
-#tour-tooltip { position:fixed; z-index:9001; width:320px; background:#111827; border:1px solid rgba(245,158,11,0.35); border-radius:12px; padding:20px; box-shadow:0 24px 64px rgba(0,0,0,0.6); font-family:'IBM Plex Sans','DM Sans',system-ui,sans-serif; animation:tour-in 0.2s ease; }
+#tour-tooltip { position:fixed; z-index:9001; width:min(420px, 90vw); background:#111827; border:1px solid rgba(245,158,11,0.35); border-radius:14px; padding:24px 28px; box-shadow:0 24px 64px rgba(0,0,0,0.6); font-family:'IBM Plex Sans','DM Sans',system-ui,sans-serif; animation:tour-in 0.2s ease; }
 @keyframes tour-in { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
 
 #tour-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
@@ -11,9 +11,9 @@
 #tour-skip { background:none; border:none; color:#64748b; font-size:12px; cursor:pointer; padding:0; font-family:inherit; }
 #tour-skip:hover { color:#e2e8f0; }
 
-#tour-icon { font-size:24px; margin-bottom:8px; }
-#tour-title { font-size:16px; font-weight:600; color:#e2e8f0; margin:0 0 8px; line-height:1.3; }
-#tour-body { font-size:13px; color:#94a3b8; line-height:1.6; margin:0 0 16px; }
+#tour-icon { font-size:28px; margin-bottom:10px; }
+#tour-title { font-size:20px; font-weight:600; color:#e2e8f0; margin:0 0 10px; line-height:1.3; }
+#tour-body { font-size:15px; color:#94a3b8; line-height:1.65; margin:0 0 20px; }
 #tour-body strong { color:#e2e8f0; }
 #tour-body code { background:rgba(245,158,11,0.12); color:#f59e0b; border-radius:3px; padding:1px 5px; font-size:12px; }
 
@@ -23,7 +23,7 @@
 .tour-dot.active { background:#f59e0b; }
 
 #tour-actions { display:flex; gap:6px; }
-#tour-back, #tour-next { background:#1e2d3d; border:1px solid #2d3f51; border-radius:6px; color:#e2e8f0; cursor:pointer; font-family:inherit; font-size:13px; padding:7px 14px; transition:all 0.15s; }
+#tour-back, #tour-next { background:#1e2d3d; border:1px solid #2d3f51; border-radius:8px; color:#e2e8f0; cursor:pointer; font-family:inherit; font-size:14px; padding:10px 20px; transition:all 0.15s; }
 #tour-next:hover { background:#f59e0b; color:#0a0e1a; border-color:#f59e0b; }
 #tour-back:hover { background:#1e2d3d; }
 #tour-next.btn-got-it { background:#f59e0b; color:#0a0e1a; border-color:#f59e0b; }
