@@ -447,11 +447,19 @@ async function uploadFile(input, type) {
 
     // Stats grid
     html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;text-align:center">';
-    html += '<div style="background:var(--surface-warm);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600">' + data.total + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Total rows</div></div>';
-    html += '<div style="background:var(--emerald-soft);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--emerald)">' + data.new_records + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">New</div></div>';
-    html += '<div style="background:var(--blue-soft);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--blue)">' + data.matched + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Matched</div></div>';
-    html += '<div style="background:var(--amber-soft);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--amber)">' + data.ambiguous + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Ambiguous</div></div>';
-    html += '<div style="background:var(--surface-warm);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--ink-3)">' + data.skipped + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Skipped</div></div>';
+    if (data.detected_type === 'messages') {
+      html += '<div style="background:var(--surface-warm);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600">' + data.total + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Messages</div></div>';
+      html += '<div style="background:var(--blue-soft);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--blue)">' + (data.conversations || 0) + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Conversations</div></div>';
+      html += '<div style="background:var(--emerald-soft);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--emerald)">' + (data.unique_senders || 0) + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Senders</div></div>';
+      html += '<div style="background:var(--blue-soft);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--blue)">' + (data.matched_senders || data.matched || 0) + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Matched</div></div>';
+      html += '<div style="background:var(--surface-warm);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--ink-3)">' + ((data.unique_senders || 0) - (data.matched_senders || data.matched || 0)) + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Unmatched</div></div>';
+    } else {
+      html += '<div style="background:var(--surface-warm);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600">' + data.total + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Total rows</div></div>';
+      html += '<div style="background:var(--emerald-soft);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--emerald)">' + data.new_records + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">New</div></div>';
+      html += '<div style="background:var(--blue-soft);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--blue)">' + data.matched + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Matched</div></div>';
+      html += '<div style="background:var(--amber-soft);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--amber)">' + data.ambiguous + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Ambiguous</div></div>';
+      html += '<div style="background:var(--surface-warm);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--ink-3)">' + data.skipped + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Skipped</div></div>';
+    }
     html += '</div>';
 
     // Column mapping
@@ -496,8 +504,11 @@ async function uploadFile(input, type) {
 
     // Actions
     if (data.can_import) {
+      var importLabel = data.detected_type === 'messages'
+        ? 'Import ' + (data.conversations || 0) + ' conversations (' + (data.matched_senders || data.matched || 0) + ' matched senders)'
+        : 'Confirm Import (' + data.new_records + ' new, ' + data.matched + ' matched)';
       previewActions.innerHTML =
-        '<button class="btn btn-primary btn-sm" onclick="confirmImport()">Confirm Import (' + data.new_records + ' new, ' + data.matched + ' matched)</button>' +
+        '<button class="btn btn-primary btn-sm" onclick="confirmImport()">' + importLabel + '</button>' +
         '<button class="btn btn-sm" onclick="dismissPreview()">Cancel</button>';
     } else {
       previewActions.innerHTML = '<button class="btn btn-sm" onclick="dismissPreview()">Close</button>';

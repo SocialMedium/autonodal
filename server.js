@@ -10061,8 +10061,68 @@ app.post('/api/profile/import/preview', authenticateToken, profileUpload.single(
 
     // Determine file type
     let detectedType = importType || 'unknown';
-    if (firstNameCol && lastNameCol && urlCol) detectedType = 'linkedin_connections';
-    else if (nameCol || firstNameCol) detectedType = 'contacts';
+    const fromCol = findCol('from');
+    const contentCol = findCol('content', 'body');
+    const conversationCol = findCol('conversation');
+
+    if (fromCol && contentCol) {
+      detectedType = 'messages';
+    } else if (firstNameCol && lastNameCol && urlCol) {
+      detectedType = 'linkedin_connections';
+    } else if (nameCol || firstNameCol) {
+      detectedType = 'contacts';
+    }
+
+    // ── Messages preview — different flow, no name column needed ──
+    if (detectedType === 'messages') {
+      const conversations = new Map();
+      const senders = new Set();
+      for (const row of rows) {
+        const from = row['FROM'] || row['From'] || row['from'] || '';
+        const content = row['CONTENT'] || row['Content'] || row['content'] || row['BODY'] || row['Body'] || '';
+        const convId = row['CONVERSATION ID'] || row['Conversation ID'] || row['conversation id'] || from;
+        if (from) senders.add(from.trim());
+        if (!conversations.has(convId)) conversations.set(convId, 0);
+        conversations.set(convId, conversations.get(convId) + 1);
+      }
+
+      // Match senders against people DB
+      const { rows: dbPeople } = await db.query(
+        `SELECT id, full_name FROM people WHERE full_name IS NOT NULL AND tenant_id = $1`, [tenantId]
+      );
+      const nameMap = new Map();
+      for (const p of dbPeople) { nameMap.set(p.full_name.toLowerCase().trim(), p); }
+
+      let matched = 0;
+      for (const name of senders) {
+        if (nameMap.has(name.toLowerCase().trim())) matched++;
+      }
+
+      const fileId = require('crypto').randomUUID();
+      const savedPath = `/tmp/ml-preview-${fileId}`;
+      require('fs').copyFileSync(file.path, savedPath);
+      try { require('fs').unlinkSync(file.path); } catch(e) {}
+      setTimeout(() => { try { require('fs').unlinkSync(savedPath); } catch(e) {} }, 30 * 60 * 1000);
+
+      return res.json({
+        total: rows.length,
+        valid: rows.length,
+        new_records: 0,
+        matched,
+        ambiguous: 0,
+        skipped: 0,
+        detected_type: 'messages',
+        headers,
+        columns: { from: fromCol, content: contentCol, conversation: conversationCol },
+        sample_rows: rows.slice(0, 5),
+        issues: [],
+        conversations: conversations.size,
+        unique_senders: senders.size,
+        matched_senders: matched,
+        file_id: fileId,
+        can_import: true,
+      });
+    }
 
     // Load existing people for matching
     const { rows: dbPeople } = await db.query(
@@ -10336,9 +10396,78 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
 
     // LinkedIn messages
     if (importType === 'messages') {
-      // Reuse the chat upload + process_uploaded_file logic
+      const raw = require('fs').readFileSync(file.path, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
       try { require('fs').unlinkSync(file.path); } catch (e) {}
-      return res.json({ error: 'LinkedIn messages import — use the chat interface for now (requires AI-assisted parsing)' });
+
+      function parseMsgCSV(line) { const r=[]; let c='',q=false; for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"')q=!q;else if(ch===','&&!q){r.push(c.trim());c='';}else c+=ch;} r.push(c.trim()); return r; }
+      const allLines = raw.split('\n').filter(l => l.trim());
+      const headers = parseMsgCSV(allLines[0]).map(h => h.replace(/[^\x20-\x7E]/g, '').trim());
+      const msgRows = [];
+      for (let i = 1; i < allLines.length; i++) {
+        const vals = parseMsgCSV(allLines[i]);
+        const row = {}; headers.forEach((h, idx) => { row[h] = vals[idx] || ''; }); msgRows.push(row);
+      }
+
+      // Load people for name matching
+      const { rows: dbPeople } = await db.query(
+        `SELECT id, full_name FROM people WHERE full_name IS NOT NULL AND tenant_id = $1`, [tenantId]
+      );
+      const nameMap = new Map();
+      for (const p of dbPeople) { nameMap.set(p.full_name.toLowerCase().trim(), p); }
+
+      // Group by conversation
+      const conversations = new Map();
+      const stats = { total: 0, matched: 0, interactions_created: 0, errors: 0 };
+      for (const row of msgRows) {
+        const from = row['FROM'] || row['From'] || row['from'] || '';
+        const to = row['TO'] || row['To'] || row['to'] || '';
+        const content = row['CONTENT'] || row['Content'] || row['content'] || row['BODY'] || row['Body'] || '';
+        const date = row['DATE'] || row['Date'] || row['date'] || '';
+        const convId = row['CONVERSATION ID'] || row['Conversation ID'] || row['conversation id'] || `${from}-${to}`;
+        if (!content.trim()) continue;
+        stats.total++;
+        if (!conversations.has(convId)) conversations.set(convId, []);
+        conversations.get(convId).push({ from, to, content, date });
+      }
+
+      for (const [convId, messages] of conversations) {
+        const participants = new Set();
+        messages.forEach(m => { if (m.from) participants.add(m.from.trim()); if (m.to) participants.add(m.to.trim()); });
+
+        for (const name of participants) {
+          const match = nameMap.get(name.toLowerCase().trim());
+          if (match) {
+            stats.matched++;
+            const sorted = messages.sort((a, b) => new Date(a.date) - new Date(b.date));
+            const summary = sorted.map(m => `[${m.date}] ${m.from}: ${m.content}`).join('\n').slice(0, 5000);
+            const latestDate = sorted[sorted.length - 1]?.date;
+            try {
+              await db.query(
+                `INSERT INTO interactions (person_id, user_id, created_by, interaction_type, subject, summary, source, interaction_at, tenant_id)
+                 VALUES ($1, $2, $2, 'linkedin_message', $3, $4, 'linkedin_import', $5, $6)
+                 ON CONFLICT DO NOTHING`,
+                [match.id, userId, `LinkedIn conversation (${messages.length} messages)`, summary,
+                 latestDate ? new Date(latestDate).toISOString() : new Date().toISOString(), tenantId]
+              );
+              stats.interactions_created++;
+            } catch (e) { stats.errors++; }
+          }
+        }
+      }
+
+      auditLog(userId, 'linkedin_messages_import', 'interactions', null, {
+        total_messages: stats.total, conversations: conversations.size,
+        matched: stats.matched, interactions_created: stats.interactions_created
+      });
+
+      return res.json({
+        total: stats.total,
+        conversations: conversations.size,
+        matched: stats.matched,
+        created: stats.interactions_created,
+        errors: stats.errors,
+        message: `Processed ${stats.total} messages across ${conversations.size} conversations. Created ${stats.interactions_created} interaction records.`
+      });
     }
 
     try { require('fs').unlinkSync(file.path); } catch (e) {}
