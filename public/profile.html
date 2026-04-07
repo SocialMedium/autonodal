@@ -224,7 +224,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
           </div>
         </div>
         <div id="whatsappAction">
-          <button class="btn btn-sm" onclick="toast('WhatsApp notifications coming soon — currently in pilot')" style="border-color:#25D366;color:#25D366">Connect WhatsApp</button>
+          <button class="btn btn-sm" onclick="showWhatsAppConnect()" style="border-color:#25D366;color:#25D366">Connect WhatsApp</button>
         </div>
       </div>
     </div>
@@ -241,7 +241,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
           </div>
         </div>
         <div id="telegramAction">
-          <button class="btn btn-sm" onclick="toast('Telegram integration coming soon')" style="border-color:#0088CC;color:#0088CC">Connect Telegram</button>
+          <button class="btn btn-sm" onclick="connectTelegram()" style="border-color:#0088CC;color:#0088CC">Connect Telegram</button>
         </div>
       </div>
     </div>
@@ -271,6 +271,16 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
         <div class="label">Documents</div>
         <div class="hint">PDF, Excel, or text files</div>
         <input type="file" id="docsFile" accept=".pdf,.xlsx,.xls,.txt,.csv" style="display:none" onchange="uploadFile(this, 'document')">
+      </div>
+      <div class="upload-zone" onclick="document.getElementById('whatsappFile').click()" style="border-color:#25D36640">
+        <div class="label" style="color:#25D366">WhatsApp Chat Export</div>
+        <div class="hint">Export any chat from WhatsApp Settings > Export Chat</div>
+        <input type="file" id="whatsappFile" accept=".txt,.zip" style="display:none" onchange="uploadFile(this, 'whatsapp_chat')">
+      </div>
+      <div class="upload-zone" onclick="document.getElementById('telegramFile').click()" style="border-color:#0088CC40">
+        <div class="label" style="color:#0088CC">Telegram Chat Export</div>
+        <div class="hint">Export from Telegram Desktop > Export Chat History (JSON)</div>
+        <input type="file" id="telegramFile" accept=".json" style="display:none" onchange="uploadFile(this, 'telegram_chat')">
       </div>
     </div>
 
@@ -359,6 +369,7 @@ var USER = null;
   document.getElementById('appContent').style.display = 'block';
   loadProfile();
   loadNetworkAnalysis();
+  checkMessagingStatus();
 })();
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
@@ -525,7 +536,7 @@ async function uploadFile(input, type) {
 
     // Stats grid
     html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;text-align:center">';
-    if (data.detected_type === 'messages') {
+    if (data.detected_type === 'messages' || data.detected_type === 'whatsapp_chat' || data.detected_type === 'telegram_chat') {
       html += '<div style="background:var(--surface-warm);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600">' + data.total + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Messages</div></div>';
       html += '<div style="background:var(--blue-soft);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--blue)">' + (data.conversations || 0) + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Conversations</div></div>';
       html += '<div style="background:var(--emerald-soft);padding:10px;border-radius:6px"><div style="font-size:18px;font-weight:600;color:var(--emerald)">' + (data.unique_senders || 0) + '</div><div style="font-size:9px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.06em">Senders</div></div>';
@@ -582,8 +593,10 @@ async function uploadFile(input, type) {
 
     // Actions
     if (data.can_import) {
-      var importLabel = data.detected_type === 'messages'
-        ? 'Import ' + (data.conversations || 0) + ' conversations (' + (data.matched_senders || data.matched || 0) + ' matched senders)'
+      var isMsgType = data.detected_type === 'messages' || data.detected_type === 'whatsapp_chat' || data.detected_type === 'telegram_chat';
+      var channelName = data.detected_type === 'whatsapp_chat' ? 'WhatsApp' : data.detected_type === 'telegram_chat' ? 'Telegram' : 'LinkedIn';
+      var importLabel = isMsgType
+        ? 'Import ' + (data.conversations || 0) + ' ' + channelName + ' conversations (' + (data.matched_senders || data.matched || 0) + ' matched)'
         : 'Confirm Import (' + data.new_records + ' new, ' + data.matched + ' matched)';
       previewActions.innerHTML =
         '<button class="btn btn-primary btn-sm" onclick="confirmImport()">' + importLabel + '</button>' +
@@ -655,6 +668,95 @@ async function triggerSync() {
     toast(data.message || 'Sync triggered');
     if (btn) { btn.disabled = false; btn.innerHTML = 'Sync Now'; }
   } catch(e) { toast('Sync failed'); if (btn) { btn.disabled = false; btn.innerHTML = 'Sync Now'; } }
+}
+
+// ── Telegram Connect ──
+async function connectTelegram() {
+  try {
+    var data = await api('/api/profile/telegram/link');
+    if (data.bot_url) {
+      window.open(data.bot_url, '_blank');
+      toast('Open Telegram and press Start to connect');
+      // Poll for connection
+      var attempts = 0;
+      var poll = setInterval(async function() {
+        attempts++;
+        if (attempts > 30) { clearInterval(poll); return; }
+        var status = await api('/api/profile/messaging-status');
+        if (status.telegram && status.telegram.connected) {
+          clearInterval(poll);
+          document.getElementById('telegramStatus').innerHTML = '<span class="dot dot-green"></span>Connected';
+          document.getElementById('telegramAction').innerHTML = '<span class="pill pill-green">Active</span>';
+          toast('Telegram connected!');
+        }
+      }, 3000);
+    } else {
+      toast('Telegram bot not configured — ask admin to set TELEGRAM_BOT_TOKEN');
+    }
+  } catch(e) { toast('Failed to generate Telegram link'); }
+}
+
+// ── WhatsApp Connect ──
+function showWhatsAppConnect() {
+  var card = document.getElementById('whatsappAction');
+  card.innerHTML =
+    '<div style="display:flex;gap:6px;align-items:center">' +
+      '<input type="tel" id="waPhone" placeholder="+61 400 000 000" style="font-size:12px;padding:5px 10px;border:1px solid var(--rule);border-radius:6px;width:160px;font-family:var(--sans)">' +
+      '<button class="btn btn-sm" onclick="verifyWhatsApp()" style="border-color:#25D366;color:#25D366">Verify</button>' +
+    '</div>';
+  document.getElementById('waPhone').focus();
+}
+
+async function verifyWhatsApp() {
+  var phone = document.getElementById('waPhone').value.trim();
+  if (!phone || phone.length < 8) { toast('Enter a valid phone number with country code'); return; }
+  var btn = document.querySelector('#whatsappAction button');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span>';
+  try {
+    var data = await api('/api/profile/whatsapp/verify', { method: 'POST', body: { phone: phone } });
+    if (data.ok) {
+      document.getElementById('whatsappAction').innerHTML =
+        '<div style="display:flex;gap:6px;align-items:center">' +
+          '<input type="text" id="waCode" placeholder="6-digit code" maxlength="6" style="font-size:12px;padding:5px 10px;border:1px solid var(--rule);border-radius:6px;width:100px;font-family:var(--mono);text-align:center">' +
+          '<button class="btn btn-sm" onclick="confirmWhatsApp()" style="border-color:#25D366;color:#25D366">Confirm</button>' +
+        '</div>';
+      toast('Verification code sent to ' + phone);
+    } else { toast(data.error || 'Failed to send code'); btn.disabled = false; btn.textContent = 'Verify'; }
+  } catch(e) { toast('Failed'); btn.disabled = false; btn.textContent = 'Verify'; }
+}
+
+async function confirmWhatsApp() {
+  var code = document.getElementById('waCode').value.trim();
+  if (code.length !== 6) { toast('Enter the 6-digit code'); return; }
+  try {
+    var data = await api('/api/profile/whatsapp/confirm', { method: 'POST', body: { code: code } });
+    if (data.ok) {
+      document.getElementById('whatsappStatus').innerHTML = '<span class="dot dot-green"></span>Connected';
+      document.getElementById('whatsappAction').innerHTML = '<span class="pill pill-green">Active</span>';
+      toast('WhatsApp connected!');
+    } else { toast(data.error || 'Invalid code'); }
+  } catch(e) { toast('Verification failed'); }
+}
+
+// ── Check messaging status on load ──
+async function checkMessagingStatus() {
+  try {
+    var data = await api('/api/profile/messaging-status');
+    if (data.telegram && data.telegram.connected) {
+      document.getElementById('telegramStatus').innerHTML = '<span class="dot dot-green"></span>Connected';
+      document.getElementById('telegramAction').innerHTML = '<span class="pill pill-green">Active</span> <button class="btn btn-sm" onclick="disconnectMessaging(\'telegram\')" style="margin-left:6px;font-size:10px;color:var(--ink-4)">Disconnect</button>';
+    }
+    if (data.whatsapp && data.whatsapp.connected) {
+      document.getElementById('whatsappStatus').innerHTML = '<span class="dot dot-green"></span>' + esc(data.whatsapp.phone);
+      document.getElementById('whatsappAction').innerHTML = '<span class="pill pill-green">Active</span> <button class="btn btn-sm" onclick="disconnectMessaging(\'whatsapp\')" style="margin-left:6px;font-size:10px;color:var(--ink-4)">Disconnect</button>';
+    }
+  } catch(e) {}
+}
+
+async function disconnectMessaging(channel) {
+  if (!confirm('Disconnect ' + channel + '?')) return;
+  await api('/api/profile/messaging/' + channel + '/disconnect', { method: 'POST' });
+  location.reload();
 }
 
 async function loadNetworkAnalysis() {

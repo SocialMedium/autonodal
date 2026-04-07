@@ -10023,6 +10023,70 @@ app.post('/api/profile/import/preview', authenticateToken, profileUpload.single(
 
     const raw = require('fs').readFileSync(file.path, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
+    // ── WhatsApp chat export preview (.txt) ──
+    if (importType === 'whatsapp_chat') {
+      const msgRegex = /^\[?(\d{1,2}\/\d{1,2}\/\d{2,4}),?\s*(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[ap]m)?)\]?\s*[-–]\s*([^:]+):\s*(.+)/i;
+      const lines = raw.split('\n');
+      const senders = new Map();
+      let totalMsgs = 0;
+      for (const line of lines) {
+        const m = line.match(msgRegex);
+        if (!m) continue;
+        const sender = m[3].trim();
+        const content = m[4].trim();
+        if (content === '<Media omitted>' || content === 'This message was deleted') continue;
+        totalMsgs++;
+        senders.set(sender, (senders.get(sender) || 0) + 1);
+      }
+      const { rows: dbPeople } = await db.query(`SELECT id, full_name FROM people WHERE tenant_id = $1 AND full_name IS NOT NULL`, [tenantId]);
+      const nameMap = new Map();
+      for (const p of dbPeople) nameMap.set(p.full_name.toLowerCase().trim(), p);
+      let matched = 0;
+      for (const name of senders.keys()) { if (nameMap.has(name.toLowerCase().trim())) matched++; }
+
+      const fileId = require('crypto').randomUUID();
+      require('fs').copyFileSync(file.path, `/tmp/ml-preview-${fileId}`);
+      try { require('fs').unlinkSync(file.path); } catch(e) {}
+      setTimeout(() => { try { require('fs').unlinkSync(`/tmp/ml-preview-${fileId}`); } catch(e) {} }, 30 * 60 * 1000);
+
+      return res.json({ total: totalMsgs, valid: totalMsgs, new_records: 0, matched, ambiguous: 0, skipped: 0,
+        detected_type: 'whatsapp_chat', headers: [], issues: [],
+        conversations: senders.size, unique_senders: senders.size, matched_senders: matched,
+        file_id: fileId, can_import: totalMsgs > 0 });
+    }
+
+    // ── Telegram chat export preview (.json) ──
+    if (importType === 'telegram_chat') {
+      let chatData;
+      try { chatData = JSON.parse(raw); } catch (e) {
+        try { require('fs').unlinkSync(file.path); } catch(e2) {}
+        return res.status(400).json({ error: 'Invalid JSON — export from Telegram Desktop as JSON' });
+      }
+      const messages = (chatData.messages || []).filter(m => m.type === 'message');
+      const senders = new Map();
+      for (const msg of messages) {
+        const sender = msg.from || msg.actor || chatData.name || 'Unknown';
+        const text = typeof msg.text === 'string' ? msg.text : '';
+        if (!text.trim()) continue;
+        senders.set(sender, (senders.get(sender) || 0) + 1);
+      }
+      const { rows: dbPeople } = await db.query(`SELECT id, full_name FROM people WHERE tenant_id = $1 AND full_name IS NOT NULL`, [tenantId]);
+      const nameMap = new Map();
+      for (const p of dbPeople) nameMap.set(p.full_name.toLowerCase().trim(), p);
+      let matched = 0;
+      for (const name of senders.keys()) { if (nameMap.has(name.toLowerCase().trim())) matched++; }
+
+      const fileId = require('crypto').randomUUID();
+      require('fs').copyFileSync(file.path, `/tmp/ml-preview-${fileId}`);
+      try { require('fs').unlinkSync(file.path); } catch(e) {}
+      setTimeout(() => { try { require('fs').unlinkSync(`/tmp/ml-preview-${fileId}`); } catch(e) {} }, 30 * 60 * 1000);
+
+      return res.json({ total: messages.length, valid: messages.length, new_records: 0, matched, ambiguous: 0, skipped: 0,
+        detected_type: 'telegram_chat', headers: [],  issues: [],
+        conversations: senders.size, unique_senders: senders.size, matched_senders: matched,
+        file_id: fileId, can_import: messages.length > 0 });
+    }
+
     // Parse CSV
     function parseCSV(line) { const r=[]; let c='',q=false; for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"')q=!q;else if(ch===','&&!q){r.push(c.trim());c='';}else c+=ch;} r.push(c.trim()); return r; }
 
@@ -10470,6 +10534,148 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
       });
     }
 
+    // WhatsApp chat export (.txt)
+    if (importType === 'whatsapp_chat') {
+      const raw = require('fs').readFileSync(file.path, 'utf8').replace(/^\uFEFF/, '');
+      try { require('fs').unlinkSync(file.path); } catch (e) {}
+
+      // WhatsApp format: [DD/MM/YYYY, HH:MM:SS] Name: Message
+      // or: DD/MM/YYYY, HH:MM - Name: Message
+      const msgRegex = /^\[?(\d{1,2}\/\d{1,2}\/\d{2,4}),?\s*(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[ap]m)?)\]?\s*[-–]\s*([^:]+):\s*(.+)/i;
+      const lines = raw.split('\n');
+      const conversations = new Map();
+      const senders = new Set();
+      let totalMsgs = 0;
+
+      for (const line of lines) {
+        const m = line.match(msgRegex);
+        if (!m) continue;
+        const dateStr = m[1] + ' ' + m[2];
+        const sender = m[3].trim();
+        const content = m[4].trim();
+        if (content === '<Media omitted>' || content === 'This message was deleted') continue;
+        senders.add(sender);
+        totalMsgs++;
+        if (!conversations.has(sender)) conversations.set(sender, []);
+        conversations.get(sender).push({ date: dateStr, content });
+      }
+
+      // Match senders to people
+      const { rows: dbPeople } = await db.query(
+        `SELECT id, full_name, phone FROM people WHERE tenant_id = $1 AND full_name IS NOT NULL`, [tenantId]
+      );
+      const nameMap = new Map();
+      for (const p of dbPeople) { nameMap.set(p.full_name.toLowerCase().trim(), p); }
+
+      const stats = { total: totalMsgs, matched: 0, interactions_created: 0, errors: 0 };
+
+      for (const [sender, messages] of conversations) {
+        const match = nameMap.get(sender.toLowerCase().trim());
+        if (!match) continue;
+        stats.matched++;
+
+        const sorted = messages;
+        const summary = sorted.map(m => `[${m.date}] ${sender}: ${m.content}`).join('\n').slice(0, 5000);
+        const lastMsg = sorted[sorted.length - 1];
+
+        try {
+          await db.query(
+            `INSERT INTO interactions (person_id, user_id, created_by, interaction_type, subject, summary, channel, source, external_id, interaction_at, tenant_id)
+             VALUES ($1, $2, $2, 'whatsapp_message', $3, $4, 'whatsapp', 'whatsapp_import', $5, $6, $7)
+             ON CONFLICT (external_id) WHERE external_id IS NOT NULL DO NOTHING`,
+            [match.id, userId, `WhatsApp (${messages.length} messages)`, summary,
+             'wa:' + match.id + ':' + Date.now(), new Date().toISOString(), tenantId]
+          );
+          stats.interactions_created++;
+        } catch (e) { stats.errors++; }
+
+        // Update proximity
+        const msgCount = messages.length;
+        const strength = msgCount >= 20 ? 0.85 : msgCount >= 5 ? 0.65 : 0.35;
+        const relType = msgCount >= 20 ? 'whatsapp_frequent' : msgCount >= 5 ? 'whatsapp_moderate' : 'whatsapp_minimal';
+        await db.query(
+          `INSERT INTO team_proximity (person_id, team_member_id, relationship_type, relationship_strength, notes, source, interaction_count)
+           VALUES ($1, $2, $3, $4, $5, 'whatsapp_import', $6)
+           ON CONFLICT (person_id, team_member_id, relationship_type) DO UPDATE SET
+             relationship_strength = GREATEST(team_proximity.relationship_strength, EXCLUDED.relationship_strength),
+             interaction_count = EXCLUDED.interaction_count,
+             notes = EXCLUDED.notes, updated_at = NOW()`,
+          [match.id, userId, relType, strength, `${msgCount} WhatsApp messages`, msgCount]
+        );
+      }
+
+      auditLog(userId, 'whatsapp_import', 'interactions', null, { total: stats.total, matched: stats.matched, created: stats.interactions_created });
+      return res.json({ total: stats.total, matched: stats.matched, created: stats.interactions_created, senders: senders.size, errors: stats.errors,
+        message: `Processed ${stats.total} WhatsApp messages from ${senders.size} contacts. Created ${stats.interactions_created} interactions.` });
+    }
+
+    // Telegram chat export (.json from Telegram Desktop)
+    if (importType === 'telegram_chat') {
+      const rawJson = require('fs').readFileSync(file.path, 'utf8');
+      try { require('fs').unlinkSync(file.path); } catch (e) {}
+
+      let chatData;
+      try { chatData = JSON.parse(rawJson); } catch (e) { return res.status(400).json({ error: 'Invalid JSON — export from Telegram Desktop as JSON' }); }
+
+      const messages = chatData.messages || [];
+      const chatName = chatData.name || 'Unknown Chat';
+      const senders = new Map(); // name → messages[]
+
+      for (const msg of messages) {
+        if (msg.type !== 'message') continue;
+        const sender = msg.from || msg.actor || chatName;
+        const text = typeof msg.text === 'string' ? msg.text : (Array.isArray(msg.text) ? msg.text.map(t => typeof t === 'string' ? t : t.text || '').join('') : '');
+        if (!text.trim()) continue;
+        if (!senders.has(sender)) senders.set(sender, []);
+        senders.get(sender).push({ date: msg.date, text });
+      }
+
+      // Match senders to people
+      const { rows: dbPeople } = await db.query(
+        `SELECT id, full_name FROM people WHERE tenant_id = $1 AND full_name IS NOT NULL`, [tenantId]
+      );
+      const nameMap = new Map();
+      for (const p of dbPeople) { nameMap.set(p.full_name.toLowerCase().trim(), p); }
+
+      const stats = { total: messages.length, matched: 0, interactions_created: 0, errors: 0 };
+
+      for (const [sender, msgs] of senders) {
+        const match = nameMap.get(sender.toLowerCase().trim());
+        if (!match) continue;
+        stats.matched++;
+
+        const summary = msgs.map(m => `[${m.date}] ${sender}: ${m.text}`).join('\n').slice(0, 5000);
+        try {
+          await db.query(
+            `INSERT INTO interactions (person_id, user_id, created_by, interaction_type, subject, summary, channel, source, external_id, interaction_at, tenant_id)
+             VALUES ($1, $2, $2, 'telegram_message', $3, $4, 'telegram', 'telegram_import', $5, $6, $7)
+             ON CONFLICT (external_id) WHERE external_id IS NOT NULL DO NOTHING`,
+            [match.id, userId, `Telegram (${msgs.length} messages)`, summary,
+             'tg:' + match.id + ':' + Date.now(), new Date().toISOString(), tenantId]
+          );
+          stats.interactions_created++;
+        } catch (e) { stats.errors++; }
+
+        // Update proximity
+        const msgCount = msgs.length;
+        const strength = msgCount >= 20 ? 0.85 : msgCount >= 5 ? 0.65 : 0.35;
+        const relType = msgCount >= 20 ? 'telegram_frequent' : msgCount >= 5 ? 'telegram_moderate' : 'telegram_minimal';
+        await db.query(
+          `INSERT INTO team_proximity (person_id, team_member_id, relationship_type, relationship_strength, notes, source, interaction_count)
+           VALUES ($1, $2, $3, $4, $5, 'telegram_import', $6)
+           ON CONFLICT (person_id, team_member_id, relationship_type) DO UPDATE SET
+             relationship_strength = GREATEST(team_proximity.relationship_strength, EXCLUDED.relationship_strength),
+             interaction_count = EXCLUDED.interaction_count,
+             notes = EXCLUDED.notes, updated_at = NOW()`,
+          [match.id, userId, relType, strength, `${msgCount} Telegram messages`, msgCount]
+        );
+      }
+
+      auditLog(userId, 'telegram_import', 'interactions', null, { total: stats.total, matched: stats.matched, created: stats.interactions_created });
+      return res.json({ total: stats.total, matched: stats.matched, created: stats.interactions_created, senders: senders.size, errors: stats.errors,
+        message: `Processed ${stats.total} Telegram messages from ${senders.size} contacts. Created ${stats.interactions_created} interactions.` });
+    }
+
     try { require('fs').unlinkSync(file.path); } catch (e) {}
     res.json({ error: 'Unknown import type: ' + importType });
   } catch (err) {
@@ -10487,6 +10693,182 @@ app.post('/api/profile/trigger-sync', authenticateToken, async (req, res) => {
     if (!rows.length) return res.json({ message: 'No Google account connected. Connect from this page first.' });
     res.json({ message: `Sync triggered for ${rows[0].google_email}. Gmail and Drive will sync on the next cycle (every 15 minutes).` });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MESSAGING INTEGRATIONS — Telegram + WhatsApp
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Messaging status
+app.get('/api/profile/messaging-status', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(
+      `SELECT telegram_chat_id, whatsapp_phone, whatsapp_verified FROM users WHERE id = $1`, [req.user.user_id]
+    );
+    const u = rows[0] || {};
+    res.json({
+      telegram: { connected: !!u.telegram_chat_id },
+      whatsapp: { connected: !!u.whatsapp_verified, phone: u.whatsapp_phone || null },
+    });
+  } catch (err) { res.json({ telegram: { connected: false }, whatsapp: { connected: false } }); }
+});
+
+// Telegram — generate bot link with user token
+app.get('/api/profile/telegram/link', authenticateToken, (req, res) => {
+  const botUsername = process.env.TELEGRAM_BOT_USERNAME;
+  if (!botUsername) return res.json({ bot_url: null, error: 'Telegram bot not configured' });
+  // Encode user_id as start parameter so bot can link account
+  const linkToken = Buffer.from(JSON.stringify({ userId: req.user.user_id, ts: Date.now() })).toString('base64url');
+  res.json({ bot_url: `https://t.me/${botUsername}?start=${linkToken}` });
+});
+
+// Telegram webhook — receives updates from Telegram Bot API
+app.post('/api/webhooks/telegram', async (req, res) => {
+  res.sendStatus(200); // Always ACK fast
+  try {
+    const update = req.body;
+    if (!update.message) return;
+    const chatId = String(update.message.chat.id);
+    const text = update.message.text || '';
+
+    // Handle /start command — link account
+    if (text.startsWith('/start ')) {
+      const token = text.replace('/start ', '').trim();
+      try {
+        const decoded = JSON.parse(Buffer.from(token, 'base64url').toString('utf8'));
+        if (decoded.userId && (Date.now() - decoded.ts) < 600000) { // 10 min expiry
+          await platformPool.query(
+            `UPDATE users SET telegram_chat_id = $1 WHERE id = $2`,
+            [chatId, decoded.userId]
+          );
+          // Send confirmation
+          if (process.env.TELEGRAM_BOT_TOKEN) {
+            await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: chatId, text: '✅ Connected to MitchelLake Signals! You will receive signal alerts and daily digests here.' })
+            });
+          }
+        }
+      } catch (e) { console.error('Telegram link error:', e.message); }
+      return;
+    }
+
+    // Incoming messages from connected users → log as interactions
+    const { rows: [user] } = await platformPool.query(
+      `SELECT id, tenant_id FROM users WHERE telegram_chat_id = $1`, [chatId]
+    );
+    if (!user) return;
+
+    // Forward messages can contain contact intelligence — store as interaction
+    const senderName = [update.message.from?.first_name, update.message.from?.last_name].filter(Boolean).join(' ');
+    if (text && text.length > 5) {
+      // Check if user is forwarding a message from a contact
+      const forwardFrom = update.message.forward_from
+        ? [update.message.forward_from.first_name, update.message.forward_from.last_name].filter(Boolean).join(' ')
+        : null;
+
+      if (forwardFrom) {
+        // Try to match forwarded sender to a person
+        const { rows: matches } = await platformPool.query(
+          `SELECT id FROM people WHERE tenant_id = $1 AND LOWER(full_name) = LOWER($2) LIMIT 1`,
+          [user.tenant_id, forwardFrom]
+        );
+        if (matches.length) {
+          await platformPool.query(
+            `INSERT INTO interactions (person_id, user_id, interaction_type, direction, subject, summary, channel, source, external_id, interaction_at)
+             VALUES ($1, $2, 'telegram_forward', 'inbound', $3, $4, 'telegram', 'telegram_live', $5, NOW())
+             ON CONFLICT (external_id) WHERE external_id IS NOT NULL DO NOTHING`,
+            [matches[0].id, user.id, `Forwarded from ${forwardFrom}`, text.slice(0, 2000), 'tg:live:' + update.message.message_id]
+          );
+        }
+      }
+    }
+  } catch (err) { console.error('Telegram webhook error:', err.message); }
+});
+
+// WhatsApp — send verification code
+app.post('/api/profile/whatsapp/verify', authenticateToken, async (req, res) => {
+  const phone = (req.body.phone || '').replace(/[\s\-()]/g, '');
+  if (!phone || phone.length < 8) return res.status(400).json({ error: 'Valid phone number required' });
+
+  // Generate 6-digit code
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+
+  // Store pending verification
+  await platformPool.query(
+    `UPDATE users SET whatsapp_phone = $1, whatsapp_verify_code = $2, whatsapp_verify_expires = NOW() + INTERVAL '10 minutes'
+     WHERE id = $3`,
+    [phone, code, req.user.user_id]
+  );
+
+  // Send via Twilio WhatsApp (or fall back to SMS)
+  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_WHATSAPP_PHONE) {
+    try {
+      const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      await twilio.messages.create({
+        from: `whatsapp:${process.env.TWILIO_WHATSAPP_PHONE}`,
+        to: `whatsapp:${phone}`,
+        body: `Your MitchelLake Signals verification code is: ${code}`
+      });
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error('Twilio WhatsApp error:', err.message);
+      // Fall through — code is stored, user can be told verbally in dev
+    }
+  }
+
+  // Dev mode — log the code (no Twilio configured)
+  console.log(`📱 WhatsApp verification for ${phone}: ${code}`);
+  res.json({ ok: true, dev_note: 'Code logged to console (Twilio not configured)' });
+});
+
+// WhatsApp — confirm verification code
+app.post('/api/profile/whatsapp/confirm', authenticateToken, async (req, res) => {
+  const code = (req.body.code || '').trim();
+  const { rows: [user] } = await platformPool.query(
+    `SELECT whatsapp_phone, whatsapp_verify_code, whatsapp_verify_expires FROM users WHERE id = $1`,
+    [req.user.user_id]
+  );
+  if (!user || !user.whatsapp_verify_code) return res.status(400).json({ error: 'No pending verification' });
+  if (new Date(user.whatsapp_verify_expires) < new Date()) return res.status(400).json({ error: 'Code expired — request a new one' });
+  if (user.whatsapp_verify_code !== code) return res.status(400).json({ error: 'Invalid code' });
+
+  await platformPool.query(
+    `UPDATE users SET whatsapp_verified = true, whatsapp_verify_code = NULL WHERE id = $1`,
+    [req.user.user_id]
+  );
+  res.json({ ok: true });
+});
+
+// Disconnect messaging channel
+app.post('/api/profile/messaging/:channel/disconnect', authenticateToken, async (req, res) => {
+  const { channel } = req.params;
+  if (channel === 'telegram') {
+    await platformPool.query(`UPDATE users SET telegram_chat_id = NULL WHERE id = $1`, [req.user.user_id]);
+  } else if (channel === 'whatsapp') {
+    await platformPool.query(`UPDATE users SET whatsapp_phone = NULL, whatsapp_verified = false WHERE id = $1`, [req.user.user_id]);
+  }
+  res.json({ ok: true });
+});
+
+// Twilio WhatsApp webhook — incoming messages
+app.post('/api/webhooks/whatsapp', async (req, res) => {
+  res.sendStatus(200);
+  try {
+    const from = (req.body.From || '').replace('whatsapp:', '');
+    const body = req.body.Body || '';
+    if (!from || !body) return;
+
+    // Find user by WhatsApp phone
+    const { rows: [user] } = await platformPool.query(
+      `SELECT id, tenant_id FROM users WHERE whatsapp_phone = $1 AND whatsapp_verified = true`, [from]
+    );
+    if (!user) return;
+
+    // Store as note/intelligence — user sending WhatsApp messages to the bot
+    console.log(`📱 WhatsApp from ${from}: ${body.slice(0, 100)}`);
+  } catch (err) { console.error('WhatsApp webhook error:', err.message); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -12875,6 +13257,17 @@ app.listen(PORT, async () => {
   try {
     const { rowCount } = await db.query(`UPDATE events SET tenant_id = NULL WHERE tenant_id IS NOT NULL`);
     if (rowCount) console.log(`  📅 Migrated ${rowCount} events to platform-wide visibility`);
+  } catch (e) {}
+
+  // Messaging integration columns
+  try {
+    await db.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id VARCHAR(50);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_phone VARCHAR(50);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_verified BOOLEAN DEFAULT false;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_verify_code VARCHAR(10);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_verify_expires TIMESTAMPTZ;
+    `);
   } catch (e) {}
 
   // Purge known false-positive signals (e.g. "Pam Bondi" matched via short company name "PAM")
