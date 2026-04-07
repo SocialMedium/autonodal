@@ -5174,6 +5174,22 @@ app.delete('/api/admin/waitlist/:id', authenticateToken, requireAdmin, async (re
   }
 });
 
+// Admin: delete a signal
+app.delete('/api/admin/signals/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { rowCount } = await db.query(
+      'DELETE FROM signal_events WHERE id = $1 AND (tenant_id IS NULL OR tenant_id = $2)',
+      [req.params.id, req.tenant_id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Signal not found' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Delete signal error:', err.message);
+    res.status(500).json({ error: 'Failed to delete signal' });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // LEMON SQUEEZY BILLING
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -12724,6 +12740,21 @@ app.listen(PORT, async () => {
     const { spawn: spawnAudio } = require('child_process');
     spawnAudio('node', [require('path').join(__dirname, 'scripts', 'backfill_podcast_audio.js')], { stdio: 'inherit', timeout: 300000 })
       .on('exit', (code) => console.log(`  ✅ Podcast audio backfill exited (code ${code})`));
+  } catch (e) {}
+
+  // Migrate events to platform-wide (NULL tenant_id) so all tenants can see them
+  try {
+    const { rowCount } = await db.query(`UPDATE events SET tenant_id = NULL WHERE tenant_id IS NOT NULL`);
+    if (rowCount) console.log(`  📅 Migrated ${rowCount} events to platform-wide visibility`);
+  } catch (e) {}
+
+  // Purge known false-positive signals (e.g. "Pam Bondi" matched via short company name "PAM")
+  try {
+    const { rowCount } = await db.query(`
+      DELETE FROM signal_events
+      WHERE (headline ILIKE '%pam bondi%' OR evidence_summary ILIKE '%pam bondi%')
+    `);
+    if (rowCount) console.log(`  🧹 Purged ${rowCount} false-positive Pam Bondi signal(s)`);
   } catch (e) {}
 
   // Embedding tracking columns for all embeddable entities

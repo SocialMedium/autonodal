@@ -402,7 +402,8 @@ async function harvestEvents() {
   const startTime = Date.now();
 
   // Step 1: Try the JSON feed first (more reliable, richer data)
-  const jsonResult = await harvestJsonFeed(ML_TENANT_ID);
+  // Events are platform-wide content — insert with NULL tenant_id
+  const jsonResult = await harvestJsonFeed(null);
   console.log();
 
   // Step 2: Also try RSS feeds for additional coverage
@@ -431,7 +432,7 @@ async function harvestEvents() {
 
       for (const item of items) {
         const urlHash = hashUrl(item.event_url);
-        const tenantId = source.tenant_id || ML_TENANT_ID;
+        const tenantId = source.tenant_id || null; // platform-wide events
 
         try {
           const result = await db.query(
