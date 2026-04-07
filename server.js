@@ -2221,10 +2221,11 @@ app.get('/api/signals/:id/proximity-graph', authenticateToken, async (req, res) 
 
     // 1. Get the signal
     const { rows: [sig] } = await db.query(
-      'SELECT * FROM signal_events WHERE id = $1 AND tenant_id = $2',
+      'SELECT * FROM signal_events WHERE id = $1 AND (tenant_id IS NULL OR tenant_id = $2)',
       [signalId, tenantId]
     );
     if (!sig) return res.status(404).json({ error: 'Signal not found' });
+    if (!sig.company_id) return res.json({ signal: { company: sig.company_name || 'Unknown', type: sig.signal_type, headline: sig.headline, confidence: sig.confidence_score }, account: null, graph: { nodes: [], links: [] } });
 
     // 2. Get team members (include all roles — viewers with proximity data should appear in graph)
     const { rows: team } = await db.query(
@@ -12235,7 +12236,7 @@ app.get('/api/events', authenticateToken, async (req, res) => {
     const db = new TenantDB(req.tenant_id);
     const { theme, region, format, from, to, search, limit = 20, offset = 0 } = req.query;
     const params = [req.tenant_id];
-    const conditions = ['e.tenant_id = $1'];
+    const conditions = ['(e.tenant_id IS NULL OR e.tenant_id = $1)'];
     let idx = 2;
 
     if (theme) {
@@ -12378,7 +12379,7 @@ app.get('/api/events/for-search/:searchId', authenticateToken, async (req, res) 
     const themes = industries.map(i => themeMap[i.toLowerCase()] || null).filter(Boolean);
 
     // Build query
-    const conditions = ['e.tenant_id = $1', 'e.event_date >= CURRENT_DATE'];
+    const conditions = ['(e.tenant_id IS NULL OR e.tenant_id = $1)', 'e.event_date >= CURRENT_DATE'];
     const params = [req.tenant_id];
     let idx = 2;
 
@@ -12425,7 +12426,7 @@ app.get('/api/events/:id', authenticateToken, async (req, res) => {
            WHERE epl.event_id = e.id), '[]'
         ) AS person_links
       FROM events e
-      WHERE e.id = $1 AND e.tenant_id = $2
+      WHERE e.id = $1 AND (e.tenant_id IS NULL OR e.tenant_id = $2)
     `, [req.params.id, req.tenant_id]);
 
     if (rows.length === 0) return res.status(404).json({ error: 'Event not found' });
