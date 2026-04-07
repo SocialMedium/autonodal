@@ -206,13 +206,13 @@ app.get('/api/auth/google', (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' });
   const redirectUri = process.env.GOOGLE_REDIRECT_URL || process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
   const returnTo = req.query.return_to || '/index.html';
-  // Request full scopes upfront (Gmail + Drive + Docs) so every sign-in auto-connects
+  // SCIENCE: Progressive disclosure — only request profile scopes at sign-in
+  // Gmail/Drive scopes requested later in onboarding Step 3 after trust is established
   const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: GOOGLE_CONNECT_SCOPES,
-    prompt: 'consent',
+    scope: SIGNIN_SCOPES,
     access_type: 'offline',
     state: returnTo
   });
@@ -326,34 +326,23 @@ app.get('/api/auth/google/callback', async (req, res) => {
     // Clean up expired sessions
     await platformPool.query('DELETE FROM sessions WHERE expires_at < NOW()');
 
-    // Auto-connect Google (Gmail + Drive) — always upsert tokens
-    // Use the user's actual tenant, not hardcoded ML tenant
+    // SCIENCE: Progressive disclosure — do NOT auto-connect Gmail/Drive at sign-in
+    // Only update tokens for users who previously explicitly connected (returning users)
     const userTenantId = (await platformPool.query('SELECT tenant_id FROM users WHERE id = $1', [user.id])).rows[0]?.tenant_id
       || process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
-    const tenantId = userTenantId;
-    if (tokenData.refresh_token) {
-      try {
-        await platformPool.query(`
-          INSERT INTO user_google_accounts (id, user_id, google_email, google_name, access_token, refresh_token, scopes, sync_enabled, tenant_id, connected_at)
-          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, true, $7, NOW())
-          ON CONFLICT (user_id, google_email) DO UPDATE SET
-            access_token = EXCLUDED.access_token,
-            refresh_token = COALESCE(EXCLUDED.refresh_token, user_google_accounts.refresh_token),
-            scopes = EXCLUDED.scopes,
-            sync_enabled = true,
-            connected_at = NOW()
-        `, [user.id, userInfo.email, userInfo.name, tokenData.access_token, tokenData.refresh_token, GOOGLE_CONNECT_SCOPES, tenantId]);
-        console.log(`✅ Auto-connected Google for ${userInfo.email} (Gmail + Drive)`);
-      } catch (e) {
-        console.error('Auto-connect Google error:', e.message);
-      }
-    } else if (tokenData.access_token) {
-      // No refresh token (returning user) — update access_token if account exists
+    const { rows: [existingGoogle] } = await platformPool.query(
+      'SELECT id FROM user_google_accounts WHERE user_id = $1 AND google_email = $2', [user.id, userInfo.email]
+    );
+    if (existingGoogle && tokenData.access_token) {
+      // Returning user with existing connection — update tokens only
       await platformPool.query(`
-        UPDATE user_google_accounts SET access_token = $1, connected_at = NOW()
-        WHERE user_id = $2 AND google_email = $3
-      `, [tokenData.access_token, user.id, userInfo.email]).catch(() => {});
+        UPDATE user_google_accounts SET access_token = $1,
+          refresh_token = COALESCE($2, refresh_token),
+          connected_at = NOW()
+        WHERE user_id = $3 AND google_email = $4
+      `, [tokenData.access_token, tokenData.refresh_token, user.id, userInfo.email]).catch(() => {});
     }
+    // New users: Gmail connection happens in onboarding Step 3 via /api/auth/google/connect-gmail
 
     // Check onboarding status FIRST — new users need onboarding before Gmail connect
     const { rows: [tenantStatus] } = await platformPool.query(
@@ -367,18 +356,8 @@ app.get('/api/auth/google/callback', async (req, res) => {
       return res.redirect(`/onboarding.html?step=${step}&token=${sessionToken}&user=${userJson}`);
     }
 
-    // Verify Gmail/Drive connection exists — if not, force re-consent to get refresh_token
-    const { rows: [googleAccount] } = await platformPool.query(
-      'SELECT id FROM user_google_accounts WHERE user_id = $1 AND refresh_token IS NOT NULL LIMIT 1',
-      [user.id]
-    );
-    if (!googleAccount) {
-      console.log(`⚠️ ${userInfo.email} has no Gmail/Drive connection — redirecting to connect flow`);
-      const connectUrl = `/api/auth/gmail/connect?token=${sessionToken}&return_to=${encodeURIComponent(returnTo)}`;
-      return res.redirect(connectUrl);
-    }
-
-    // Onboarding complete + Gmail connected → go to dashboard
+    // SCIENCE: No forced Gmail redirect — connection happens in onboarding Step 3
+    // Onboarding complete → go to dashboard
     const sep = returnTo.includes('?') ? '&' : '?';
     res.redirect(`${returnTo}${sep}token=${sessionToken}&user=${userJson}`);
   } catch (err) {
@@ -534,14 +513,15 @@ app.post('/api/auth/logout', authenticateToken, async (req, res) => {
 // GOOGLE CONNECT (Gmail + Drive + Docs + Sheets + Slides)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const GOOGLE_CONNECT_SCOPES = [
-  'openid', 'email', 'profile',
-  'https://www.googleapis.com/auth/gmail.readonly',
-  'https://www.googleapis.com/auth/drive.readonly',
-  'https://www.googleapis.com/auth/documents.readonly',
-  'https://www.googleapis.com/auth/spreadsheets.readonly',
-  'https://www.googleapis.com/auth/presentations.readonly',
-].join(' ');
+// SCIENCE: Progressive disclosure — sign-in requests minimum, data scopes requested after trust
+const SIGNIN_SCOPES = 'openid email profile';
+
+// SCIENCE: Commitment ladder — data scopes requested after user has experienced value
+const GMAIL_CONNECT_SCOPES = 'openid email profile https://www.googleapis.com/auth/gmail.readonly';
+const DRIVE_CONNECT_SCOPES = 'openid email profile https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents.readonly https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/presentations.readonly';
+
+// Legacy alias for backward compatibility with existing code that references this
+const GOOGLE_CONNECT_SCOPES = GMAIL_CONNECT_SCOPES;
 
 app.get('/api/auth/gmail/connect', async (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' });

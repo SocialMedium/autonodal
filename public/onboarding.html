@@ -430,7 +430,8 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
 
 <div class="onboard-shell">
 
-  <!-- Step 0: Welcome -->
+  <!-- SCIENCE: Step 0 — competence trust before benevolence trust -->
+  <!-- Value statement leads, privacy statement follows (Issue 9) -->
   <div class="step active" id="step0">
     <div class="sparkle-mark">
       <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
@@ -438,26 +439,41 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
       </svg>
       <span>Autonodal</span>
     </div>
-    <h1>Your network,<br>on your terms.</h1>
-    <p class="sub">Signal intelligence built around you. Three quick questions and your feed is live.</p>
-    <div class="privacy-trust" style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:16px;margin:20px 0">
-      <div style="font-size:13px;font-weight:500;color:#10b981;margin-bottom:6px">🔒 Your data. Your control. Always.</div>
-      <p style="font-size:13px;color:#94a3b8;line-height:1.5;margin:0">Your network stays in your private sandbox. It is never merged, sold, or used to train AI models. You lend your influence to collaborations — your data never moves.</p>
+    <h1>See what your network<br>can see.</h1>
+    <!-- SCIENCE: Competence signal first — show what the platform does concretely -->
+    <p class="sub" style="font-size:15px;line-height:1.6;margin-bottom:16px">Autonodal monitors thousands of sources for funding rounds, leadership changes, expansions, and M&A — then maps them against your professional network to surface warm paths you didn't know you had.</p>
+    <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:#94a3b8;line-height:1.5">
+      <span style="color:#f59e0b;font-weight:600">Example:</span> "Immutable just raised $200M — you have 3 warm connections there via your network."
+    </div>
+    <!-- SCIENCE: Privacy AFTER competence — now reads as a feature, not a disclaimer -->
+    <div style="font-size:12px;color:#64748b;margin-bottom:20px">
+      🔒 Your data stays in your private sandbox. Never merged, sold, or used to train AI.
     </div>
     <div>
-      <button class="btn-primary" onclick="goToStep(1)">Get started →</button>
+      <button class="btn-primary" onclick="goToStep(1)">Get started — 90 seconds →</button>
     </div>
   </div>
 
-  <!-- Step 1: Conversation -->
+  <!-- SCIENCE: Step 1 — foot-in-the-door + consequential framing (Issue 6) -->
   <div class="step" id="step1">
     <h3>Tell us about you</h3>
+    <!-- SCIENCE: Sets expectation that conversation has consequential output -->
+    <p style="font-size:13px;color:#94a3b8;margin-bottom:14px">Your answers configure your intelligence feed — 3 questions, takes 90 seconds.</p>
     <div class="chat-thread" id="chatThread"></div>
-    <div class="chat-input-row">
-      <textarea id="chatInput" rows="1" placeholder="Type your response..."></textarea>
-      <button class="chat-send" id="chatSend" onclick="sendMessage()">Send</button>
+    <!-- SCIENCE: Profile confirmation shown after PROFILE_READY (integrity trust) -->
+    <div id="profileConfirmation" style="display:none;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:8px;padding:16px;margin-bottom:12px">
+      <p style="font-size:13px;color:#e2e8f0;margin:0 0 8px;font-weight:500">Got it. Here's what we've configured:</p>
+      <div id="extractedChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>
+      <p style="font-size:11px;color:#64748b;margin:0 0 10px">You can adjust these in the next step.</p>
+      <button class="btn-primary" onclick="goToStep(2)" style="width:auto;padding:8px 20px;font-size:13px">That's right →</button>
     </div>
-    <p style="font-size:12px;color:#64748b;margin-top:8px;text-align:center">🔒 Your responses configure your feed. Nothing is shared.</p>
+    <div id="chatInputArea">
+      <div class="chat-input-row">
+        <textarea id="chatInput" rows="1" placeholder="Type your response..."></textarea>
+        <button class="chat-send" id="chatSend" onclick="sendMessage()">Send</button>
+      </div>
+      <p style="font-size:12px;color:#64748b;margin-top:8px;text-align:center">🔒 Your responses configure your feed. Nothing is shared.</p>
+    </div>
   </div>
 
   <!-- Step 2: Upload -->
@@ -498,28 +514,52 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
         <li style="font-size:12px;color:#64748b;padding:2px 0 2px 16px;position:relative"><span style="position:absolute;left:0;color:#10b981">→</span> Nothing leaves your session context</li>
       </ul>
     </div>
-    <div class="connect-cards">
-      <div class="connect-card" onclick="connectGmail()">
-        <div class="card-icon">
-          <svg width="20" height="16" viewBox="0 0 20 16" fill="none">
-            <path d="M18 0H2C.9 0 0 .9 0 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V2c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V2l8 5 8-5v2z" fill="#e2e8f0"/>
-          </svg>
+    <!-- SCIENCE: Connection card anatomy with access detail (Issue 2) -->
+    <!-- Competence + benevolence trust signals precede OAuth request -->
+    <div class="connect-cards" style="display:flex;flex-direction:column;gap:12px">
+      <div style="background:#111827;border:1px solid #1e2d3d;border-radius:10px;padding:18px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <span style="font-size:20px">📧</span>
+          <div>
+            <strong style="font-size:14px;color:#e2e8f0">Gmail</strong>
+            <span style="display:block;font-size:12px;color:#f59e0b">Highest value — see how warm your relationships really are</span>
+          </div>
         </div>
-        <div class="card-body">
-          <strong>Gmail</strong>
-          <small>Your real relationship graph — who you know and how well, sourced from ground truth</small>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+          <div>
+            <div style="font-size:10px;font-weight:600;color:#10b981;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">What we read</div>
+            <ul style="margin:0;padding:0;list-style:none;font-size:12px;color:#94a3b8">
+              <li style="padding:2px 0">✓ Who you've emailed</li>
+              <li style="padding:2px 0">✓ When you last had contact</li>
+              <li style="padding:2px 0">✓ Whether they replied</li>
+            </ul>
+          </div>
+          <!-- SCIENCE: "What we never read" is the benevolence signal — must be visible -->
+          <div>
+            <div style="font-size:10px;font-weight:600;color:#ef4444;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">What we never read</div>
+            <ul style="margin:0;padding:0;list-style:none;font-size:12px;color:#64748b">
+              <li style="padding:2px 0">✗ Email content or subjects</li>
+              <li style="padding:2px 0">✗ Attachments</li>
+              <li style="padding:2px 0">✗ Personal threads</li>
+            </ul>
+          </div>
         </div>
-        <span class="badge-value">highest value</span>
+        <div style="display:flex;gap:8px">
+          <!-- SCIENCE: "Continue" implies journey, not transaction -->
+          <button class="btn-primary" onclick="connectGmail()" style="flex:1;font-size:13px;padding:10px">Continue to Google →</button>
+          <!-- SCIENCE: Procedural justice — skip must always be visible -->
+          <button class="btn-ghost" onclick="goToStep(4)" style="font-size:12px;padding:10px 14px">Skip</button>
+        </div>
       </div>
-      <div class="connect-card" onclick="connectGoogleContacts()">
-        <div class="card-icon">
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-            <path d="M9 9c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" fill="#e2e8f0"/>
-          </svg>
-        </div>
-        <div class="card-body">
-          <strong>Google Contacts</strong>
-          <small>Your full address book as a starting network</small>
+
+      <div style="background:#111827;border:1px solid #1e2d3d;border-radius:10px;padding:14px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">👥</span>
+          <div style="flex:1">
+            <strong style="font-size:13px;color:#e2e8f0">Google Contacts</strong>
+            <span style="display:block;font-size:11px;color:#94a3b8">Import your address book as a starting network</span>
+          </div>
+          <button class="btn-ghost" onclick="connectGoogleContacts()" style="font-size:11px;padding:6px 12px">Connect</button>
         </div>
       </div>
     </div>
@@ -530,7 +570,7 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
 
   <!-- Step 4: Confirm + Feed Selection -->
   <div class="step" id="step4">
-    <h2>Your signal feed <span class="hint-icon" data-hint="Your signal dial is automatically configured from your declared mission and sectors. It filters always-on sources like PR Newswire and Business Wire so you see signals relevant to your themes, not everything they publish." data-hint-title="Your signal dial" data-hint-id="onboard-signal-dial" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1px solid rgba(245,158,11,0.4);color:#f59e0b;font-size:10px;cursor:help;vertical-align:middle;margin-left:4px">\u24d8</span></h2>
+    <h2>Your signal feed <span class="hint-icon" data-hint="Your signal dial is automatically configured from your declared mission and sectors. It filters always-on sources like PR Newswire and Business Wire so you see signals relevant to your themes, not everything they publish." data-hint-title="Your signal dial" data-hint-id="onboard-signal-dial" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1px solid rgba(245,158,11,0.4);color:#f59e0b;font-size:10px;cursor:help;vertical-align:middle;margin-left:4px">ⓘ</span></h2>
     <p class="sub">We've suggested sources based on your mission. Add or remove anything before activating.</p>
 
     <!-- Editable profile cards -->
@@ -700,8 +740,20 @@ function sendMessage() {
     if (data.type === 'profile_ready') {
       extractedProfile = data.profile || {};
       derivedConfig = data.config || {};
-      addAssistantMessage(data.message || "Great \u2014 I've got a clear picture. Let me set things up for you.");
-      setTimeout(function() { goToStep(2); }, 1500);
+      if (data.message) addAssistantMessage(data.message);
+      // SCIENCE: Integrity trust — show what was extracted as confirmation (Issue 6)
+      document.getElementById('chatInputArea').style.display = 'none';
+      var chips = [];
+      if (extractedProfile.role) chips.push(extractedProfile.role);
+      (extractedProfile.sectors || []).forEach(function(s) { chips.push(s.replace(/_/g, ' ')); });
+      (extractedProfile.geographies || []).forEach(function(g) { chips.push(g); });
+      (extractedProfile.intents || []).slice(0, 2).forEach(function(i) { chips.push(i.replace(/_/g, ' ')); });
+      var chipsHtml = chips.map(function(c) {
+        return '<span style="font-size:11px;padding:3px 10px;border-radius:12px;background:rgba(245,158,11,0.12);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">' + c + '</span>';
+      }).join('');
+      document.getElementById('extractedChips').innerHTML = chipsHtml;
+      document.getElementById('profileConfirmation').style.display = 'block';
+      scrollChat();
     } else {
       addAssistantMessage(data.message);
       document.getElementById('chatInput').focus();
