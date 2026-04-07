@@ -373,7 +373,11 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
       'SELECT id, email, name, role, region, onboarded, preferences FROM users WHERE id = $1',
       [req.user.user_id]
     );
-    res.json({ user: { ...req.user, region: user?.region, onboarded: user?.onboarded, preferences: user?.preferences } });
+    // SCIENCE: Peak-end rule — include signal_dial so dashboard can personalise feed
+    const { rows: [tenantData] } = await db.query(
+      'SELECT signal_dial, profile FROM tenants WHERE id = $1', [req.tenant_id]
+    ).catch(() => ({ rows: [null] }));
+    res.json({ user: { ...req.user, region: user?.region, onboarded: user?.onboarded, preferences: user?.preferences }, signal_dial: tenantData?.signal_dial, profile: tenantData?.profile });
   } catch (e) {
     res.json({ user: req.user });
   }
@@ -5603,6 +5607,78 @@ app.post('/api/onboarding/finalize', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Onboarding finalize error:', err.message);
     res.status(500).json({ error: 'Failed to finalize' });
+  }
+});
+
+// SCIENCE: Peak-end rule — network preview creates emotional peak during onboarding
+// Called after first successful data connection (Gmail or Contacts)
+app.get('/api/onboarding/network-preview', authenticateToken, async (req, res) => {
+  try {
+    // Get tenant profile for sector matching
+    const { rows: [tenant] } = await pool.query(
+      'SELECT profile, focus_sectors FROM tenants WHERE id = $1', [req.tenant_id]
+    );
+    const profile = typeof tenant?.profile === 'string' ? JSON.parse(tenant.profile) : (tenant?.profile || {});
+    const sectors = profile.sectors || tenant?.focus_sectors || [];
+
+    // Count contacts for this tenant
+    const { rows: [counts] } = await pool.query(`
+      SELECT COUNT(*) AS contact_count, COUNT(DISTINCT current_company_id) AS company_count
+      FROM people WHERE tenant_id = $1 AND full_name IS NOT NULL
+    `, [req.tenant_id]);
+
+    // Get preview companies — sector match first, then highest contact count
+    let previewCompanies = [];
+    if (sectors.length > 0 && parseInt(counts.company_count) > 0) {
+      const { rows } = await pool.query(`
+        SELECT c.name AS company_name, c.sector, COUNT(p.id) AS contact_count,
+               cr.elevation_tier AS signal_tier
+        FROM people p
+        JOIN companies c ON c.id = p.current_company_id
+        LEFT JOIN company_relationships cr ON cr.company_id = c.id AND cr.tenant_id = $1
+        WHERE p.tenant_id = $1 AND c.sector ILIKE ANY($2)
+        GROUP BY c.id, c.name, c.sector, cr.elevation_tier
+        ORDER BY COUNT(p.id) DESC LIMIT 3
+      `, [req.tenant_id, sectors.map(s => '%' + s + '%')]);
+      previewCompanies = rows;
+    }
+
+    // Fill remaining slots with top companies by contact count
+    if (previewCompanies.length < 3 && parseInt(counts.company_count) > 0) {
+      const existingNames = previewCompanies.map(c => c.company_name);
+      const { rows } = await pool.query(`
+        SELECT c.name AS company_name, c.sector, COUNT(p.id) AS contact_count,
+               cr.elevation_tier AS signal_tier
+        FROM people p
+        JOIN companies c ON c.id = p.current_company_id
+        LEFT JOIN company_relationships cr ON cr.company_id = c.id AND cr.tenant_id = $1
+        WHERE p.tenant_id = $1 AND c.name != ALL($2)
+        GROUP BY c.id, c.name, c.sector, cr.elevation_tier
+        ORDER BY COUNT(p.id) DESC LIMIT $3
+      `, [req.tenant_id, existingNames, 3 - previewCompanies.length]);
+      previewCompanies = previewCompanies.concat(rows);
+    }
+
+    // Check Gmail processing status
+    const { rows: [gmail] } = await pool.query(
+      'SELECT gmail_last_sync_at, emails_synced FROM user_google_accounts WHERE tenant_id = $1 LIMIT 1',
+      [req.tenant_id]
+    ).catch(() => ({ rows: [null] }));
+
+    res.json({
+      contact_count: parseInt(counts.contact_count) || 0,
+      company_count: parseInt(counts.company_count) || 0,
+      preview_companies: previewCompanies.map(c => ({
+        company_name: c.company_name,
+        contact_count: parseInt(c.contact_count),
+        sector: c.sector,
+        signal_tier: c.signal_tier || null,
+      })),
+      gmail_processing: gmail?.gmail_last_sync_at ? false : true,
+      gmail_synced: parseInt(gmail?.emails_synced) || 0,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -563,8 +563,21 @@ p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
         </div>
       </div>
     </div>
-    <div>
+    <div id="connectSkip">
       <button class="btn-ghost" onclick="goToStep(4)">Skip for now</button>
+    </div>
+
+    <!-- SCIENCE: Peak-end rule — network preview after first data connection (Issue 4) -->
+    <div id="peakMoment" style="display:none">
+      <div style="text-align:center;margin-bottom:16px">
+        <div style="width:12px;height:12px;border-radius:50%;background:#f59e0b;margin:0 auto 12px;animation:pulse 1.5s ease infinite"></div>
+        <h2 style="font-size:20px;color:#e2e8f0;margin:0 0 4px">Your network is live</h2>
+        <p style="font-size:14px;color:#94a3b8;margin:0" id="peakContactCount">Processing...</p>
+      </div>
+      <div id="peakCompanies" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-primary" onclick="goToStep(4)" style="flex:1">Continue setup →</button>
+      </div>
     </div>
   </div>
 
@@ -813,6 +826,37 @@ function submitUploads() {
 }
 
 /* ─── Step 3: Connect ─── */
+// SCIENCE: Peak-end rule — show what the platform discovered from their data
+function showPeakMoment() {
+  // Hide connection cards, show peak moment
+  document.querySelectorAll('.connect-cards, #connectSkip, .privacy-trust').forEach(function(el) { el.style.display = 'none'; });
+  document.getElementById('peakMoment').style.display = 'block';
+
+  // Fetch network preview
+  api('GET', '/api/onboarding/network-preview').then(function(data) {
+    var cc = data.contact_count || 0;
+    var coCount = data.company_count || 0;
+    document.getElementById('peakContactCount').innerHTML =
+      cc > 0
+        ? 'We found <strong style="color:#e2e8f0">' + cc.toLocaleString() + ' contacts</strong> across <strong style="color:#e2e8f0">' + coCount + ' companies</strong>'
+        : 'Your contacts are being processed — this takes a minute or two.';
+
+    var companiesHtml = '';
+    (data.preview_companies || []).forEach(function(co) {
+      var tierColor = co.signal_tier === 'critical' ? '#f59e0b' : co.signal_tier === 'active' ? '#10b981' : '#64748b';
+      companiesHtml += '<div style="background:#111827;border:1px solid #1e2d3d;border-radius:8px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center">' +
+        '<div><strong style="font-size:13px;color:#e2e8f0">' + (co.company_name || '') + '</strong>' +
+        '<span style="display:block;font-size:11px;color:#64748b">' + (co.sector || '') + ' · ' + co.contact_count + ' contacts</span></div>' +
+        (co.signal_tier ? '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:' + tierColor + '18;color:' + tierColor + ';font-weight:600">' + co.signal_tier + '</span>' : '') +
+      '</div>';
+    });
+    document.getElementById('peakCompanies').innerHTML = companiesHtml ||
+      '<div style="text-align:center;color:#64748b;font-size:13px;padding:16px">Your network data is still being imported — you can continue setup while it processes.</div>';
+  }).catch(function() {
+    document.getElementById('peakContactCount').textContent = 'Connected — your network is being mapped.';
+  });
+}
+
 function connectGmail() {
   window.location.href = '/api/auth/gmail/connect?token=' + encodeURIComponent(token) + '&return_to=/onboarding.html?step=connect';
 }
@@ -1224,10 +1268,12 @@ function activateFeed() {
     var status = data.onboarding_status || data.status || '';
 
     if (stepParam === 'connect') {
-      /* Returning from Gmail/Contacts OAuth */
+      /* Returning from Gmail/Contacts OAuth — show peak moment */
       extractedProfile = data.profile || null;
       derivedConfig = data.config || null;
       goToStep(3);
+      // SCIENCE: Peak-end rule — show network preview after connection
+      showPeakMoment();
     } else if (status === 'complete') {
       window.location.href = '/index.html';
     } else if (status === 'profile_ready' || status === 'conversation_done') {

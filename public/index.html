@@ -2194,6 +2194,36 @@ async function generateDispatchForSignal(signalId, btn) {
   } catch (e) { btn.textContent = 'Failed'; btn.disabled = false; }
 }
 
+// SCIENCE: Peak-end rule — post-onboarding welcome shows what was configured
+async function showPostOnboardingCard() {
+  var dial = window._signalDial;
+  var profile = window._currentUser;
+  if (!dial && !profile) return;
+
+  var themes = (dial?.themes || []).slice(0, 4).map(function(t) { return t.replace(/_/g, ' '); });
+  var region = profile?.region || 'Global';
+
+  var card = document.createElement('div');
+  card.id = 'postOnboardCard';
+  card.style.cssText = 'background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(16,185,129,0.05));border:1px solid rgba(245,158,11,0.2);border-radius:12px;padding:20px;margin-bottom:20px;position:relative';
+  card.innerHTML =
+    '<button onclick="this.parentElement.remove()" style="position:absolute;top:10px;right:14px;background:none;border:none;color:#64748b;cursor:pointer;font-size:16px">&times;</button>' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="color:#f59e0b;font-size:16px">&#10022;</span><strong style="font-size:15px">Your feed is live</strong></div>' +
+    '<p style="font-size:13px;color:var(--ink-3);margin:0 0 12px">Signals are being scanned for your sectors and regions. The more you interact, the more personalised your feed becomes.</p>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">' +
+      themes.map(function(t) { return '<span style="font-size:11px;padding:3px 10px;border-radius:12px;background:var(--amber-soft);color:var(--amber)">' + t + '</span>'; }).join('') +
+      '<span style="font-size:11px;padding:3px 10px;border-radius:12px;background:var(--blue-soft);color:var(--blue)">' + region + '</span>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;font-size:12px">' +
+      '<a href="/profile.html" style="color:var(--blue);text-decoration:none">Connect Gmail for network proximity →</a>' +
+    '</div>';
+
+  var main = document.querySelector('main') || document.querySelector('.page-content') || document.body;
+  var firstSection = main.querySelector('.section, [id*="deal"], [id*="signal"]');
+  if (firstSection) firstSection.parentNode.insertBefore(card, firstSection);
+  else main.prepend(card);
+}
+
 async function loadTodayInsight() {
   try {
     var data = await api('/api/insights/today');
@@ -2455,6 +2485,12 @@ async function loadSignals() {
     const params = new URLSearchParams({ limit: 6, offset: signalOffset });
     if (currentFilter !== 'all') params.set('type', currentFilter);
     if (currentRegion !== 'all') params.set('region', currentRegion);
+    // SCIENCE: Peak-end rule — first dashboard view should be personalised to signal_dial
+    // Use user's preferred signal types from onboarding profile for boost ordering
+    var dial = window._signalDial;
+    if (dial && dial.signal_types && dial.signal_types.length && currentFilter === 'all') {
+      params.set('boost_types', dial.signal_types.join(','));
+    }
 
     const data = await api('/api/signals/brief?' + params);
     const feed = document.getElementById('dealFeed');
@@ -3292,8 +3328,10 @@ async function init() {
   if (!token) { showLogin(); return; }
 
   try {
-    const { user } = await api('/api/auth/me');
+    const meData = await api('/api/auth/me');
+    const user = meData.user;
     window._currentUser = user;
+    window._signalDial = meData.signal_dial || null;
     const initials = (user.name || user.email || '').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
     document.getElementById('userAvatar').textContent = initials;
 
@@ -3324,6 +3362,12 @@ async function init() {
 
   loadStats();
   loadMarketTemperature();
+  // SCIENCE: Peak-end rule — the END of onboarding is the first dashboard view
+  // Show personalised welcome if just completed onboarding
+  if (window.location.search.includes('onboarded=true')) {
+    showPostOnboardingCard();
+    history.replaceState({}, '', '/index.html');
+  }
   loadHeroSignals();
   loadSignalGrabs();
   loadNetworkSignals();
