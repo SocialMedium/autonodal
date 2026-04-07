@@ -327,7 +327,10 @@ app.get('/api/auth/google/callback', async (req, res) => {
     await platformPool.query('DELETE FROM sessions WHERE expires_at < NOW()');
 
     // Auto-connect Google (Gmail + Drive) — always upsert tokens
-    const tenantId = process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+    // Use the user's actual tenant, not hardcoded ML tenant
+    const userTenantId = (await platformPool.query('SELECT tenant_id FROM users WHERE id = $1', [user.id])).rows[0]?.tenant_id
+      || process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+    const tenantId = userTenantId;
     if (tokenData.refresh_token) {
       try {
         await platformPool.query(`
@@ -468,7 +471,7 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
         FROM signal_events se
         JOIN companies c ON c.id = se.company_id AND c.is_client = true AND c.tenant_id = $1
         JOIN accounts cl ON cl.company_id = c.id AND cl.tenant_id = $1
-        WHERE se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1
+        WHERE se.detected_at > NOW() - INTERVAL '7 days' AND (se.tenant_id IS NULL OR se.tenant_id = $1)
         ORDER BY se.company_id, se.confidence_score DESC
         LIMIT 5
       `, [req.tenant_id]),
@@ -494,7 +497,7 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
         SELECT
           (SELECT COUNT(*) FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND tenant_id = $1) as signals_24h,
           (SELECT COUNT(*) FROM signal_dispatches WHERE status = 'draft' AND claimed_by IS NULL AND tenant_id = $1) as unclaimed_dispatches,
-          (SELECT COUNT(*) FROM signal_events se JOIN companies c ON c.id = se.company_id AND c.is_client = true WHERE se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1) as client_signals_7d
+          (SELECT COUNT(*) FROM signal_events se JOIN companies c ON c.id = se.company_id AND c.is_client = true WHERE se.detected_at > NOW() - INTERVAL '7 days' AND (se.tenant_id IS NULL OR se.tenant_id = $1)) as client_signals_7d
       `, [req.tenant_id])
     ]);
 
@@ -1233,18 +1236,18 @@ app.get('/api/stats', authenticateToken, async (req, res) => {
       eventsThisWeek, events30d, activeEventSources
     ] = await Promise.all([
       db.query('SELECT COUNT(*) AS cnt FROM people WHERE tenant_id = $1', [req.tenant_id]),
-      db.query(`SELECT COUNT(*) AS cnt FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND tenant_id = $1`, [req.tenant_id]),
-      db.query('SELECT COUNT(*) AS cnt FROM signal_events WHERE tenant_id = $1', [req.tenant_id]),
+      db.query(`SELECT COUNT(*) AS cnt FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND (tenant_id IS NULL OR tenant_id = $1)`, [req.tenant_id]),
+      db.query('SELECT COUNT(*) AS cnt FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1)', [req.tenant_id]),
       db.query('SELECT COUNT(*) AS cnt FROM companies WHERE tenant_id = $1', [req.tenant_id]),
-      db.query('SELECT COUNT(*) AS cnt FROM external_documents WHERE tenant_id = $1', [req.tenant_id]),
+      db.query('SELECT COUNT(*) AS cnt FROM external_documents WHERE (tenant_id IS NULL OR tenant_id = $1)', [req.tenant_id]),
       db.query('SELECT COUNT(*) AS cnt, COALESCE(SUM(placement_fee), 0) AS total_fees FROM conversions WHERE tenant_id = $1 AND source IN (\'xero_export\', \'xero\', \'manual\') AND placement_fee IS NOT NULL', [req.tenant_id]),
       db.query('SELECT COUNT(*) AS cnt FROM rss_sources WHERE enabled = true'),
       db.query(`SELECT COUNT(DISTINCT person_id) AS cnt FROM interactions WHERE interaction_type = 'research_note' AND tenant_id = $1`, [req.tenant_id]),
-      db.query(`SELECT signal_type, COUNT(*) AS cnt FROM signal_events WHERE tenant_id = $1 GROUP BY signal_type ORDER BY cnt DESC`, [req.tenant_id]),
-      db.query(`SELECT source_type, COUNT(*) AS cnt FROM external_documents WHERE tenant_id = $1 GROUP BY source_type ORDER BY cnt DESC`, [req.tenant_id]),
-      db.query(`SELECT COUNT(*) AS cnt FROM events WHERE tenant_id = $1 AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 7`, [req.tenant_id]).catch(() => ({ rows: [{ cnt: 0 }] })),
-      db.query(`SELECT COUNT(*) AS cnt FROM events WHERE tenant_id = $1 AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 30`, [req.tenant_id]).catch(() => ({ rows: [{ cnt: 0 }] })),
-      db.query(`SELECT COUNT(*) AS cnt FROM event_sources WHERE tenant_id = $1 AND is_active = true`, [req.tenant_id]).catch(() => ({ rows: [{ cnt: 0 }] })),
+      db.query(`SELECT signal_type, COUNT(*) AS cnt FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1) GROUP BY signal_type ORDER BY cnt DESC`, [req.tenant_id]),
+      db.query(`SELECT source_type, COUNT(*) AS cnt FROM external_documents WHERE (tenant_id IS NULL OR tenant_id = $1) GROUP BY source_type ORDER BY cnt DESC`, [req.tenant_id]),
+      db.query(`SELECT COUNT(*) AS cnt FROM events WHERE (tenant_id IS NULL OR tenant_id = $1) AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 7`, [req.tenant_id]).catch(() => ({ rows: [{ cnt: 0 }] })),
+      db.query(`SELECT COUNT(*) AS cnt FROM events WHERE (tenant_id IS NULL OR tenant_id = $1) AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 30`, [req.tenant_id]).catch(() => ({ rows: [{ cnt: 0 }] })),
+      db.query(`SELECT COUNT(*) AS cnt FROM event_sources WHERE (tenant_id IS NULL OR tenant_id = $1) AND is_active = true`, [req.tenant_id]).catch(() => ({ rows: [{ cnt: 0 }] })),
     ]);
 
     res.json({
@@ -1296,7 +1299,7 @@ app.get('/api/signals/hero', authenticateToken, async (req, res) => {
         FROM signal_events se
         LEFT JOIN companies c ON c.id = se.company_id
         LEFT JOIN external_documents ed ON ed.id = se.source_document_id
-        WHERE se.tenant_id = $1
+        WHERE (se.tenant_id IS NULL OR se.tenant_id = $1)
           AND se.detected_at > NOW() - INTERVAL '7 days'
           AND COALESCE(se.is_megacap, false) = false
           AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')
@@ -1428,7 +1431,7 @@ app.get('/api/market-temperature', authenticateToken, async (req, res) => {
       SELECT se.signal_type, COUNT(*) as cnt,
              array_agg(DISTINCT se.company_name ORDER BY se.company_name) FILTER (WHERE se.company_name IS NOT NULL) as companies
       FROM signal_events se
-      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1
+      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days' AND (se.tenant_id IS NULL OR se.tenant_id = $1)
       GROUP BY se.signal_type ORDER BY cnt DESC
     `, [req.tenant_id]);
 
@@ -1436,7 +1439,7 @@ app.get('/api/market-temperature', authenticateToken, async (req, res) => {
     const { rows: headlines } = await db.query(`
       SELECT se.company_name, se.signal_type, se.evidence_summary, se.detected_at, se.confidence_score
       FROM signal_events se
-      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1
+      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days' AND (se.tenant_id IS NULL OR se.tenant_id = $1)
       ORDER BY se.confidence_score DESC, se.detected_at DESC
       LIMIT 8
     `, [req.tenant_id]);
@@ -1592,7 +1595,7 @@ app.get('/api/converging-themes', authenticateToken, async (req, res) => {
       LEFT JOIN candidate_counts cc ON cc.signal_type = se.signal_type
       WHERE se.detected_at > NOW() - INTERVAL '30 days'
         AND se.signal_type IS NOT NULL
-        AND se.tenant_id = $1
+        AND (se.tenant_id IS NULL OR se.tenant_id = $1)
       GROUP BY se.signal_type, cc.cnt
       HAVING COUNT(DISTINCT se.company_id) >= 3
       ORDER BY COUNT(DISTINCT CASE WHEN c.is_client = true THEN se.company_id END) DESC,
@@ -1617,7 +1620,7 @@ app.get('/api/converging-themes', authenticateToken, async (req, res) => {
       FROM signal_events se
       JOIN companies c ON c.id = se.company_id AND c.sector IS NOT NULL AND c.tenant_id = $1
       WHERE se.detected_at > NOW() - INTERVAL '30 days'
-        AND se.tenant_id = $1
+        AND (se.tenant_id IS NULL OR se.tenant_id = $1)
       GROUP BY c.sector
       HAVING COUNT(DISTINCT se.company_id) >= 3 AND COUNT(*) >= 5
       ORDER BY COUNT(DISTINCT CASE WHEN c.is_client = true THEN c.id END) DESC,
@@ -1888,7 +1891,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
     const minConf = parseFloat(req.query.min_confidence) || 0;
     const networkOnly = req.query.network === 'true'; // only signals where we have contacts
 
-    let where = 'WHERE se.tenant_id = $1';
+    let where = 'WHERE (se.tenant_id IS NULL OR se.tenant_id = $1)';
     const params = [req.tenant_id];
     let paramIdx = 1;
 
@@ -2103,7 +2106,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
         FROM signal_events se
         LEFT JOIN companies c ON se.company_id = c.id
         LEFT JOIN external_documents ed ON se.source_document_id = ed.id
-        WHERE se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1
+        WHERE se.detected_at > NOW() - INTERVAL '7 days' AND (se.tenant_id IS NULL OR se.tenant_id = $1)
           AND COALESCE(se.is_megacap, false) = false
           AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')
       `, [req.tenant_id]);
@@ -3970,7 +3973,7 @@ app.get('/api/companies', authenticateToken, async (req, res) => {
                  COALESCE(cf.total_placements, 0) AS placement_count,
                  COALESCE(cf.total_invoiced, 0) AS total_revenue,
                  (SELECT COUNT(*) FROM people p WHERE p.current_company_id = cl.company_id AND p.tenant_id = $1) AS people_count,
-                 (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = cl.company_id AND se.tenant_id = $1) AS signal_count
+                 (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = cl.company_id AND (se.tenant_id IS NULL OR se.tenant_id = $1)) AS signal_count
           FROM accounts cl
           LEFT JOIN companies co ON cl.company_id = co.id
           LEFT JOIN account_financials cf ON cf.client_id = cl.id
@@ -4037,8 +4040,8 @@ app.get('/api/companies', authenticateToken, async (req, res) => {
       db.query(`
         SELECT c.id, c.name, c.sector, c.geography, c.domain, c.is_client,
                c.employee_count_band, c.description,
-               (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.tenant_id = $1) AS signal_count,
-               (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.tenant_id = $1
+               (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND (se.tenant_id IS NULL OR se.tenant_id = $1)) AS signal_count,
+               (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND (se.tenant_id IS NULL OR se.tenant_id = $1)
                 AND se.signal_type::text IN ('capital_raising','product_launch','geographic_expansion','partnership','strategic_hiring')
                 AND se.detected_at > NOW() - INTERVAL '30 days') AS positive_signal_count,
                (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id AND p.tenant_id = $1) AS people_count
@@ -4047,19 +4050,19 @@ app.get('/api/companies', authenticateToken, async (req, res) => {
         ORDER BY
           -- Tier 1: Clients with positive signals (30d)
           CASE WHEN c.is_client = true AND (SELECT COUNT(*) FROM signal_events se
-            WHERE se.company_id = c.id AND se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '30 days'
+            WHERE se.company_id = c.id AND (se.tenant_id IS NULL OR se.tenant_id = $1) AND se.detected_at > NOW() - INTERVAL '30 days'
             AND se.signal_type::text IN ('capital_raising','product_launch','geographic_expansion','partnership','strategic_hiring')
           ) > 0 THEN 0
           -- Tier 2: Clients with contacts
           WHEN c.is_client = true THEN 1
           -- Tier 3: Non-clients with signals AND contacts
-          WHEN (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '30 days') > 0
+          WHEN (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND (se.tenant_id IS NULL OR se.tenant_id = $1) AND se.detected_at > NOW() - INTERVAL '30 days') > 0
             AND (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id AND p.tenant_id = $1) > 0 THEN 2
           -- Tier 4: Companies with contacts only
           WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id AND p.tenant_id = $1) > 0 THEN 3
           ELSE 4 END,
           -- Within each tier, sort by signal+contact density
-          (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '30 days') DESC,
+          (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND (se.tenant_id IS NULL OR se.tenant_id = $1) AND se.detected_at > NOW() - INTERVAL '30 days') DESC,
           (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id AND p.tenant_id = $1) DESC,
           c.name
         LIMIT $${limitIdx} OFFSET $${offsetIdx}
@@ -4838,7 +4841,7 @@ app.get('/api/documents/sources', authenticateToken, async (req, res) => {
     const { rows } = await db.query(`
       SELECT rs.id, rs.name, rs.source_type, rs.url, rs.enabled,
              rs.last_fetched_at, rs.last_error, rs.consecutive_errors,
-             (SELECT COUNT(*) FROM external_documents ed WHERE ed.source_id = rs.id AND ed.tenant_id = $1) AS doc_count
+             (SELECT COUNT(*) FROM external_documents ed WHERE ed.source_id = rs.id AND (ed.tenant_id IS NULL OR ed.tenant_id = $1)) AS doc_count
       FROM rss_sources rs
       ORDER BY rs.source_type, rs.name
     `, [req.tenant_id]);
@@ -5051,8 +5054,8 @@ app.get('/api/public/stats', async (req, res) => {
         (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1) as interactions,
         (SELECT COUNT(*) FROM signal_grabs WHERE created_at > NOW() - INTERVAL '7 days') as grabs_7d,
         (SELECT COUNT(*) FROM tenants) as tenants,
-        (SELECT COUNT(*) FROM events WHERE tenant_id = $1 AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 7) as events_this_week,
-        (SELECT COUNT(*) FROM events WHERE tenant_id = $1 AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 30) as upcoming_events_30d,
+        (SELECT COUNT(*) FROM events WHERE (tenant_id IS NULL OR tenant_id = $1) AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 7) as events_this_week,
+        (SELECT COUNT(*) FROM events WHERE (tenant_id IS NULL OR tenant_id = $1) AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 30) as upcoming_events_30d,
         (SELECT COUNT(*) FROM event_sources WHERE tenant_id = $1 AND is_active = true) as active_event_sources
     `, [tid]);
 
@@ -6295,7 +6298,7 @@ app.get('/api/public/hero', ...publicEmbed, async (req, res) => {
       FROM signal_events se
       LEFT JOIN companies c ON c.id = se.company_id
       LEFT JOIN external_documents ed ON ed.id = se.source_document_id
-      WHERE se.tenant_id = $1
+      WHERE (se.tenant_id IS NULL OR se.tenant_id = $1)
         AND se.detected_at > NOW() - INTERVAL '7 days'
         AND COALESCE(se.is_megacap, false) = false
         AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')
@@ -6342,7 +6345,7 @@ app.get('/api/public/market-temperature', ...publicEmbed, async (req, res) => {
     const { rows: byType } = await platformPool.query(`
       SELECT se.signal_type, COUNT(*) as cnt
       FROM signal_events se
-      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1
+      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days' AND (se.tenant_id IS NULL OR se.tenant_id = $1)
       GROUP BY se.signal_type ORDER BY cnt DESC
     `, [tid]);
 
@@ -6359,7 +6362,7 @@ app.get('/api/public/market-temperature', ...publicEmbed, async (req, res) => {
         se.signal_type, COUNT(*) as cnt
       FROM signal_events se
       LEFT JOIN companies c ON c.id = se.company_id
-      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days' AND se.tenant_id = $1
+      WHERE se.is_megacap = true AND se.detected_at > NOW() - INTERVAL '7 days' AND (se.tenant_id IS NULL OR se.tenant_id = $1)
       GROUP BY region, se.signal_type
     `, [tid]);
 
@@ -6641,7 +6644,7 @@ app.get('/api/network/graph', authenticateToken, async (req, res) => {
         SELECT a.id as account_id, a.name, a.relationship_tier, a.company_id,
                c.sector, c.geography,
                (SELECT COUNT(*) FROM people p WHERE p.current_company_id = a.company_id AND p.tenant_id = $1) as people_count,
-               (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = a.company_id AND se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '30 days') as signal_count,
+               (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = a.company_id AND (se.tenant_id IS NULL OR se.tenant_id = $1) AND se.detected_at > NOW() - INTERVAL '30 days') as signal_count,
                (SELECT COALESCE(SUM(cv.placement_fee), 0) FROM conversions cv WHERE cv.client_id = a.id AND cv.tenant_id = $1) as total_revenue
         FROM accounts a
         LEFT JOIN companies c ON c.id = a.company_id
@@ -6664,7 +6667,7 @@ app.get('/api/network/graph', authenticateToken, async (req, res) => {
         SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score, se.detected_at
         FROM signal_events se
         JOIN companies c ON c.id = se.company_id AND c.is_client = true
-        WHERE se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '14 days'
+        WHERE (se.tenant_id IS NULL OR se.tenant_id = $1) AND se.detected_at > NOW() - INTERVAL '14 days'
           AND se.confidence_score >= 0.7
         ORDER BY se.confidence_score DESC
         LIMIT 30
@@ -8191,7 +8194,7 @@ async function executeTool(name, input, userId, tenantId) {
           LEFT JOIN candidate_counts cc ON cc.signal_type = se.signal_type
           WHERE se.detected_at > NOW() - INTERVAL '${lookbackDays} days'
             AND se.signal_type IS NOT NULL
-            AND se.tenant_id = $1
+            AND (se.tenant_id IS NULL OR se.tenant_id = $1)
           GROUP BY se.signal_type, cc.cnt
           HAVING COUNT(DISTINCT se.company_id) >= ${minCompanies}
           ORDER BY COUNT(DISTINCT CASE WHEN c.is_client = true THEN se.company_id END) DESC,
@@ -8211,7 +8214,7 @@ async function executeTool(name, input, userId, tenantId) {
           FROM signal_events se
           JOIN companies c ON c.id = se.company_id AND c.sector IS NOT NULL
           WHERE se.detected_at > NOW() - INTERVAL '${lookbackDays} days'
-            AND se.tenant_id = $1
+            AND (se.tenant_id IS NULL OR se.tenant_id = $1)
           GROUP BY c.sector
           HAVING COUNT(DISTINCT se.company_id) >= ${minCompanies} AND COUNT(*) >= 5
           ORDER BY COUNT(DISTINCT CASE WHEN c.is_client = true THEN c.id END) DESC, COUNT(*) DESC
@@ -9428,7 +9431,7 @@ app.get('/api/documents/classified', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
     const { document_type, limit: lim = 30 } = req.query;
-    let where = 'WHERE ed.tenant_id = $1 AND ed.classified_at IS NOT NULL';
+    let where = 'WHERE (ed.tenant_id IS NULL OR ed.tenant_id = $1) AND ed.classified_at IS NOT NULL';
     const params = [req.tenant_id];
     let idx = 1;
     if (document_type) { idx++; where += ` AND ed.document_type = $${idx}`; params.push(document_type); }
@@ -9590,7 +9593,7 @@ app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) =
     const sources = await db.query(`
       SELECT rs.name, rs.source_type, rs.url, rs.enabled,
              rs.last_fetched_at, rs.last_error, rs.consecutive_errors,
-             (SELECT COUNT(*) FROM external_documents ed WHERE ed.source_name = rs.name AND ed.tenant_id = $1) AS doc_count
+             (SELECT COUNT(*) FROM external_documents ed WHERE ed.source_name = rs.name AND (ed.tenant_id IS NULL OR ed.tenant_id = $1)) AS doc_count
       FROM rss_sources rs
       ORDER BY rs.enabled DESC, rs.last_fetched_at DESC NULLS LAST
     `, [req.tenant_id]).catch(() => ({ rows: [] }));
@@ -9744,7 +9747,7 @@ app.get('/api/admin/ingestion', authenticateToken, requireAdmin, async (req, res
                MAX(ed.published_at) AS latest
         FROM external_documents ed
         JOIN users u ON u.id = ed.uploaded_by_user_id
-        WHERE ed.tenant_id = $1 AND ed.uploaded_by_user_id IS NOT NULL
+        WHERE (ed.tenant_id IS NULL OR ed.tenant_id = $1) AND ed.uploaded_by_user_id IS NOT NULL
         GROUP BY u.id, u.name, u.email
         ORDER BY COUNT(*) DESC
       `, [tenantId]);
@@ -10300,7 +10303,7 @@ app.get('/api/ecosystem', authenticateToken, async (req, res) => {
         AVG(se.confidence_score) AS avg_confidence
       FROM signal_events se
       LEFT JOIN companies c ON c.id = se.company_id
-      WHERE se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '90 days'
+      WHERE (se.tenant_id IS NULL OR se.tenant_id = $1) AND se.detected_at > NOW() - INTERVAL '90 days'
       GROUP BY region, se.signal_type
       ORDER BY region, signal_count DESC
     `, [tid]).catch(() => ({ rows: [] }));
@@ -10351,7 +10354,7 @@ app.get('/api/ecosystem', authenticateToken, async (req, res) => {
         (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id AND p.tenant_id = $1) AS contact_count,
         (SELECT COUNT(*) FROM team_proximity tp JOIN people p2 ON p2.id = tp.person_id AND p2.tenant_id = $1 WHERE tp.tenant_id = $1 AND p2.current_company_id = c.id) AS proximity_count
       FROM companies c
-      JOIN signal_events se ON se.company_id = c.id AND se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '90 days'
+      JOIN signal_events se ON se.company_id = c.id AND (se.tenant_id IS NULL OR se.tenant_id = $1) AND se.detected_at > NOW() - INTERVAL '90 days'
       WHERE c.tenant_id = $1
       GROUP BY region, c.id, c.name, c.is_client, c.sector
       ORDER BY region, signal_count DESC
@@ -10363,7 +10366,7 @@ app.get('/api/ecosystem', authenticateToken, async (req, res) => {
              COUNT(DISTINCT se.company_id) FILTER (WHERE c.is_client = true) AS client_companies
       FROM signal_events se
       LEFT JOIN companies c ON c.id = se.company_id
-      WHERE se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '30 days'
+      WHERE (se.tenant_id IS NULL OR se.tenant_id = $1) AND se.detected_at > NOW() - INTERVAL '30 days'
       GROUP BY se.signal_type
       ORDER BY count DESC LIMIT 8
     `, [tid]).catch(() => ({ rows: [] }));
@@ -12136,8 +12139,8 @@ app.get('/api/feeds/stats', authenticateToken, async (req, res) => {
         COUNT(ed.id) FILTER (WHERE ed.created_at > NOW() - INTERVAL '7 days') AS articles_7d,
         COUNT(DISTINCT se.id) FILTER (WHERE se.detected_at > NOW() - INTERVAL '7 days') AS signals_7d
       FROM rss_sources rs
-      LEFT JOIN external_documents ed ON ed.source_name = rs.name AND ed.tenant_id = $1
-      LEFT JOIN signal_events se ON se.source_document_id = ed.id AND se.tenant_id = $1
+      LEFT JOIN external_documents ed ON ed.source_name = rs.name AND (ed.tenant_id IS NULL OR ed.tenant_id = $1)
+      LEFT JOIN signal_events se ON se.source_document_id = ed.id AND (se.tenant_id IS NULL OR se.tenant_id = $1)
       WHERE rs.tenant_id = $1 AND rs.enabled = true
       GROUP BY rs.id, rs.name, rs.catalog_source_id
       ORDER BY COUNT(DISTINCT se.id) FILTER (WHERE se.detected_at > NOW() - INTERVAL '7 days') DESC LIMIT 50
@@ -12223,8 +12226,8 @@ app.get('/api/events', authenticateToken, async (req, res) => {
         LIMIT $${idx} OFFSET $${idx + 1}
       `, [...params, lim, off]),
       db.query(`SELECT COUNT(*) AS cnt FROM events e WHERE ${where}`, params),
-      db.query(`SELECT DISTINCT theme FROM events WHERE tenant_id = $1 AND theme IS NOT NULL ORDER BY theme`, [req.tenant_id]),
-      db.query(`SELECT DISTINCT region FROM events WHERE tenant_id = $1 AND region IS NOT NULL ORDER BY region`, [req.tenant_id]),
+      db.query(`SELECT DISTINCT theme FROM events WHERE (tenant_id IS NULL OR tenant_id = $1) AND theme IS NOT NULL ORDER BY theme`, [req.tenant_id]),
+      db.query(`SELECT DISTINCT region FROM events WHERE (tenant_id IS NULL OR tenant_id = $1) AND region IS NOT NULL ORDER BY region`, [req.tenant_id]),
     ]);
 
     res.json({
@@ -12249,13 +12252,13 @@ app.get('/api/events/trends', authenticateToken, async (req, res) => {
       db.query(`
         SELECT theme, COUNT(*) AS count,
                COUNT(*) FILTER (WHERE event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 30) AS upcoming_30d
-        FROM events WHERE tenant_id = $1 AND theme IS NOT NULL
+        FROM events WHERE (tenant_id IS NULL OR tenant_id = $1) AND theme IS NOT NULL
         GROUP BY theme ORDER BY count DESC
       `, [req.tenant_id]),
       db.query(`
         SELECT region, COUNT(*) AS count,
                COUNT(*) FILTER (WHERE event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 30) AS upcoming_30d
-        FROM events WHERE tenant_id = $1 AND region IS NOT NULL
+        FROM events WHERE (tenant_id IS NULL OR tenant_id = $1) AND region IS NOT NULL
         GROUP BY region ORDER BY count DESC
       `, [req.tenant_id]),
       db.query(`
