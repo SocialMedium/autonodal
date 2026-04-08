@@ -245,6 +245,9 @@ app.get('/api/auth/google/callback', async (req, res) => {
     if (!tokenRes.ok) {
       const err = await tokenRes.text();
       console.error('Google token exchange failed:', err);
+      console.error('  redirect_uri used:', redirectUri);
+      console.error('  code length:', code?.length, 'code prefix:', code?.slice(0, 10));
+      console.error('  host:', req.get('host'), 'protocol:', req.protocol);
       return res.redirect('/index.html?auth_error=token_exchange_failed');
     }
 
