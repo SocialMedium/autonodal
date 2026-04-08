@@ -416,10 +416,74 @@ async function main() {
           }
         }
         if (sectorSet) console.log(`    🏷️  Derived sector on ${sectorSet} companies`);
+
+        // ═══════════════════════════════════════════════════════════════
+        // STEP 4: Link ALL unlinked people to companies (final sweep)
+        // ═══════════════════════════════════════════════════════════════
+
+        // 4a. By exact company name match (case-insensitive, trimmed)
+        const { rowCount: nameLinked } = await pool.query(`
+          UPDATE people p SET current_company_id = c.id, updated_at = NOW()
+          FROM companies c
+          WHERE p.tenant_id = $1 AND c.tenant_id = $1
+            AND p.current_company_id IS NULL
+            AND p.current_company_name IS NOT NULL
+            AND TRIM(p.current_company_name) != ''
+            AND LOWER(TRIM(c.name)) = LOWER(TRIM(p.current_company_name))
+        `, [tenantId]);
+        if (nameLinked) console.log(`    🔗 Linked ${nameLinked} people by company name`);
+
+        // 4b. By email domain → company domain match
+        const { rowCount: domainLinked } = await pool.query(`
+          UPDATE people p SET current_company_id = c.id,
+            current_company_name = COALESCE(NULLIF(p.current_company_name, ''), c.name),
+            updated_at = NOW()
+          FROM companies c
+          WHERE p.tenant_id = $1 AND c.tenant_id = $1
+            AND p.current_company_id IS NULL
+            AND p.email IS NOT NULL AND p.email LIKE '%@%'
+            AND c.domain IS NOT NULL
+            AND LOWER(SPLIT_PART(p.email, '@', 2)) = LOWER(c.domain)
+        `, [tenantId]);
+        if (domainLinked) console.log(`    🔗 Linked ${domainLinked} people by email domain`);
+
+        // 4c. Fuzzy: company name contains or is contained in people's company name
+        // (handles "Google Inc." vs "Google", "JPMorgan Chase" vs "JPMorgan Chase & Co.")
+        const { rowCount: fuzzyLinked } = await pool.query(`
+          UPDATE people p SET current_company_id = sub.company_id, updated_at = NOW()
+          FROM (
+            SELECT DISTINCT ON (p2.id) p2.id AS person_id, c2.id AS company_id
+            FROM people p2
+            JOIN companies c2 ON c2.tenant_id = $1
+            WHERE p2.tenant_id = $1
+              AND p2.current_company_id IS NULL
+              AND p2.current_company_name IS NOT NULL
+              AND LENGTH(TRIM(p2.current_company_name)) >= 3
+              AND (
+                LOWER(TRIM(c2.name)) LIKE '%' || LOWER(TRIM(p2.current_company_name)) || '%'
+                OR LOWER(TRIM(p2.current_company_name)) LIKE '%' || LOWER(TRIM(c2.name)) || '%'
+              )
+              AND LENGTH(TRIM(c2.name)) >= 3
+            ORDER BY p2.id, LENGTH(c2.name) DESC
+          ) sub
+          WHERE p.id = sub.person_id
+        `, [tenantId]);
+        if (fuzzyLinked) console.log(`    🔗 Linked ${fuzzyLinked} people by fuzzy company name`);
+
+        totalPeopleLinked += (nameLinked || 0) + (domainLinked || 0) + (fuzzyLinked || 0);
+
+        // Report remaining unlinked
+        const { rows: [remaining] } = await pool.query(`
+          SELECT COUNT(*) AS cnt FROM people
+          WHERE tenant_id = $1 AND current_company_id IS NULL
+            AND current_company_name IS NOT NULL AND TRIM(current_company_name) != ''
+        `, [tenantId]);
+        if (parseInt(remaining.cnt) > 0) {
+          console.log(c.dim(`    ℹ ${remaining.cnt} people still unlinked (company name not in companies table)`));
+        }
       }
 
       totalCompaniesCreated += created + domainCreated;
-      totalPeopleLinked += linked;
       totalDomainCompanies += domainCreated;
     }
 

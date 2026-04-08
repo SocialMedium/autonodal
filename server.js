@@ -10384,6 +10384,37 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
         }
 
         if (personId) {
+          // Link to company record if company name provided
+          if (company) {
+            try {
+              const { rows: [co] } = await db.query(
+                `SELECT id FROM companies WHERE LOWER(TRIM(name)) = LOWER($1) AND tenant_id = $2 LIMIT 1`,
+                [company.trim(), tenantId]
+              );
+              if (co) {
+                await db.query(
+                  `UPDATE people SET current_company_id = $1, updated_at = NOW()
+                   WHERE id = $2 AND (current_company_id IS NULL OR current_company_id != $1)`,
+                  [co.id, personId]
+                );
+              } else {
+                // Create company on the fly
+                const { rows: [newCo] } = await db.query(
+                  `INSERT INTO companies (name, source, tenant_id, created_at, updated_at)
+                   VALUES ($1, 'linkedin_import', $2, NOW(), NOW())
+                   ON CONFLICT DO NOTHING RETURNING id`,
+                  [company.trim(), tenantId]
+                );
+                if (newCo) {
+                  await db.query(
+                    `UPDATE people SET current_company_id = $1, updated_at = NOW() WHERE id = $2`,
+                    [newCo.id, personId]
+                  );
+                }
+              }
+            } catch (e) {}
+          }
+
           try {
             await db.query(
               `INSERT INTO team_proximity (person_id, team_member_id, relationship_type, relationship_strength, source, tenant_id)
