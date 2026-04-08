@@ -169,15 +169,17 @@ body {
 }
 
 .search-stats-wrapper {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 360px;
   align-items: stretch;
-  gap: 16px;
+  gap: 0;
 }
 
 .search-input-wrapper {
-  flex: 0 0 65%;
+  padding-right: 40px;
   display: flex;
   flex-direction: column;
+  justify-content: center;
 }
 
 .command-bar {
@@ -441,15 +443,14 @@ body {
 .metrics-section { display: none; } /* old full-width strip hidden */
 
 .stats-card {
-  flex: 0 0 calc(35% - 16px);
-  background: #ffffff;
-  border: 1px solid var(--rule);
-  border-radius: 12px;
-  padding: 12px 16px;
+  padding-left: 36px;
+  background: none;
+  border: none;
+  border-radius: 0;
   display: flex;
   flex-direction: column;
   gap: 5px;
-  align-self: stretch;
+  justify-content: center;
 }
 
 .stats-card-row {
@@ -1456,10 +1457,10 @@ a.stats-card-row:hover { background: var(--surface-warm); }
   .command-section, .content-section { padding-left: 20px; padding-right: 20px; }
   .search-overlay { padding: 0 20px; }
 }
-@media (max-width: 768px) {
-  .search-stats-wrapper { flex-direction: column; }
-  .search-input-wrapper, .stats-card { flex: none; width: 100%; }
-  .stats-card { flex-direction: row; flex-wrap: wrap; gap: 8px 20px; padding: 10px 14px; }
+@media (max-width: 1024px) {
+  .search-stats-wrapper { grid-template-columns: 1fr; }
+  .search-input-wrapper { padding-right: 0; }
+  .stats-card { padding-left: 0; flex-direction: row; flex-wrap: wrap; gap: 6px 20px; margin-top: 12px; }
   .stats-card-row { flex: 0 0 auto; }
 }
 
@@ -1580,17 +1581,7 @@ a.stats-card-row:hover { background: var(--surface-warm); }
           <button class="cmd-btn" title="Keyboard shortcut">⌘K</button>
         </div>
       </div>
-      <div class="command-prompts">
-        <div class="prompt-chip" onclick="searchPrompt('CTO')"><span class="emoji" id="pc1"></span> CTO roles</div>
-        <div class="prompt-chip" onclick="searchPrompt('fintech')"><span class="emoji" id="pc2"></span> Fintech</div>
-        <div class="prompt-chip" onclick="searchPrompt('product leadership')"><span class="emoji" id="pc3"></span> Product leadership</div>
-        <div class="prompt-chip" onclick="searchPrompt('capital raising')"><span class="emoji" id="pc4"></span> Capital raising signals</div>
-        <span style="width:1px;height:16px;background:var(--rule);margin:0 4px;flex-shrink:0"></span>
-        <div class="prompt-chip" onclick="searchCollection('people')" style="background:var(--blue-soft);color:var(--blue)">People</div>
-        <div class="prompt-chip" onclick="searchCollection('companies')" style="background:var(--amber-soft);color:var(--amber)">Companies</div>
-        <div class="prompt-chip" onclick="searchCollection('signals')" style="background:var(--emerald-soft);color:var(--emerald)">Signals</div>
-        <div class="prompt-chip" onclick="searchCollection('case_studies')" style="background:var(--violet-soft);color:var(--violet)">Case Studies</div>
-      </div>
+      <div class="command-prompts" style="display:none"></div>
     </div>
     <div class="stats-card">
       <a class="stats-card-row" href="#signals" onclick="document.getElementById('dealSection').scrollIntoView({behavior:'smooth'});return false;">
