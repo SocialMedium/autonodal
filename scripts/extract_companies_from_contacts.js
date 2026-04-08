@@ -122,6 +122,7 @@ async function main() {
       // STEP 1: Extract companies from people.current_company_name
       // ═══════════════════════════════════════════════════════════════
 
+      // Get unique company names from unlinked people
       const { rows: unlinked } = await pool.query(`
         SELECT TRIM(current_company_name) AS name, COUNT(*) AS people_count
         FROM people
@@ -135,60 +136,64 @@ async function main() {
 
       console.log(`    📋 ${unlinked.length} unique company names from contacts without company records`);
 
-      let created = 0, linked = 0, skipped = 0;
+      // Filter out noise
+      const validNames = unlinked.filter(r => !shouldSkipCompany(r.name)).map(r => r.name.trim());
+      const skipped = unlinked.length - validNames.length;
+      console.log(`    📋 ${validNames.length} after filtering noise (${skipped} skipped)`);
 
-      for (const row of unlinked) {
-        if (shouldSkipCompany(row.name)) { skipped++; continue; }
+      // Get existing companies for this tenant (bulk lookup)
+      const { rows: existingCos } = await pool.query(
+        `SELECT id, LOWER(TRIM(name)) AS norm_name FROM companies WHERE tenant_id = $1`,
+        [tenantId]
+      );
+      const existingMap = new Map();
+      for (const co of existingCos) existingMap.set(co.norm_name, co.id);
 
-        // Check if company already exists (case-insensitive)
-        const { rows: existing } = await pool.query(
-          `SELECT id FROM companies WHERE LOWER(TRIM(name)) = LOWER($1) AND tenant_id = $2 LIMIT 1`,
-          [row.name.trim(), tenantId]
-        );
+      // Find names that need new company records
+      const newNames = validNames.filter(n => !existingMap.has(n.toLowerCase().trim()));
+      console.log(`    📋 ${newNames.length} new companies to create (${validNames.length - newNames.length} already exist)`);
 
-        let companyId;
-        if (existing.length) {
-          companyId = existing[0].id;
-        } else if (!DRY_RUN) {
-          // Create company
+      let created = 0;
+      if (!DRY_RUN && newNames.length > 0) {
+        // Bulk insert in batches of 500
+        const BATCH = 500;
+        for (let i = 0; i < newNames.length; i += BATCH) {
+          const batch = newNames.slice(i, i + BATCH);
+          const values = batch.map((_, idx) => `($${idx * 2 + 1}, 'contact_extraction', $${idx * 2 + 2}, NOW(), NOW())`).join(',');
+          const params = batch.flatMap(n => [n, tenantId]);
           try {
-            const { rows: [newCo] } = await pool.query(
-              `INSERT INTO companies (name, source, tenant_id, created_at, updated_at)
-               VALUES ($1, 'contact_extraction', $2, NOW(), NOW())
-               RETURNING id`,
-              [row.name.trim(), tenantId]
+            const { rowCount } = await pool.query(
+              `INSERT INTO companies (name, source, tenant_id, created_at, updated_at) VALUES ${values} ON CONFLICT DO NOTHING`,
+              params
             );
-            companyId = newCo.id;
-            created++;
-          } catch (insertErr) {
-            // Duplicate — look it up
-            const { rows: r } = await pool.query(
-              `SELECT id FROM companies WHERE LOWER(TRIM(name)) = LOWER($1) AND tenant_id = $2 LIMIT 1`,
-              [row.name.trim(), tenantId]
-            );
-            companyId = r[0]?.id;
+            created += rowCount;
+          } catch (e) {
+            // Fallback: insert one by one
+            for (const n of batch) {
+              try { await pool.query(`INSERT INTO companies (name, source, tenant_id, created_at, updated_at) VALUES ($1, 'contact_extraction', $2, NOW(), NOW())`, [n, tenantId]); created++; } catch (e2) {}
+            }
           }
-        } else {
-          created++; // Count for dry run
-          continue;
+          if (i % 5000 === 0 && i > 0) console.log(`    ... ${i}/${newNames.length} inserted`);
         }
-
-        // Link people to company
-        if (companyId && !DRY_RUN) {
-          const { rowCount } = await pool.query(
-            `UPDATE people SET current_company_id = $1, updated_at = NOW()
-             WHERE tenant_id = $2
-               AND LOWER(TRIM(current_company_name)) = LOWER($3)
-               AND (current_company_id IS NULL OR current_company_id != $1)`,
-            [companyId, tenantId, row.name.trim()]
-          );
-          linked += rowCount;
-        } else {
-          linked += parseInt(row.people_count);
-        }
+      } else {
+        created = newNames.length;
       }
+      console.log(c.green(`    ✓ ${created} companies created`));
 
-      console.log(c.green(`    ✓ ${created} companies created, ${linked} people linked, ${skipped} skipped`));
+      // Bulk link people to companies (single UPDATE with JOIN)
+      let linked = 0;
+      if (!DRY_RUN) {
+        const { rowCount } = await pool.query(`
+          UPDATE people p SET current_company_id = c.id, updated_at = NOW()
+          FROM companies c
+          WHERE p.tenant_id = $1 AND c.tenant_id = $1
+            AND p.current_company_id IS NULL
+            AND p.current_company_name IS NOT NULL
+            AND LOWER(TRIM(c.name)) = LOWER(TRIM(p.current_company_name))
+        `, [tenantId]);
+        linked = rowCount;
+      }
+      console.log(c.green(`    ✓ ${linked} people linked to companies`));
 
       // ═══════════════════════════════════════════════════════════════
       // STEP 2: Extract companies from email domains
