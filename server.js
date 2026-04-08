@@ -11676,7 +11676,7 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
     console.log(`📊 Consolidated ${rows.length} rows → ${invoiceMap.size} records`);
 
     // ── Pass 2: Insert/update consolidated records ──
-    const importSource = isXeroFormat ? 'xero_export' : 'manual';
+    const importSource = 'xero_export'; // All CSV imports are treated as invoiced revenue
 
     for (const [key, rec] of invoiceMap) {
       try {
