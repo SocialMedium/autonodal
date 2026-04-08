@@ -3560,7 +3560,7 @@ app.post('/api/clients/reconcile-all', authenticateToken, async (req, res) => {
           linked++;
         } else {
           const { rows: [newCo] } = await db.query(
-            `INSERT INTO companies (name, is_client, created_at, updated_at, tenant_id) VALUES ($1, true, NOW(), NOW(), $2) RETURNING id`,
+            `INSERT INTO companies (name, is_client, created_at, updated_at, tenant_id) VALUES ($1, false, NOW(), NOW(), $2) RETURNING id`,
             [client.name, req.tenant_id]
           );
           companyId = newCo.id;
@@ -13857,15 +13857,17 @@ app.listen(PORT, async () => {
     if (linked > 0) console.log(`  ✅ Linked ${linked} clients to companies by name`);
 
     // Then mark those companies as clients
+    // Reset is_client — only companies with invoiced revenue are clients (Xero is SOR)
+    await db.query(`UPDATE companies SET is_client = false WHERE is_client = true`);
     const { rowCount } = await db.query(`
       UPDATE companies SET is_client = true
       WHERE id IN (
         SELECT DISTINCT cl.company_id FROM accounts cl
-        JOIN conversions pl ON pl.client_id = cl.id
-        WHERE cl.company_id IS NOT NULL
-      ) AND (is_client IS NULL OR is_client = false)
+        JOIN account_financials cf ON cf.client_id = cl.id
+        WHERE cl.company_id IS NOT NULL AND cf.total_invoiced > 0
+      )
     `);
-    if (rowCount > 0) console.log(`  ✅ Backfilled is_client on ${rowCount} companies from placement data`);
+    if (rowCount > 0) console.log(`  ✅ ${rowCount} companies marked as clients (invoiced via Xero)`);
   } catch (e) {
     console.log('  ⚠️ Client backfill skipped:', e.message);
   }
