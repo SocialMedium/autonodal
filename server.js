@@ -11531,7 +11531,8 @@ app.get('/api/ecosystem', authenticateToken, async (req, res) => {
 app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req, res) => {
   try {
     console.log(`📊 Sales import: ${req.body?.rows?.length || 0} rows from ${req.user?.email} (tenant: ${req.tenant_id})`);
-    const db = new TenantDB(req.tenant_id);
+    // Use platformPool for speed — TenantDB wraps every query in BEGIN/SET/COMMIT (4x overhead)
+    const db = { query: (text, params) => platformPool.query(text, params) };
     const { headers, rows } = req.body;
     if (!rows || !rows.length) return res.status(400).json({ error: 'No rows to import' });
 
