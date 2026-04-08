@@ -13868,14 +13868,14 @@ app.listen(PORT, async () => {
 
   // Platform-wide migration moved below multi-tenant migration (must run after)
 
-  // Flag companies with revenue as is_client (survives enrichment resets)
+  // Flag companies with revenue as is_client (survives enrichment resets, tenant-scoped)
   try {
     const { rowCount: clientsFlagged } = await platformPool.query(`
       UPDATE companies c SET is_client = true
       WHERE c.is_client = false AND c.id IN (
         SELECT DISTINCT a.company_id FROM accounts a
         JOIN conversions conv ON conv.client_id = a.id
-        WHERE a.company_id IS NOT NULL
+        WHERE a.company_id IS NOT NULL AND a.tenant_id = c.tenant_id
       )
     `);
     if (clientsFlagged) console.log(`  🏷️ Flagged ${clientsFlagged} companies as clients from revenue data`);
@@ -14180,22 +14180,23 @@ app.listen(PORT, async () => {
 
   // Backfill: mark companies as clients if they have placements/revenue
   try {
-    // First, try to link clients to companies by name match
+    // First, try to link clients to companies by name match (same tenant only)
     const { rowCount: linked } = await platformPool.query(`
       UPDATE accounts SET company_id = co.id
       FROM companies co
       WHERE accounts.company_id IS NULL
         AND LOWER(TRIM(accounts.name)) = LOWER(TRIM(co.name))
+        AND accounts.tenant_id = co.tenant_id
     `);
     if (linked > 0) console.log(`  ✅ Linked ${linked} clients to companies by name`);
 
-    // Flag companies with revenue as is_client (additive — don't reset existing flags)
+    // Flag companies with revenue as is_client (same tenant only — don't leak across tenants)
     const { rowCount } = await platformPool.query(`
-      UPDATE companies SET is_client = true
-      WHERE is_client = false AND id IN (
+      UPDATE companies c SET is_client = true
+      WHERE c.is_client = false AND c.id IN (
         SELECT DISTINCT a.company_id FROM accounts a
         JOIN conversions conv ON conv.client_id = a.id
-        WHERE a.company_id IS NOT NULL
+        WHERE a.company_id IS NOT NULL AND a.tenant_id = c.tenant_id
       )
     `);
     if (rowCount > 0) console.log(`  ✅ ${rowCount} companies marked as clients (invoiced via Xero)`);
