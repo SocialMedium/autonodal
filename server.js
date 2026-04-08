@@ -265,16 +265,15 @@ app.get('/api/auth/google/callback', async (req, res) => {
       headers: { Authorization: `Bearer ${tokenData.access_token}` }
     });
     const userInfo = await userInfoRes.json();
+    console.log('🔑 Step 4: userInfo email:', userInfo.email);
 
-    // Domain enforcement — mitchellake.com users go to company tenant,
-    // all other Google accounts self-provision as individual tenants.
-    // No whitelist needed — anyone with a Google account can sign up.
     if (!userInfo.email) {
       return res.redirect('/index.html?auth_error=no_email');
     }
 
     // Find or create user
     let { rows } = await platformPool.query('SELECT id, email, name, role FROM users WHERE email = $1', [userInfo.email]);
+    console.log('🔑 Step 5: user found:', rows.length > 0, rows[0]?.email);
     let user;
 
     if (rows.length > 0) {
@@ -323,12 +322,14 @@ app.get('/api/auth/google/callback', async (req, res) => {
     }
 
     // Create session
+    console.log('🔑 Step 6: creating session for user:', user.id);
     const sessionToken = crypto.randomBytes(48).toString('hex');
     await platformPool.query(
       `INSERT INTO sessions (id, user_id, token, expires_at, created_at)
        VALUES (gen_random_uuid(), $1, $2, NOW() + INTERVAL '30 days', NOW())`,
       [user.id, sessionToken]
     );
+    console.log('🔑 Step 7: session created');
 
     // Audit: login success
     try { const { audit: _audit } = require('./lib/auditLogger'); _audit.loginSuccess(req, user.id, user.email); } catch(e) {}
@@ -361,14 +362,17 @@ app.get('/api/auth/google/callback', async (req, res) => {
     );
     const userJson = encodeURIComponent(JSON.stringify({ id: user.id, email: user.email, name: user.name, role: user.role }));
 
+    console.log('🔑 Step 8: onboarding_status:', tenantStatus?.onboarding_status);
+
     if (tenantStatus && tenantStatus.onboarding_status && tenantStatus.onboarding_status !== 'complete') {
       const step = tenantStatus.onboarding_status || 'step_1';
+      console.log('🔑 Step 9: redirecting to onboarding, step:', step);
       return res.redirect(`/onboarding.html?step=${step}&token=${sessionToken}&user=${userJson}`);
     }
 
-    // SCIENCE: No forced Gmail redirect — connection happens in onboarding Step 3
     // Onboarding complete → go to dashboard
     const sep = returnTo.includes('?') ? '&' : '?';
+    console.log('🔑 Step 9: redirecting to:', returnTo);
     res.redirect(`${returnTo}${sep}token=${sessionToken}&user=${userJson}`);
   } catch (err) {
     console.error('🔑 CATCH — Google auth error:', err.message, err.stack?.split('\n')[1]);
