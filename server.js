@@ -13871,6 +13871,23 @@ app.listen(PORT, async () => {
 
   // Platform-wide migration moved below multi-tenant migration (must run after)
 
+  // Backfill signal images from linked documents (skip favicons/logos)
+  try {
+    const { rowCount: imgFilled } = await platformPool.query(`
+      UPDATE signal_events se SET image_url = ed.image_url
+      FROM external_documents ed
+      WHERE se.source_document_id = ed.id
+        AND (se.image_url IS NULL OR se.image_url = '')
+        AND ed.image_url IS NOT NULL AND ed.image_url != ''
+        AND ed.image_url NOT LIKE '%favicon%' AND ed.image_url NOT LIKE '%logo%'
+        AND ed.image_url NOT LIKE '%icon%' AND ed.image_url NOT LIKE '%cropped-%'
+        AND ed.image_url NOT LIKE '%32x32%' AND ed.image_url NOT LIKE '%50x50%'
+        AND ed.image_url NOT LIKE '%96x96%' AND ed.image_url NOT LIKE '%150x150%'
+        AND ed.image_url NOT LIKE '%w=32%'
+    `);
+    if (imgFilled) console.log(`  🖼️ Backfilled ${imgFilled} signal images from documents`);
+  } catch (e) {}
+
   // Flag companies with revenue as is_client (survives enrichment resets, tenant-scoped)
   try {
     const { rowCount: clientsFlagged } = await platformPool.query(`

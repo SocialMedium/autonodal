@@ -233,12 +233,15 @@ async function storeSignals(document, analysis, source) {
   // Store each signal
   for (const signal of analysis.signals) {
     try {
+      // Pull image from document if available (skip tiny favicons/logos)
+      const docImage = document.image_url || null;
+      const useImage = docImage && !/favicon|logo|icon|32x32|50x50|96x96|150x150|cropped-/i.test(docImage) ? docImage : null;
       await db.query(`
         INSERT INTO signal_events (
           company_id, company_name, signal_type, signal_category, confidence_score,
           evidence_summary, evidence_snippet, source_document_id,
-          source_url, detected_at, hiring_implications
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10)
+          source_url, detected_at, hiring_implications, image_url
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10, $11)
       `, [
         companyId,
         analysis.company?.name || null,
@@ -249,7 +252,8 @@ async function storeSignals(document, analysis, source) {
         signal.evidence?.substring(0, 500),
         document.id,
         document.source_url,
-        signal.hiring_implications ? JSON.stringify(signal.hiring_implications) : null
+        signal.hiring_implications ? JSON.stringify(signal.hiring_implications) : null,
+        useImage
       ]);
       stored++;
     } catch (err) {
