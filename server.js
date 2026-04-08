@@ -6715,6 +6715,19 @@ app.get('/api/db-test', authenticateToken, requireAdmin, async (req, res) => {
     res.json({ ok: false, error: e.message });
   }
 });
+// Temporary: check sales data
+app.get('/api/debug/sales', async (req, res) => {
+  try {
+    const [conversions, accounts, financials, recent] = await Promise.all([
+      platformPool.query('SELECT tenant_id, COUNT(*) AS c, COALESCE(SUM(placement_fee),0) AS total_fees FROM conversions GROUP BY tenant_id'),
+      platformPool.query('SELECT tenant_id, COUNT(*) AS c FROM accounts GROUP BY tenant_id'),
+      platformPool.query('SELECT tenant_id, COUNT(*) AS c, COALESCE(SUM(total_invoiced),0) AS total FROM account_financials GROUP BY tenant_id'),
+      platformPool.query('SELECT id, client_name, role_title, placement_fee, source, created_at FROM conversions ORDER BY created_at DESC LIMIT 5'),
+    ]);
+    res.json({ conversions: conversions.rows, accounts: accounts.rows, financials: financials.rows, recent: recent.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
