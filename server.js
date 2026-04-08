@@ -1232,6 +1232,24 @@ app.post('/api/feeds/propose', authenticateToken, async (req, res) => {
 // DASHBOARD STATS
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Debug: check signal data distribution
+app.get('/api/debug/signals', authenticateToken, async (req, res) => {
+  try {
+    const [total, nullTenant, byTenant, docs, docsNull] = await Promise.all([
+      platformPool.query('SELECT COUNT(*) AS c FROM signal_events'),
+      platformPool.query('SELECT COUNT(*) AS c FROM signal_events WHERE tenant_id IS NULL'),
+      platformPool.query('SELECT tenant_id, COUNT(*) AS c FROM signal_events GROUP BY tenant_id ORDER BY c DESC LIMIT 5'),
+      platformPool.query('SELECT COUNT(*) AS c FROM external_documents'),
+      platformPool.query('SELECT COUNT(*) AS c FROM external_documents WHERE tenant_id IS NULL'),
+    ]);
+    res.json({
+      signal_events: { total: total.rows[0].c, null_tenant: nullTenant.rows[0].c, by_tenant: byTenant.rows },
+      external_documents: { total: docs.rows[0].c, null_tenant: docsNull.rows[0].c },
+      your_tenant: req.tenant_id,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/stats', authenticateToken, async (req, res) => {
   try {
     // Use platformPool to bypass RLS — queries explicitly filter by tenant_id
