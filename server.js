@@ -13454,6 +13454,11 @@ app.listen(PORT, async () => {
     if (rowCount) console.log(`  📅 Migrated ${rowCount} events to platform-wide visibility`);
   } catch (e) {}
 
+  // Ensure companies.source column exists
+  try {
+    await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS source VARCHAR(50)`);
+  } catch (e) {}
+
   // Backfill tenant_id on team_proximity and interactions from user's tenant
   try {
     const { rowCount: tpFixed } = await db.query(`
