@@ -378,9 +378,7 @@ async function main() {
       } catch (e) { console.log(c.dim(`    ⚠ Review contacts extraction: ${e.message}`)); }
 
       totalDomainCompanies += domainCreated + interactionDomains + reviewCompanies;
-      } catch (domainErr) {
-        console.log(c.dim(`    ⚠ Email domain extraction error (non-fatal): ${domainErr.message}`));
-      }
+      } // end if(false) — email domain extraction deferred
 
       // ═══════════════════════════════════════════════════════════════
       // STEP 3: Enrich companies with sector from people titles
