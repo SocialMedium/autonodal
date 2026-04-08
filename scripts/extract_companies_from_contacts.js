@@ -196,9 +196,10 @@ async function main() {
       console.log(c.green(`    ✓ ${linked} people linked to companies`));
 
       // ═══════════════════════════════════════════════════════════════
-      // STEP 2: Extract companies from email domains (wrapped — non-fatal)
+      // STEP 2: Extract companies from email domains (DEFERRED — runs separately)
+      // Skipped during startup to avoid blocking company name extraction
       // ═══════════════════════════════════════════════════════════════
-      try {
+      if (false) { // TODO: move to separate scheduled job
 
       const { rows: domains } = await pool.query(`
         SELECT
