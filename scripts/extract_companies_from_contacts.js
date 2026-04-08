@@ -249,24 +249,25 @@ async function main() {
         }
 
         if (!DRY_RUN) {
-          const { rows: [newCo] } = await pool.query(
-            `INSERT INTO companies (name, domain, source, tenant_id, created_at, updated_at)
-             VALUES ($1, $2, 'email_domain_extraction', $3, NOW(), NOW())
-             ON CONFLICT DO NOTHING
-             RETURNING id`,
-            [companyName, d.domain, tenantId]
-          ).catch(() => ({ rows: [] }));
-          if (newCo) {
-            domainCreated++;
-            // Link people with this domain
-            await pool.query(
-              `UPDATE people SET current_company_id = $1, updated_at = NOW()
-               WHERE tenant_id = $2
-                 AND LOWER(SPLIT_PART(email, '@', 2)) = LOWER($3)
-                 AND current_company_id IS NULL`,
-              [newCo.id, tenantId, d.domain]
+          try {
+            const { rows: [newCo] } = await pool.query(
+              `INSERT INTO companies (name, domain, source, tenant_id, created_at, updated_at)
+               VALUES ($1, $2, 'email_domain_extraction', $3, NOW(), NOW())
+               ON CONFLICT DO NOTHING
+               RETURNING id`,
+              [companyName, d.domain, tenantId]
             );
-          }
+            if (newCo) {
+              domainCreated++;
+              await pool.query(
+                `UPDATE people SET current_company_id = $1, updated_at = NOW()
+                 WHERE tenant_id = $2
+                   AND LOWER(SPLIT_PART(email, '@', 2)) = LOWER($3)
+                   AND current_company_id IS NULL`,
+                [newCo.id, tenantId, d.domain]
+              );
+            }
+          } catch (e) { /* domain conflict — skip */ }
         } else {
           domainCreated++;
         }
@@ -308,13 +309,15 @@ async function main() {
           if (existing.length) continue;
 
           if (!DRY_RUN) {
-            const { rows: [newCo] } = await pool.query(
-              `INSERT INTO companies (name, domain, source, tenant_id, created_at, updated_at)
-               VALUES ($1, $2, 'email_interaction_domain', $3, NOW(), NOW())
-               ON CONFLICT DO NOTHING RETURNING id`,
-              [companyName, d.domain, tenantId]
-            ).catch(() => ({ rows: [] }));
-            if (newCo) interactionDomains++;
+            try {
+              const { rows: [newCo] } = await pool.query(
+                `INSERT INTO companies (name, domain, source, tenant_id, created_at, updated_at)
+                 VALUES ($1, $2, 'email_interaction_domain', $3, NOW(), NOW())
+                 ON CONFLICT DO NOTHING RETURNING id`,
+                [companyName, d.domain, tenantId]
+              );
+              if (newCo) interactionDomains++;
+            } catch (e) { /* domain conflict — skip */ }
           } else {
             interactionDomains++;
           }
@@ -353,13 +356,15 @@ async function main() {
           if (existing.length) continue;
 
           if (!DRY_RUN) {
-            const { rows: [newCo] } = await pool.query(
-              `INSERT INTO companies (name, domain, source, tenant_id, created_at, updated_at)
-               VALUES ($1, $2, 'email_review_domain', $3, NOW(), NOW())
-               ON CONFLICT DO NOTHING RETURNING id`,
-              [companyName, d.domain, tenantId]
-            ).catch(() => ({ rows: [] }));
-            if (newCo) reviewCompanies++;
+            try {
+              const { rows: [newCo] } = await pool.query(
+                `INSERT INTO companies (name, domain, source, tenant_id, created_at, updated_at)
+                 VALUES ($1, $2, 'email_review_domain', $3, NOW(), NOW())
+                 ON CONFLICT DO NOTHING RETURNING id`,
+                [companyName, d.domain, tenantId]
+              );
+              if (newCo) reviewCompanies++;
+            } catch (e) { /* domain conflict — skip */ }
           } else {
             reviewCompanies++;
           }
