@@ -10358,8 +10358,21 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
         if (slug && linkedinIndex.has(slug)) personId = linkedinIndex.get(slug).id;
         if (!personId) { const cands = nameIndex.get(fullName.toLowerCase().trim()) || []; if (cands.length === 1) personId = cands[0].id; }
 
-        if (personId) { stats.matched++; }
-        else {
+        if (personId) {
+          stats.matched++;
+          // Fill blank company/title on existing records
+          if (company || position) {
+            await db.query(
+              `UPDATE people SET
+                 current_company_name = COALESCE(NULLIF(current_company_name, ''), $2),
+                 current_title = COALESCE(NULLIF(current_title, ''), $3),
+                 linkedin_url = COALESCE(NULLIF(linkedin_url, ''), $4),
+                 updated_at = NOW()
+               WHERE id = $1`,
+              [personId, company || null, position || null, linkedinUrl || null]
+            );
+          }
+        } else {
           try {
             const { rows: [newP] } = await db.query(
               `INSERT INTO people (full_name, first_name, last_name, current_title, current_company_name, linkedin_url, source, created_by, tenant_id)

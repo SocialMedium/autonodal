@@ -60,13 +60,33 @@ function shouldSkipCompany(name) {
   return false;
 }
 
+// Well-known domain → proper company name
+const KNOWN_DOMAINS = {
+  'google.com': 'Google', 'microsoft.com': 'Microsoft', 'amazon.com': 'Amazon',
+  'apple.com': 'Apple', 'meta.com': 'Meta', 'facebook.com': 'Meta',
+  'netflix.com': 'Netflix', 'salesforce.com': 'Salesforce', 'oracle.com': 'Oracle',
+  'ibm.com': 'IBM', 'deloitte.com': 'Deloitte', 'pwc.com': 'PwC',
+  'ey.com': 'EY', 'kpmg.com': 'KPMG', 'mckinsey.com': 'McKinsey',
+  'bcg.com': 'BCG', 'bain.com': 'Bain & Company', 'accenture.com': 'Accenture',
+  'jpmorgan.com': 'JPMorgan', 'goldmansachs.com': 'Goldman Sachs',
+  'morganstanley.com': 'Morgan Stanley', 'citi.com': 'Citi',
+  'hsbc.com': 'HSBC', 'anz.com': 'ANZ', 'commbank.com.au': 'Commonwealth Bank',
+  'westpac.com.au': 'Westpac', 'nab.com.au': 'NAB', 'macquarie.com': 'Macquarie',
+  'atlassian.com': 'Atlassian', 'canva.com': 'Canva', 'stripe.com': 'Stripe',
+  'uber.com': 'Uber', 'airbnb.com': 'Airbnb', 'spotify.com': 'Spotify',
+  'twitter.com': 'X (Twitter)', 'linkedin.com': 'LinkedIn', 'github.com': 'GitHub',
+  'slack.com': 'Slack', 'zoom.us': 'Zoom', 'shopify.com': 'Shopify',
+  'twilio.com': 'Twilio', 'datadog.com': 'Datadog', 'snowflake.com': 'Snowflake',
+  'palantir.com': 'Palantir', 'databricks.com': 'Databricks',
+};
+
 function domainToCompanyName(domain) {
-  // Strip common TLDs and format
+  if (KNOWN_DOMAINS[domain]) return KNOWN_DOMAINS[domain];
   const parts = domain.split('.');
   if (parts.length < 2) return null;
   const name = parts[0];
   if (name.length < 2) return null;
-  // Capitalize
+  // Capitalize first letter, preserve rest (handles acronyms better)
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
@@ -244,6 +264,101 @@ async function main() {
       }
 
       console.log(c.green(`    ✓ ${domainCreated} companies from email domains`));
+
+      // ═══════════════════════════════════════════════════════════════
+      // STEP 2b: Extract from interaction email domains (email_from)
+      // ═══════════════════════════════════════════════════════════════
+
+      let interactionDomains = 0;
+      try {
+        const { rows: iDomains } = await pool.query(`
+          SELECT
+            LOWER(SPLIT_PART(i.email_from, '@', 2)) AS domain,
+            COUNT(DISTINCT i.email_from) AS sender_count,
+            COUNT(*) AS thread_count
+          FROM interactions i
+          JOIN users u ON u.id = i.user_id AND u.tenant_id = $1
+          WHERE i.email_from IS NOT NULL AND i.email_from LIKE '%@%'
+            AND i.channel = 'email'
+            AND LOWER(SPLIT_PART(i.email_from, '@', 2)) NOT IN (${[...FREEMAIL].map((_, i) => `$${i + 2}`).join(',')})
+          GROUP BY LOWER(SPLIT_PART(i.email_from, '@', 2))
+          HAVING COUNT(*) >= 3
+          ORDER BY COUNT(*) DESC
+          LIMIT 500
+        `, [tenantId, ...FREEMAIL]);
+
+        for (const d of iDomains) {
+          if (!d.domain || d.domain.length < 4) continue;
+          const companyName = domainToCompanyName(d.domain);
+          if (!companyName) continue;
+
+          const { rows: existing } = await pool.query(
+            `SELECT id FROM companies WHERE tenant_id = $1 AND (LOWER(TRIM(name)) = LOWER($2) OR LOWER(domain) = LOWER($3)) LIMIT 1`,
+            [tenantId, companyName, d.domain]
+          );
+          if (existing.length) continue;
+
+          if (!DRY_RUN) {
+            const { rows: [newCo] } = await pool.query(
+              `INSERT INTO companies (name, domain, source, tenant_id, created_at, updated_at)
+               VALUES ($1, $2, 'email_interaction_domain', $3, NOW(), NOW())
+               ON CONFLICT DO NOTHING RETURNING id`,
+              [companyName, d.domain, tenantId]
+            );
+            if (newCo) interactionDomains++;
+          } else {
+            interactionDomains++;
+          }
+        }
+        if (interactionDomains) console.log(c.green(`    ✓ ${interactionDomains} companies from email interaction domains`));
+      } catch (e) { console.log(c.dim(`    ⚠ Interaction domain extraction: ${e.message}`)); }
+
+      // ═══════════════════════════════════════════════════════════════
+      // STEP 2c: Extract from new_contacts_review (unmatched Gmail contacts)
+      // ═══════════════════════════════════════════════════════════════
+
+      let reviewCompanies = 0;
+      try {
+        const { rows: reviewDomains } = await pool.query(`
+          SELECT
+            LOWER(SPLIT_PART(email, '@', 2)) AS domain,
+            COUNT(*) AS contact_count
+          FROM new_contacts_review
+          WHERE email IS NOT NULL AND email LIKE '%@%'
+            AND LOWER(SPLIT_PART(email, '@', 2)) NOT IN (${[...FREEMAIL].map((_, i) => `$${i + 1}`).join(',')})
+          GROUP BY LOWER(SPLIT_PART(email, '@', 2))
+          HAVING COUNT(*) >= 2
+          ORDER BY COUNT(*) DESC
+          LIMIT 300
+        `, [...FREEMAIL]);
+
+        for (const d of reviewDomains) {
+          if (!d.domain || d.domain.length < 4) continue;
+          const companyName = domainToCompanyName(d.domain);
+          if (!companyName) continue;
+
+          const { rows: existing } = await pool.query(
+            `SELECT id FROM companies WHERE tenant_id = $1 AND (LOWER(TRIM(name)) = LOWER($2) OR LOWER(domain) = LOWER($3)) LIMIT 1`,
+            [tenantId, companyName, d.domain]
+          );
+          if (existing.length) continue;
+
+          if (!DRY_RUN) {
+            const { rows: [newCo] } = await pool.query(
+              `INSERT INTO companies (name, domain, source, tenant_id, created_at, updated_at)
+               VALUES ($1, $2, 'email_review_domain', $3, NOW(), NOW())
+               ON CONFLICT DO NOTHING RETURNING id`,
+              [companyName, d.domain, tenantId]
+            );
+            if (newCo) reviewCompanies++;
+          } else {
+            reviewCompanies++;
+          }
+        }
+        if (reviewCompanies) console.log(c.green(`    ✓ ${reviewCompanies} companies from unmatched email contacts`));
+      } catch (e) { console.log(c.dim(`    ⚠ Review contacts extraction: ${e.message}`)); }
+
+      totalDomainCompanies += domainCreated + interactionDomains + reviewCompanies;
 
       // ═══════════════════════════════════════════════════════════════
       // STEP 3: Enrich companies with sector from people titles
