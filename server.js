@@ -13609,7 +13609,7 @@ app.listen(PORT, async () => {
   try {
     console.log('  🏢 Running company extraction from contacts...');
     const { spawn: spawnExtract } = require('child_process');
-    spawnExtract('node', [require('path').join(__dirname, 'scripts', 'extract_companies_from_contacts.js')], { stdio: 'inherit', timeout: 300000 })
+    spawnExtract('node', [require('path').join(__dirname, 'scripts', 'extract_companies_from_contacts.js')], { stdio: 'inherit', timeout: 900000 })
       .on('exit', (code) => console.log(`  ✅ Company extraction exited (code ${code})`));
   } catch (e) {}
 

@@ -1884,7 +1884,7 @@ const PIPELINES = {
     icon: '🏢',
     fn: async () => {
       const { execSync } = require('child_process');
-      execSync('node ' + require('path').join(__dirname, 'extract_companies_from_contacts.js'), { timeout: 300000, stdio: 'inherit' });
+      execSync('node ' + require('path').join(__dirname, 'extract_companies_from_contacts.js'), { timeout: 900000, stdio: 'inherit' });
     },
     schedule: '0 5 * * *',  // Daily at 05:00
     description: 'Extract company records from contact names + email domains, link people, derive sectors'
