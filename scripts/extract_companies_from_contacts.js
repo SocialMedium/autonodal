@@ -97,6 +97,11 @@ async function main() {
   if (DRY_RUN) console.log(c.yellow('  ⚠ DRY RUN — no writes'));
 
   await runJob(pool, 'extract_companies', async () => {
+    // Ensure required columns exist
+    try { await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS source VARCHAR(50)`); } catch (e) {}
+    try { await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS domain VARCHAR(255)`); } catch (e) {}
+    try { await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS employee_count_estimate INTEGER`); } catch (e) {}
+
     // Get tenants to process
     let tenantIds;
     if (TENANT_ID) {
@@ -146,18 +151,17 @@ async function main() {
           companyId = existing[0].id;
         } else if (!DRY_RUN) {
           // Create company
-          const { rows: [newCo] } = await pool.query(
-            `INSERT INTO companies (name, source, tenant_id, created_at, updated_at)
-             VALUES ($1, 'contact_extraction', $2, NOW(), NOW())
-             ON CONFLICT DO NOTHING
-             RETURNING id`,
-            [row.name.trim(), tenantId]
-          );
-          if (newCo) {
+          try {
+            const { rows: [newCo] } = await pool.query(
+              `INSERT INTO companies (name, source, tenant_id, created_at, updated_at)
+               VALUES ($1, 'contact_extraction', $2, NOW(), NOW())
+               RETURNING id`,
+              [row.name.trim(), tenantId]
+            );
             companyId = newCo.id;
             created++;
-          } else {
-            // Race condition — try to get it
+          } catch (insertErr) {
+            // Duplicate — look it up
             const { rows: r } = await pool.query(
               `SELECT id FROM companies WHERE LOWER(TRIM(name)) = LOWER($1) AND tenant_id = $2 LIMIT 1`,
               [row.name.trim(), tenantId]
