@@ -9917,7 +9917,7 @@ app.get('/api/profile/stats', authenticateToken, async (req, res) => {
         (SELECT COUNT(*) FROM team_proximity WHERE team_member_id = $1) AS connections,
         (SELECT COUNT(*) FROM interactions WHERE user_id = $1 OR created_by = $1) AS interactions,
         (SELECT COUNT(*) FROM signal_dispatches WHERE claimed_by = $1 AND tenant_id = $2) AS dispatches,
-        (SELECT COUNT(*) FROM feed_proposals WHERE proposed_by = $1) AS feeds
+        (SELECT COUNT(*) FROM rss_sources WHERE enabled = true) AS feeds
     `, [uid, tid]);
 
     // Import history from audit log
@@ -9956,19 +9956,10 @@ app.get('/api/profile/feeds', authenticateToken, async (req, res) => {
       ORDER BY rs.enabled DESC, rs.name
     `, [uid]).catch(() => ({ rows: [] }));
 
-    // User-added feeds (feed_proposals)
-    const { rows: userFeeds } = await db.query(`
-      SELECT fp.id, fp.proposed_url AS url, fp.proposed_name AS name, fp.status,
-        fp.status = 'approved' AS active, fp.created_at, 'user' AS source
-      FROM feed_proposals fp
-      WHERE fp.proposed_by = $1
-      ORDER BY fp.created_at DESC
-    `, [uid]).catch(() => ({ rows: [] }));
-
     res.json({
       platform_feeds: platformFeeds,
-      user_feeds: userFeeds,
-      feeds: userFeeds, // backward compat
+      user_feeds: [], // user feeds now go directly into rss_sources
+      feeds: [], // backward compat
     });
   } catch (err) { res.json({ platform_feeds: [], user_feeds: [], feeds: [] }); }
 });
@@ -9987,7 +9978,7 @@ app.post('/api/profile/feeds/:id/toggle', authenticateToken, async (req, res) =>
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// User feeds — add
+// User feeds — add (writes directly to rss_sources so harvester picks it up)
 app.post('/api/profile/feeds', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
@@ -10002,35 +9993,26 @@ app.post('/api/profile/feeds', authenticateToken, async (req, res) => {
       isRss = text.includes('<rss') || text.includes('<feed') || text.includes('<channel');
     } catch (e) { /* probe failed, not critical */ }
 
-    const { rows: [feed] } = await db.query(`
-      INSERT INTO feed_proposals (proposed_url, proposed_name, proposed_by, status, is_rss, created_at)
-      VALUES ($1, $2, $3, 'approved', $4, NOW())
-      ON CONFLICT (proposed_url) DO UPDATE SET proposed_name = COALESCE(EXCLUDED.proposed_name, feed_proposals.proposed_name)
-      RETURNING id, proposed_url AS url, proposed_name AS name, status
-    `, [url.trim(), name || null, req.user.user_id, isRss]);
+    // Check if feed already exists
+    const { rows: existing } = await db.query(
+      `SELECT id, name, url FROM rss_sources WHERE url = $1 LIMIT 1`, [url.trim()]
+    );
 
-    // If it's RSS, also add to the feed_inventory / external_sources system
-    if (isRss) {
-      try {
-        await db.query(`
-          INSERT INTO feed_inventory (url, name, source_type, region, added_by, tenant_id, created_at)
-          VALUES ($1, $2, 'rss', $3, $4, $5, NOW())
-          ON CONFLICT (url) DO NOTHING
-        `, [url.trim(), name || url, req.user?.region || 'GLOBAL', req.user.user_id, req.tenant_id]);
-
-        // Also activate for this tenant
-        const { rows: [fi] } = await db.query(`SELECT id FROM feed_inventory WHERE url = $1 LIMIT 1`, [url.trim()]);
-        if (fi) {
-          await db.query(`
-            INSERT INTO tenant_feeds (tenant_id, feed_id, selection_method, activated_at)
-            VALUES ($1, $2, 'user_contributed', NOW())
-            ON CONFLICT (tenant_id, feed_id) DO UPDATE SET active = TRUE
-          `, [req.tenant_id, fi.id]);
-        }
-      } catch (e) { /* feed_inventory may not exist or have different schema */ }
+    let feed;
+    if (existing.length) {
+      // Re-enable if disabled
+      await db.query(`UPDATE rss_sources SET enabled = true, name = COALESCE($2, name) WHERE id = $1`, [existing[0].id, name || null]);
+      feed = { ...existing[0], active: true };
+    } else {
+      const { rows: [newFeed] } = await db.query(`
+        INSERT INTO rss_sources (name, url, source_type, enabled, tenant_id)
+        VALUES ($1, $2, $3, true, $4)
+        RETURNING id, name, url, source_type, enabled AS active
+      `, [name || url, url.trim(), isRss ? 'rss' : 'page', req.tenant_id]);
+      feed = newFeed;
     }
 
-    auditLog(req.user.user_id, 'add_feed', 'feed', feed?.id, { url, name, is_rss: isRss });
+    auditLog(req.user.user_id, 'add_feed', 'rss_sources', feed?.id, { url, name, is_rss: isRss });
     res.json({ ...feed, is_rss: isRss });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -10039,7 +10021,8 @@ app.post('/api/profile/feeds', authenticateToken, async (req, res) => {
 app.delete('/api/profile/feeds/:id', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
-    await db.query(`DELETE FROM feed_proposals WHERE id = $1 AND proposed_by = $2`, [req.params.id, req.user.user_id]);
+    // Disable rather than delete (preserves history)
+    await db.query(`UPDATE rss_sources SET enabled = false WHERE id = $1`, [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
