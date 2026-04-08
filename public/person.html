@@ -401,6 +401,14 @@ if(career.length){
   }
   h+='</div>';
 }
+// Paste career button (always show)
+h+='<div style="margin-bottom:12px"><button onclick="showCareerPaste()" class="btn btn-sm" style="width:100%;color:var(--blue);border-color:var(--blue)">'+icon('clipboard',14)+' Paste Career History</button></div>';
+h+='<div id="careerPasteBox" style="display:none;margin-bottom:12px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:14px 16px">';
+h+='<div style="font-size:12px;font-weight:600;margin-bottom:6px">Paste LinkedIn career text</div>';
+h+='<div style="font-size:11px;color:var(--ink-4);margin-bottom:8px">Copy from LinkedIn profile → Experience section. Each role should include title, company, and dates.</div>';
+h+='<textarea id="careerPasteInput" style="width:100%;height:160px;font-size:12px;font-family:var(--sans);padding:10px;border:1px solid var(--rule);border-radius:6px;resize:vertical" placeholder="VP Engineering\nGoogle\nJan 2020 - Present · 4 yrs 3 mos\nSydney, Australia\n\nSenior Engineer\nAtlassian\nMar 2016 - Dec 2019 · 3 yrs 10 mos"></textarea>';
+h+='<div style="display:flex;gap:8px;margin-top:8px"><button onclick="parseAndSaveCareer()" class="btn btn-primary btn-sm">Parse & Save</button><button onclick="document.getElementById(\'careerPasteBox\').style.display=\'none\'" class="btn btn-sm">Cancel</button></div>';
+h+='</div>';
 
 // ── Education (compact) ──
 var edu = p.education || [];
@@ -756,6 +764,32 @@ function hideProxTip() {
   proxHideTimer = setTimeout(function() {
     if (proxTipEl) proxTipEl.classList.remove('show');
   }, 200);
+}
+
+function showCareerPaste() {
+  document.getElementById('careerPasteBox').style.display = 'block';
+  document.getElementById('careerPasteInput').focus();
+}
+
+async function parseAndSaveCareer() {
+  var text = document.getElementById('careerPasteInput').value.trim();
+  if (!text) { alert('Paste career history text first'); return; }
+
+  var btn = document.querySelector('#careerPasteBox .btn-primary');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span> Parsing...';
+
+  try {
+    var data = await api('/api/people/' + PERSON_ID + '/career/parse', {
+      method: 'POST',
+      body: { text: text }
+    });
+    if (data.error) { alert(data.error); btn.disabled = false; btn.textContent = 'Parse & Save'; return; }
+    alert('Saved ' + (data.roles || 0) + ' career roles');
+    location.reload();
+  } catch(e) {
+    alert('Failed: ' + e.message);
+    btn.disabled = false; btn.textContent = 'Parse & Save';
+  }
 }
 </script>
 <script src="/terminology.js"></script>

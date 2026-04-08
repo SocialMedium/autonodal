@@ -2723,6 +2723,146 @@ app.get('/api/people/:id/notes', authenticateToken, async (req, res) => {
 });
 
 // ─── Edit Person ───
+// Parse pasted career history text into structured roles
+app.post('/api/people/:id/career/parse', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { text } = req.body;
+    if (!text || text.length < 10) return res.status(400).json({ error: 'Paste career history text' });
+
+    // Parse LinkedIn-style career text
+    // Formats:
+    //   Title\nCompany\nDates · Duration\nLocation\n\n
+    //   Title at Company (Date - Date)
+    //   Company — Title (Date - Date)
+    const roles = [];
+    const blocks = text.split(/\n\s*\n/).filter(b => b.trim());
+
+    for (const block of blocks) {
+      const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length === 0) continue;
+
+      let title = null, company = null, startDate = null, endDate = null, current = false, location = null, description = null;
+
+      // Try to parse each line
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
+        // Date patterns: "Jan 2020 - Present · 4 yrs", "2020 - 2023", "Mar 2016 - Dec 2019 · 3 yrs 10 mos"
+        const dateMatch = line.match(/^((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}|\d{4})\s*[-–]\s*(Present|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}|\d{4})/i);
+        if (dateMatch) {
+          startDate = dateMatch[1];
+          endDate = dateMatch[2];
+          if (/present/i.test(endDate)) { current = true; endDate = null; }
+          continue;
+        }
+
+        // Duration-only line: "4 yrs 3 mos", "2 years"
+        if (/^\d+\s*(yr|year|mo|month)/i.test(line)) continue;
+
+        // Location patterns
+        if (/,\s*(Australia|United States|United Kingdom|Singapore|London|Sydney|Melbourne|New York|San Francisco)/i.test(line)) {
+          location = line;
+          continue;
+        }
+
+        // "Full-time", "Part-time", "Contract" — skip
+        if (/^(Full-time|Part-time|Contract|Self-employed|Freelance|Internship)$/i.test(line)) continue;
+
+        // First meaningful line = title, second = company
+        if (!title) { title = line; }
+        else if (!company) { company = line; }
+        else if (!description) { description = line; }
+      }
+
+      // Handle "Title at Company" format
+      if (title && !company && title.includes(' at ')) {
+        const parts = title.split(' at ');
+        title = parts[0].trim();
+        company = parts.slice(1).join(' at ').trim();
+      }
+
+      // Handle "Company — Title" format
+      if (title && !company && (title.includes(' — ') || title.includes(' - '))) {
+        const sep = title.includes(' — ') ? ' — ' : ' - ';
+        const parts = title.split(sep);
+        if (parts.length === 2 && parts[0].length > 2 && parts[1].length > 2) {
+          company = parts[0].trim();
+          title = parts[1].trim();
+        }
+      }
+
+      if (title || company) {
+        // Normalize dates to ISO
+        function parseDate(d) {
+          if (!d) return null;
+          const m = d.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})/i);
+          if (m) {
+            const months = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+            return `${m[2]}-${String(months[m[1].toLowerCase()]).padStart(2,'0')}-01`;
+          }
+          if (/^\d{4}$/.test(d)) return `${d}-01-01`;
+          return null;
+        }
+
+        roles.push({
+          title: title || null,
+          company: company || null,
+          start_date: parseDate(startDate),
+          end_date: current ? null : parseDate(endDate),
+          current: current || false,
+          location: location || null,
+          description: description || null,
+        });
+      }
+    }
+
+    if (!roles.length) return res.json({ error: 'Could not parse any roles from the text', roles: 0 });
+
+    // Save to person record
+    await db.query(
+      `UPDATE people SET career_history = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+      [JSON.stringify(roles), req.params.id, req.tenant_id]
+    );
+
+    // Update current title/company from the most recent role
+    const currentRole = roles.find(r => r.current) || roles[0];
+    if (currentRole) {
+      await db.query(
+        `UPDATE people SET
+           current_title = COALESCE($1, current_title),
+           current_company_name = COALESCE($2, current_company_name),
+           updated_at = NOW()
+         WHERE id = $3 AND tenant_id = $4`,
+        [currentRole.title, currentRole.company, req.params.id, req.tenant_id]
+      );
+    }
+
+    // Create company records for any new companies mentioned
+    for (const role of roles) {
+      if (!role.company) continue;
+      try {
+        const { rows: [existing] } = await db.query(
+          `SELECT id FROM companies WHERE LOWER(TRIM(name)) = LOWER($1) AND tenant_id = $2 LIMIT 1`,
+          [role.company.trim(), req.tenant_id]
+        );
+        if (!existing) {
+          await db.query(
+            `INSERT INTO companies (name, source, tenant_id, created_at, updated_at)
+             VALUES ($1, 'career_paste', $2, NOW(), NOW())`,
+            [role.company.trim(), req.tenant_id]
+          );
+        }
+      } catch (e) { /* duplicate — fine */ }
+    }
+
+    res.json({ roles: roles.length, parsed: roles });
+  } catch (err) {
+    console.error('Career parse error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.patch('/api/people/:id', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
