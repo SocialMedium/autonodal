@@ -13624,6 +13624,26 @@ app.listen(PORT, async () => {
     await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS source VARCHAR(50)`);
   } catch (e) {}
 
+  // Fix global UNIQUE constraints that break multi-tenant isolation
+  try {
+    // companies.domain must be unique per tenant, not globally
+    await db.query(`ALTER TABLE companies DROP CONSTRAINT IF EXISTS companies_domain_key`);
+    await db.query(`DROP INDEX IF EXISTS companies_domain_key`);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_domain_tenant ON companies(domain, tenant_id) WHERE domain IS NOT NULL`);
+
+    // external_documents.source_url_hash must be per tenant
+    await db.query(`ALTER TABLE external_documents DROP CONSTRAINT IF EXISTS external_documents_source_url_hash_key`);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_url_hash_tenant ON external_documents(source_url_hash, tenant_id) WHERE source_url_hash IS NOT NULL`);
+
+    // events.url_hash must be per tenant (or global for platform events)
+    await db.query(`ALTER TABLE events DROP CONSTRAINT IF EXISTS events_url_hash_key`);
+
+    // event_sources.feed_url must be per tenant
+    await db.query(`ALTER TABLE event_sources DROP CONSTRAINT IF EXISTS event_sources_feed_url_key`);
+
+    console.log('  ✅ Fixed multi-tenant unique constraints');
+  } catch (e) { console.log('  ⚠️ Constraint fix:', e.message); }
+
   // Backfill tenant_id on team_proximity and interactions from user's tenant
   try {
     const { rowCount: tpFixed } = await db.query(`
