@@ -9909,10 +9909,11 @@ app.get('/api/admin/audit', authenticateToken, requireAdmin, async (req, res) =>
 // Profile stats
 app.get('/api/profile/stats', authenticateToken, async (req, res) => {
   try {
-    const db = new TenantDB(req.tenant_id);
     const uid = req.user.user_id;
     const tid = req.tenant_id;
-    const { rows: [s] } = await db.query(`
+    // Use platformPool to bypass RLS — team_proximity/interactions may have mismatched tenant_id
+    // These tables are user-scoped so user_id filter is sufficient
+    const { rows: [s] } = await platformPool.query(`
       SELECT
         (SELECT COUNT(*) FROM team_proximity WHERE team_member_id = $1) AS connections,
         (SELECT COUNT(*) FROM interactions WHERE user_id = $1 OR created_by = $1) AS interactions,
@@ -9921,7 +9922,7 @@ app.get('/api/profile/stats', authenticateToken, async (req, res) => {
     `, [uid, tid]);
 
     // Import history from audit log
-    const { rows: imports } = await db.query(`
+    const { rows: imports } = await platformPool.query(`
       SELECT action, details->>'filename' AS filename, details->>'total' AS total, created_at
       FROM audit_logs WHERE user_id = $1 AND action IN ('csv_import','linkedin_connections_import','linkedin_messages_import','workbook_import','admin_linkedin_import','document_upload')
       ORDER BY created_at DESC LIMIT 20
@@ -10436,7 +10437,9 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
             await db.query(
               `INSERT INTO team_proximity (person_id, team_member_id, relationship_type, relationship_strength, source, tenant_id)
                VALUES ($1, $2, 'linkedin_connection', 0.5, 'linkedin_import', $3)
-               ON CONFLICT (person_id, team_member_id) DO UPDATE SET relationship_strength = GREATEST(team_proximity.relationship_strength, 0.5)`,
+               ON CONFLICT (person_id, team_member_id, relationship_type) DO UPDATE SET
+                 relationship_strength = GREATEST(team_proximity.relationship_strength, 0.5),
+                 tenant_id = COALESCE(team_proximity.tenant_id, EXCLUDED.tenant_id)`,
               [personId, userId, tenantId]);
             stats.proximity_created++;
           } catch (e) {}
@@ -13449,6 +13452,23 @@ app.listen(PORT, async () => {
   try {
     const { rowCount } = await db.query(`UPDATE events SET tenant_id = NULL WHERE tenant_id IS NOT NULL`);
     if (rowCount) console.log(`  📅 Migrated ${rowCount} events to platform-wide visibility`);
+  } catch (e) {}
+
+  // Backfill tenant_id on team_proximity and interactions from user's tenant
+  try {
+    const { rowCount: tpFixed } = await db.query(`
+      UPDATE team_proximity tp SET tenant_id = u.tenant_id
+      FROM users u WHERE u.id = tp.team_member_id
+        AND (tp.tenant_id IS NULL OR tp.tenant_id != u.tenant_id)
+    `);
+    if (tpFixed) console.log(`  🔗 Fixed tenant_id on ${tpFixed} team_proximity records`);
+
+    const { rowCount: ixFixed } = await db.query(`
+      UPDATE interactions i SET tenant_id = u.tenant_id
+      FROM users u WHERE u.id = i.user_id
+        AND (i.tenant_id IS NULL OR i.tenant_id != u.tenant_id)
+    `);
+    if (ixFixed) console.log(`  🔗 Fixed tenant_id on ${ixFixed} interaction records`);
   } catch (e) {}
 
   // Interaction → company linkage column + auto-populate trigger
