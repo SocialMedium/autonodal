@@ -13868,21 +13868,7 @@ app.listen(PORT, async () => {
       .on('exit', (code) => console.log(`  ✅ Company extraction exited (code ${code})`));
   } catch (e) {}
 
-  // Migrate signals + documents + events to platform-wide (NULL tenant_id) so all tenants can see them
-  // These are market intelligence from RSS/news — not tenant-specific data
-  try {
-    const { rowCount: sigMigrated } = await platformPool.query(`UPDATE signal_events SET tenant_id = NULL WHERE tenant_id IS NOT NULL AND COALESCE(visibility, 'public') != 'private'`);
-    if (sigMigrated) console.log(`  ⚡ Migrated ${sigMigrated} signals to platform-wide visibility`);
-  } catch (e) {}
-  try {
-    // Documents stay tenant-scoped — not platform-wide (privacy)
-    const docMigrated = 0;
-    if (docMigrated) console.log(`  📄 Migrated ${docMigrated} documents to platform-wide visibility`);
-  } catch (e) {}
-  try {
-    const { rowCount } = await platformPool.query(`UPDATE events SET tenant_id = NULL WHERE tenant_id IS NOT NULL`);
-    if (rowCount) console.log(`  📅 Migrated ${rowCount} events to platform-wide visibility`);
-  } catch (e) {}
+  // Platform-wide migration moved below multi-tenant migration (must run after)
 
   // Flag companies with revenue as is_client (survives enrichment resets)
   try {
@@ -14181,10 +14167,23 @@ app.listen(PORT, async () => {
     console.log('  \u26a0\ufe0f Multi-tenant migration:', e.message);
   }
 
-  // Backfill: mark companies as clients if they have placements
+  // Migrate signals + events to platform-wide (NULL tenant_id) so all tenants can see them
+  // MUST run AFTER multi-tenant migration which adds the tenant_id column
+  try {
+    // Drop any default that multi-tenant migration may have re-added
+    await platformPool.query('ALTER TABLE signal_events ALTER COLUMN tenant_id DROP DEFAULT');
+    const { rowCount: sigMigrated } = await platformPool.query(`UPDATE signal_events SET tenant_id = NULL WHERE tenant_id IS NOT NULL AND COALESCE(visibility, 'public') != 'private'`);
+    if (sigMigrated) console.log(`  ⚡ Migrated ${sigMigrated} signals to platform-wide visibility`);
+  } catch (e) { console.log('  ⚠️ Signal migration:', e.message); }
+  try {
+    const { rowCount } = await platformPool.query(`UPDATE events SET tenant_id = NULL WHERE tenant_id IS NOT NULL`);
+    if (rowCount) console.log(`  📅 Migrated ${rowCount} events to platform-wide visibility`);
+  } catch (e) {}
+
+  // Backfill: mark companies as clients if they have placements/revenue
   try {
     // First, try to link clients to companies by name match
-    const { rowCount: linked } = await db.query(`
+    const { rowCount: linked } = await platformPool.query(`
       UPDATE accounts SET company_id = co.id
       FROM companies co
       WHERE accounts.company_id IS NULL
@@ -14192,15 +14191,13 @@ app.listen(PORT, async () => {
     `);
     if (linked > 0) console.log(`  ✅ Linked ${linked} clients to companies by name`);
 
-    // Then mark those companies as clients
-    // Reset is_client — only companies with invoiced revenue are clients (Xero is SOR)
-    await db.query(`UPDATE companies SET is_client = false WHERE is_client = true`);
-    const { rowCount } = await db.query(`
+    // Flag companies with revenue as is_client (additive — don't reset existing flags)
+    const { rowCount } = await platformPool.query(`
       UPDATE companies SET is_client = true
-      WHERE id IN (
-        SELECT DISTINCT cl.company_id FROM accounts cl
-        JOIN account_financials cf ON cf.client_id = cl.id
-        WHERE cl.company_id IS NOT NULL AND cf.total_invoiced > 0
+      WHERE is_client = false AND id IN (
+        SELECT DISTINCT a.company_id FROM accounts a
+        JOIN conversions conv ON conv.client_id = a.id
+        WHERE a.company_id IS NOT NULL
       )
     `);
     if (rowCount > 0) console.log(`  ✅ ${rowCount} companies marked as clients (invoiced via Xero)`);
