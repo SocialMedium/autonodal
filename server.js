@@ -13790,6 +13790,12 @@ app.listen(PORT, async () => {
     await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS source VARCHAR(50)`);
   } catch (e) {}
 
+  // Force logout all users — clear all sessions to force re-auth with fresh tokens
+  try {
+    const { rowCount } = await db.query(`DELETE FROM sessions`);
+    if (rowCount) console.log(`  🔒 Force logged out all users (${rowCount} sessions cleared)`);
+  } catch (e) {}
+
   // Ensure conversions table has all needed columns for sales import
   try {
     await db.query(`
