@@ -221,7 +221,7 @@ app.get('/api/auth/google', (req, res) => {
 
 // Google OAuth — callback
 app.get('/api/auth/google/callback', async (req, res) => {
-  console.log('🔑 OAuth callback hit — code:', req.query.code ? 'yes(' + req.query.code.length + ')' : 'no', 'error:', req.query.error || 'none');
+  console.log('🔑 OAuth callback hit — code:', req.query.code ? 'yes(' + req.query.code.length + ')' : 'no', 'error:', req.query.error || 'none', 'state:', req.query.state);
   const { code, error, state } = req.query;
   const returnTo = (state && state.startsWith('/')) ? state : '/index.html';
   if (error) return res.redirect(returnTo + '?auth_error=' + encodeURIComponent(error));
@@ -229,30 +229,36 @@ app.get('/api/auth/google/callback', async (req, res) => {
 
   try {
     const redirectUri = process.env.GOOGLE_REDIRECT_URL || process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+    console.log('🔑 Step 1: exchanging code, redirectUri:', redirectUri);
 
-    // Exchange code for tokens
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        code,
-        client_id: process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        redirect_uri: redirectUri,
-        grant_type: 'authorization_code'
-      })
-    });
+    let tokenRes;
+    try {
+      tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: process.env.GOOGLE_CLIENT_ID,
+          client_secret: process.env.GOOGLE_CLIENT_SECRET,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code'
+        })
+      });
+    } catch (fetchErr) {
+      console.error('🔑 FETCH FAILED:', fetchErr.message);
+      return res.redirect('/index.html?auth_error=token_exchange_failed');
+    }
+
+    console.log('🔑 Step 2: token response status:', tokenRes.status);
 
     if (!tokenRes.ok) {
       const err = await tokenRes.text();
-      console.error('Google token exchange failed:', err);
-      console.error('  redirect_uri used:', redirectUri);
-      console.error('  code length:', code?.length, 'code prefix:', code?.slice(0, 10));
-      console.error('  host:', req.get('host'), 'protocol:', req.protocol);
+      console.error('🔑 Token exchange failed:', err);
       return res.redirect('/index.html?auth_error=token_exchange_failed');
     }
 
     const tokenData = await tokenRes.json();
+    console.log('🔑 Step 3: got tokens, has access_token:', !!tokenData.access_token);
 
     // Get user info
     const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -365,7 +371,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
     const sep = returnTo.includes('?') ? '&' : '?';
     res.redirect(`${returnTo}${sep}token=${sessionToken}&user=${userJson}`);
   } catch (err) {
-    console.error('Google auth error:', err);
+    console.error('🔑 CATCH — Google auth error:', err.message, err.stack?.split('\n')[1]);
     res.redirect(returnTo + '?auth_error=server_error');
   }
 });
