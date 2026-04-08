@@ -196,8 +196,9 @@ async function main() {
       console.log(c.green(`    ✓ ${linked} people linked to companies`));
 
       // ═══════════════════════════════════════════════════════════════
-      // STEP 2: Extract companies from email domains
+      // STEP 2: Extract companies from email domains (wrapped — non-fatal)
       // ═══════════════════════════════════════════════════════════════
+      try {
 
       const { rows: domains } = await pool.query(`
         SELECT
@@ -376,6 +377,9 @@ async function main() {
       } catch (e) { console.log(c.dim(`    ⚠ Review contacts extraction: ${e.message}`)); }
 
       totalDomainCompanies += domainCreated + interactionDomains + reviewCompanies;
+      } catch (domainErr) {
+        console.log(c.dim(`    ⚠ Email domain extraction error (non-fatal): ${domainErr.message}`));
+      }
 
       // ═══════════════════════════════════════════════════════════════
       // STEP 3: Enrich companies with sector from people titles
