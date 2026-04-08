@@ -1879,6 +1879,17 @@ const PIPELINES = {
     description: 'Sync calendar events → meeting interactions + team_proximity + upcoming meeting signals'
   },
 
+  extract_companies: {
+    name: 'Company Extraction',
+    icon: '🏢',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'extract_companies_from_contacts.js'), { timeout: 300000, stdio: 'inherit' });
+    },
+    schedule: '0 5 * * *',  // Daily at 05:00
+    description: 'Extract company records from contact names + email domains, link people, derive sectors'
+  },
+
   sync_telegram: {
     name: 'Telegram Sync',
     icon: '💬',

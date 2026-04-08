@@ -13376,6 +13376,14 @@ app.listen(PORT, async () => {
       .on('exit', (code) => console.log(`  ✅ Podcast audio backfill exited (code ${code})`));
   } catch (e) {}
 
+  // Extract companies from contacts on startup
+  try {
+    console.log('  🏢 Running company extraction from contacts...');
+    const { spawn: spawnExtract } = require('child_process');
+    spawnExtract('node', [require('path').join(__dirname, 'scripts', 'extract_companies_from_contacts.js')], { stdio: 'inherit', timeout: 300000 })
+      .on('exit', (code) => console.log(`  ✅ Company extraction exited (code ${code})`));
+  } catch (e) {}
+
   // Migrate events to platform-wide (NULL tenant_id) so all tenants can see them
   try {
     const { rowCount } = await db.query(`UPDATE events SET tenant_id = NULL WHERE tenant_id IS NOT NULL`);
