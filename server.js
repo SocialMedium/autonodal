@@ -11546,6 +11546,7 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
       fee_total: ['total', 'invoiceamount', 'invoice_total', 'invoice_total_local'],
       entity_name: ['entity', 'entity_name', 'business_unit'],
       account_code: ['account', 'account_code', 'account_name'],
+      source_type: ['source', 'source_type', 'document_type', 'type'],
       year: ['year', 'fiscal_year'],
       date: ['date', 'start_date', 'invoice_date', 'invoicedate', 'placement_date', 'close_date'],
       invoice_number: ['invoice_number', 'invoice', 'inv_no', 'invoicenumber', 'invoice_no'],
@@ -11630,8 +11631,12 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
         const quantity = row[colMap.line_quantity];
         if (isXeroFormat && quantity !== undefined && parseFloat(quantity) === 0) { skipped++; continue; }
         if (fee !== null && fee === 0) { skipped++; continue; }
+        if (fee !== null && fee < 0) { skipped++; continue; } // Skip credit notes
         if (!clientName && !roleTitle) { skipped++; continue; }
         if (fee !== null && isNaN(fee)) { skipped++; continue; }
+        // Skip Credit Note source types
+        const sourceType = row[colMap.source_type] || '';
+        if (sourceType.toLowerCase().includes('credit note')) { skipped++; continue; }
 
         const description = row[colMap.description] || null;
         const feeStage = row[colMap.fee_stage] || null;
