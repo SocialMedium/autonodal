@@ -13764,6 +13764,22 @@ app.listen(PORT, async () => {
     await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS source VARCHAR(50)`);
   } catch (e) {}
 
+  // Fix RLS policies — platform content (tenant_id IS NULL) must be visible to all tenants
+  try {
+    const platformTables = ['signal_events', 'events', 'external_documents'];
+    for (const table of platformTables) {
+      await db.query(`DROP POLICY IF EXISTS tenant_isolation_${table} ON ${table}`);
+      await db.query(`
+        CREATE POLICY tenant_isolation_${table} ON ${table}
+        USING (current_setting('app.current_tenant', true) IS NULL
+               OR current_setting('app.current_tenant', true) = ''
+               OR tenant_id IS NULL
+               OR tenant_id::text = current_setting('app.current_tenant', true))
+      `);
+    }
+    console.log('  ✅ Fixed RLS policies for platform content visibility');
+  } catch (e) { console.log('  ⚠️ RLS policy fix:', e.message); }
+
   // Fix global UNIQUE constraints that break multi-tenant isolation
   try {
     // companies.domain must be unique per tenant, not globally
