@@ -894,15 +894,33 @@ async function importSalesCsv() {
   try {
     var token = localStorage.getItem('ml_token');
     var endpoint = isMyob ? '/api/admin/import-sales-myob' : '/api/admin/import-sales';
-    var payload = isMyob ? JSON.stringify({ invoices: _myobInvoices }) : JSON.stringify({ headers: _salesHeaders, rows: _salesRows });
+    var allRows = isMyob ? _myobInvoices : _salesRows;
+    var BATCH_SIZE = 200;
+    var totalResult = { total: 0, created: 0, updated: 0, skipped: 0, errors: 0 };
 
-    var resp = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: payload
-    });
-    var data = await resp.json();
-    if (data.error) throw new Error(data.error);
+    // Process in batches to avoid timeout
+    for (var batchStart = 0; batchStart < allRows.length; batchStart += BATCH_SIZE) {
+      var batch = allRows.slice(batchStart, batchStart + BATCH_SIZE);
+      var pct = Math.round(((batchStart + batch.length) / allRows.length) * 100);
+      progressFill.style.animation = 'none';
+      progressFill.style.width = pct + '%';
+      status.textContent = 'Importing batch ' + Math.floor(batchStart / BATCH_SIZE + 1) + ' of ' + Math.ceil(allRows.length / BATCH_SIZE) + ' (' + pct + '%)...';
+
+      var payload = isMyob ? JSON.stringify({ invoices: batch }) : JSON.stringify({ headers: _salesHeaders, rows: batch });
+      var resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: payload
+      });
+      var data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      totalResult.total += (data.total || 0);
+      totalResult.created += (data.created || 0);
+      totalResult.updated += (data.updated || 0);
+      totalResult.skipped += (data.skipped || 0);
+      totalResult.errors += (data.errors || 0);
+    }
+    var data = totalResult;
 
     progressFill.style.animation = 'none';
     progressFill.style.width = '100%';
