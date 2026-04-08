@@ -6,6 +6,8 @@
 <title>Admin — Signals</title>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes indeterminate { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
 :root {
   --serif: 'Source Serif 4', 'Georgia', serif;
   --sans: 'DM Sans', system-ui, sans-serif;
@@ -228,10 +230,13 @@ select.role-select:focus { outline: none; border-color: var(--blue); }
           <table class="tbl" id="salesPreviewTable"><tbody></tbody></table>
         </div>
       </div>
-      <div style="display:flex;gap:12px;align-items:center">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <button id="salesImportBtn" onclick="importSalesCsv()" style="font-size:12px;padding:8px 24px;background:var(--ink);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;font-weight:500">Import</button>
         <button onclick="cancelSalesImport()" style="font-size:12px;padding:8px 16px;background:none;border:1px solid var(--rule);border-radius:var(--radius);cursor:pointer;color:var(--ink-3)">Cancel</button>
         <span id="salesImportStatus" style="font-size:12px;color:var(--ink-3)"></span>
+      </div>
+      <div id="salesProgressBar" style="display:none;margin-top:10px;height:4px;background:var(--rule);border-radius:2px;overflow:hidden">
+        <div id="salesProgressFill" style="height:100%;background:var(--ink);border-radius:2px;width:0%;transition:width 0.3s"></div>
       </div>
     </div>
   </div>
@@ -873,10 +878,16 @@ async function importSalesCsv() {
 
   var btn = document.getElementById('salesImportBtn');
   var status = document.getElementById('salesImportStatus');
+  var progressBar = document.getElementById('salesProgressBar');
+  var progressFill = document.getElementById('salesProgressFill');
   btn.disabled = true;
-  btn.textContent = 'Importing ' + label + '...';
-  status.textContent = 'Sending data to server...';
+  btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.6s linear infinite;vertical-align:middle;margin-right:6px"></span>Importing...';
+  status.textContent = 'Processing ' + label + '...';
   status.style.color = 'var(--ink-3)';
+  progressBar.style.display = 'block';
+  progressFill.style.width = '30%';
+  progressFill.style.animation = 'indeterminate 1.5s ease-in-out infinite';
+  progressFill.style.marginLeft = '0';
 
   var startTime = Date.now();
 
@@ -893,13 +904,16 @@ async function importSalesCsv() {
     var data = await resp.json();
     if (data.error) throw new Error(data.error);
 
+    progressFill.style.animation = 'none';
+    progressFill.style.width = '100%';
+    progressFill.style.background = 'var(--emerald)';
     var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     var parts = [];
     if (data.created) parts.push(data.created + ' created');
     if (data.updated) parts.push(data.updated + ' updated');
     if (data.skipped) parts.push(data.skipped + ' skipped');
     if (data.errors) parts.push(data.errors + ' errors');
-    status.innerHTML = '<strong style="color:var(--emerald)">Import complete</strong> (' + elapsed + 's) — ' + parts.join(', ') + ' of ' + data.total + (isMyob ? ' invoices' : ' rows');
+    status.innerHTML = '<strong style="color:var(--emerald)">✓ Import complete</strong> (' + elapsed + 's) — ' + parts.join(', ') + ' of ' + data.total + (isMyob ? ' invoices' : ' rows');
     status.style.color = 'var(--ink-2)';
     _salesRows = [];
     _myobInvoices = [];
@@ -907,6 +921,9 @@ async function importSalesCsv() {
     document.getElementById('salesPreviewTable').innerHTML = '';
     document.getElementById('salesPreviewCount').textContent = '';
   } catch (err) {
+    progressFill.style.animation = 'none';
+    progressFill.style.width = '100%';
+    progressFill.style.background = 'var(--rose)';
     status.innerHTML = '<strong style="color:var(--rose)">Import failed</strong> — ' + err.message;
     status.style.color = 'var(--rose)';
   }
