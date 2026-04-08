@@ -11540,10 +11540,13 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
     // Supports: generic CSVs, Xero Sales Invoice export, MYOB, QuickBooks
     const colMap = {};
     const aliases = {
-      client_name: ['client_name', 'client', 'company', 'company_name', 'account', 'account_name', 'contactname', 'customer_name', 'customer', 'entity'],
+      client_name: ['client_name', 'client', 'company', 'company_name', 'account_name', 'contactname', 'customer_name', 'customer'],
       role_title: ['role_title', 'role', 'title', 'position', 'job_title', 'reference', 'role_ref'],
-      fee: ['fee', 'placement_fee', 'amount', 'revenue', 'value', 'invoice_amount', 'lineamount', 'line_amount'],
-      fee_total: ['total', 'invoiceamount', 'invoice_total'],
+      fee: ['fee', 'placement_fee', 'amount', 'amount_local', 'revenue', 'value', 'invoice_amount', 'lineamount', 'line_amount'],
+      fee_total: ['total', 'invoiceamount', 'invoice_total', 'invoice_total_local'],
+      entity_name: ['entity', 'entity_name', 'business_unit'],
+      account_code: ['account', 'account_code', 'account_name'],
+      year: ['year', 'fiscal_year'],
       date: ['date', 'start_date', 'invoice_date', 'invoicedate', 'placement_date', 'close_date'],
       invoice_number: ['invoice_number', 'invoice', 'inv_no', 'invoicenumber', 'invoice_no'],
       description: ['description', 'memo', 'line_description', 'item_description'],
@@ -11588,17 +11591,26 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
     for (const row of rows) {
       try {
         const clientName = row[colMap.client_name] || null;
-        const roleTitle = row[colMap.role_title] || null;
-        const invoiceNum = row[colMap.invoice_number] || null;
+        const roleRaw = row[colMap.role_title] || null;
+        const invoiceNumRaw = row[colMap.invoice_number] || null;
+        // Fall back to role_ref as project UID when invoice_number is empty (e.g. US entity uses numeric refs like "394")
+        const roleRefStr = roleRaw ? String(roleRaw).trim() : '';
+        const isNumericRef = /^\d+$/.test(roleRefStr);
+        const isMYOBRef = roleRefStr.startsWith('MYOB');
+        const invoiceNum = invoiceNumRaw || (isNumericRef ? roleRefStr : null);
+        // If role_ref is a numeric project ref or MYOB ref, use description as role_title instead
+        const roleTitle = (isNumericRef || isMYOBRef)
+          ? (row[colMap.description] || roleRaw)
+          : roleRaw;
 
         // Fee: prefer line amount (ex-GST) over total (inc-GST)
         let feeRaw = row[colMap.fee] || row[colMap.fee_total];
         let fee = feeRaw ? parseFloat(String(feeRaw).replace(/[$,£€\s]/g, '')) : null;
 
-        // Skip zero-amount line items (e.g. Xero guarantee text rows)
+        // Skip zero-amount line items (e.g. Xero guarantee text rows) — but allow negatives (credit notes)
         const quantity = row[colMap.line_quantity];
         if (isXeroFormat && quantity !== undefined && parseFloat(quantity) === 0) { skipped++; continue; }
-        if (fee !== null && fee <= 0) { skipped++; continue; }
+        if (fee !== null && fee === 0) { skipped++; continue; }
 
         // Xero dedup: skip duplicate invoice numbers (keep first row with amount)
         if (isXeroFormat && invoiceNum) {
@@ -11613,6 +11625,8 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
         const feeStage = row[colMap.fee_stage] || null;
         const consultant = row[colMap.consultant] || null;
         const currency = row[colMap.currency] ? row[colMap.currency].toUpperCase().trim() : 'AUD';
+        const entityName = row[colMap.entity_name] || null;
+        const yearRaw = row[colMap.year] || null;
 
         // Map payment status from Xero/MYOB/QB terminology
         let paymentStatus = 'pending';
@@ -11666,12 +11680,14 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
           }
         }
 
-        // Check for existing record (dedup by invoice_number or client+role+date)
+        // Check for existing record — dedup by invoice_number + amount (allows multi-line invoices)
         let existingId = null;
         if (invoiceNum) {
           const { rows: [dup] } = await db.query(
-            `SELECT id FROM conversions WHERE invoice_number = $1 AND tenant_id = $2 LIMIT 1`,
-            [invoiceNum, req.tenant_id]
+            fee !== null
+              ? `SELECT id FROM conversions WHERE invoice_number = $1 AND tenant_id = $2 AND placement_fee = $3 LIMIT 1`
+              : `SELECT id FROM conversions WHERE invoice_number = $1 AND tenant_id = $2 LIMIT 1`,
+            fee !== null ? [invoiceNum, req.tenant_id, fee] : [invoiceNum, req.tenant_id]
           );
           if (dup) existingId = dup.id;
         }
@@ -11680,6 +11696,9 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
 
         if (existingId) {
           // Update existing
+          const updMetadata = {};
+          if (entityName) updMetadata.entity = entityName;
+          if (yearRaw) updMetadata.fiscal_year = yearRaw;
           await db.query(`
             UPDATE conversions SET
               role_title = COALESCE($1, role_title),
@@ -11690,21 +11709,29 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
               consultant_name = COALESCE($6, consultant_name),
               payment_status = $7,
               fee_stage = COALESCE($8, fee_stage),
+              notes = COALESCE($9, notes),
+              currency = COALESCE($10, currency),
+              metadata = COALESCE($11::jsonb, metadata),
               updated_at = NOW()
-            WHERE id = $9`,
-            [roleTitle, fee, startDate, clientId, clientName, consultant, paymentStatus, feeStage, existingId]
+            WHERE id = $12`,
+            [roleTitle, fee, startDate, clientId, clientName, consultant, paymentStatus, feeStage,
+             description, currency, Object.keys(updMetadata).length ? JSON.stringify(updMetadata) : null, existingId]
           );
           updated++;
         } else {
           // Insert new
+          const metadata = {};
+          if (entityName) metadata.entity = entityName;
+          if (yearRaw) metadata.fiscal_year = yearRaw;
           await db.query(`
             INSERT INTO conversions (
               role_title, placement_fee, start_date, client_id, client_name_raw,
               invoice_number, consultant_name, payment_status, fee_stage,
-              currency, source, tenant_id, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())`,
+              currency, source, tenant_id, notes, metadata, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())`,
             [roleTitle, fee, startDate, clientId, clientName,
-             invoiceNum, consultant, paymentStatus, feeStage, currency, importSource, req.tenant_id]
+             invoiceNum, consultant, paymentStatus, feeStage, currency, importSource, req.tenant_id,
+             description, Object.keys(metadata).length ? JSON.stringify(metadata) : '{}']
           );
           created++;
         }
@@ -11722,6 +11749,34 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
   } catch (err) {
     console.error('[sales-import] error:', err.message);
     res.status(500).json({ error: 'Import failed: ' + err.message });
+  }
+});
+
+// ── Clear all imported sales data (admin only) ──
+app.post('/api/admin/clear-sales', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const db = { query: (text, params) => platformPool.query(text, params) };
+    const { source } = req.body || {};
+    // Delete imported conversions (optionally filter by source)
+    let result;
+    if (source) {
+      result = await db.query(`DELETE FROM conversions WHERE tenant_id = $1 AND source = $2`, [req.tenant_id, source]);
+    } else {
+      result = await db.query(`DELETE FROM conversions WHERE tenant_id = $1`, [req.tenant_id]);
+    }
+    // Also clean up orphaned accounts that have no remaining conversions
+    await db.query(`
+      DELETE FROM accounts a WHERE a.tenant_id = $1
+        AND NOT EXISTS (SELECT 1 FROM conversions c WHERE c.client_id = a.id)
+        AND NOT EXISTS (SELECT 1 FROM searches s WHERE s.client_id = a.id)
+    `, [req.tenant_id]);
+    await auditLog(req.user.user_id, 'sales_data_cleared', 'conversions', null,
+      { deleted: result.rowCount, source: source || 'all' }, req.ip);
+    console.log(`[clear-sales] Deleted ${result.rowCount} conversions for tenant ${req.tenant_id}`);
+    res.json({ deleted: result.rowCount });
+  } catch (err) {
+    console.error('[clear-sales] error:', err.message);
+    res.status(500).json({ error: 'Clear failed: ' + err.message });
   }
 });
 
@@ -13816,6 +13871,8 @@ app.listen(PORT, async () => {
       ALTER TABLE conversions ADD COLUMN IF NOT EXISTS fee_stage VARCHAR(50);
       ALTER TABLE conversions ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50);
       ALTER TABLE conversions ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'AUD';
+      ALTER TABLE conversions ADD COLUMN IF NOT EXISTS notes TEXT;
+      ALTER TABLE conversions ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}';
     `);
   } catch (e) {}
 
