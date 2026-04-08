@@ -381,61 +381,27 @@ async function main() {
       } // end if(false) — email domain extraction deferred
 
       // ═══════════════════════════════════════════════════════════════
-      // STEP 3: Enrich companies with sector from people titles
+      // STEP 3: Enrich (headcount + sector — bulk, capped at 60s)
       // ═══════════════════════════════════════════════════════════════
 
       if (!DRY_RUN) {
-        // Set headcount from people count
-        const { rowCount: hcSet } = await pool.query(`
-          UPDATE companies c SET
-            employee_count_estimate = sub.cnt,
-            updated_at = NOW()
-          FROM (
-            SELECT current_company_id AS cid, COUNT(*) AS cnt
-            FROM people
-            WHERE tenant_id = $1 AND current_company_id IS NOT NULL
-            GROUP BY current_company_id
-          ) sub
-          WHERE c.id = sub.cid AND c.tenant_id = $1
-            AND (c.employee_count_estimate IS NULL OR c.employee_count_estimate = 0)
-        `, [tenantId]);
-        if (hcSet) console.log(`    📊 Set headcount estimate on ${hcSet} companies`);
-
-        // Derive sector from most common title keywords
-        const SECTOR_KEYWORDS = {
-          'Technology': ['engineer', 'developer', 'software', 'devops', 'data scientist', 'cto', 'tech lead', 'architect'],
-          'Banking/Financial Services': ['banker', 'finance', 'cfo', 'investment', 'trading', 'portfolio', 'wealth', 'fund'],
-          'Consulting': ['consultant', 'advisory', 'partner', 'strategy', 'managing director'],
-          'Healthcare': ['doctor', 'medical', 'health', 'clinical', 'pharma', 'nurse'],
-          'Legal': ['lawyer', 'solicitor', 'legal', 'counsel', 'attorney', 'barrister'],
-          'Marketing': ['marketing', 'brand', 'creative', 'advertising', 'cmo', 'content'],
-          'Sales': ['sales', 'business development', 'account executive', 'revenue'],
-          'Human Resources': ['recruiter', 'hr ', 'people', 'talent', 'human resource'],
-        };
-
-        const { rows: noSector } = await pool.query(
-          `SELECT c.id, array_agg(LOWER(p.current_title)) AS titles
-           FROM companies c
-           JOIN people p ON p.current_company_id = c.id
-           WHERE c.tenant_id = $1 AND (c.sector IS NULL OR c.sector = '') AND p.current_title IS NOT NULL
-           GROUP BY c.id`,
-          [tenantId]
-        );
-
-        let sectorSet = 0;
-        for (const co of noSector) {
-          const allTitles = co.titles.join(' ');
-          let bestSector = null, bestScore = 0;
-          for (const [sector, keywords] of Object.entries(SECTOR_KEYWORDS)) {
-            const score = keywords.filter(k => allTitles.includes(k)).length;
-            if (score > bestScore) { bestScore = score; bestSector = sector; }
-          }
-          if (bestSector && bestScore >= 1) {
-            await pool.query(`UPDATE companies SET sector = $1, updated_at = NOW() WHERE id = $2`, [bestSector, co.id]);
-            sectorSet++;
-          }
-        }
-        if (sectorSet) console.log(`    🏷️  Derived sector on ${sectorSet} companies`);
+        try {
+          // Headcount — single bulk UPDATE
+          const { rowCount: hcSet } = await pool.query(`
+            UPDATE companies c SET
+              employee_count_estimate = sub.cnt,
+              updated_at = NOW()
+            FROM (
+              SELECT current_company_id AS cid, COUNT(*) AS cnt
+              FROM people
+              WHERE tenant_id = $1 AND current_company_id IS NOT NULL
+              GROUP BY current_company_id
+            ) sub
+            WHERE c.id = sub.cid AND c.tenant_id = $1
+              AND (c.employee_count_estimate IS NULL OR c.employee_count_estimate = 0)
+          `, [tenantId]);
+          if (hcSet) console.log(`    📊 Set headcount on ${hcSet} companies`);
+        } catch (e) { console.log(c.dim(`    ⚠ Headcount: ${e.message}`)); }
 
         // ═══════════════════════════════════════════════════════════════
         // STEP 4: Link ALL unlinked people to companies (final sweep)
