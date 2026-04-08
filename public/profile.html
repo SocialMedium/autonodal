@@ -407,22 +407,31 @@ async function loadProfile() {
       setRegionCheckboxes(USER.region);
     }
 
-    // Google status
+    // Google status — show all connected accounts
     if (google.connected && google.accounts.length > 0) {
-      var acct = google.accounts[0];
-      var hasScopes = acct.scopes && (Array.isArray(acct.scopes) ? acct.scopes.join(' ') : String(acct.scopes)).includes('drive');
-      document.getElementById('googleStatus').innerHTML = '<span class="dot dot-green"></span>' + esc(acct.google_email);
-      var hasCalendar = acct.scopes && (Array.isArray(acct.scopes) ? acct.scopes.join(' ') : String(acct.scopes)).includes('calendar');
-      var hasContacts = acct.scopes && (Array.isArray(acct.scopes) ? acct.scopes.join(' ') : String(acct.scopes)).includes('contacts');
-      var scopeList = ['Gmail'];
-      if (hasContacts) scopeList.push('Contacts');
-      if (hasCalendar) scopeList.push('Calendar');
-      if (hasScopes) scopeList.push('Drive');
-      var missingScopes = !hasContacts || !hasCalendar;
-      document.getElementById('googleDetail').textContent = scopeList.join(' + ') + (missingScopes ? ' — reconnect for full sync' : ' syncing');
+      var accountsHtml = google.accounts.map(function(acct) {
+        var scopes = acct.scopes ? (Array.isArray(acct.scopes) ? acct.scopes.join(' ') : String(acct.scopes)) : '';
+        var scopeList = ['Gmail'];
+        if (scopes.includes('contacts')) scopeList.push('Contacts');
+        if (scopes.includes('calendar')) scopeList.push('Calendar');
+        if (scopes.includes('drive')) scopeList.push('Drive');
+        var missingScopes = !scopes.includes('contacts') || !scopes.includes('calendar');
+        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0' + (google.accounts.length > 1 ? ';border-bottom:1px solid var(--rule)' : '') + '">' +
+          '<div>' +
+            '<div style="font-size:13px;font-weight:500"><span class="dot dot-green"></span>' + esc(acct.google_email) + '</div>' +
+            '<div style="font-size:10px;color:var(--ink-4)">' + scopeList.join(' + ') + (missingScopes ? ' — <a href="/api/auth/gmail/connect?token=' + encodeURIComponent(TOKEN) + '&return_to=/profile.html" style="color:var(--blue)">upgrade scopes</a>' : '') + '</div>' +
+          '</div>' +
+          '<a href="/api/auth/gmail/connect?token=' + encodeURIComponent(TOKEN) + '&return_to=/profile.html" class="btn btn-sm" style="font-size:10px">Reconnect</a>' +
+        '</div>';
+      }).join('');
+
+      document.getElementById('googleStatus').innerHTML = accountsHtml;
+      document.getElementById('googleDetail').textContent = google.accounts.length + ' account(s) connected';
       document.getElementById('googleAction').innerHTML =
-        '<button class="btn btn-sm" onclick="triggerSync()">Sync Now</button>' +
-        ' <a href="/api/auth/gmail/connect?token=' + encodeURIComponent(TOKEN) + '&return_to=/profile.html" class="btn btn-sm" style="font-size:10px;color:var(--blue);border-color:var(--blue)">' + (missingScopes ? 'Upgrade Scopes' : 'Reconnect') + '</a>';
+        '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">' +
+          '<button class="btn btn-sm" onclick="triggerSync()">Sync Now</button>' +
+          '<a href="/api/auth/gmail/connect?token=' + encodeURIComponent(TOKEN) + '&return_to=/profile.html&prompt=select_account" class="btn btn-sm" style="font-size:10px;color:var(--blue);border-color:var(--blue)">+ Add Another Account</a>' +
+        '</div>';
     } else {
       document.getElementById('googleStatus').innerHTML = '<span class="dot dot-grey"></span>Not connected';
       document.getElementById('googleAction').innerHTML = '<a href="/api/auth/gmail/connect?token=' + encodeURIComponent(TOKEN) + '&return_to=/profile.html" class="btn btn-primary btn-sm">Connect Google</a>';

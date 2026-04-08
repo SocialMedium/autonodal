@@ -567,13 +567,15 @@ app.get('/api/auth/gmail/connect', async (req, res) => {
     returnTo: req.query.return_to || '/index.html'
   })).toString('base64');
 
+  // prompt=select_account when adding a second account, otherwise consent for re-auth
+  const promptMode = req.query.prompt === 'select_account' ? 'select_account consent' : 'consent';
   const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
     redirect_uri: redirectUri,
     response_type: 'code',
     scope: GOOGLE_CONNECT_SCOPES,
     access_type: 'offline',
-    prompt: 'consent',
+    prompt: promptMode,
     state
   });
   res.redirect(authUrl);
