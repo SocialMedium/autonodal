@@ -145,7 +145,7 @@ async function authenticateToken(req, res, next) {
     );
 
     if (rows.length === 0) {
-      // Log invalid token attempt (fire-and-forget)
+      console.log('🔑 AUTH FAIL: no session found for token length:', token?.length, 'path:', req.path);
       try { const { audit } = require('./lib/auditLogger'); audit.invalidToken(req); } catch(e) {}
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
@@ -381,6 +381,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
 });
 
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  console.log('🔑 /api/auth/me hit for:', req.user?.email);
   try {
     const db = new TenantDB(req.tenant_id);
     const { rows: [user] } = await db.query(
