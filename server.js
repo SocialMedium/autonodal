@@ -502,7 +502,7 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
       // 4. Quick stats
       db.query(`
         SELECT
-          (SELECT COUNT(*) FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND tenant_id = $1) as signals_24h,
+          (SELECT COUNT(*) FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND (tenant_id IS NULL OR tenant_id = $1)) as signals_24h,
           (SELECT COUNT(*) FROM signal_dispatches WHERE status = 'draft' AND claimed_by IS NULL AND tenant_id = $1) as unclaimed_dispatches,
           (SELECT COUNT(*) FROM signal_events se JOIN companies c ON c.id = se.company_id AND c.is_client = true WHERE se.detected_at > NOW() - INTERVAL '7 days' AND (se.tenant_id IS NULL OR se.tenant_id = $1)) as client_signals_7d
       `, [req.tenant_id])
@@ -4923,7 +4923,7 @@ app.get('/api/search/index-status', authenticateToken, async (req, res) => {
         (SELECT COUNT(*) FROM people WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS people,
         (SELECT COUNT(*) FROM companies WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS companies,
         (SELECT COUNT(*) FROM external_documents WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS documents,
-        (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS signals,
+        (SELECT COUNT(*) FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1) AND embedded_at IS NOT NULL) AS signals,
         (SELECT COUNT(*) FROM case_studies WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS case_studies,
         (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS conversions,
         (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND embedded_at IS NOT NULL) AS interactions
@@ -5207,14 +5207,14 @@ app.get('/api/public/stats', async (req, res) => {
       SELECT
         (SELECT COUNT(*) FROM people WHERE tenant_id = $1) as people,
         (SELECT COUNT(*) FROM companies WHERE tenant_id = $1 AND (sector IS NOT NULL OR is_client = true OR domain IS NOT NULL)) as companies,
-        (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '7 days') as signals_7d,
-        (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1) as signals_total,
+        (SELECT COUNT(*) FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1) AND detected_at > NOW() - INTERVAL '7 days') as signals_7d,
+        (SELECT COUNT(*) FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1)) as signals_total,
         (SELECT COUNT(*) FROM opportunities WHERE tenant_id = $1 AND status IN ('interviewing','sourcing','offer')) as active_searches,
         (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1) as placements,
         (SELECT COUNT(*) FROM external_documents WHERE tenant_id = $1) as documents,
         (SELECT COUNT(*) FROM rss_sources WHERE enabled = true) as sources,
-        (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '24 hours') as signals_24h,
-        (SELECT COUNT(DISTINCT company_id) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '7 days') as companies_signalling,
+        (SELECT COUNT(*) FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1) AND detected_at > NOW() - INTERVAL '24 hours') as signals_24h,
+        (SELECT COUNT(DISTINCT company_id) FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1) AND detected_at > NOW() - INTERVAL '7 days') as companies_signalling,
         (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1) as interactions,
         (SELECT COUNT(*) FROM signal_grabs WHERE created_at > NOW() - INTERVAL '7 days') as grabs_7d,
         (SELECT COUNT(*) FROM tenants) as tenants,
@@ -9815,9 +9815,9 @@ app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) =
         (SELECT COUNT(*) FROM sessions WHERE expires_at > NOW()) AS active_sessions,
         (SELECT COUNT(*) FROM people WHERE tenant_id = $1) AS total_people,
         (SELECT COUNT(*) FROM companies WHERE tenant_id = $1) AS total_companies,
-        (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1) AS total_signals,
-        (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '24 hours') AS signals_24h,
-        (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '7 days') AS signals_7d,
+        (SELECT COUNT(*) FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1)) AS total_signals,
+        (SELECT COUNT(*) FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1) AND detected_at > NOW() - INTERVAL '24 hours') AS signals_24h,
+        (SELECT COUNT(*) FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1) AND detected_at > NOW() - INTERVAL '7 days') AS signals_7d,
         (SELECT COUNT(*) FROM external_documents WHERE tenant_id = $1) AS total_documents,
         (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1) AS total_interactions,
         (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND interaction_at > NOW() - INTERVAL '7 days') AS interactions_7d,
@@ -13861,15 +13861,16 @@ app.listen(PORT, async () => {
   // Migrate signals + documents + events to platform-wide (NULL tenant_id) so all tenants can see them
   // These are market intelligence from RSS/news — not tenant-specific data
   try {
-    const { rowCount: sigMigrated } = await db.query(`UPDATE signal_events SET tenant_id = NULL WHERE tenant_id IS NOT NULL AND source_name NOT IN ('manual', 'chat_concierge', 'research_note')`);
+    const { rowCount: sigMigrated } = await platformPool.query(`UPDATE signal_events SET tenant_id = NULL WHERE tenant_id IS NOT NULL AND COALESCE(visibility, 'public') != 'private'`);
     if (sigMigrated) console.log(`  ⚡ Migrated ${sigMigrated} signals to platform-wide visibility`);
   } catch (e) {}
   try {
-    const { rowCount: docMigrated } = await db.query(`UPDATE external_documents SET tenant_id = NULL WHERE tenant_id IS NOT NULL AND source_type NOT IN ('user_upload', 'research_note')`);
+    // Documents stay tenant-scoped — not platform-wide (privacy)
+    const docMigrated = 0;
     if (docMigrated) console.log(`  📄 Migrated ${docMigrated} documents to platform-wide visibility`);
   } catch (e) {}
   try {
-    const { rowCount } = await db.query(`UPDATE events SET tenant_id = NULL WHERE tenant_id IS NOT NULL`);
+    const { rowCount } = await platformPool.query(`UPDATE events SET tenant_id = NULL WHERE tenant_id IS NOT NULL`);
     if (rowCount) console.log(`  📅 Migrated ${rowCount} events to platform-wide visibility`);
   } catch (e) {}
 
