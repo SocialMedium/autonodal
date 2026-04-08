@@ -11540,8 +11540,8 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
     // Supports: generic CSVs, Xero Sales Invoice export, MYOB, QuickBooks
     const colMap = {};
     const aliases = {
-      client_name: ['client_name', 'client', 'company', 'company_name', 'account', 'account_name', 'contactname', 'customer_name', 'customer'],
-      role_title: ['role_title', 'role', 'title', 'position', 'job_title', 'reference'],
+      client_name: ['client_name', 'client', 'company', 'company_name', 'account', 'account_name', 'contactname', 'customer_name', 'customer', 'entity'],
+      role_title: ['role_title', 'role', 'title', 'position', 'job_title', 'reference', 'role_ref'],
       fee: ['fee', 'placement_fee', 'amount', 'revenue', 'value', 'invoice_amount', 'lineamount', 'line_amount'],
       fee_total: ['total', 'invoiceamount', 'invoice_total'],
       date: ['date', 'start_date', 'invoice_date', 'invoicedate', 'placement_date', 'close_date'],
@@ -11555,10 +11555,22 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
       currency: ['currency', 'currency_code'],
     };
 
+    // Case-insensitive header matching
+    const headersLower = headers.map(h => h.toLowerCase().trim().replace(/[^a-z0-9_]/g, '_'));
     for (const [canonical, alts] of Object.entries(aliases)) {
-      const match = headers.find(h => alts.includes(h));
-      if (match) colMap[canonical] = match;
+      const idx = headersLower.findIndex(h => alts.includes(h));
+      if (idx !== -1) colMap[canonical] = headers[idx]; // map to original header name
     }
+    // Also try partial matches for non-standard headers
+    if (!colMap.role_title) {
+      const roleIdx = headersLower.findIndex(h => h.includes('role') || h.includes('ref'));
+      if (roleIdx !== -1) colMap.role_title = headers[roleIdx];
+    }
+    if (!colMap.fee) {
+      const feeIdx = headersLower.findIndex(h => h.includes('fee') || h.includes('amount') || h.includes('value'));
+      if (feeIdx !== -1 && !colMap.fee_total) colMap.fee = headers[feeIdx];
+    }
+    console.log('📊 Column mapping:', JSON.stringify(colMap));
 
     if (!colMap.client_name && !colMap.role_title) {
       return res.status(400).json({ error: 'CSV must have at least client_name or role_title column. Detected columns: ' + headers.join(', ') });
