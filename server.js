@@ -1232,24 +1232,6 @@ app.post('/api/feeds/propose', authenticateToken, async (req, res) => {
 // DASHBOARD STATS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Debug: check signal data distribution (temporary — no auth required)
-app.get('/api/debug/signals', async (req, res) => {
-  try {
-    const [total, nullTenant, byTenant, docs, docsNull, tenants] = await Promise.all([
-      platformPool.query('SELECT COUNT(*) AS c FROM signal_events'),
-      platformPool.query('SELECT COUNT(*) AS c FROM signal_events WHERE tenant_id IS NULL'),
-      platformPool.query('SELECT tenant_id, COUNT(*) AS c FROM signal_events GROUP BY tenant_id ORDER BY c DESC LIMIT 5'),
-      platformPool.query('SELECT COUNT(*) AS c FROM external_documents'),
-      platformPool.query('SELECT COUNT(*) AS c FROM external_documents WHERE tenant_id IS NULL'),
-      platformPool.query('SELECT id, name FROM tenants'),
-    ]);
-    res.json({
-      signal_events: { total: total.rows[0].c, null_tenant: nullTenant.rows[0].c, by_tenant: byTenant.rows },
-      external_documents: { total: docs.rows[0].c, null_tenant: docsNull.rows[0].c },
-      tenants: tenants.rows,
-    });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
 
 app.get('/api/stats', authenticateToken, async (req, res) => {
   try {
@@ -13774,7 +13756,16 @@ app.listen(PORT, async () => {
       .on('exit', (code) => console.log(`  ✅ Company extraction exited (code ${code})`));
   } catch (e) {}
 
-  // Migrate events to platform-wide (NULL tenant_id) so all tenants can see them
+  // Migrate signals + documents + events to platform-wide (NULL tenant_id) so all tenants can see them
+  // These are market intelligence from RSS/news — not tenant-specific data
+  try {
+    const { rowCount: sigMigrated } = await db.query(`UPDATE signal_events SET tenant_id = NULL WHERE tenant_id IS NOT NULL AND source_name NOT IN ('manual', 'chat_concierge', 'research_note')`);
+    if (sigMigrated) console.log(`  ⚡ Migrated ${sigMigrated} signals to platform-wide visibility`);
+  } catch (e) {}
+  try {
+    const { rowCount: docMigrated } = await db.query(`UPDATE external_documents SET tenant_id = NULL WHERE tenant_id IS NOT NULL AND source_type NOT IN ('user_upload', 'research_note')`);
+    if (docMigrated) console.log(`  📄 Migrated ${docMigrated} documents to platform-wide visibility`);
+  } catch (e) {}
   try {
     const { rowCount } = await db.query(`UPDATE events SET tenant_id = NULL WHERE tenant_id IS NOT NULL`);
     if (rowCount) console.log(`  📅 Migrated ${rowCount} events to platform-wide visibility`);
@@ -13783,6 +13774,13 @@ app.listen(PORT, async () => {
   // Ensure companies.source column exists
   try {
     await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS source VARCHAR(50)`);
+  } catch (e) {}
+
+  // Remove default tenant_id on platform content tables — new rows should be NULL (platform-wide)
+  try {
+    await db.query(`ALTER TABLE signal_events ALTER COLUMN tenant_id DROP DEFAULT`);
+    await db.query(`ALTER TABLE external_documents ALTER COLUMN tenant_id DROP DEFAULT`);
+    await db.query(`ALTER TABLE events ALTER COLUMN tenant_id DROP DEFAULT`);
   } catch (e) {}
 
   // Fix RLS policies — platform content (tenant_id IS NULL) must be visible to all tenants
