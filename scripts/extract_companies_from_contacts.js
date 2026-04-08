@@ -199,6 +199,7 @@ async function main() {
       // STEP 2: Extract companies from email domains (DEFERRED — runs separately)
       // Skipped during startup to avoid blocking company name extraction
       // ═══════════════════════════════════════════════════════════════
+      let domainCreated = 0, interactionDomains = 0, reviewCompanies = 0;
       if (false) { // TODO: move to separate scheduled job
 
       const { rows: domains } = await pool.query(`
