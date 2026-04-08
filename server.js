@@ -11584,84 +11584,102 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
 
     let created = 0, updated = 0, skipped = 0, errors = 0;
 
-    // For Xero: deduplicate by invoice number (multiple line items per invoice)
-    // Keep only rows with actual fee amounts (skip guarantee text lines with 0 or null)
-    const seenInvoices = new Set();
+    // ── Pass 1: Parse rows and consolidate by invoice_number ──
+    // Multiple line items on the same invoice get summed into one record
+    const invoiceMap = new Map(); // invoice_number → consolidated record
+
+    function parseDate(dateRaw) {
+      if (!dateRaw) return null;
+      const raw = String(dateRaw).trim();
+      const dmyMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (dmyMatch) {
+        const [, dd, mm, yyyy] = dmyMatch;
+        const d = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
+        if (!isNaN(d.getTime()) && d.getFullYear() > 2000 && d.getFullYear() < 2100) return d.toISOString().split('T')[0];
+      }
+      const d = new Date(raw);
+      if (!isNaN(d.getTime()) && d.getFullYear() > 2000 && d.getFullYear() < 2100) return d.toISOString().split('T')[0];
+      return null;
+    }
+
+    function mapStatus(rawStatus) {
+      const s = (rawStatus || '').toLowerCase().trim();
+      if (s === 'paid' || s === 'closed') return 'paid';
+      if (s === 'awaiting payment' || s === 'sent' || s === 'authorised' || s === 'open') return 'pending';
+      if (s === 'overdue' || s === 'past due') return 'overdue';
+      if (s === 'voided' || s === 'deleted' || s === 'void') return 'written_off';
+      return 'pending';
+    }
 
     for (const row of rows) {
       try {
         const clientName = row[colMap.client_name] || null;
         const roleRaw = row[colMap.role_title] || null;
         const invoiceNumRaw = row[colMap.invoice_number] || null;
-        // Fall back to role_ref as project UID when invoice_number is empty (e.g. US entity uses numeric refs like "394")
         const roleRefStr = roleRaw ? String(roleRaw).trim() : '';
         const isNumericRef = /^\d+$/.test(roleRefStr);
         const isMYOBRef = roleRefStr.startsWith('MYOB');
         const invoiceNum = invoiceNumRaw || (isNumericRef ? roleRefStr : null);
-        // If role_ref is a numeric project ref or MYOB ref, use description as role_title instead
         const roleTitle = (isNumericRef || isMYOBRef)
           ? (row[colMap.description] || roleRaw)
           : roleRaw;
 
-        // Fee: prefer line amount (ex-GST) over total (inc-GST)
         let feeRaw = row[colMap.fee] || row[colMap.fee_total];
         let fee = feeRaw ? parseFloat(String(feeRaw).replace(/[$,£€\s]/g, '')) : null;
 
-        // Skip zero-amount line items (e.g. Xero guarantee text rows) — but allow negatives (credit notes)
         const quantity = row[colMap.line_quantity];
         if (isXeroFormat && quantity !== undefined && parseFloat(quantity) === 0) { skipped++; continue; }
         if (fee !== null && fee === 0) { skipped++; continue; }
-
-        // Xero dedup: skip duplicate invoice numbers (keep first row with amount)
-        if (isXeroFormat && invoiceNum) {
-          if (seenInvoices.has(invoiceNum)) { skipped++; continue; }
-          seenInvoices.add(invoiceNum);
-        }
-
-        const dateRaw = row[colMap.date];
-        const description = row[colMap.description] || null;
-        const candidateName = row[colMap.candidate_name] || null;
-        const rawStatus = row[colMap.payment_status] || '';
-        const feeStage = row[colMap.fee_stage] || null;
-        const consultant = row[colMap.consultant] || null;
-        const currency = row[colMap.currency] ? row[colMap.currency].toUpperCase().trim() : 'AUD';
-        const entityName = row[colMap.entity_name] || null;
-        const yearRaw = row[colMap.year] || null;
-
-        // Map payment status from Xero/MYOB/QB terminology
-        let paymentStatus = 'pending';
-        const statusLower = rawStatus.toLowerCase().trim();
-        if (statusLower === 'paid' || statusLower === 'closed') paymentStatus = 'paid';
-        else if (statusLower === 'awaiting payment' || statusLower === 'sent' || statusLower === 'authorised' || statusLower === 'open') paymentStatus = 'pending';
-        else if (statusLower === 'overdue' || statusLower === 'past due') paymentStatus = 'overdue';
-        else if (statusLower === 'voided' || statusLower === 'deleted' || statusLower === 'void') paymentStatus = 'written_off';
-        else if (statusLower === 'draft') paymentStatus = 'pending';
-
         if (!clientName && !roleTitle) { skipped++; continue; }
         if (fee !== null && isNaN(fee)) { skipped++; continue; }
 
-        // Parse date — handle DD/MM/YYYY (Xero AU), MM/DD/YYYY, YYYY-MM-DD, etc.
-        let startDate = null;
-        if (dateRaw) {
-          const raw = String(dateRaw).trim();
-          // Try DD/MM/YYYY first (Xero AU format)
-          const dmyMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-          if (dmyMatch) {
-            const [, dd, mm, yyyy] = dmyMatch;
-            const d = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
-            if (!isNaN(d.getTime()) && d.getFullYear() > 2000 && d.getFullYear() < 2100) {
-              startDate = d.toISOString().split('T')[0];
-            }
-          }
-          if (!startDate) {
-            const d = new Date(raw);
-            if (!isNaN(d.getTime()) && d.getFullYear() > 2000 && d.getFullYear() < 2100) {
-              startDate = d.toISOString().split('T')[0];
-            }
-          }
-        }
+        const description = row[colMap.description] || null;
+        const feeStage = row[colMap.fee_stage] || null;
+        const currency = row[colMap.currency] ? row[colMap.currency].toUpperCase().trim() : 'AUD';
+        const entityName = row[colMap.entity_name] || null;
+        const yearRaw = row[colMap.year] || null;
+        const startDate = parseDate(row[colMap.date]);
+        const paymentStatus = mapStatus(row[colMap.payment_status]);
+        const consultant = row[colMap.consultant] || null;
 
-        // Find or match client account
+        // Consolidate by invoice_number — sum fees, collect descriptions
+        const key = invoiceNum || `_noref_${invoiceMap.size}`;
+        if (invoiceMap.has(key) && invoiceNum) {
+          const existing = invoiceMap.get(key);
+          existing.fee = (existing.fee || 0) + (fee || 0);
+          if (description && !existing.descriptions.includes(description)) {
+            existing.descriptions.push(description);
+          }
+          // Keep the most specific fee_stage (Placement > Third Stage > Second Stage > First Stage > Other)
+          const stageRank = { 'Placement': 5, 'Third Stage': 4, 'Second Stage': 3, 'First Stage': 2 };
+          if ((stageRank[feeStage] || 0) > (stageRank[existing.feeStage] || 0)) {
+            existing.feeStage = feeStage;
+          }
+        } else {
+          invoiceMap.set(key, {
+            invoiceNum, clientName, roleTitle, fee, startDate, paymentStatus,
+            feeStage, consultant, currency, entityName, yearRaw,
+            descriptions: description ? [description] : []
+          });
+        }
+      } catch (rowErr) {
+        console.error('[sales-import] row parse error:', rowErr.message);
+        errors++;
+      }
+    }
+
+    console.log(`📊 Consolidated ${rows.length} rows → ${invoiceMap.size} records`);
+
+    // ── Pass 2: Insert/update consolidated records ──
+    const importSource = isXeroFormat ? 'xero_export' : 'manual';
+
+    for (const [key, rec] of invoiceMap) {
+      try {
+        const { invoiceNum, clientName, roleTitle, fee, startDate, paymentStatus,
+                feeStage, consultant, currency, entityName, yearRaw, descriptions } = rec;
+        const description = descriptions.join(' | ') || null;
+
+        // Find or create client account
         let clientId = null;
         if (clientName) {
           const { rows: [existing] } = await db.query(
@@ -11671,7 +11689,6 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
           if (existing) {
             clientId = existing.id;
           } else {
-            // Create account
             const { rows: [newClient] } = await db.query(
               `INSERT INTO accounts (name, tenant_id, created_at) VALUES ($1, $2, NOW()) RETURNING id`,
               [clientName.trim(), req.tenant_id]
@@ -11680,25 +11697,22 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
           }
         }
 
-        // Check for existing record — dedup by invoice_number + amount (allows multi-line invoices)
+        // Dedup by invoice_number in database
         let existingId = null;
         if (invoiceNum) {
           const { rows: [dup] } = await db.query(
-            fee !== null
-              ? `SELECT id FROM conversions WHERE invoice_number = $1 AND tenant_id = $2 AND placement_fee = $3 LIMIT 1`
-              : `SELECT id FROM conversions WHERE invoice_number = $1 AND tenant_id = $2 LIMIT 1`,
-            fee !== null ? [invoiceNum, req.tenant_id, fee] : [invoiceNum, req.tenant_id]
+            `SELECT id FROM conversions WHERE invoice_number = $1 AND tenant_id = $2 LIMIT 1`,
+            [invoiceNum, req.tenant_id]
           );
           if (dup) existingId = dup.id;
         }
 
-        const importSource = isXeroFormat ? 'xero_export' : 'manual';
+        const meta = {};
+        if (entityName) meta.entity = entityName;
+        if (yearRaw) meta.fiscal_year = yearRaw;
+        const metaJson = Object.keys(meta).length ? JSON.stringify(meta) : '{}';
 
         if (existingId) {
-          // Update existing
-          const updMetadata = {};
-          if (entityName) updMetadata.entity = entityName;
-          if (yearRaw) updMetadata.fiscal_year = yearRaw;
           await db.query(`
             UPDATE conversions SET
               role_title = COALESCE($1, role_title),
@@ -11715,14 +11729,10 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
               updated_at = NOW()
             WHERE id = $12`,
             [roleTitle, fee, startDate, clientId, clientName, consultant, paymentStatus, feeStage,
-             description, currency, Object.keys(updMetadata).length ? JSON.stringify(updMetadata) : null, existingId]
+             description, currency, metaJson, existingId]
           );
           updated++;
         } else {
-          // Insert new
-          const metadata = {};
-          if (entityName) metadata.entity = entityName;
-          if (yearRaw) metadata.fiscal_year = yearRaw;
           await db.query(`
             INSERT INTO conversions (
               role_title, placement_fee, start_date, client_id, client_name_raw,
@@ -11731,7 +11741,7 @@ app.post('/api/admin/import-sales', authenticateToken, requireAdmin, async (req,
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())`,
             [roleTitle, fee, startDate, clientId, clientName,
              invoiceNum, consultant, paymentStatus, feeStage, currency, importSource, req.tenant_id,
-             description, Object.keys(metadata).length ? JSON.stringify(metadata) : '{}']
+             description, metaJson]
           );
           created++;
         }
