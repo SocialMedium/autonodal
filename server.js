@@ -13790,6 +13790,17 @@ app.listen(PORT, async () => {
     await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS source VARCHAR(50)`);
   } catch (e) {}
 
+  // Ensure conversions table has all needed columns for sales import
+  try {
+    await db.query(`
+      ALTER TABLE conversions ADD COLUMN IF NOT EXISTS client_name_raw VARCHAR(500);
+      ALTER TABLE conversions ADD COLUMN IF NOT EXISTS consultant_name VARCHAR(255);
+      ALTER TABLE conversions ADD COLUMN IF NOT EXISTS fee_stage VARCHAR(50);
+      ALTER TABLE conversions ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50);
+      ALTER TABLE conversions ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'AUD';
+    `);
+  } catch (e) {}
+
   // Remove default tenant_id on platform content tables — new rows should be NULL (platform-wide)
   try {
     await db.query(`ALTER TABLE signal_events ALTER COLUMN tenant_id DROP DEFAULT`);
