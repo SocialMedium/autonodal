@@ -6722,13 +6722,14 @@ app.get('/api/db-test', authenticateToken, requireAdmin, async (req, res) => {
 // Temporary: check sales data
 app.get('/api/debug/sales', async (req, res) => {
   try {
-    const [conversions, accounts, financials, recent] = await Promise.all([
+    const [conversions, accounts, financials, recent, cols] = await Promise.all([
       platformPool.query('SELECT tenant_id, COUNT(*) AS c, COALESCE(SUM(placement_fee),0) AS total_fees FROM conversions GROUP BY tenant_id'),
       platformPool.query('SELECT tenant_id, COUNT(*) AS c FROM accounts GROUP BY tenant_id'),
-      platformPool.query('SELECT tenant_id, COUNT(*) AS c, COALESCE(SUM(total_invoiced),0) AS total FROM account_financials GROUP BY tenant_id'),
-      platformPool.query('SELECT id, client_name, role_title, placement_fee, source, created_at FROM conversions ORDER BY created_at DESC LIMIT 5'),
+      platformPool.query('SELECT tenant_id, COUNT(*) AS c, COALESCE(SUM(total_invoiced),0) AS total FROM account_financials GROUP BY tenant_id').catch(() => ({ rows: [] })),
+      platformPool.query('SELECT id, role_title, placement_fee, source, created_at FROM conversions ORDER BY created_at DESC LIMIT 5'),
+      platformPool.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'conversions' ORDER BY ordinal_position"),
     ]);
-    res.json({ conversions: conversions.rows, accounts: accounts.rows, financials: financials.rows, recent: recent.rows });
+    res.json({ conversions: conversions.rows, accounts: accounts.rows, financials: financials.rows, recent: recent.rows, conversions_columns: cols.rows.map(r => r.column_name) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
