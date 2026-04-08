@@ -2075,22 +2075,20 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
           CASE WHEN c.company_tier = 'tenant_company' THEN 2 WHEN se.is_megacap = true THEN 1 ELSE 0 END,
           -- 1. CLIENT PRIORITY (revenue relationship)
           CASE WHEN c.is_client = true THEN 0 ELSE 1 END,
-          -- 2. NETWORK DENSITY (contact volume — more contacts = warmer org)
+          -- 2. NETWORK DENSITY (reuse contact_count from SELECT — no extra subquery)
           CASE
             WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) >= 5 THEN 0
             WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) >= 2 THEN 1
             WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) >= 1 THEN 2
             ELSE 3 END,
-          -- 3. INTERACTION RECENCY (recent notes/interactions = warm)
-          CASE WHEN EXISTS (SELECT 1 FROM interactions i JOIN people p ON i.person_id = p.id WHERE p.current_company_id = se.company_id AND p.tenant_id = $1 AND i.created_at > NOW() - INTERVAL '90 days') THEN 0 ELSE 1 END,
-          -- 4. GEOGRAPHIC RELEVANCE (user's focus countries)
+          -- 3. GEOGRAPHIC RELEVANCE (user's focus countries)
           CASE WHEN c.country_code = ANY($${geoBoostParam}) THEN 0 ELSE 1 END,
-          -- 5. SIGNAL TYPE HIERARCHY (hiring-intent ranked highest)
+          -- 4. SIGNAL TYPE HIERARCHY (hiring-intent ranked highest)
           CASE se.signal_type
             WHEN 'strategic_hiring' THEN 0 WHEN 'geographic_expansion' THEN 1 WHEN 'capital_raising' THEN 1
             WHEN 'product_launch' THEN 2 WHEN 'partnership' THEN 3
             ELSE 4 END,
-          -- 6. RECENCY & CONFIDENCE (tiebreaker)
+          -- 5. RECENCY & CONFIDENCE (tiebreaker)
           se.confidence_score DESC NULLS LAST,
           se.detected_at DESC NULLS LAST
         LIMIT $${limitParam} OFFSET $${offsetParam}
