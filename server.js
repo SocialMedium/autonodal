@@ -4291,7 +4291,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
           COUNT(i.id) FILTER (WHERE i.direction = 'inbound') as inbound_count
         FROM interactions i
         JOIN people p ON p.id = i.person_id
-        WHERE p.current_company_id = $1
+        WHERE (i.company_id = $1 OR p.current_company_id = $1)
           AND i.interaction_at > NOW() - INTERVAL '2 years'
       `, [companyId]);
       if (is && parseInt(is.total_interactions) > 0) interaction_summary = is;
@@ -13432,6 +13432,61 @@ app.listen(PORT, async () => {
   try {
     const { rowCount } = await db.query(`UPDATE events SET tenant_id = NULL WHERE tenant_id IS NOT NULL`);
     if (rowCount) console.log(`  📅 Migrated ${rowCount} events to platform-wide visibility`);
+  } catch (e) {}
+
+  // Interaction → company linkage column + auto-populate trigger
+  try {
+    await db.query(`ALTER TABLE interactions ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_interactions_company ON interactions(company_id)`);
+
+    // Trigger: auto-set company_id from person's current company on INSERT
+    await db.query(`
+      CREATE OR REPLACE FUNCTION fn_interaction_set_company()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        IF NEW.company_id IS NULL AND NEW.person_id IS NOT NULL THEN
+          SELECT current_company_id INTO NEW.company_id
+          FROM people WHERE id = NEW.person_id;
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+    await db.query(`
+      DROP TRIGGER IF EXISTS trg_interaction_company ON interactions;
+      CREATE TRIGGER trg_interaction_company
+      BEFORE INSERT ON interactions
+      FOR EACH ROW EXECUTE FUNCTION fn_interaction_set_company();
+    `);
+
+    // Trigger: when person changes company, update recent interactions
+    await db.query(`
+      CREATE OR REPLACE FUNCTION fn_person_company_changed()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        IF NEW.current_company_id IS DISTINCT FROM OLD.current_company_id AND NEW.current_company_id IS NOT NULL THEN
+          UPDATE interactions SET company_id = NEW.current_company_id
+          WHERE person_id = NEW.id AND interaction_at > NOW() - INTERVAL '1 year';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+    await db.query(`
+      DROP TRIGGER IF EXISTS trg_person_company_update ON people;
+      CREATE TRIGGER trg_person_company_update
+      AFTER UPDATE OF current_company_id ON people
+      FOR EACH ROW EXECUTE FUNCTION fn_person_company_changed();
+    `);
+
+    // Backfill existing interactions
+    const { rowCount: ixLinked } = await db.query(`
+      UPDATE interactions i SET company_id = p.current_company_id
+      FROM people p
+      WHERE i.person_id = p.id AND p.current_company_id IS NOT NULL
+        AND i.company_id IS NULL
+    `);
+    if (ixLinked) console.log(`  🔗 Linked ${ixLinked} interactions to companies`);
   } catch (e) {}
 
   // Messaging integration columns
