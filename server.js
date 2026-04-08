@@ -9942,15 +9942,49 @@ app.get('/api/profile/stats', authenticateToken, async (req, res) => {
 app.get('/api/profile/feeds', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
-    const { rows } = await db.query(`
+    const uid = req.user.user_id;
+    const tid = req.tenant_id;
+
+    // Platform feeds (rss_sources) — shared across tenant
+    const { rows: platformFeeds } = await db.query(`
+      SELECT rs.id, rs.name, rs.url, rs.source_type, rs.enabled,
+        rs.last_fetched_at,
+        (SELECT COUNT(*) FROM external_documents ed WHERE ed.source_name = rs.name) AS doc_count,
+        COALESCE(ufd.disabled, false) AS user_disabled
+      FROM rss_sources rs
+      LEFT JOIN user_feed_prefs ufd ON ufd.feed_id = rs.id AND ufd.user_id = $1
+      ORDER BY rs.enabled DESC, rs.name
+    `, [uid]).catch(() => ({ rows: [] }));
+
+    // User-added feeds (feed_proposals)
+    const { rows: userFeeds } = await db.query(`
       SELECT fp.id, fp.proposed_url AS url, fp.proposed_name AS name, fp.status,
-        fp.status = 'approved' AS active, fp.created_at
+        fp.status = 'approved' AS active, fp.created_at, 'user' AS source
       FROM feed_proposals fp
       WHERE fp.proposed_by = $1
       ORDER BY fp.created_at DESC
-    `, [req.user.user_id]).catch(() => ({ rows: [] }));
-    res.json({ feeds: rows });
-  } catch (err) { res.json({ feeds: [] }); }
+    `, [uid]).catch(() => ({ rows: [] }));
+
+    res.json({
+      platform_feeds: platformFeeds,
+      user_feeds: userFeeds,
+      feeds: userFeeds, // backward compat
+    });
+  } catch (err) { res.json({ platform_feeds: [], user_feeds: [], feeds: [] }); }
+});
+
+// Toggle feed visibility for user
+app.post('/api/profile/feeds/:id/toggle', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { disabled } = req.body;
+    await db.query(`
+      INSERT INTO user_feed_prefs (user_id, feed_id, disabled)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (user_id, feed_id) DO UPDATE SET disabled = $3, updated_at = NOW()
+    `, [req.user.user_id, req.params.id, !!disabled]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // User feeds — add
@@ -13497,6 +13531,19 @@ app.listen(PORT, async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_verified BOOLEAN DEFAULT false;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_verify_code VARCHAR(10);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_verify_expires TIMESTAMPTZ;
+    `);
+  } catch (e) {}
+
+  // User feed preferences (per-user toggle of platform feeds)
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS user_feed_prefs (
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        feed_id UUID NOT NULL,
+        disabled BOOLEAN DEFAULT false,
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (user_id, feed_id)
+      );
     `);
   } catch (e) {}
 

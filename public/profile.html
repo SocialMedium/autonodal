@@ -291,16 +291,28 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 
   <!-- Feeds -->
   <div class="section">
-    <div class="section-title">My Feeds <span class="badge" id="feedCount">0</span></div>
+    <div class="section-title">Signal Feeds <span class="badge" id="feedCount">0</span></div>
+
+    <!-- Platform feeds -->
     <div class="card">
-      <div class="card-label">Add a feed for the signal harvester</div>
+      <div class="card-label">Platform Feeds</div>
+      <div class="card-sub" style="margin-bottom:10px">Default signal sources active for your tenant. Deselect to exclude from your personal feed.</div>
+      <div id="platformFeedList" style="max-height:400px;overflow-y:auto">
+        <div style="font-size:12px;color:var(--ink-4)">Loading feeds...</div>
+      </div>
+    </div>
+
+    <!-- User-added feeds -->
+    <div class="card">
+      <div class="card-label">Custom Feeds</div>
+      <div class="card-sub" style="margin-bottom:10px">Add your own RSS or page URLs for the signal harvester.</div>
       <div class="add-feed-form">
         <input type="text" id="feedUrl" placeholder="https://example.com/rss or any page URL">
         <input type="text" id="feedLabel" placeholder="Label (optional)" style="max-width:180px">
         <button class="btn btn-primary btn-sm" onclick="addFeed()">Add Feed</button>
       </div>
-      <div style="margin-top:16px" id="feedList">
-        <div style="font-size:12px;color:var(--ink-4)">Loading feeds...</div>
+      <div style="margin-top:12px" id="feedList">
+        <div style="font-size:12px;color:var(--ink-4)">No custom feeds added yet.</div>
       </div>
     </div>
   </div>
@@ -439,21 +451,53 @@ async function loadProfile() {
 }
 
 function renderFeeds(data) {
-  var feeds = (data && data.feeds) || [];
-  document.getElementById('feedCount').textContent = feeds.length;
-  if (!feeds.length) {
-    document.getElementById('feedList').innerHTML = '<div style="font-size:12px;color:var(--ink-4)">No feeds added yet. Add an RSS URL or page link above.</div>';
-    return;
+  // Platform feeds
+  var platform = (data && data.platform_feeds) || [];
+  var userFeeds = (data && data.user_feeds) || [];
+  var totalActive = platform.filter(function(f) { return f.enabled && !f.user_disabled; }).length + userFeeds.filter(function(f) { return f.active; }).length;
+  document.getElementById('feedCount').textContent = totalActive;
+
+  if (platform.length) {
+    document.getElementById('platformFeedList').innerHTML = platform.map(function(f) {
+      var isActive = f.enabled && !f.user_disabled;
+      var docs = parseInt(f.doc_count) || 0;
+      return '<div class="feed-row" style="gap:8px">' +
+        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex-shrink:0">' +
+          '<input type="checkbox" ' + (isActive ? 'checked' : '') + ' onchange="toggleFeed(\'' + f.id + '\', !this.checked)" style="margin:0;accent-color:var(--emerald)">' +
+        '</label>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(f.name || f.url) + '</div>' +
+          '<div style="font-size:10px;color:var(--ink-4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(f.url) + '</div>' +
+        '</div>' +
+        '<span class="pill ' + (f.source_type === 'rss' ? 'pill-blue' : 'pill-grey') + '" style="flex-shrink:0">' + esc(f.source_type || 'page') + '</span>' +
+        (docs ? '<span style="font-size:10px;color:var(--ink-4);flex-shrink:0;font-family:var(--mono)">' + docs + '</span>' : '') +
+      '</div>';
+    }).join('');
+  } else {
+    document.getElementById('platformFeedList').innerHTML = '<div style="font-size:12px;color:var(--ink-4)">No platform feeds configured.</div>';
   }
-  document.getElementById('feedList').innerHTML = feeds.map(function(f) {
-    return '<div class="feed-row">' +
-      '<span class="dot ' + (f.active ? 'dot-green' : 'dot-grey') + '"></span>' +
-      '<span class="feed-name">' + esc(f.name || f.url) + '</span>' +
-      '<span class="feed-url">' + esc(f.url) + '</span>' +
-      '<span class="pill ' + (f.active ? 'pill-green' : 'pill-grey') + '">' + (f.active ? 'active' : 'pending') + '</span>' +
-      '<button class="btn btn-sm" style="margin-left:8px" onclick="removeFeed(\'' + f.id + '\')">Remove</button>' +
-    '</div>';
-  }).join('');
+
+  // User feeds
+  if (userFeeds.length) {
+    document.getElementById('feedList').innerHTML = userFeeds.map(function(f) {
+      return '<div class="feed-row">' +
+        '<span class="dot ' + (f.active ? 'dot-green' : 'dot-grey') + '"></span>' +
+        '<span class="feed-name">' + esc(f.name || f.url) + '</span>' +
+        '<span class="feed-url">' + esc(f.url) + '</span>' +
+        '<span class="pill ' + (f.active ? 'pill-green' : 'pill-grey') + '">' + (f.active ? 'active' : 'pending') + '</span>' +
+        '<button class="btn btn-sm" style="margin-left:8px" onclick="removeFeed(\'' + f.id + '\')">Remove</button>' +
+      '</div>';
+    }).join('');
+  } else {
+    document.getElementById('feedList').innerHTML = '<div style="font-size:12px;color:var(--ink-4)">No custom feeds added yet.</div>';
+  }
+}
+
+async function toggleFeed(feedId, disabled) {
+  try {
+    await api('/api/profile/feeds/' + feedId + '/toggle', { method: 'POST', body: { disabled: disabled } });
+    toast(disabled ? 'Feed excluded from your signal pool' : 'Feed re-enabled');
+  } catch(e) { toast('Failed'); loadProfile(); }
 }
 
 async function addFeed() {
