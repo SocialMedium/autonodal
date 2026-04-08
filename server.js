@@ -221,6 +221,7 @@ app.get('/api/auth/google', (req, res) => {
 
 // Google OAuth — callback
 app.get('/api/auth/google/callback', async (req, res) => {
+  console.log('🔑 OAuth callback hit — code:', req.query.code ? 'yes(' + req.query.code.length + ')' : 'no', 'error:', req.query.error || 'none');
   const { code, error, state } = req.query;
   const returnTo = (state && state.startsWith('/')) ? state : '/index.html';
   if (error) return res.redirect(returnTo + '?auth_error=' + encodeURIComponent(error));
