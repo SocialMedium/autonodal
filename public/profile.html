@@ -418,8 +418,11 @@ async function loadProfile() {
       if (hasContacts) scopeList.push('Contacts');
       if (hasCalendar) scopeList.push('Calendar');
       if (hasScopes) scopeList.push('Drive');
-      document.getElementById('googleDetail').textContent = scopeList.join(' + ') + ' syncing';
-      document.getElementById('googleAction').innerHTML = '<button class="btn btn-sm" onclick="triggerSync()">Sync Now</button>';
+      var missingScopes = !hasContacts || !hasCalendar;
+      document.getElementById('googleDetail').textContent = scopeList.join(' + ') + (missingScopes ? ' — reconnect for full sync' : ' syncing');
+      document.getElementById('googleAction').innerHTML =
+        '<button class="btn btn-sm" onclick="triggerSync()">Sync Now</button>' +
+        ' <a href="/api/auth/gmail/connect?token=' + encodeURIComponent(TOKEN) + '&return_to=/profile.html" class="btn btn-sm" style="font-size:10px;color:var(--blue);border-color:var(--blue)">' + (missingScopes ? 'Upgrade Scopes' : 'Reconnect') + '</a>';
     } else {
       document.getElementById('googleStatus').innerHTML = '<span class="dot dot-grey"></span>Not connected';
       document.getElementById('googleAction').innerHTML = '<a href="/api/auth/gmail/connect?token=' + encodeURIComponent(TOKEN) + '&return_to=/profile.html" class="btn btn-primary btn-sm">Connect Google</a>';
