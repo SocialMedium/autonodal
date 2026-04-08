@@ -13765,19 +13765,21 @@ app.listen(PORT, async () => {
   } catch (e) {}
 
   // Fix RLS policies — platform content (tenant_id IS NULL) must be visible to all tenants
+  // Update ALL policies that use current_tenant_id() to also allow tenant_id IS NULL
   try {
-    const platformTables = ['signal_events', 'events', 'external_documents'];
-    for (const table of platformTables) {
-      await db.query(`DROP POLICY IF EXISTS tenant_isolation_${table} ON ${table}`);
+    // Get all tables with RLS policies
+    const { rows: policies } = await db.query(`
+      SELECT schemaname, tablename, policyname FROM pg_policies
+      WHERE schemaname = 'public' AND policyname LIKE 'tenant_isolation_%'
+    `);
+    for (const p of policies) {
+      await db.query(`DROP POLICY IF EXISTS ${p.policyname} ON ${p.tablename}`);
       await db.query(`
-        CREATE POLICY tenant_isolation_${table} ON ${table}
-        USING (current_setting('app.current_tenant', true) IS NULL
-               OR current_setting('app.current_tenant', true) = ''
-               OR tenant_id IS NULL
-               OR tenant_id::text = current_setting('app.current_tenant', true))
+        CREATE POLICY ${p.policyname} ON ${p.tablename}
+        USING (current_tenant_id() IS NULL OR tenant_id IS NULL OR tenant_id = current_tenant_id())
       `);
     }
-    console.log('  ✅ Fixed RLS policies for platform content visibility');
+    if (policies.length) console.log(`  ✅ Fixed ${policies.length} RLS policies — platform content (tenant_id IS NULL) now visible to all tenants`);
   } catch (e) { console.log('  ⚠️ RLS policy fix:', e.message); }
 
   // Fix global UNIQUE constraints that break multi-tenant isolation
