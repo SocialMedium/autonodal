@@ -1342,10 +1342,13 @@ app.get('/api/signal-index', authenticateToken, async (req, res) => {
     const horizon = req.query.horizon || '7d';
     const tid = req.tenant_id;
 
+    // Market health is platform-wide (derived from market signals, not tenant data)
+    // Fall back to ML tenant data if no platform-wide data exists
+    const mlTid = '00000000-0000-0000-0000-000000000001';
     const [mh, stocks, stats] = await Promise.all([
-      db.query(`SELECT * FROM market_health_index WHERE tenant_id = $1 AND horizon = $2 LIMIT 1`, [tid, horizon]).catch(() => ({ rows: [] })),
-      db.query(`SELECT * FROM signal_stocks WHERE tenant_id = $1 AND horizon = $2 ORDER BY weight DESC`, [tid, horizon]).catch(() => ({ rows: [] })),
-      db.query(`SELECT * FROM signal_index_stats WHERE tenant_id = $1 LIMIT 1`, [tid]).catch(() => ({ rows: [] })),
+      platformPool.query(`SELECT * FROM market_health_index WHERE (tenant_id IS NULL OR tenant_id = $1 OR tenant_id = $2) AND horizon = $3 ORDER BY computed_at DESC LIMIT 1`, [tid, mlTid, horizon]).catch(() => ({ rows: [] })),
+      platformPool.query(`SELECT * FROM signal_stocks WHERE (tenant_id IS NULL OR tenant_id = $1 OR tenant_id = $2) AND horizon = $3 ORDER BY weight DESC`, [tid, mlTid, horizon]).catch(() => ({ rows: [] })),
+      platformPool.query(`SELECT * FROM signal_index_stats WHERE (tenant_id IS NULL OR tenant_id = $1 OR tenant_id = $2) ORDER BY computed_at DESC LIMIT 1`, [tid, mlTid]).catch(() => ({ rows: [] })),
     ]);
 
     const signalStocks = {};

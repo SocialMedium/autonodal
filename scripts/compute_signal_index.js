@@ -27,8 +27,9 @@ const SIGNAL_STOCKS = {
   partnership:          { sentiment: 'bullish',  weight: 1.2, label: 'Partnership' },
   layoffs:              { sentiment: 'bearish',  weight: 2.0, label: 'Layoffs' },
   restructuring:        { sentiment: 'bearish',  weight: 2.5, label: 'Restructuring' },
-  media_sentiment:      { sentiment: 'bullish',  weight: 1.5, label: 'Media' },
 };
+// media_sentiment is computed separately from document_sentiment table, not signal_events
+const MEDIA_SENTIMENT_CFG = { sentiment: 'bullish', weight: 1.5, label: 'Media' };
 
 const HORIZONS = [
   { key: '7d',  days: 7,   priorDays: 14  },
@@ -94,7 +95,7 @@ async function computeSignalIndex() {
           FLOOR(EXTRACT(EPOCH FROM (NOW() - detected_at)) / (86400 * $1))::int AS bucket,
           COUNT(*)::int AS cnt
         FROM signal_events
-        WHERE signal_type = $2 AND tenant_id = $3
+        WHERE signal_type = $2 AND (tenant_id IS NULL OR tenant_id = $3)
           AND detected_at > NOW() - ($4 || ' days')::INTERVAL
         GROUP BY bucket
         ORDER BY bucket
@@ -174,7 +175,8 @@ async function computeSignalIndex() {
     let dominantStock = null, dominantContrib = 0;
 
     for (const [name, data] of Object.entries(stockResults)) {
-      const cfg = SIGNAL_STOCKS[name];
+      const cfg = SIGNAL_STOCKS[name] || (name === 'media_sentiment' ? MEDIA_SENTIMENT_CFG : null);
+      if (!cfg) continue;
       const contrib = data.score * cfg.weight;
       weightedSum += contrib;
       totalWeight += cfg.weight;
