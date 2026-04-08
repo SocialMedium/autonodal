@@ -780,10 +780,12 @@ async function parseAndSaveCareer() {
 
   try {
     var pid = new URLSearchParams(location.search).get('id');
-    var data = await api('/api/people/' + pid + '/career/parse', {
+    var resp = await fetch('/api/people/' + pid + '/career/parse', {
       method: 'POST',
-      body: { text: text }
+      headers: { 'Authorization': 'Bearer ' + TK, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text })
     });
+    var data = await resp.json();
     if (data.error) { alert(data.error); btn.disabled = false; btn.textContent = 'Parse & Save'; return; }
     alert('Saved ' + (data.roles || 0) + ' career roles');
     location.reload();
