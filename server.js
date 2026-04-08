@@ -9966,16 +9966,14 @@ app.get('/api/profile/feeds', authenticateToken, async (req, res) => {
     const uid = req.user.user_id;
     const tid = req.tenant_id;
 
-    // Platform feeds (rss_sources) — shared across tenant
-    const { rows: platformFeeds } = await db.query(`
+    // Platform feeds (rss_sources)
+    const { rows: platformFeeds } = await platformPool.query(`
       SELECT rs.id, rs.name, rs.url, rs.source_type, rs.enabled,
         rs.last_fetched_at,
-        (SELECT COUNT(*) FROM external_documents ed WHERE ed.source_name = rs.name) AS doc_count,
-        COALESCE(ufd.disabled, false) AS user_disabled
+        (SELECT COUNT(*) FROM external_documents ed WHERE ed.source_name = rs.name) AS doc_count
       FROM rss_sources rs
-      LEFT JOIN user_feed_prefs ufd ON ufd.feed_id = rs.id AND ufd.user_id = $1
       ORDER BY rs.enabled DESC, rs.name
-    `, [uid]).catch(() => ({ rows: [] }));
+    `).catch(() => ({ rows: [] }));
 
     res.json({
       platform_feeds: platformFeeds,
@@ -9985,16 +9983,15 @@ app.get('/api/profile/feeds', authenticateToken, async (req, res) => {
   } catch (err) { res.json({ platform_feeds: [], user_feeds: [], feeds: [] }); }
 });
 
-// Toggle feed visibility for user
+// Toggle feed on/off
 app.post('/api/profile/feeds/:id/toggle', authenticateToken, async (req, res) => {
   try {
-    const db = new TenantDB(req.tenant_id);
     const { disabled } = req.body;
-    await db.query(`
-      INSERT INTO user_feed_prefs (user_id, feed_id, disabled)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (user_id, feed_id) DO UPDATE SET disabled = $3, updated_at = NOW()
-    `, [req.user.user_id, req.params.id, !!disabled]);
+    // Update the feed's enabled state directly
+    await platformPool.query(
+      `UPDATE rss_sources SET enabled = $1 WHERE id = $2`,
+      [!disabled, req.params.id]
+    );
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

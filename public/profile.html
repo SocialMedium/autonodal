@@ -454,12 +454,12 @@ function renderFeeds(data) {
   // Platform feeds
   var platform = (data && data.platform_feeds) || [];
   var userFeeds = (data && data.user_feeds) || [];
-  var totalActive = platform.filter(function(f) { return f.enabled && !f.user_disabled; }).length + userFeeds.filter(function(f) { return f.active; }).length;
+  var totalActive = platform.filter(function(f) { return f.enabled; }).length + userFeeds.filter(function(f) { return f.active; }).length;
   document.getElementById('feedCount').textContent = totalActive;
 
   if (platform.length) {
     document.getElementById('platformFeedList').innerHTML = platform.map(function(f) {
-      var isActive = f.enabled && !f.user_disabled;
+      var isActive = f.enabled;
       var docs = parseInt(f.doc_count) || 0;
       return '<div class="feed-row" style="gap:8px">' +
         '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex-shrink:0">' +
