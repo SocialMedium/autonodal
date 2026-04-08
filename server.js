@@ -211,13 +211,13 @@ app.get('/api/auth/google', (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' });
   const redirectUri = process.env.GOOGLE_REDIRECT_URL || process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
   const returnTo = req.query.return_to || '/index.html';
-  // SCIENCE: Progressive disclosure — only request profile scopes at sign-in
-  // Gmail/Drive scopes requested later in onboarding Step 3 after trust is established
+  // Request full scopes — Google will only show consent screen if scopes changed
+  // No forced prompt:consent — returning users get silent re-auth
   const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: SIGNIN_SCOPES,
+    scope: GOOGLE_CONNECT_SCOPES,
     access_type: 'offline',
     state: returnTo
   });
@@ -342,25 +342,29 @@ app.get('/api/auth/google/callback', async (req, res) => {
     // Clean up expired sessions
     await platformPool.query('DELETE FROM sessions WHERE expires_at < NOW()');
 
-    // SCIENCE: Progressive disclosure — do NOT auto-connect Gmail/Drive at sign-in
-    // Only update tokens for users who previously explicitly connected (returning users)
-    const userTenantId = (await platformPool.query('SELECT tenant_id FROM users WHERE id = $1', [user.id])).rows[0]?.tenant_id
-      || process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
-    const { rows: [existingGoogle] } = await platformPool.query(
-      'SELECT id FROM user_google_accounts WHERE user_id = $1 AND google_email = $2', [user.id, userInfo.email]
-    );
-    if (existingGoogle && tokenData.access_token) {
-      // Returning user with existing connection — update tokens only
+    // Auto-connect Google account on every sign-in (full scopes requested at login)
+    if (tokenData.access_token) {
       await platformPool.query(`
-        UPDATE user_google_accounts SET access_token = $1,
-          refresh_token = COALESCE($2, refresh_token),
-          connected_at = NOW()
-        WHERE user_id = $3 AND google_email = $4
-      `, [tokenData.access_token, tokenData.refresh_token, user.id, userInfo.email]).catch(() => {});
+        INSERT INTO user_google_accounts (user_id, google_email, access_token, refresh_token, token_expires_at, scopes, sync_enabled, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW())
+        ON CONFLICT (user_id, google_email) DO UPDATE SET
+          access_token = EXCLUDED.access_token,
+          refresh_token = COALESCE(EXCLUDED.refresh_token, user_google_accounts.refresh_token),
+          token_expires_at = EXCLUDED.token_expires_at,
+          scopes = EXCLUDED.scopes,
+          sync_enabled = true,
+          updated_at = NOW()
+      `, [
+        user.id,
+        userInfo.email,
+        tokenData.access_token,
+        tokenData.refresh_token || null,
+        tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
+        GOOGLE_CONNECT_SCOPES.split(' ')
+      ]).catch((e) => console.error('Google account upsert:', e.message));
     }
-    // New users: Gmail connection happens in onboarding Step 3 via /api/auth/google/connect-gmail
 
-    // Check onboarding status FIRST — new users need onboarding before Gmail connect
+    // Check onboarding status — new users need onboarding
     const { rows: [tenantStatus] } = await platformPool.query(
       'SELECT onboarding_status FROM tenants WHERE id = (SELECT tenant_id FROM users WHERE id = $1)',
       [user.id]
