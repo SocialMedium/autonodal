@@ -232,10 +232,11 @@ else {
     var conf=Math.round((s.confidence_score||0)*100);
     var cc=conf>=80?'hi':conf>=50?'md':'lo';
     var type=s.signal_type.replace(/_/g,' ');
-    return '<div class="sigcard"'+(s.source_url?' style="cursor:pointer" onclick="window.open(\''+esc(s.source_url).replace(/'/g,"\\'")+'\',\'_blank\')"':'')+
+    var linkUrl = s.source_url || 'https://www.google.com/search?q=' + encodeURIComponent((c.name || '') + ' ' + (s.evidence_summary || type).slice(0, 80));
+    return '<div class="sigcard" style="cursor:pointer" onclick="window.open(\''+esc(linkUrl).replace(/'/g,"\\'")+'\',\'_blank\')"'+
       '><div class="sigcard-top"><div class="sigcard-hl">'+icon+' '+esc((s.evidence_summary||s.doc_title||type).slice(0,120))+'</div><div class="sigcard-conf '+cc+'">'+conf+'%</div></div>'+
       '<div class="sigcard-badges"><span class="sbadge">'+type.toUpperCase()+'</span><span class="sbadge">'+ago(s.detected_at)+'</span></div>'+
-      (s.source_url?'<div class="sigcard-src"><a href="'+esc(s.source_url)+'" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:var(--blue);text-decoration:none">↗ Source</a></div>':'')+
+      '<div class="sigcard-src"><a href="'+esc(linkUrl)+'" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:var(--blue);text-decoration:none">'+(s.source_url?'↗ Source':'↗ Search')+'</a></div>'+
     '</div>';
   });
 }

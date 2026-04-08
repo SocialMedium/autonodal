@@ -4163,7 +4163,7 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
              ed.title AS doc_title, ed.source_name AS doc_source
       FROM signal_events se
       LEFT JOIN external_documents ed ON se.source_document_id = ed.id
-      WHERE se.company_id = $1 AND se.tenant_id = $2
+      WHERE se.company_id = $1 AND (se.tenant_id IS NULL OR se.tenant_id = $2)
       ORDER BY se.detected_at DESC LIMIT 30
     `, [companyId, req.tenant_id]);
 
