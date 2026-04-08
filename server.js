@@ -13365,6 +13365,9 @@ app.listen(PORT, async () => {
   console.log(`  API:       http://localhost:${PORT}/api/health`);
   console.log('═══════════════════════════════════════════════════\n');
 
+  // Startup migrations use platformPool (superuser) for DDL
+  const db = platformPool;
+
   // Ensure user profile columns exist
   try {
     await db.query(`
