@@ -54,6 +54,11 @@ app.use('/api/waitlist', rateLimit({
 }));
 
 // ─────────────────────────────────────────────────────────────────────────────
+// NICKNAME MAP — used for fuzzy people matching across imports
+// ─────────────────────────────────────────────────────────────────────────────
+const NICKNAMES = { jon: 'jonathan', jonathan: 'jon', mike: 'michael', michael: 'mike', rob: 'robert', robert: 'rob', bob: 'robert', will: 'william', william: 'will', bill: 'william', jim: 'james', james: 'jim', dave: 'david', david: 'dave', dan: 'daniel', daniel: 'dan', chris: 'christopher', christopher: 'chris', matt: 'matthew', matthew: 'matt', tom: 'thomas', thomas: 'tom', tony: 'anthony', anthony: 'tony', nick: 'nicholas', nicholas: 'nick', alex: 'alexander', alexander: 'alex', ben: 'benjamin', benjamin: 'ben', sam: 'samuel', samuel: 'sam', ed: 'edward', edward: 'ed', steve: 'steven', steven: 'steve', rick: 'richard', richard: 'rick', liz: 'elizabeth', elizabeth: 'liz', kate: 'katherine', katherine: 'kate', jen: 'jennifer', jennifer: 'jen', sue: 'susan', susan: 'sue', meg: 'megan', megan: 'meg', becky: 'rebecca', rebecca: 'becky', andy: 'andrew', andrew: 'andy', greg: 'gregory', gregory: 'greg', joe: 'joseph', joseph: 'joe', phil: 'philip', philip: 'phil', tim: 'timothy', timothy: 'tim', pete: 'peter', peter: 'pete', pat: 'patrick', patrick: 'pat' };
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DATABASE
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -10221,16 +10226,47 @@ app.post('/api/profile/import/preview', authenticateToken, profileUpload.single(
       });
     }
 
-    // Load existing people for matching
+    // Load existing people for matching (multi-strategy)
     const { rows: dbPeople } = await db.query(
-      `SELECT id, full_name, linkedin_url, email FROM people WHERE tenant_id = $1`, [tenantId]
+      `SELECT id, full_name, first_name, last_name, linkedin_url, email, current_company_name FROM people WHERE tenant_id = $1`, [tenantId]
     );
     const linkedinIndex = new Map(), nameIndex = new Map(), emailIndex = new Map();
+    const lastNameIndex = new Map(); // last_name → [{person, firstName}]
     for (const p of dbPeople) {
       if (p.linkedin_url) { const slug = (p.linkedin_url.toLowerCase().match(/linkedin\.com\/in\/([^\/]+)/) || [])[1]; if (slug) linkedinIndex.set(slug, p); }
       const norm = (p.full_name || '').toLowerCase().trim();
       if (norm) { if (!nameIndex.has(norm)) nameIndex.set(norm, []); nameIndex.get(norm).push(p); }
       if (p.email) emailIndex.set(p.email.toLowerCase(), p);
+      // Build last name index for fuzzy matching
+      const ln = (p.last_name || (p.full_name || '').split(' ').pop() || '').toLowerCase().trim();
+      const fn = (p.first_name || (p.full_name || '').split(' ')[0] || '').toLowerCase().trim();
+      if (ln && ln.length >= 2) {
+        if (!lastNameIndex.has(ln)) lastNameIndex.set(ln, []);
+        lastNameIndex.get(ln).push({ ...p, _fn: fn, _ln: ln });
+      }
+    }
+
+    // Fuzzy name match: same last name + first name starts with same letter, or first name is a common nickname
+    function fuzzyNameMatch(inputFirst, inputLast, company) {
+      const ln = inputLast.toLowerCase().trim();
+      const fn = inputFirst.toLowerCase().trim();
+      const candidates = lastNameIndex.get(ln) || [];
+      if (!candidates.length) return null;
+      // Exact first name
+      const exact = candidates.find(c => c._fn === fn);
+      if (exact) return { person: exact, matchType: 'name_exact' };
+      // Nickname match
+      const altName = NICKNAMES[fn];
+      if (altName) { const nick = candidates.find(c => c._fn === altName); if (nick) return { person: nick, matchType: 'name_nickname' }; }
+      // First initial match + same company
+      if (company && fn.length >= 1) {
+        const initialMatch = candidates.find(c => c._fn.startsWith(fn[0]) && c.current_company_name && c.current_company_name.toLowerCase().includes(company.toLowerCase().slice(0, 5)));
+        if (initialMatch) return { person: initialMatch, matchType: 'name_initial_company' };
+      }
+      // Single candidate with same last name + first initial
+      const initialCands = candidates.filter(c => c._fn.startsWith(fn[0]));
+      if (initialCands.length === 1) return { person: initialCands[0], matchType: 'name_initial_unique' };
+      return null;
     }
 
     // Dry-run analysis
@@ -10256,7 +10292,7 @@ app.post('/api/profile/import/preview', authenticateToken, profileUpload.single(
       if (!fullName || fullName.length < 2) { preview.skipped++; continue; }
       preview.valid++;
 
-      // Match check
+      // Match check — multi-strategy: linkedin URL → email → exact name → fuzzy name
       let matched = false, matchType = null;
       const slug = linkedinUrl ? (linkedinUrl.toLowerCase().match(/linkedin\.com\/in\/([^\/]+)/) || [])[1] : null;
       if (slug && linkedinIndex.has(slug)) { matched = true; matchType = 'linkedin_url'; }
@@ -10265,6 +10301,15 @@ app.post('/api/profile/import/preview', authenticateToken, profileUpload.single(
         const cands = nameIndex.get(fullName.toLowerCase().trim()) || [];
         if (cands.length === 1) { matched = true; matchType = 'name_unique'; }
         else if (cands.length > 1) { preview.ambiguous++; matchType = 'name_ambiguous'; }
+        // Fuzzy: nickname / initial + company matching
+        if (!matched && matchType !== 'name_ambiguous') {
+          const inputFirst = firstName || fullName.split(' ')[0] || '';
+          const inputLast = lastName || fullName.split(' ').pop() || '';
+          if (inputLast) {
+            const fuzzy = fuzzyNameMatch(inputFirst, inputLast, company);
+            if (fuzzy) { matched = true; matchType = fuzzy.matchType; }
+          }
+        }
       }
 
       if (matched) {
@@ -10468,30 +10513,133 @@ app.post('/api/profile/import', authenticateToken, profileUpload.single('file'),
 
     // Contacts CSV
     if (importType === 'contacts') {
-      const raw = require('fs').readFileSync(file.path, 'utf8');
-      const lines = raw.split('\n').filter(l => l.trim());
+      const raw = require('fs').readFileSync(file.path, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const allLines2 = raw.split('\n').filter(l => l.trim());
+      // Find header row
+      let hIdx2 = 0;
+      for (let i = 0; i < Math.min(allLines2.length, 20); i++) {
+        const line = allLines2[i].toLowerCase();
+        if (line.includes('name') || line.includes('email')) { hIdx2 = i; break; }
+      }
+      const lines = allLines2.slice(hIdx2);
       function parseCSV2(line) { const r=[]; let c='',q=false; for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"')q=!q;else if(ch===','&&!q){r.push(c.trim());c='';}else c+=ch;} r.push(c.trim()); return r; }
-      const headers = parseCSV2(lines[0]);
-      const lh = headers.map(h => h.toLowerCase());
-      const nameCol = headers[lh.findIndex(h => h.includes('name'))] || headers[0];
-      const titleCol = headers[lh.findIndex(h => h.includes('title') || h.includes('role'))] || null;
-      const companyCol = headers[lh.findIndex(h => h.includes('company') || h.includes('org'))] || null;
-      const emailCol = headers[lh.findIndex(h => h.includes('email'))] || null;
-
-      const stats = { total: 0, created: 0, skipped: 0 };
+      const headers = parseCSV2(lines[0]).map(h => h.replace(/[^\x20-\x7E]/g, '').trim());
+      const rows2 = [];
       for (let i = 1; i < lines.length; i++) {
         const vals = parseCSV2(lines[i]);
-        const row = {}; headers.forEach((h, idx) => { row[h] = vals[idx] || ''; });
-        const name = row[nameCol]?.trim();
-        if (!name || name.length < 2) continue;
+        const row = {}; headers.forEach((h, idx) => { row[h] = vals[idx] || ''; }); rows2.push(row);
+      }
+
+      const colKeys2 = Object.keys(rows2[0] || {});
+      const findCol2 = (...patterns) => colKeys2.find(k => patterns.some(p => k.toLowerCase().trim().replace(/[^a-z\s]/g, '').includes(p))) || '';
+      const firstNameCol2 = findCol2('first name', 'firstname', 'given');
+      const lastNameCol2 = findCol2('last name', 'lastname', 'family', 'surname');
+      const nameCol2 = findCol2('name', 'full name');
+      const titleCol2 = findCol2('position', 'title', 'role', 'job');
+      const companyCol2 = findCol2('company', 'organisation', 'organization', 'org');
+      const emailCol2 = findCol2('email', 'e-mail');
+
+      // Load people for multi-strategy matching
+      const { rows: dbPeople2 } = await db.query(
+        `SELECT id, full_name, first_name, last_name, linkedin_url, email, email_alt, current_company_name, source FROM people WHERE tenant_id = $1`, [tenantId]
+      );
+      const emailIdx2 = new Map(), nameIdx2 = new Map(), lastNameIdx2 = new Map();
+      for (const p of dbPeople2) {
+        if (p.email) emailIdx2.set(p.email.toLowerCase(), p);
+        if (p.email_alt) emailIdx2.set(p.email_alt.toLowerCase(), p);
+        const norm = (p.full_name || '').toLowerCase().trim();
+        if (norm) { if (!nameIdx2.has(norm)) nameIdx2.set(norm, []); nameIdx2.get(norm).push(p); }
+        const ln = (p.last_name || (p.full_name || '').split(' ').pop() || '').toLowerCase().trim();
+        const fn = (p.first_name || (p.full_name || '').split(' ')[0] || '').toLowerCase().trim();
+        if (ln && ln.length >= 2) {
+          if (!lastNameIdx2.has(ln)) lastNameIdx2.set(ln, []);
+          lastNameIdx2.get(ln).push({ ...p, _fn: fn, _ln: ln });
+        }
+      }
+
+      // Same fuzzy match as preview
+      function fuzzyMatch2(inputFirst, inputLast, company) {
+        const ln = inputLast.toLowerCase().trim();
+        const fn = inputFirst.toLowerCase().trim();
+        const candidates = lastNameIdx2.get(ln) || [];
+        if (!candidates.length) return null;
+        const exact = candidates.find(c => c._fn === fn);
+        if (exact) return exact;
+        const altName = NICKNAMES[fn];
+        if (altName) { const nick = candidates.find(c => c._fn === altName); if (nick) return nick; }
+        if (company && fn.length >= 1) {
+          const m = candidates.find(c => c._fn.startsWith(fn[0]) && c.current_company_name && c.current_company_name.toLowerCase().includes(company.toLowerCase().slice(0, 5)));
+          if (m) return m;
+        }
+        const ic = candidates.filter(c => c._fn.startsWith(fn[0]));
+        if (ic.length === 1) return ic[0];
+        return null;
+      }
+
+      const stats = { total: 0, created: 0, matched: 0, enriched: 0, skipped: 0 };
+      for (const row of rows2) {
+        const firstName = (firstNameCol2 ? row[firstNameCol2] : '') || '';
+        const lastName = (lastNameCol2 ? row[lastNameCol2] : '') || '';
+        const fullName = (nameCol2 ? row[nameCol2] : `${firstName} ${lastName}`).trim();
+        const company = (companyCol2 ? row[companyCol2] : '') || '';
+        const title = (titleCol2 ? row[titleCol2] : '') || '';
+        const email = (emailCol2 ? row[emailCol2] : '') || '';
+        if (!fullName || fullName.length < 2) continue;
         stats.total++;
-        const { rows: exists } = await db.query(`SELECT id FROM people WHERE full_name ILIKE $1 AND tenant_id = $2 LIMIT 1`, [name, tenantId]);
-        if (exists.length) { stats.skipped++; continue; }
-        await db.query(
-          `INSERT INTO people (full_name, current_title, current_company_name, email, source, created_by, tenant_id)
-           VALUES ($1,$2,$3,$4,'csv_import',$5,$6)`,
-          [name, titleCol ? row[titleCol] : null, companyCol ? row[companyCol] : null, emailCol ? row[emailCol] : null, userId, tenantId]);
-        stats.created++;
+
+        // Multi-strategy match: email → exact name → fuzzy name
+        let existingPerson = null;
+        if (email && emailIdx2.has(email.toLowerCase())) {
+          existingPerson = emailIdx2.get(email.toLowerCase());
+        }
+        if (!existingPerson) {
+          const cands = nameIdx2.get(fullName.toLowerCase().trim()) || [];
+          if (cands.length === 1) existingPerson = cands[0];
+        }
+        if (!existingPerson) {
+          const fn = firstName || fullName.split(' ')[0] || '';
+          const ln = lastName || fullName.split(' ').pop() || '';
+          existingPerson = fuzzyMatch2(fn, ln, company);
+        }
+
+        if (existingPerson) {
+          stats.matched++;
+          // Enrich — fill blanks ONLY, never overwrite LinkedIn data
+          const isLinkedinSource = (existingPerson.source || '').includes('linkedin');
+          const updates = [];
+          const vals = [];
+          let idx = 1;
+
+          // Email: always fill if blank (contacts are the best source for email)
+          if (email && !existingPerson.email) {
+            updates.push(`email = $${idx++}`); vals.push(email);
+          } else if (email && existingPerson.email && email.toLowerCase() !== existingPerson.email.toLowerCase() && !existingPerson.email_alt) {
+            updates.push(`email_alt = $${idx++}`); vals.push(email);
+          }
+          // Company/title: only fill if blank OR source is NOT linkedin
+          if (company && (!existingPerson.current_company_name || (!isLinkedinSource && existingPerson.current_company_name !== company))) {
+            if (!existingPerson.current_company_name) { updates.push(`current_company_name = $${idx++}`); vals.push(company); }
+          }
+          if (title && !existingPerson.current_title) {
+            updates.push(`current_title = $${idx++}`); vals.push(title);
+          }
+
+          if (updates.length) {
+            updates.push(`updated_at = NOW()`);
+            await db.query(`UPDATE people SET ${updates.join(', ')} WHERE id = $${idx}`, [...vals, existingPerson.id]);
+            stats.enriched++;
+          }
+        } else {
+          // Create new person
+          try {
+            await db.query(
+              `INSERT INTO people (full_name, first_name, last_name, current_title, current_company_name, email, source, created_by, tenant_id)
+               VALUES ($1,$2,$3,$4,$5,$6,'contact_import',$7,$8)`,
+              [fullName, firstName || fullName.split(' ')[0], lastName || fullName.split(' ').pop(),
+               title || null, company || null, email || null, userId, tenantId]);
+            stats.created++;
+          } catch (e) { stats.skipped++; }
+        }
       }
       try { require('fs').unlinkSync(file.path); } catch (e) {}
       auditLog(userId, 'csv_import', 'people', null, { ...stats, filename: file.originalname });
