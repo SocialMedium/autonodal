@@ -255,7 +255,7 @@ async function main() {
              ON CONFLICT DO NOTHING
              RETURNING id`,
             [companyName, d.domain, tenantId]
-          );
+          ).catch(() => ({ rows: [] }));
           if (newCo) {
             domainCreated++;
             // Link people with this domain
@@ -313,7 +313,7 @@ async function main() {
                VALUES ($1, $2, 'email_interaction_domain', $3, NOW(), NOW())
                ON CONFLICT DO NOTHING RETURNING id`,
               [companyName, d.domain, tenantId]
-            );
+            ).catch(() => ({ rows: [] }));
             if (newCo) interactionDomains++;
           } else {
             interactionDomains++;
@@ -358,7 +358,7 @@ async function main() {
                VALUES ($1, $2, 'email_review_domain', $3, NOW(), NOW())
                ON CONFLICT DO NOTHING RETURNING id`,
               [companyName, d.domain, tenantId]
-            );
+            ).catch(() => ({ rows: [] }));
             if (newCo) reviewCompanies++;
           } else {
             reviewCompanies++;
