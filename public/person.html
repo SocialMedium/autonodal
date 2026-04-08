@@ -779,7 +779,8 @@ async function parseAndSaveCareer() {
   btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span> Parsing...';
 
   try {
-    var data = await api('/api/people/' + PERSON_ID + '/career/parse', {
+    var pid = new URLSearchParams(location.search).get('id');
+    var data = await api('/api/people/' + pid + '/career/parse', {
       method: 'POST',
       body: { text: text }
     });
