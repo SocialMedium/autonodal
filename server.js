@@ -375,9 +375,9 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
     );
     // SCIENCE: Peak-end rule — include signal_dial so dashboard can personalise feed
     const { rows: [tenantData] } = await db.query(
-      'SELECT signal_dial, profile FROM tenants WHERE id = $1', [req.tenant_id]
+      'SELECT name, slug, signal_dial, profile, logo_url, primary_color FROM tenants WHERE id = $1', [req.tenant_id]
     ).catch(() => ({ rows: [null] }));
-    res.json({ user: { ...req.user, region: user?.region, onboarded: user?.onboarded, preferences: user?.preferences }, signal_dial: tenantData?.signal_dial, profile: tenantData?.profile });
+    res.json({ user: { ...req.user, region: user?.region, onboarded: user?.onboarded, preferences: user?.preferences }, signal_dial: tenantData?.signal_dial, profile: tenantData?.profile, tenant: { name: tenantData?.name, slug: tenantData?.slug, logo_url: tenantData?.logo_url, primary_color: tenantData?.primary_color } });
   } catch (e) {
     res.json({ user: req.user });
   }

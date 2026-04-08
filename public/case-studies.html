@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Case Studies — MitchelLake Signals</title>
+<title>Case Studies — Signals</title>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -117,7 +117,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 
 <div class="login-overlay" id="loginOverlay">
   <div class="login-box">
-    <h2>MitchelLake Signals</h2>
+    <h2>Signals</h2>
     <p>Sign in to access case studies</p>
     <a class="login-btn" href="/api/auth/google?return_to=/case-studies.html">Sign in with Google</a>
   </div>
@@ -126,7 +126,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 <header class="masthead">
   <div class="masthead-top">
     <div class="masthead-brand">
-      <div class="masthead-logo">MitchelLake <em>Signals</em></div>
+      <div class="masthead-logo" id="mastheadLogo">Signals</div>
     </div>
     <nav class="masthead-nav">
       <a href="/index.html">Signals</a>
@@ -456,5 +456,6 @@ document.addEventListener('keydown', function(e) { if (e.key === 'Escape') close
 </script>
 <div id="signal-ticker"></div>
 <script src="/signal-ticker.js" data-position="top"></script>
+<script src="/js/brand.js"></script>
 </body>
 </html>
