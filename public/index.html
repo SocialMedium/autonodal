@@ -165,28 +165,42 @@ body {
 .command-section {
   max-width: 1320px;
   margin: 0 auto;
-  padding: 32px 40px 0;
+  padding: 24px 40px 0;
+}
+
+.search-stats-wrapper {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+}
+
+.search-input-wrapper {
+  flex: 0 0 65%;
+  display: flex;
+  flex-direction: column;
 }
 
 .command-bar {
-  background: var(--surface);
-  border: 1.5px solid var(--rule);
+  background: #fafbff;
+  border: 1.5px solid rgba(37, 99, 235, 0.25);
   border-radius: 12px;
   padding: 14px 18px;
   display: flex;
   align-items: center;
   gap: 12px;
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
   transition: all 0.2s;
 }
 
 .command-bar:focus-within {
-  border-color: var(--blue);
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.06), var(--shadow-hover);
+  border-color: #2563eb;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10), 0 2px 8px rgba(0,0,0,0.06);
 }
 
 .command-bar.searching {
-  border-color: var(--blue);
+  border-color: #2563eb;
+  background: #ffffff;
 }
 
 .command-icon {
@@ -422,90 +436,64 @@ body {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ═══════════════════════════════════════
-   METRICS STRIP
+   METRICS — compact side card
    ═══════════════════════════════════════ */
-.metrics-section {
-  max-width: 1320px;
-  margin: 0 auto;
-  padding: 28px 40px 0;
+.metrics-section { display: none; } /* old full-width strip hidden */
+
+.stats-card {
+  flex: 0 0 calc(35% - 16px);
+  background: #ffffff;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-self: stretch;
 }
 
-.section-rule {
-  height: 1px;
-  background: var(--rule);
-  margin-bottom: 20px;
-}
-
-.section-rule.bold {
-  height: 3px;
-  background: var(--ink);
-  margin-bottom: 16px;
-}
-
-.section-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  font-weight: 700;
-  color: var(--ink-4);
-  margin-bottom: 16px;
-}
-
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 0;
-  border-top: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
-}
-
-.metric {
-  padding: 18px 0;
-  border-right: 1px solid var(--rule);
-  padding-right: 20px;
-  padding-left: 20px;
-  cursor: pointer;
-  transition: background 0.15s;
+.stats-card-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
   text-decoration: none;
   color: inherit;
-  display: block;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background 0.15s;
 }
 
-.metric:hover { background: var(--surface-warm); }
-.metric:first-child { padding-left: 0; }
-.metric:last-child { border-right: none; padding-right: 0; }
-.metric:first-child:hover { margin-left: -8px; padding-left: 8px; border-radius: 4px 0 0 4px; }
-.metric:last-child:hover { margin-right: -8px; padding-right: 8px; border-radius: 0 4px 4px 0; }
+a.stats-card-row:hover { background: var(--surface-warm); }
 
-.metric-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+.stats-val {
   font-weight: 600;
-  color: var(--ink-4);
-  margin-bottom: 4px;
-}
-
-.metric-value {
-  font-family: var(--serif);
-  font-size: 32px;
-  font-weight: 600;
-  line-height: 1.1;
   color: var(--ink);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
 }
 
-.metric-value.alert { color: var(--rose); }
-.metric-value.positive { color: var(--emerald); }
+.stats-label {
+  color: #64748b;
+  font-size: 12px;
+}
 
-.metric-delta {
+.stats-sub {
+  color: #94a3b8;
+  font-size: 11px;
+  margin-left: auto;
+}
+
+.stats-delta {
+  margin-left: auto;
   font-size: 11px;
   font-weight: 500;
-  color: var(--ink-3);
-  margin-top: 3px;
 }
 
-.metric-delta .up { color: var(--emerald); }
-.metric-delta .down { color: var(--rose); }
+.stats-delta.up { color: var(--emerald); }
+.stats-card-row.highlight .stats-val { color: var(--emerald); }
+.stats-card-row.muted .stats-val { font-size: 13px; font-weight: 500; color: #475569; }
+.stats-dot { color: #cbd5e1; }
 
 /* ═══════════════════════════════════════
    MAIN CONTENT GRID  
@@ -1464,10 +1452,15 @@ body {
   .content-section { grid-template-columns: 1fr; }
   .main-column { padding-right: 0; border-right: none; }
   .side-column { padding-left: 0; margin-top: 40px; padding-top: 40px; border-top: 2px solid var(--ink); }
-  .metrics-grid { grid-template-columns: repeat(3, 1fr); }
   .masthead { padding: 0 20px; }
-  .command-section, .metrics-section, .content-section { padding-left: 20px; padding-right: 20px; }
+  .command-section, .content-section { padding-left: 20px; padding-right: 20px; }
   .search-overlay { padding: 0 20px; }
+}
+@media (max-width: 768px) {
+  .search-stats-wrapper { flex-direction: column; }
+  .search-input-wrapper, .stats-card { flex: none; width: 100%; }
+  .stats-card { flex-direction: row; flex-wrap: wrap; gap: 8px 20px; padding: 10px 14px; }
+  .stats-card-row { flex: 0 0 auto; }
 }
 
 /* Region cards */
@@ -1505,13 +1498,11 @@ body {
 @media (max-width: 640px) {
   .region-grid { grid-template-columns: 1fr !important; }
   #heroSignals { grid-template-columns: 1fr !important; }
-  .metrics-grid { grid-template-columns: repeat(2, 1fr); }
   .zone-title { font-size: 22px; }
   .deal-card { padding: 18px 20px; }
   .deal-name { font-size: 18px; }
   .deal-headline { font-size: 14px; }
   .talent-evidence, .deal-insight-text, .priority-text, .theme-description, .reengage-reason { font-size: 14px; line-height: 1.6; }
-  .metric-value { font-size: 28px; }
   .masthead-nav { display: none; }
 }
 </style>
@@ -1575,28 +1566,62 @@ body {
   <script src="/signal-ticker.js" data-position="top"></script>
 </header>
 
-<!-- ═══ COMMAND ═══ -->
+<!-- ═══ COMMAND + STATS ═══ -->
 <section class="command-section">
-  <div class="command-bar" id="commandBar">
-    <span class="command-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg></span>
-    <input class="command-input" id="searchInput" type="text"
-      placeholder="Semantic search — try 'VP engineering fintech APAC' or 'candidates at restructuring companies'..."
-      onkeydown="if(event.key==='Enter')doSearch()">
-    <div class="command-actions">
-      <button class="cmd-btn" title="Search" onclick="doSearch()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></button>
-      <button class="cmd-btn" title="Keyboard shortcut">⌘K</button>
+  <div class="search-stats-wrapper">
+    <div class="search-input-wrapper">
+      <div class="command-bar" id="commandBar">
+        <span class="command-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg></span>
+        <input class="command-input" id="searchInput" type="text"
+          placeholder="Search — try 'VP engineering fintech APAC' or 'candidates at restructuring companies'..."
+          onkeydown="if(event.key==='Enter')doSearch()">
+        <div class="command-actions">
+          <button class="cmd-btn" title="Search" onclick="doSearch()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></button>
+          <button class="cmd-btn" title="Keyboard shortcut">⌘K</button>
+        </div>
+      </div>
+      <div class="command-prompts">
+        <div class="prompt-chip" onclick="searchPrompt('CTO')"><span class="emoji" id="pc1"></span> CTO roles</div>
+        <div class="prompt-chip" onclick="searchPrompt('fintech')"><span class="emoji" id="pc2"></span> Fintech</div>
+        <div class="prompt-chip" onclick="searchPrompt('product leadership')"><span class="emoji" id="pc3"></span> Product leadership</div>
+        <div class="prompt-chip" onclick="searchPrompt('capital raising')"><span class="emoji" id="pc4"></span> Capital raising signals</div>
+        <span style="width:1px;height:16px;background:var(--rule);margin:0 4px;flex-shrink:0"></span>
+        <div class="prompt-chip" onclick="searchCollection('people')" style="background:var(--blue-soft);color:var(--blue)">People</div>
+        <div class="prompt-chip" onclick="searchCollection('companies')" style="background:var(--amber-soft);color:var(--amber)">Companies</div>
+        <div class="prompt-chip" onclick="searchCollection('signals')" style="background:var(--emerald-soft);color:var(--emerald)">Signals</div>
+        <div class="prompt-chip" onclick="searchCollection('case_studies')" style="background:var(--violet-soft);color:var(--violet)">Case Studies</div>
+      </div>
     </div>
-  </div>
-  <div class="command-prompts">
-    <div class="prompt-chip" onclick="searchPrompt('CTO')"><span class="emoji" id="pc1"></span> CTO roles</div>
-    <div class="prompt-chip" onclick="searchPrompt('fintech')"><span class="emoji" id="pc2"></span> Fintech</div>
-    <div class="prompt-chip" onclick="searchPrompt('product leadership')"><span class="emoji" id="pc3"></span> Product leadership</div>
-    <div class="prompt-chip" onclick="searchPrompt('capital raising')"><span class="emoji" id="pc4"></span> Capital raising signals</div>
-    <span style="width:1px;height:16px;background:var(--rule);margin:0 4px;flex-shrink:0"></span>
-    <div class="prompt-chip" onclick="searchCollection('people')" style="background:var(--blue-soft);color:var(--blue)">People</div>
-    <div class="prompt-chip" onclick="searchCollection('companies')" style="background:var(--amber-soft);color:var(--amber)">Companies</div>
-    <div class="prompt-chip" onclick="searchCollection('signals')" style="background:var(--emerald-soft);color:var(--emerald)">Signals</div>
-    <div class="prompt-chip" onclick="searchCollection('case_studies')" style="background:var(--violet-soft);color:var(--violet)">Case Studies</div>
+    <div class="stats-card">
+      <a class="stats-card-row" href="#signals" onclick="document.getElementById('dealSection').scrollIntoView({behavior:'smooth'});return false;">
+        <span class="stats-val" id="metricSignals">—</span>
+        <span class="stats-label">signals</span>
+        <span class="stats-delta up" id="metricSignals24h"></span>
+      </a>
+      <a class="stats-card-row" href="/companies.html">
+        <span class="stats-val" id="metricCompanies">—</span>
+        <span class="stats-label">companies</span>
+      </a>
+      <a class="stats-card-row highlight" href="/placements.html">
+        <span class="stats-val" id="metricRevenue">—</span>
+        <span class="stats-label">revenue</span>
+        <span class="stats-sub" id="metricPlacements"></span>
+      </a>
+      <a class="stats-card-row" href="/people.html">
+        <span class="stats-val" id="metricPeople">—</span>
+        <span class="stats-label">people</span>
+        <span class="stats-sub" id="metricPeopleNotes"></span>
+      </a>
+      <div class="stats-card-row muted">
+        <a class="stats-card-row muted" href="#content" onclick="document.getElementById('contentSection').scrollIntoView({behavior:'smooth'});return false;" style="padding:0;gap:6px">
+          <span class="stats-val" id="metricDocs">—</span>
+          <span class="stats-label">docs</span>
+          <span class="stats-dot">&middot;</span>
+          <span class="stats-val" id="metricSources">—</span>
+          <span class="stats-label">sources</span>
+        </a>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -1610,42 +1635,6 @@ body {
     <div class="search-results-body" id="searchResultsBody"></div>
   </div>
 </div>
-
-<!-- ═══ METRICS ═══ -->
-<section class="metrics-section">
-  <div class="metrics-grid">
-    <a class="metric" href="#signals" onclick="document.getElementById('dealSection').scrollIntoView({behavior:'smooth'});return false;">
-      <div class="metric-label">Signals</div>
-      <div class="metric-value" id="metricSignals">—</div>
-      <div class="metric-delta" id="metricSignals24h"></div>
-    </a>
-    <a class="metric" href="/companies.html">
-      <div class="metric-label">Companies</div>
-      <div class="metric-value" id="metricCompanies">—</div>
-      <div class="metric-delta">with signals</div>
-    </a>
-    <a class="metric" href="/placements.html">
-      <div class="metric-label">Revenue</div>
-      <div class="metric-value positive" id="metricRevenue">—</div>
-      <div class="metric-delta" id="metricPlacements"></div>
-    </a>
-    <a class="metric" href="/people.html">
-      <div class="metric-label">People</div>
-      <div class="metric-value" id="metricPeople">—</div>
-      <div class="metric-delta" id="metricPeopleNotes"></div>
-    </a>
-    <a class="metric" href="#content" onclick="document.getElementById('contentSection').scrollIntoView({behavior:'smooth'});return false;">
-      <div class="metric-label">Documents</div>
-      <div class="metric-value" id="metricDocs">—</div>
-      <div class="metric-delta" id="metricDocsDetail"></div>
-    </a>
-    <a class="metric" href="#content" onclick="document.getElementById('contentSection').scrollIntoView({behavior:'smooth'});return false;">
-      <div class="metric-label">Sources</div>
-      <div class="metric-value" id="metricSources">—</div>
-      <div class="metric-delta">active feeds</div>
-    </a>
-  </div>
-</section>
 
 <!-- ═══ MAIN CONTENT ═══ -->
 <div class="content-section">
@@ -1896,7 +1885,7 @@ async function loadStats() {
     const s = await api('/api/stats');
 
     document.getElementById('metricSignals').textContent = s.signals_total.toLocaleString();
-    document.getElementById('metricSignals24h').innerHTML = `<span class="up">↑ ${s.signals_24h}</span> last 24h`;
+    document.getElementById('metricSignals24h').innerHTML = `<span class="up">\u2191${s.signals_24h}</span> 24h`;
     document.getElementById('metricCompanies').textContent = s.companies_count.toLocaleString();
     document.getElementById('metricPeople').textContent = (s.people_count / 1000).toFixed(1) + 'K';
     document.getElementById('metricPeopleNotes').textContent = s.people_with_notes.toLocaleString() + ' with notes';
@@ -1905,7 +1894,7 @@ async function loadStats() {
 
     const rev = s.placements_total_fees;
     document.getElementById('metricRevenue').textContent = rev >= 1000000 ? '$' + (rev/1000000).toFixed(1) + 'M' : '$' + (rev/1000).toFixed(0) + 'K';
-    document.getElementById('metricPlacements').textContent = s.placements_count + ' placements';
+    document.getElementById('metricPlacements').textContent = s.placements_count.toLocaleString() + ' projects';
 
     // Ticker
     // Old agent-ticker elements removed — signal-ticker.js handles this now
