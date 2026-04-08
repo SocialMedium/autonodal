@@ -3345,7 +3345,7 @@ async function init() {
     }
 
     // Set tenant branding
-    var tenantName = (data.tenant && data.tenant.name) || user.tenant_name || 'Signals';
+    var tenantName = (meData.tenant && meData.tenant.name) || user.tenant_name || 'Signals';
     if (tenantName) localStorage.setItem('ml_tenant_name', tenantName);
     var brandLabel = tenantName + ' <em>Signals</em>';
     document.title = tenantName + ' Signals';
