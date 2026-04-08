@@ -1234,26 +1234,27 @@ app.post('/api/feeds/propose', authenticateToken, async (req, res) => {
 
 app.get('/api/stats', authenticateToken, async (req, res) => {
   try {
-    const db = new TenantDB(req.tenant_id);
+    // Use platformPool to bypass RLS — queries explicitly filter by tenant_id
+    const tid = req.tenant_id;
     const [
       people, signals24h, signalsTotal, companies,
       documents, placements, activeSources,
       peopleWithNotes, signalsByType, docsByType,
       eventsThisWeek, events30d, activeEventSources
     ] = await Promise.all([
-      db.query('SELECT COUNT(*) AS cnt FROM people WHERE tenant_id = $1', [req.tenant_id]),
-      db.query(`SELECT COUNT(*) AS cnt FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND (tenant_id IS NULL OR tenant_id = $1)`, [req.tenant_id]),
-      db.query('SELECT COUNT(*) AS cnt FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1)', [req.tenant_id]),
-      db.query('SELECT COUNT(*) AS cnt FROM companies WHERE tenant_id = $1', [req.tenant_id]),
-      db.query('SELECT COUNT(*) AS cnt FROM external_documents WHERE (tenant_id IS NULL OR tenant_id = $1)', [req.tenant_id]),
-      db.query('SELECT COUNT(*) AS cnt, COALESCE(SUM(placement_fee), 0) AS total_fees FROM conversions WHERE tenant_id = $1 AND source IN (\'xero_export\', \'xero\', \'manual\') AND placement_fee IS NOT NULL', [req.tenant_id]),
-      db.query('SELECT COUNT(*) AS cnt FROM rss_sources WHERE enabled = true'),
-      db.query(`SELECT COUNT(DISTINCT person_id) AS cnt FROM interactions WHERE interaction_type = 'research_note' AND tenant_id = $1`, [req.tenant_id]),
-      db.query(`SELECT signal_type, COUNT(*) AS cnt FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1) GROUP BY signal_type ORDER BY cnt DESC`, [req.tenant_id]),
-      db.query(`SELECT source_type, COUNT(*) AS cnt FROM external_documents WHERE (tenant_id IS NULL OR tenant_id = $1) GROUP BY source_type ORDER BY cnt DESC`, [req.tenant_id]),
-      db.query(`SELECT COUNT(*) AS cnt FROM events WHERE (tenant_id IS NULL OR tenant_id = $1) AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 7`, [req.tenant_id]).catch(() => ({ rows: [{ cnt: 0 }] })),
-      db.query(`SELECT COUNT(*) AS cnt FROM events WHERE (tenant_id IS NULL OR tenant_id = $1) AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 30`, [req.tenant_id]).catch(() => ({ rows: [{ cnt: 0 }] })),
-      db.query(`SELECT COUNT(*) AS cnt FROM event_sources WHERE (tenant_id IS NULL OR tenant_id = $1) AND is_active = true`, [req.tenant_id]).catch(() => ({ rows: [{ cnt: 0 }] })),
+      platformPool.query('SELECT COUNT(*) AS cnt FROM people WHERE tenant_id = $1', [tid]),
+      platformPool.query(`SELECT COUNT(*) AS cnt FROM signal_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND (tenant_id IS NULL OR tenant_id = $1)`, [tid]),
+      platformPool.query('SELECT COUNT(*) AS cnt FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1)', [tid]),
+      platformPool.query('SELECT COUNT(*) AS cnt FROM companies WHERE tenant_id = $1', [tid]),
+      platformPool.query('SELECT COUNT(*) AS cnt FROM external_documents WHERE (tenant_id IS NULL OR tenant_id = $1)', [tid]),
+      platformPool.query('SELECT COUNT(*) AS cnt, COALESCE(SUM(placement_fee), 0) AS total_fees FROM conversions WHERE tenant_id = $1 AND source IN (\'xero_export\', \'xero\', \'manual\') AND placement_fee IS NOT NULL', [tid]),
+      platformPool.query('SELECT COUNT(*) AS cnt FROM rss_sources WHERE enabled = true'),
+      platformPool.query(`SELECT COUNT(DISTINCT person_id) AS cnt FROM interactions WHERE interaction_type = 'research_note' AND tenant_id = $1`, [tid]),
+      platformPool.query(`SELECT signal_type, COUNT(*) AS cnt FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1) GROUP BY signal_type ORDER BY cnt DESC`, [tid]),
+      platformPool.query(`SELECT source_type, COUNT(*) AS cnt FROM external_documents WHERE (tenant_id IS NULL OR tenant_id = $1) GROUP BY source_type ORDER BY cnt DESC`, [tid]),
+      platformPool.query(`SELECT COUNT(*) AS cnt FROM events WHERE (tenant_id IS NULL OR tenant_id = $1) AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 7`, [tid]).catch(() => ({ rows: [{ cnt: 0 }] })),
+      platformPool.query(`SELECT COUNT(*) AS cnt FROM events WHERE (tenant_id IS NULL OR tenant_id = $1) AND event_date >= CURRENT_DATE AND event_date <= CURRENT_DATE + 30`, [tid]).catch(() => ({ rows: [{ cnt: 0 }] })),
+      platformPool.query(`SELECT COUNT(*) AS cnt FROM event_sources WHERE (tenant_id IS NULL OR tenant_id = $1) AND is_active = true`, [tid]).catch(() => ({ rows: [{ cnt: 0 }] })),
     ]);
 
     res.json({
@@ -1887,7 +1888,8 @@ app.get('/api/reengage-windows', authenticateToken, async (req, res) => {
 
 app.get('/api/signals/brief', authenticateToken, async (req, res) => {
   try {
-    const db = new TenantDB(req.tenant_id);
+    // Use platformPool to bypass RLS — query explicitly filters by tenant_id
+    const db = { query: (text, params) => platformPool.query(text, params) };
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const offset = parseInt(req.query.offset) || 0;
     const type = req.query.type;
