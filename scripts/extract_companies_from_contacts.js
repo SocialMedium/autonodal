@@ -237,13 +237,16 @@ async function main() {
         );
 
         if (existing.length) {
-          // Update domain if not set
+          // Update domain if not set (skip if another company already has this domain)
           if (!DRY_RUN) {
-            await pool.query(
-              `UPDATE companies SET domain = COALESCE(domain, $1), updated_at = NOW()
-               WHERE id = $2 AND domain IS NULL`,
-              [d.domain, existing[0].id]
-            );
+            try {
+              await pool.query(
+                `UPDATE companies SET domain = $1, updated_at = NOW()
+                 WHERE id = $2 AND domain IS NULL
+                   AND NOT EXISTS (SELECT 1 FROM companies c2 WHERE c2.domain = $1 AND c2.tenant_id = $3 AND c2.id != $2)`,
+                [d.domain, existing[0].id, tenantId]
+              );
+            } catch (e) { /* domain already taken */ }
           }
           continue;
         }
