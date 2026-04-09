@@ -1678,15 +1678,33 @@ a.stats-card-row:hover { background: var(--surface-warm); }
         <!-- Region cards injected by JS -->
       </div>
 
-      <!-- Today's Insight -->
-      <div id="insightCard" style="display:none;margin-bottom:20px">
-        <div style="background:linear-gradient(135deg,#111827 0%,#1e293b 100%);border:1px solid #1e2d3d;border-radius:var(--radius);padding:18px 20px;color:#e2e8f0">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#f59e0b">🧭 Today's Insight</span>
-            <span id="insightDate" style="font-size:10px;color:#64748b"></span>
+      <!-- Today's Insight + Market Health -->
+      <div id="insightHealthRow" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+        <!-- Insight -->
+        <div id="insightCard" style="display:none">
+          <div style="background:linear-gradient(135deg,#111827 0%,#1e293b 100%);border:1px solid #1e2d3d;border-radius:var(--radius);padding:18px 20px;color:#e2e8f0;height:100%">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#f59e0b">Today's Insight</span>
+              <span id="insightDate" style="font-size:10px;color:#64748b"></span>
+            </div>
+            <div id="insightHeadline" style="font-family:var(--serif);font-size:16px;font-weight:600;margin-bottom:6px;color:#f1f5f9"></div>
+            <div id="insightBody" style="font-size:13px;line-height:1.55;color:#94a3b8"></div>
           </div>
-          <div id="insightHeadline" style="font-family:var(--serif);font-size:16px;font-weight:600;margin-bottom:6px;color:#f1f5f9"></div>
-          <div id="insightBody" style="font-size:13px;line-height:1.55;color:#94a3b8"></div>
+        </div>
+        <!-- Market Health -->
+        <div id="marketHealthCard" style="display:none">
+          <div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:18px 20px;height:100%">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-4)">Market Health</span>
+              <span id="mhHorizon" style="font-size:10px;color:var(--ink-4)">7d</span>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px">
+              <span id="mhScore" style="font-family:var(--serif);font-size:28px;font-weight:700;color:var(--ink)">—</span>
+              <span id="mhDelta" style="font-size:13px;font-weight:600"></span>
+              <span id="mhDirection" style="font-size:11px;color:var(--ink-3)"></span>
+            </div>
+            <div id="mhRegions" style="display:flex;flex-direction:column;gap:6px"></div>
+          </div>
         </div>
       </div>
 
@@ -2272,6 +2290,46 @@ async function loadTodayInsight() {
     document.getElementById('insightBody').textContent = insight.body || '';
     document.getElementById('insightDate').textContent = insight.insight_date ? new Date(insight.insight_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
     document.getElementById('insightCard').style.display = 'block';
+  } catch(e) {}
+}
+
+async function loadMarketHealthCard() {
+  try {
+    var data = await api('/api/signals/ticker?horizon=7d');
+    if (!data || !data.market_health) return;
+    var mh = data.market_health;
+    var score = Math.round(mh.score || 50);
+    var delta = mh.delta || 0;
+    var dir = mh.direction || 'flat';
+
+    document.getElementById('mhScore').textContent = score;
+    var deltaEl = document.getElementById('mhDelta');
+    var dirEl = document.getElementById('mhDirection');
+    deltaEl.textContent = (delta >= 0 ? '+' : '') + Math.round(delta * 10) / 10 + '%';
+    deltaEl.style.color = delta > 0 ? 'var(--emerald)' : delta < 0 ? 'var(--rose)' : 'var(--ink-3)';
+    dirEl.textContent = dir === 'up' ? 'trending up' : dir === 'down' ? 'trending down' : 'flat';
+
+    // Build region signal breakdown from stocks
+    var stocks = data.signal_stocks || {};
+    var regionHtml = '';
+    var stockOrder = ['strategic_hiring', 'capital_raising', 'geographic_expansion', 'product_launch', 'partnership', 'ma_activity', 'restructuring', 'layoffs', 'leadership_change'];
+    var stockLabels = { strategic_hiring: 'Hiring', capital_raising: 'Funding', geographic_expansion: 'Expansion', product_launch: 'Product', partnership: 'Partnership', ma_activity: 'M&A', restructuring: 'Restructuring', layoffs: 'Layoffs', leadership_change: 'Leadership' };
+    var stockColors = { bullish: 'var(--emerald)', bearish: 'var(--rose)', neutral: 'var(--ink-3)' };
+
+    stockOrder.forEach(function(key) {
+      var s = stocks[key];
+      if (!s) return;
+      var d = s.delta || 0;
+      var col = d > 5 ? 'var(--emerald)' : d < -5 ? 'var(--rose)' : 'var(--ink-4)';
+      var arrow = d > 2 ? '↑' : d < -2 ? '↓' : '—';
+      regionHtml += '<div style="display:flex;align-items:center;justify-content:space-between;font-size:11px">' +
+        '<span style="color:var(--ink-2)">' + (stockLabels[key] || key) + '</span>' +
+        '<span style="font-weight:600;color:' + col + ';font-variant-numeric:tabular-nums">' + arrow + ' ' + (d >= 0 ? '+' : '') + Math.round(d) + '%</span>' +
+      '</div>';
+    });
+
+    document.getElementById('mhRegions').innerHTML = regionHtml;
+    document.getElementById('marketHealthCard').style.display = 'block';
   } catch(e) {}
 }
 
@@ -3414,6 +3472,7 @@ async function init() {
   loadRegionCards();
   loadDashboardEvents();
   loadTodayInsight();
+  loadMarketHealthCard();
   loadSignals();
   loadTopPodcasts();
   loadTalentInMotion();
