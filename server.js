@@ -1313,6 +1313,7 @@ app.get('/api/signals/hero', authenticateToken, async (req, res) => {
         LEFT JOIN external_documents ed ON ed.id = se.source_document_id
         WHERE (se.tenant_id IS NULL OR se.tenant_id = $1)
           AND se.detected_at > NOW() - INTERVAL '7 days'
+          AND COALESCE(se.signal_date, se.detected_at) > NOW() - INTERVAL '30 days'
           AND COALESCE(se.is_megacap, false) = false
           AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')
           AND se.company_name IS NOT NULL
@@ -1918,6 +1919,8 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
 
     // Exclude megacaps, tenant company, and self-referential signals from feed
     where += ` AND COALESCE(se.is_megacap, false) = false AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')`;
+    // Hard date filter: only signals from last 90 days (signal_date or detected_at)
+    where += ` AND COALESCE(se.signal_date, se.detected_at) > NOW() - INTERVAL '90 days'`;
     // Also exclude signals whose company_name matches the tenant name (catches un-linked records)
     if (req.user.tenant_name) {
       paramIdx++;
@@ -3995,6 +3998,12 @@ Only include genuine business signals. Ignore opinion pieces, listicles, or gene
             if (!sig.signal_type || !sig.evidence_summary) continue;
             const headlineItem = newsItems[sig.headline_index - 1];
             if (!headlineItem) continue;
+
+            // Skip old news — only accept articles from the last 90 days
+            if (headlineItem.pubDate) {
+              const articleAge = Date.now() - new Date(headlineItem.pubDate).getTime();
+              if (articleAge > 90 * 24 * 60 * 60 * 1000) continue;
+            }
 
             // Check for duplicate signal
             const { rows: existing } = await db.query(
