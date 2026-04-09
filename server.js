@@ -6339,6 +6339,119 @@ app.get('/api/huddles/:id/network/:personId', authenticateToken, async function(
   }
 });
 
+// GET /api/huddles/:id/signals — cross-tenant signal feed for a huddle
+app.get('/api/huddles/:id/signals', authenticateToken, async function(req, res) {
+  try {
+    var membership = await verifyHuddleMember(req.params.id, req.tenant_id);
+    if (!membership) return res.status(403).json({ error: 'Not a member of this huddle' });
+
+    var limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    var offset = parseInt(req.query.offset) || 0;
+    var typeFilter = req.query.type || null;
+    var regionFilter = req.query.region || null;
+
+    var conditions = ['se.tenant_id IS NULL'];
+    var params = [req.params.id];
+    var paramIdx = 1;
+
+    // Only recent signals with confirmed dates
+    conditions.push("se.signal_date IS NOT NULL AND se.signal_date > NOW() - INTERVAL '90 days'");
+
+    if (typeFilter) {
+      paramIdx++;
+      conditions.push('se.signal_type = $' + paramIdx + '::signal_type');
+      params.push(typeFilter);
+    }
+    if (regionFilter && regionFilter !== 'all') {
+      paramIdx++;
+      conditions.push('(c.geography ILIKE $' + paramIdx + ' OR c.country_code = $' + paramIdx + ')');
+      params.push('%' + regionFilter + '%');
+    }
+
+    var where = conditions.join(' AND ');
+
+    paramIdx++;
+    var limitParam = paramIdx;
+    params.push(limit);
+    paramIdx++;
+    var offsetParam = paramIdx;
+    params.push(offset);
+
+    var query = `
+      WITH member_tenants AS (
+        SELECT hm.tenant_id, t.name AS tenant_name
+        FROM huddle_members hm
+        JOIN tenants t ON t.id = hm.tenant_id
+        WHERE hm.huddle_id = $1 AND hm.status = 'active'
+      ),
+      client_matches AS (
+        SELECT DISTINCT LOWER(co.name) AS company_lower, mt.tenant_name
+        FROM companies co
+        JOIN member_tenants mt ON co.tenant_id = mt.tenant_id
+        WHERE co.is_client = true
+      ),
+      contact_counts AS (
+        SELECT p.current_company_id, COUNT(*) AS cnt
+        FROM people p
+        WHERE p.tenant_id IN (SELECT tenant_id FROM member_tenants)
+          AND p.current_company_id IS NOT NULL
+        GROUP BY p.current_company_id
+      )
+      SELECT se.id, se.signal_type, se.company_name, se.company_id,
+             se.confidence_score, se.evidence_summary, se.evidence_snippet,
+             se.triage_status, se.detected_at, se.signal_date, se.source_url,
+             se.signal_category, se.hiring_implications, se.image_url,
+             c.sector, c.geography, c.country_code,
+             COALESCE(cc.cnt, 0)::int AS combined_contact_count,
+             cm.tenant_name AS client_via,
+             CASE WHEN cm.tenant_name IS NOT NULL THEN true ELSE false END AS huddle_client
+      FROM signal_events se
+      LEFT JOIN companies c ON se.company_id = c.id AND c.tenant_id IS NULL
+      LEFT JOIN client_matches cm ON LOWER(se.company_name) = cm.company_lower
+      LEFT JOIN contact_counts cc ON cc.current_company_id = se.company_id
+      WHERE ${where}
+      ORDER BY
+        CASE WHEN cm.tenant_name IS NOT NULL THEN 0 ELSE 1 END,
+        COALESCE(cc.cnt, 0) DESC,
+        CASE se.signal_type
+          WHEN 'strategic_hiring' THEN 1
+          WHEN 'geographic_expansion' THEN 2
+          WHEN 'capital_raising' THEN 3
+          WHEN 'product_launch' THEN 4
+          WHEN 'partnership' THEN 5
+          ELSE 6
+        END,
+        se.confidence_score DESC,
+        se.signal_date DESC
+      LIMIT $${limitParam} OFFSET $${offsetParam}`;
+
+    var countQuery = `
+      WITH member_tenants AS (
+        SELECT hm.tenant_id, t.name AS tenant_name
+        FROM huddle_members hm
+        JOIN tenants t ON t.id = hm.tenant_id
+        WHERE hm.huddle_id = $1 AND hm.status = 'active'
+      )
+      SELECT COUNT(*) FROM signal_events se
+      LEFT JOIN companies c ON se.company_id = c.id AND c.tenant_id IS NULL
+      WHERE ${where}`;
+
+    var countParams = params.slice(0, params.length - 2); // exclude limit/offset
+
+    var [signalsResult, countResult] = await Promise.all([
+      platformPool.query(query, params),
+      platformPool.query(countQuery, countParams)
+    ]);
+
+    var total = parseInt(countResult.rows[0].count) || 0;
+
+    res.json({ signals: signalsResult.rows, total: total });
+  } catch (err) {
+    console.error('Huddle signals error:', err.message);
+    res.status(500).json({ error: 'Failed to load huddle signals' });
+  }
+});
+
 // GET /api/me/influence — individual influence dashboard
 app.get('/api/me/influence', authenticateToken, async function(req, res) {
   try {

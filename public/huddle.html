@@ -130,11 +130,6 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .pc-path { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 6px 0; }
 .pc-path + .pc-path { border-top: 1px dashed var(--rule); }
 
-/* Signals placeholder */
-.signals-placeholder { text-align: center; padding: 60px 20px; color: var(--ink-3); }
-.signals-placeholder .sp-icon { display: flex; justify-content: center; margin-bottom: 16px; color: var(--ink-4); }
-.signals-placeholder h3 { font-family: var(--serif); font-size: 18px; font-weight: 600; color: var(--ink-2); margin-bottom: 6px; }
-
 /* Modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 200; display: none; align-items: center; justify-content: center; }
 .modal-overlay.open { display: flex; }
@@ -256,10 +251,20 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 
   <!-- Signals tab -->
   <div id="tab-signals" class="tab-content" style="display:none;">
-    <div class="signals-placeholder">
-      <div class="sp-icon" id="signalsIcon"></div>
-      <h3>Signal feed coming soon</h3>
-      <p>Signals will be pooled from all member feeds</p>
+    <div class="filter-chips" id="signalTypeFilters">
+      <span class="chip active" data-signal-type="all" onclick="setSignalType('all')">All</span>
+      <span class="chip" data-signal-type="hiring" onclick="setSignalType('hiring')">Hiring</span>
+      <span class="chip" data-signal-type="funding" onclick="setSignalType('funding')">Funding</span>
+      <span class="chip" data-signal-type="expansion" onclick="setSignalType('expansion')">Expansion</span>
+      <span class="chip" data-signal-type="m_and_a" onclick="setSignalType('m_and_a')">M&amp;A</span>
+      <span class="chip" data-signal-type="restructuring" onclick="setSignalType('restructuring')">Restructuring</span>
+      <span class="chip" data-signal-type="leadership" onclick="setSignalType('leadership')">Leadership</span>
+      <span class="chip" data-signal-type="product" onclick="setSignalType('product')">Product</span>
+      <span class="chip" data-signal-type="partnership" onclick="setSignalType('partnership')">Partnership</span>
+    </div>
+    <div id="signalFeed"></div>
+    <div class="load-more-wrap" id="signalLoadMoreWrap" style="display:none;">
+      <button class="btn btn-secondary" onclick="loadMoreSignals()">Load more</button>
     </div>
   </div>
 </main>
@@ -358,6 +363,9 @@ function switchTab(tab) {
   }
   if (tab === 'network' && document.getElementById('personList').innerHTML === '') {
     loadNetwork();
+  }
+  if (tab === 'signals' && document.getElementById('signalFeed').innerHTML === '') {
+    loadHuddleSignals();
   }
 }
 
@@ -521,6 +529,108 @@ function loadMorePeople() {
 }
 
 /* ═══════════════════════════════════════
+   SIGNALS
+   ═══════════════════════════════════════ */
+var signalOffset = 0;
+var signalLimit = 20;
+var currentSignalType = 'all';
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  var seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  var minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes + 'm ago';
+  var hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + 'h ago';
+  var days = Math.floor(hours / 24);
+  if (days < 30) return days + 'd ago';
+  var months = Math.floor(days / 30);
+  return months + 'mo ago';
+}
+
+function signalTypeBadge(type) {
+  var colors = {
+    hiring: 'background:var(--blue-soft);color:var(--blue)',
+    funding: 'background:var(--emerald-soft);color:var(--emerald)',
+    expansion: 'background:var(--amber-soft);color:var(--amber)',
+    m_and_a: 'background:var(--rose-soft);color:var(--rose)',
+    restructuring: 'background:var(--rose-soft);color:var(--rose)',
+    leadership: 'background:var(--violet-soft);color:var(--violet)',
+    product: 'background:var(--blue-soft);color:var(--blue)',
+    partnership: 'background:var(--emerald-soft);color:var(--emerald)'
+  };
+  var style = colors[(type || '').toLowerCase()] || 'background:var(--surface-cool);color:var(--ink-3)';
+  var label = (type || 'unknown').replace(/_/g, ' ').replace(/\bm and a\b/i, 'M&A');
+  return '<span class="badge" style="' + style + ';text-transform:uppercase">' + esc(label) + '</span>';
+}
+
+function loadHuddleSignals(append) {
+  if (!append) {
+    signalOffset = 0;
+    document.getElementById('signalFeed').innerHTML = '';
+  }
+  var params = '?limit=' + signalLimit + '&offset=' + signalOffset;
+  if (currentSignalType !== 'all') params += '&type=' + encodeURIComponent(currentSignalType);
+
+  api('/api/huddles/' + HUDDLE_ID + '/signals' + params).then(function(data) {
+    var signals = data.signals || data || [];
+    if (!Array.isArray(signals)) signals = [];
+    var feed = document.getElementById('signalFeed');
+    var html = signals.map(function(s) {
+      var clientBadge = '';
+      if (s.huddle_client) {
+        clientBadge = '<span class="badge" style="background:var(--amber-soft);color:var(--amber)">'
+          + 'Client' + (s.partner_name ? ' via ' + esc(s.partner_name) : '') + '</span>';
+      }
+      var confidence = s.confidence != null ? Math.round(s.confidence * 100) + '%' : '';
+      var contacts = s.combined_contact_count != null ? s.combined_contact_count : '';
+
+      return '<div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:18px 22px;box-shadow:var(--shadow-card);transition:all 0.2s;margin-bottom:10px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'
+        + '  <div style="font-family:var(--serif);font-size:17px;font-weight:600;">' + esc(s.company_name || s.company || '') + '</div>'
+        + '  <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">'
+        + signalTypeBadge(s.signal_type || s.type)
+        + clientBadge
+        + '  </div>'
+        + '</div>'
+        + '<div style="font-size:13px;color:var(--ink-2);line-height:1.5;margin-bottom:10px;">' + esc(s.evidence_summary || s.summary || '') + '</div>'
+        + '<div style="display:flex;gap:14px;font-size:12px;color:var(--ink-3);font-family:var(--mono);">'
+        + (contacts !== '' ? '<span>' + icon('users') + ' ' + contacts + ' contacts</span>' : '')
+        + (confidence ? '<span>' + icon('sparkle') + ' ' + confidence + '</span>' : '')
+        + '<span>' + timeAgo(s.detected_at || s.created_at) + '</span>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+
+    if (append) {
+      feed.innerHTML += html;
+    } else {
+      feed.innerHTML = html || '<div style="text-align:center;padding:40px;color:var(--ink-3);font-size:14px">No signals found</div>';
+    }
+    var more = document.getElementById('signalLoadMoreWrap');
+    more.style.display = signals.length >= signalLimit ? '' : 'none';
+    signalOffset += signals.length;
+  }).catch(function(err) {
+    console.error('Failed to load huddle signals', err);
+    document.getElementById('signalFeed').innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink-3);font-size:14px">Failed to load signals</div>';
+  });
+}
+
+function setSignalType(type) {
+  currentSignalType = type;
+  var chips = document.querySelectorAll('#signalTypeFilters .chip');
+  for (var i = 0; i < chips.length; i++) {
+    chips[i].classList.toggle('active', chips[i].getAttribute('data-signal-type') === type);
+  }
+  loadHuddleSignals(false);
+}
+
+function loadMoreSignals() {
+  loadHuddleSignals(true);
+}
+
+/* ═══════════════════════════════════════
    INVITE
    ═══════════════════════════════════════ */
 function openInviteModal() {
@@ -665,8 +775,6 @@ function confirmJoin() {
 
   /* Icons */
   document.getElementById('searchIcon').innerHTML = icon('search');
-  document.getElementById('signalsIcon').innerHTML = icon('radio', 32);
-
   loadHuddle();
 
   /* User avatar */
