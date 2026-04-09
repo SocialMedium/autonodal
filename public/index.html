@@ -137,24 +137,28 @@ body {
   gap: 16px;
 }
 .user-menu-wrap { position: relative; }
-.user-menu-wrap:hover .user-dropdown { display: block; }
+.user-menu-wrap .user-dropdown { display: none; }
+.user-menu-wrap.open .user-dropdown { display: block; }
 .user-dropdown {
-  display: none; position: absolute; top: 100%; right: 0; margin-top: 6px;
-  background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.1); min-width: 200px; z-index: 200;
-  padding: 6px 0; font-size: 13px;
+  position: absolute; top: calc(100% + 4px); right: 0;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.12); min-width: 220px; z-index: 200;
+  padding: 8px 0; font-size: 13px;
 }
-.user-dropdown-header { padding: 10px 16px; border-bottom: 1px solid var(--rule); }
-.user-dropdown-name { font-weight: 600; font-size: 13px; }
-.user-dropdown-email { font-size: 11px; color: var(--ink-3); }
-.user-dropdown-role { font-size: 10px; color: var(--blue); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+.user-dropdown-header { padding: 12px 16px; border-bottom: 1px solid var(--rule); }
+.user-dropdown-name { font-weight: 600; font-size: 14px; }
+.user-dropdown-email { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+.user-dropdown-role { font-size: 10px; color: var(--blue); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 3px; font-weight: 600; }
 .user-dropdown a, .user-dropdown button {
-  display: block; width: 100%; text-align: left; padding: 8px 16px;
-  font-size: 12px; color: var(--ink-2); text-decoration: none;
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 9px 16px;
+  font-size: 13px; color: var(--ink-2); text-decoration: none;
   border: none; background: none; cursor: pointer; font-family: inherit;
+  border-radius: 0; transition: background 0.1s;
 }
 .user-dropdown a:hover, .user-dropdown button:hover { background: var(--surface-warm); color: var(--ink); }
 .user-dropdown .sep { border-top: 1px solid var(--rule); margin: 4px 0; }
+.user-dropdown .sign-out { color: var(--rose); }
+.user-dropdown .sign-out:hover { background: #fef2f2; }
 
 /* Agent ticker */
 /* Old agent-ticker replaced by signal-ticker.js */
@@ -1541,24 +1545,21 @@ a.stats-card-row:hover { background: var(--surface-warm); }
       <a href="/case-studies.html">Case Studies</a><a href="/huddles.html">Huddles</a>
     </nav>
     <div class="masthead-right">
-      <div class="user-menu-wrap">
-        <div class="masthead-user" id="userAvatar">?</div>
-        <div class="user-dropdown" id="userDropdown">
+      <div class="user-menu-wrap" id="userMenuWrap">
+        <div class="masthead-user" id="userAvatar" onclick="document.getElementById('userMenuWrap').classList.toggle('open');event.stopPropagation()" style="cursor:pointer">?</div>
+        <div class="user-dropdown" id="userDropdown" onclick="event.stopPropagation()">
           <div class="user-dropdown-header">
-            <div class="user-dropdown-name" id="dropdownName">—</div>
-            <div class="user-dropdown-email" id="dropdownEmail">—</div>
+            <div class="user-dropdown-name" id="dropdownName">&#8212;</div>
+            <div class="user-dropdown-email" id="dropdownEmail">&#8212;</div>
             <div class="user-dropdown-role" id="dropdownRole"></div>
           </div>
-          <a href="/profile.html">My Profile & Data</a>
-          
-          <div class="sep"></div>
+          <a href="/profile.html">My Profile &amp; Data</a>
           <a href="/admin.html" id="adminLink" style="display:none">Admin Dashboard</a>
-          <div class="sep" id="adminSep" style="display:none"></div>
           <div class="sep"></div>
-          <button onclick="restartTour()" style="font-size:12px">\ud83c\udfaf Restart guided tour</button>
-          <button onclick="window._hints&&window._hints.resetAll()" style="font-size:12px">ⓘ Reset feature hints</button>
+          <button onclick="restartTour()">Restart guided tour</button>
+          <button onclick="window._hints&&window._hints.resetAll()">Reset feature hints</button>
           <div class="sep"></div>
-          <button onclick="doLogout()">Sign Out</button>
+          <button class="sign-out" onclick="doLogout()">Sign Out</button>
         </div>
       </div>
     </div>
@@ -1853,6 +1854,12 @@ function hideLogin() { document.getElementById('loginOverlay').classList.remove(
     window.history.replaceState({}, '', '/index.html');
   }
 })();
+
+// Close user menu on click outside
+document.addEventListener('click', function() {
+  var wrap = document.getElementById('userMenuWrap');
+  if (wrap) wrap.classList.remove('open');
+});
 
 function doLogout() {
   if (!confirm('Sign out?')) return;
