@@ -28,7 +28,7 @@
     if (document.getElementById('si-css')) return;
     var s = document.createElement('style'); s.id = 'si-css';
     s.textContent = [
-      '#signal-ticker{height:44px;background:#0d1117;display:flex;align-items:stretch;font-family:var(--mono,"IBM Plex Mono",monospace);font-size:11px;overflow:hidden;color:#c9d1d9;width:100%}',
+      '#signal-ticker{height:44px;background:#0d1117;display:flex;align-items:stretch;font-family:var(--mono,"IBM Plex Mono",monospace);font-size:11px;overflow:hidden;color:#e8edf3;width:100%}',
       '#signal-ticker.si-top{position:relative;width:100%;border-bottom:1px solid #21262d}',
       '#signal-ticker.si-bottom{position:fixed;bottom:0;left:0;right:0;border-top:1px solid #21262d;z-index:9999}',
       '#signal-ticker.si-fixed-top{position:fixed;top:0;left:0;right:0;border-bottom:1px solid #21262d;box-shadow:0 1px 4px rgba(0,0,0,.2);z-index:9999}',
@@ -37,25 +37,25 @@
       '.si-live{display:flex;align-items:center;gap:6px;padding:0 12px;border-right:1px solid #21262d;flex-shrink:0;white-space:nowrap}',
       '.si-dot{width:5px;height:5px;border-radius:50%;background:#3fb950;animation:si-p 2s ease-in-out infinite;flex-shrink:0}',
       '@keyframes si-p{0%,100%{opacity:1}50%{opacity:.3}}',
-      '.si-label{font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#8b949e}',
+      '.si-label{font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#b0bac6}',
       '.si-score{font-size:16px;font-weight:600;cursor:pointer;letter-spacing:-.02em}',
       '.si-score:hover{text-decoration:underline}',
-      '.si-bull{color:#3fb950} .si-bear{color:#f85149} .si-flat{color:#8b949e}',
-      '.si-stat{display:flex;align-items:center;gap:3px;padding:0 10px;border-right:1px solid #21262d;flex-shrink:0;color:#8b949e;white-space:nowrap;font-size:10px}',
-      '.si-stat b{color:#c9d1d9;font-weight:500}',
+      '.si-bull{color:#3fb950} .si-bear{color:#f85149} .si-flat{color:#b0bac6}',
+      '.si-stat{display:flex;align-items:center;gap:3px;padding:0 10px;border-right:1px solid #21262d;flex-shrink:0;color:#b0bac6;white-space:nowrap;font-size:10px}',
+      '.si-stat b{color:#e8edf3;font-weight:500}',
       '.si-scroll{flex:1;overflow:hidden;display:flex;align-items:center;position:relative}',
       '.si-inner{display:flex;align-items:center;animation:si-s 50s linear infinite;white-space:nowrap}',
       '.si-inner:hover{animation-play-state:paused}',
       '@keyframes si-s{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}',
       '.si-stk{display:inline-flex;align-items:center;gap:6px;padding:0 16px;height:44px;border-right:1px solid #21262d;cursor:default;font-size:11px}',
-      '.si-stk-n{color:#c9d1d9;font-weight:500}',
+      '.si-stk-n{color:#e8edf3;font-weight:500}',
       '.si-bar{display:inline-block;width:28px;height:3px;background:#21262d;border-radius:2px;overflow:hidden;vertical-align:middle}',
       '.si-bar i{display:block;height:100%;border-radius:2px;transition:width .5s}',
       '.si-ctrl{display:flex;align-items:center;gap:1px;padding:0 6px;border-left:1px solid #21262d;flex-shrink:0}',
-      '.si-btn{padding:3px 7px;border:none;border-radius:4px;background:transparent;font-size:10px;font-family:inherit;color:#8b949e;cursor:pointer;transition:all .1s}',
-      '.si-btn:hover{background:#21262d;color:#c9d1d9}',
+      '.si-btn{padding:3px 7px;border:none;border-radius:4px;background:transparent;font-size:10px;font-family:inherit;color:#b0bac6;cursor:pointer;transition:all .1s}',
+      '.si-btn:hover{background:#21262d;color:#e8edf3}',
       '.si-btn.on{background:#21262d;color:#f0f6fc;font-weight:600}',
-      '#si-panel{position:fixed;right:0;width:400px;background:#0d1117;border:1px solid #21262d;padding:14px;z-index:9998;box-shadow:-4px -4px 20px rgba(0,0,0,.3);font-family:var(--mono,"IBM Plex Mono",monospace);font-size:11px;color:#c9d1d9;display:none}',
+      '#si-panel{position:fixed;right:0;width:400px;background:#0d1117;border:1px solid #21262d;padding:14px;z-index:9998;box-shadow:-4px -4px 20px rgba(0,0,0,.3);font-family:var(--mono,"IBM Plex Mono",monospace);font-size:11px;color:#e8edf3;display:none}',
       '#si-panel.si-panel-top{top:44px;border-top:none;border-radius:0 0 0 8px}',
       '#si-panel.si-panel-bottom{bottom:44px;border-bottom:none;border-radius:8px 0 0 0}',
       '#si-panel.open{display:block}'
@@ -92,7 +92,7 @@
         '<span class="si-stk-n">'+(LABELS[k]||k)+'</span>'+
         '<span class="'+dirCls(d.direction,d.sentiment)+'" style="font-weight:500">'+arrow(d.direction)+fmtD(delta)+'</span>'+
         bar(d.score)+
-        '<span style="color:#8b949e;font-size:10px">'+countLabel+'</span></span>';
+        '<span style="color:#b0bac6;font-size:10px">'+countLabel+'</span></span>';
     }).join('');
 
     el.innerHTML =
@@ -115,7 +115,7 @@
         '<span style="font-weight:500;color:#f0f6fc">'+e[0]+'</span>'+
         '<span>'+bar(e[1].score)+' <span class="'+cls+'" style="margin-left:4px">'+arrow(e[1].direction)+' '+fmtD(e[1].delta)+'</span></span></div>';
     }).join('');
-    p.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:8px;font-weight:600;color:#f0f6fc"><span>SECTORS \u2014 '+HORIZON+'</span><button onclick="window.__siSec()" style="border:none;background:none;cursor:pointer;font-size:14px;color:#8b949e">\u00d7</button></div>'+rows;
+    p.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:8px;font-weight:600;color:#f0f6fc"><span>SECTORS \u2014 '+HORIZON+'</span><button onclick="window.__siSec()" style="border:none;background:none;cursor:pointer;font-size:14px;color:#b0bac6">\u00d7</button></div>'+rows;
     return p;
   }
 
@@ -128,7 +128,7 @@
     var W = 370, H = 100;
     var line = pts.map(function(pt,i){return (i/(pts.length-1))*W+','+(H-((pt.score-mn)/(mx-mn))*H);}).join(' ');
     var last = pts[pts.length-1], col = last.delta > 0 ? '#059669' : last.delta < 0 ? '#dc2626' : '#94a3b8';
-    p.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:8px;font-weight:600;color:#f0f6fc"><span>MARKET HEALTH \u2014 '+HORIZON+'</span><button onclick="window.__siChart()" style="border:none;background:none;cursor:pointer;font-size:14px;color:#8b949e">\u00d7</button></div>'+
+    p.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:8px;font-weight:600;color:#f0f6fc"><span>MARKET HEALTH \u2014 '+HORIZON+'</span><button onclick="window.__siChart()" style="border:none;background:none;cursor:pointer;font-size:14px;color:#b0bac6">\u00d7</button></div>'+
       '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" style="overflow:visible">'+
         '<line x1="0" y1="'+(H-((50-mn)/(mx-mn))*H)+'" x2="'+W+'" y2="'+(H-((50-mn)/(mx-mn))*H)+'" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3 3"/>'+
         '<polygon points="0,'+H+' '+line+' '+W+','+H+'" fill="'+col+'" fill-opacity="0.1"/>'+

@@ -1686,10 +1686,10 @@ a.stats-card-row:hover { background: var(--surface-warm); }
           <div style="background:linear-gradient(135deg,#111827 0%,#1e293b 100%);border:1px solid #1e2d3d;border-radius:var(--radius);padding:18px 20px;color:#e2e8f0;height:100%">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
               <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#f59e0b">Today's Insight</span>
-              <span id="insightDate" style="font-size:10px;color:#64748b"></span>
+              <span id="insightDate" style="font-size:10px;color:#a0aec0"></span>
             </div>
-            <div id="insightHeadline" style="font-family:var(--serif);font-size:16px;font-weight:600;margin-bottom:6px;color:#f1f5f9"></div>
-            <div id="insightBody" style="font-size:13px;line-height:1.55;color:#94a3b8"></div>
+            <div id="insightHeadline" style="font-family:var(--serif);font-size:16px;font-weight:600;margin-bottom:6px;color:#ffffff"></div>
+            <div id="insightBody" style="font-size:13px;line-height:1.55;color:#cbd5e1"></div>
           </div>
         </div>
         <!-- Market Health -->
@@ -1707,6 +1707,10 @@ a.stats-card-row:hover { background: var(--surface-warm); }
             <div id="mhDirection" style="font-size:12px;color:var(--ink-3);margin-bottom:12px"></div>
             <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-4);margin-bottom:8px">Signal volume by region</div>
             <div id="mhRegions" style="display:flex;flex-direction:column;gap:5px"></div>
+            <div id="mhChart" style="margin-top:14px;display:none">
+              <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-4);margin-bottom:6px">30-day trend</div>
+              <svg id="mhSparkline" width="100%" height="48" viewBox="0 0 200 48" preserveAspectRatio="none" style="display:block"></svg>
+            </div>
           </div>
         </div>
       </div>
@@ -2354,6 +2358,30 @@ async function loadMarketHealthCard() {
       });
       document.getElementById('mhRegions').innerHTML = geoHtml;
     } catch(e2) {}
+
+    // 30-day sparkline
+    try {
+      var hist = await api('/api/signal-index/history?horizon=7d&limit=30');
+      var points = (hist.history || hist || []);
+      if (points.length >= 3) {
+        var scores = points.map(function(p) { return p.score || 50; }).reverse();
+        var min = Math.min.apply(null, scores) - 5;
+        var max = Math.max.apply(null, scores) + 5;
+        var range = max - min || 1;
+        var w = 200, h = 48;
+        var pts = scores.map(function(s, i) {
+          return (i / (scores.length - 1)) * w + ',' + (h - ((s - min) / range) * h);
+        });
+        var lineColor = scores[scores.length - 1] >= 60 ? '#10b981' : scores[scores.length - 1] <= 40 ? '#ef4444' : '#6b7280';
+        var svg = document.getElementById('mhSparkline');
+        svg.innerHTML =
+          '<defs><linearGradient id="mhGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + lineColor + '" stop-opacity="0.15"/><stop offset="100%" stop-color="' + lineColor + '" stop-opacity="0"/></linearGradient></defs>' +
+          '<polygon points="0,' + h + ' ' + pts.join(' ') + ' ' + w + ',' + h + '" fill="url(#mhGrad)"/>' +
+          '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + lineColor + '" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+          '<circle cx="' + w + '" cy="' + (h - ((scores[scores.length-1] - min) / range) * h) + '" r="2.5" fill="' + lineColor + '"/>';
+        document.getElementById('mhChart').style.display = 'block';
+      }
+    } catch(e3) {}
 
     document.getElementById('marketHealthCard').style.display = 'block';
   } catch(e) { console.error('Market health error:', e); }
