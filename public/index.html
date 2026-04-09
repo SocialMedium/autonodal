@@ -1652,7 +1652,7 @@ a.stats-card-row:hover { background: var(--surface-warm); }
         <div class="zone-filters" id="signalFilters">
           <button class="filter-btn active" onclick="filterSignals('all', this)">All</button>
           <button class="filter-btn" onclick="filterSignals('strategic_hiring', this)">Hiring</button>
-          <button class="filter-btn" onclick="filterSignals('capital_raising', this)">Funding</button>
+          <button class="filter-btn" onclick="filterSignals('capital_raising', this)">Raised Capital</button>
           <button class="filter-btn" onclick="filterSignals('geographic_expansion', this)">Expansion</button>
           <button class="filter-btn" onclick="filterSignals('ma_activity', this)">M&A</button>
           <button class="filter-btn" onclick="filterSignals('restructuring', this)">Restructuring</button>
@@ -2044,6 +2044,8 @@ async function loadPersonalBrief() {
 
 // ── Signals ──
 const SIGNAL_ICON_COLORS = { capital_raising:'#EF9F27', ma_activity:'#AFA9EC', product_launch:'#97C459', partnership:'#85B7EB', geographic_expansion:'#378ADD', restructuring:'#E24B4A', leadership_change:'#D4537E', layoffs:'#E24B4A', strategic_hiring:'#5DCAA5' };
+const SIGNAL_LABELS = { capital_raising: 'RAISED CAPITAL', strategic_hiring: 'STRATEGIC HIRING', geographic_expansion: 'EXPANSION', ma_activity: 'M&A', product_launch: 'PRODUCT LAUNCH', partnership: 'PARTNERSHIP', restructuring: 'RESTRUCTURING', leadership_change: 'LEADERSHIP CHANGE', layoffs: 'LAYOFFS' };
+function sigLabel(t) { return SIGNAL_LABELS[t] || (t||'').replace(/_/g,' ').toUpperCase(); }
 const SIGNAL_ICONS = {};
 if (typeof signalIcon === 'function') {
   ['capital_raising','ma_activity','product_launch','partnership','geographic_expansion','restructuring','leadership_change','layoffs','strategic_hiring'].forEach(function(k) {
@@ -2161,7 +2163,7 @@ async function loadNetworkSignals() {
         '</div>';
 
       // Signal type badges
-      var typeBadges = [...s.signal_types].map(t => '<span class="badge ' + (SIGNAL_BADGE_CLASS[t] || 'deal') + '">' + (t||'').replace(/_/g,' ').toUpperCase() + '</span>').join('');
+      var typeBadges = [...s.signal_types].map(t => '<span class="badge ' + (SIGNAL_BADGE_CLASS[t] || 'deal') + '">' + sigLabel(t) + '</span>').join('');
 
       var thumb = s.image_url
         ? '<div style="flex-shrink:0;width:80px;min-height:80px;border-radius:8px;background:url(' + esc(s.image_url) + ') center/cover no-repeat;margin-right:14px" onerror="this.style.display=\'none\'"></div>'
@@ -2319,7 +2321,7 @@ async function loadMarketHealthCard() {
     var stocks = data.signal_stocks || {};
     var regionHtml = '';
     var stockOrder = ['strategic_hiring', 'capital_raising', 'geographic_expansion', 'product_launch', 'partnership', 'ma_activity', 'restructuring', 'layoffs', 'leadership_change'];
-    var stockLabels = { strategic_hiring: 'Hiring', capital_raising: 'Funding', geographic_expansion: 'Expansion', product_launch: 'Product', partnership: 'Partnership', ma_activity: 'M&A', restructuring: 'Restructuring', layoffs: 'Layoffs', leadership_change: 'Leadership' };
+    var stockLabels = { strategic_hiring: 'Hiring', capital_raising: 'Raised Capital', geographic_expansion: 'Expansion', product_launch: 'Product', partnership: 'Partnership', ma_activity: 'M&A', restructuring: 'Restructuring', layoffs: 'Layoffs', leadership_change: 'Leadership' };
 
     stockOrder.forEach(function(key) {
       var s = stocks[key];
