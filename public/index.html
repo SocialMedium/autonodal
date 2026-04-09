@@ -2293,7 +2293,7 @@ async function loadTodayInsight() {
 
 async function loadMarketHealthCard() {
   try {
-    var data = await api('/api/signals/ticker?horizon=7d');
+    var data = await api('/api/signal-index?horizon=7d');
     if (!data) return;
     var mh = data.market_health || { score: 50, delta: 0, direction: 'flat' };
     var score = Math.round(mh.score || 50);
