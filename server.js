@@ -1313,7 +1313,7 @@ app.get('/api/signals/hero', authenticateToken, async (req, res) => {
         LEFT JOIN external_documents ed ON ed.id = se.source_document_id
         WHERE (se.tenant_id IS NULL OR se.tenant_id = $1)
           AND se.detected_at > NOW() - INTERVAL '7 days'
-          AND COALESCE(se.signal_date, se.detected_at) > NOW() - INTERVAL '30 days'
+          AND se.signal_date IS NOT NULL AND se.signal_date > NOW() - INTERVAL '30 days'
           AND COALESCE(se.is_megacap, false) = false
           AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')
           AND se.company_name IS NOT NULL
@@ -1919,8 +1919,9 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
 
     // Exclude megacaps, tenant company, and self-referential signals from feed
     where += ` AND COALESCE(se.is_megacap, false) = false AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')`;
-    // Hard date filter: only signals from last 90 days (signal_date or detected_at)
-    where += ` AND COALESCE(se.signal_date, se.detected_at) > NOW() - INTERVAL '90 days'`;
+    // Hard date filter: only signals with a confirmed signal_date within 90 days
+    // Signals without signal_date are excluded from ranked feeds (shown as "other" on dossiers)
+    where += ` AND se.signal_date IS NOT NULL AND se.signal_date > NOW() - INTERVAL '90 days'`;
     // Also exclude signals whose company_name matches the tenant name (catches un-linked records)
     if (req.user.tenant_name) {
       paramIdx++;
@@ -13879,6 +13880,16 @@ app.listen(PORT, async () => {
   } catch (e) {}
 
   // Platform-wide migration moved below multi-tenant migration (must run after)
+
+  // Backfill signal_date from linked document published_at
+  try {
+    const { rowCount: datesFilled } = await platformPool.query(`
+      UPDATE signal_events se SET signal_date = ed.published_at
+      FROM external_documents ed
+      WHERE se.source_document_id = ed.id AND se.signal_date IS NULL AND ed.published_at IS NOT NULL
+    `);
+    if (datesFilled) console.log(`  📅 Backfilled ${datesFilled} signal dates from documents`);
+  } catch (e) {}
 
   // Backfill signal images from linked documents (skip favicons/logos)
   try {
