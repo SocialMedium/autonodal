@@ -1646,9 +1646,14 @@ a.stats-card-row:hover { background: var(--surface-warm); }
         <div class="zone-rule"></div>
         <div class="zone-title-row">
           <div class="zone-title">Deal Intelligence</div>
-          <div class="zone-count" id="dealCount">— SIGNALS</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <select id="huddleSelector" onchange="setHuddleContext(this.value)" style="display:none;font-size:11px;padding:4px 8px;border:1px solid var(--rule);border-radius:6px;background:var(--surface);color:var(--ink-2);font-family:var(--sans);cursor:pointer">
+              <option value="">My network</option>
+            </select>
+            <div class="zone-count" id="dealCount">— SIGNALS</div>
+          </div>
         </div>
-        <div class="zone-subtitle">Ranked: client signals → network contacts → expansion → growth. Grouped by region.</div>
+        <div class="zone-subtitle" id="dealSubtitle">Ranked: client signals → network contacts → expansion → growth. Grouped by region.</div>
         <div class="zone-filters" id="signalFilters">
           <button class="filter-btn active" onclick="filterSignals('all', this)">All</button>
           <button class="filter-btn" onclick="filterSignals('strategic_hiring', this)">Hiring</button>
@@ -2073,6 +2078,41 @@ const SIGNAL_BADGE_CLASS = {
 let currentFilter = 'all';
 let currentRegion = 'all';
 let signalOffset = 0;
+let activeHuddleId = '';
+
+// Load user's huddles for context selector
+async function loadHuddleSelector() {
+  try {
+    var data = await api('/api/huddles');
+    var huddles = data || [];
+    if (!huddles.length) return;
+    var sel = document.getElementById('huddleSelector');
+    huddles.forEach(function(h) {
+      if (h.status !== 'active') return;
+      var opt = document.createElement('option');
+      opt.value = h.id;
+      opt.textContent = 'Huddle: ' + (h.name || 'Unnamed');
+      sel.appendChild(opt);
+    });
+    sel.style.display = '';
+  } catch(e) {}
+}
+
+function huddleParam() { return activeHuddleId ? '&huddle_id=' + activeHuddleId : ''; }
+
+function setHuddleContext(huddleId) {
+  activeHuddleId = huddleId;
+  var subtitle = document.getElementById('dealSubtitle');
+  if (huddleId) {
+    subtitle.textContent = 'Huddle view — ranked by combined client relationships and network density across all members';
+  } else {
+    subtitle.textContent = 'Ranked: client signals \u2192 network contacts \u2192 expansion \u2192 growth. Grouped by region.';
+  }
+  signalOffset = 0;
+  loadSignals();
+  loadNetworkSignals();
+  loadHeroSignals();
+}
 
 function filterSignals(type, btn) {
   document.querySelectorAll('#signalFilters .filter-btn').forEach(b => b.classList.remove('active'));
@@ -2098,7 +2138,7 @@ async function loadNetworkSignals() {
     const params = new URLSearchParams({ limit: 40, network: 'true' });
     if (currentFilter !== 'all') params.set('type', currentFilter);
 
-    const data = await api('/api/signals/brief?' + params);
+    const data = await api('/api/signals/brief?' + params + huddleParam());
     const feed = document.getElementById('networkFeed');
     document.getElementById('networkCount').textContent = data.total + ' signals';
 
@@ -2472,7 +2512,7 @@ async function loadRegionCards() {
     try {
       const params = new URLSearchParams({ limit: 30, region: r.code });
       if (currentFilter !== 'all') params.set('type', currentFilter);
-      const data = await api('/api/signals/brief?' + params);
+      const data = await api('/api/signals/brief?' + params + huddleParam());
 
       const clientCount = [...new Set(data.signals.filter(s => s.is_client).map(s => s.company_id || s.company_name))].length;
       const networkCount = [...new Set(data.signals.filter(s => parseInt(s.contact_count) > 0).map(s => s.company_id || s.company_name))].length;
@@ -2679,7 +2719,7 @@ async function loadSignals() {
       params.set('boost_types', dial.signal_types.join(','));
     }
 
-    const data = await api('/api/signals/brief?' + params);
+    const data = await api('/api/signals/brief?' + params + huddleParam());
     const feed = document.getElementById('dealFeed');
 
     if (signalOffset === 0) feed.innerHTML = '';
@@ -2774,7 +2814,7 @@ function renderDealCard(s) {
       <div class="deal-badges">
         <span class="badge ${badgeClass}">${label.toUpperCase()}</span>
         ${s.is_megacap ? '<span class="badge" style="background:#f0f0f0;color:#888;font-style:italic">MARKET WEATHER</span>' : ''}
-        ${s.is_client ? '<span class="badge client">CLIENT</span>' : ''}
+        ${s.is_client ? '<span class="badge client">CLIENT</span>' : (s.huddle_client && s.client_via ? '<span class="badge" style="background:#fef3c7;color:#92400e;font-weight:600">CLIENT via ' + esc(s.client_via) + '</span>' : '')}
         ${parseInt(s.prox_connection_count) > 0 ? `<button class="badge prox-trigger" data-signal-id="${s.id}" style="background:var(--blue-soft);color:var(--blue);border:1px solid var(--blue);cursor:pointer;font-family:var(--sans);font-size:10px;font-weight:600;padding:2px 8px;border-radius:3px" onmouseenter="this.style.background='var(--blue)';this.style.color='#fff';clearTimeout(this._ht);this._st=setTimeout(()=>ProximityPopup.show(this,'${s.id}'),120)" onmouseleave="this.style.background='var(--blue-soft)';this.style.color='var(--blue)';clearTimeout(this._st);ProximityPopup.scheduleHide()">${icon('link')} ${s.prox_connection_count} proximity${s.best_connector_name ? ' · via ' + esc(s.best_connector_name.split(' ')[0]) : ''}</button>` : ''}
         ${contacts > 0 ? `<a href="${contactsLink}" class="badge" style="background:var(--blue-soft);color:var(--blue);text-decoration:none">${icon('users')} ${contacts} contacts</a>` : ''}
         ${placements > 0 ? `<span class="badge" style="background:var(--emerald-soft);color:var(--emerald)">${icon('trophy')}${placements} placed</span>` : ''}
@@ -3556,6 +3596,7 @@ async function init() {
     showPostOnboardingCard();
     history.replaceState({}, '', '/index.html');
   }
+  loadHuddleSelector();
   loadHeroSignals();
   loadSignalGrabs();
   loadNetworkSignals();

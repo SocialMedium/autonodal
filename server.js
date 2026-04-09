@@ -1907,6 +1907,24 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
     const region = req.query.region; // AU, SG, UK, US, APAC, EMEA, AMER, or 'all'
     const minConf = parseFloat(req.query.min_confidence) || 0;
     const networkOnly = req.query.network === 'true'; // only signals where we have contacts
+    const huddleId = req.query.huddle_id || null; // optional huddle context for cross-tenant ranking
+
+    // If huddle context, get all member tenant IDs
+    let huddleTenantIds = null;
+    let huddleTenantNames = {};
+    if (huddleId) {
+      try {
+        const membership = await verifyHuddleMember(huddleId, req.tenant_id);
+        if (membership) {
+          const { rows: members } = await platformPool.query(
+            `SELECT hm.tenant_id, t.name FROM huddle_members hm JOIN tenants t ON t.id = hm.tenant_id WHERE hm.huddle_id = $1 AND hm.status = 'active'`,
+            [huddleId]
+          );
+          huddleTenantIds = members.map(m => m.tenant_id);
+          members.forEach(m => { huddleTenantNames[m.tenant_id] = m.name; });
+        }
+      } catch (e) {}
+    }
 
     let where = 'WHERE (se.tenant_id IS NULL OR se.tenant_id = $1)';
     const params = [req.tenant_id];
@@ -1996,10 +2014,21 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
 
     // Network filter — only signals where we have contacts at the company
     if (networkOnly) {
-      where += ` AND (
-        EXISTS (SELECT 1 FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1)
-        OR c.is_client = true
-      )`;
+      if (huddleTenantIds && huddleTenantIds.length > 0) {
+        // Huddle context: contacts or clients from ANY member tenant
+        paramIdx++;
+        where += ` AND (
+          EXISTS (SELECT 1 FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = ANY($${paramIdx}))
+          OR c.is_client = true
+          OR EXISTS (SELECT 1 FROM companies c2 WHERE c2.is_client = true AND LOWER(c2.name) = LOWER(c.name) AND c2.tenant_id = ANY($${paramIdx}))
+        )`;
+        params.push(huddleTenantIds);
+      } else {
+        where += ` AND (
+          EXISTS (SELECT 1 FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1)
+          OR c.is_client = true
+        )`;
+      }
     }
 
     // User's geographic focus — for relevance boosting in ORDER BY
@@ -2023,6 +2052,13 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
     paramIdx++;
     const offsetParam = paramIdx;
     params.push(offset);
+    // Huddle tenant array for cross-tenant queries
+    let huddleTenantParam = null;
+    if (huddleTenantIds && huddleTenantIds.length > 0) {
+      paramIdx++;
+      huddleTenantParam = paramIdx;
+      params.push(huddleTenantIds);
+    }
 
     const [signalsResult, countResult] = await Promise.all([
       db.query(`
@@ -2080,13 +2116,15 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
         ORDER BY
           -- 0. Exclude megacaps and tenant's own company
           CASE WHEN c.company_tier = 'tenant_company' THEN 2 WHEN se.is_megacap = true THEN 1 ELSE 0 END,
-          -- 1. CLIENT PRIORITY (revenue relationship)
-          CASE WHEN c.is_client = true THEN 0 ELSE 1 END,
-          -- 2. NETWORK DENSITY (reuse contact_count from SELECT — no extra subquery)
+          -- 1. CLIENT PRIORITY (own tenant OR huddle partner)
+          CASE WHEN c.is_client = true THEN 0
+            ${huddleTenantParam ? `WHEN EXISTS (SELECT 1 FROM companies c2 WHERE c2.is_client = true AND LOWER(c2.name) = LOWER(c.name) AND c2.tenant_id = ANY($${huddleTenantParam})) THEN 0` : ''}
+            ELSE 1 END,
+          -- 2. NETWORK DENSITY (own tenant contacts, or huddle combined)
           CASE
-            WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) >= 5 THEN 0
-            WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) >= 2 THEN 1
-            WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) >= 1 THEN 2
+            WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id ${huddleTenantParam ? `= ANY($${huddleTenantParam})` : '= $1'}) >= 5 THEN 0
+            WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id ${huddleTenantParam ? `= ANY($${huddleTenantParam})` : '= $1'}) >= 2 THEN 1
+            WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id ${huddleTenantParam ? `= ANY($${huddleTenantParam})` : '= $1'}) >= 1 THEN 2
             ELSE 3 END,
           -- 3. GEOGRAPHIC RELEVANCE (user's focus countries)
           CASE WHEN c.country_code = ANY($${geoBoostParam}) THEN 0 ELSE 1 END,
@@ -2144,12 +2182,33 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
       regionStats = rStats[0];
     } catch (e) { /* ignore */ }
 
+    // Add huddle client attribution if in huddle context
+    let signals = signalsResult.rows;
+    if (huddleTenantIds && huddleTenantIds.length > 0) {
+      // Batch check which companies are clients for huddle partners
+      const companyNames = [...new Set(signals.map(s => s.company_name).filter(Boolean))];
+      if (companyNames.length > 0) {
+        const { rows: clientMatches } = await platformPool.query(
+          `SELECT LOWER(c.name) AS name, t.name AS tenant_name FROM companies c JOIN tenants t ON t.id = c.tenant_id WHERE c.is_client = true AND c.tenant_id = ANY($1) AND LOWER(c.name) = ANY($2)`,
+          [huddleTenantIds, companyNames.map(n => n.toLowerCase())]
+        );
+        const clientMap = {};
+        clientMatches.forEach(m => { clientMap[m.name] = m.tenant_name; });
+        signals = signals.map(s => ({
+          ...s,
+          huddle_client: !!(s.is_client || clientMap[(s.company_name || '').toLowerCase()]),
+          client_via: clientMap[(s.company_name || '').toLowerCase()] || null,
+        }));
+      }
+    }
+
     res.json({
-      signals: signalsResult.rows,
+      signals,
       total: parseInt(countResult.rows[0].cnt),
       limit,
       offset,
       region_stats: regionStats,
+      huddle_id: huddleId || null,
     });
   } catch (err) {
     console.error('Signals brief error:', err.message);
