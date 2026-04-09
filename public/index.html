@@ -1710,7 +1710,15 @@ a.stats-card-row:hover { background: var(--surface-warm); }
             <span style="font-size:11px;color:var(--ink-4);font-family:var(--mono)" id="networkCount"></span>
           </div>
         </div>
-        <div style="font-size:12px;color:var(--ink-3);margin-bottom:12px">Companies where we have contacts, placements, or client relationships</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <input type="text" id="networkSearch" placeholder="Filter by company..." oninput="filterNetworkCards()" style="flex:1;min-width:160px;max-width:280px;padding:6px 10px;font-size:12px;border:1px solid var(--rule);border-radius:6px;background:var(--surface);color:var(--ink);font-family:var(--sans);outline:none">
+          <div style="display:flex;gap:4px" id="networkFilterBtns">
+            <button class="filter-btn active" onclick="setNetworkFilter('all',this)" style="font-size:11px;padding:4px 10px">All</button>
+            <button class="filter-btn" onclick="setNetworkFilter('clients',this)" style="font-size:11px;padding:4px 10px">Clients</button>
+            <button class="filter-btn" onclick="setNetworkFilter('pipeline',this)" style="font-size:11px;padding:4px 10px">Pipeline</button>
+            <button class="filter-btn" onclick="setNetworkFilter('new',this)" style="font-size:11px;padding:4px 10px">New Signals</button>
+          </div>
+        </div>
         <div id="networkFeed" style="display:flex;flex-direction:column;gap:10px">
           <div style="text-align:center;padding:20px;color:var(--ink-4);font-size:13px">Loading network signals...</div>
         </div>
@@ -2143,7 +2151,7 @@ async function loadNetworkSignals() {
         ? '<div style="flex-shrink:0;width:80px;min-height:80px;border-radius:8px;background:url(' + esc(s.image_url) + ') center/cover no-repeat;margin-right:14px" onerror="this.style.display=\'none\'"></div>'
         : '';
 
-      return '<div class="network-card' + (s.is_client ? ' client' : '') + '" style="cursor:pointer;display:flex;align-items:stretch" onclick="if(!event.target.closest(\'a,button\')){location.href=\'' + companyHref + '\'}">' +
+      return '<div class="network-card' + (s.is_client ? ' client' : '') + '" data-company="' + esc(s.company_name).toLowerCase() + '" data-is-client="' + (s.is_client ? '1' : '0') + '" data-placements="' + (placements || 0) + '" style="cursor:pointer;display:flex;align-items:stretch" onclick="if(!event.target.closest(\'a,button\')){location.href=\'' + companyHref + '\'}">' +
         thumb +
         '<div style="flex:1;min-width:0">' +
           '<div class="network-top">' +
@@ -2169,6 +2177,39 @@ async function loadNetworkSignals() {
   } catch (e) {
     document.getElementById('networkFeed').innerHTML = '<div style="padding:20px;color:var(--ink-4);font-size:13px">Failed to load</div>';
   }
+}
+
+// ── Network Signal Filters ──
+var _networkFilter = 'all';
+
+function setNetworkFilter(filter, btn) {
+  _networkFilter = filter;
+  document.querySelectorAll('#networkFilterBtns .filter-btn').forEach(function(b) { b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  filterNetworkCards();
+}
+
+function filterNetworkCards() {
+  var search = (document.getElementById('networkSearch').value || '').toLowerCase().trim();
+  var cards = document.querySelectorAll('#networkFeed .network-card');
+  var shown = 0;
+  cards.forEach(function(card) {
+    var company = card.getAttribute('data-company') || '';
+    var isClient = card.getAttribute('data-is-client') === '1';
+    var placements = parseInt(card.getAttribute('data-placements')) || 0;
+
+    var matchSearch = !search || company.indexOf(search) >= 0;
+    var matchFilter = true;
+    if (_networkFilter === 'clients') matchFilter = isClient;
+    else if (_networkFilter === 'pipeline') matchFilter = placements > 0;
+    else if (_networkFilter === 'new') matchFilter = !isClient && placements === 0;
+
+    if (matchSearch && matchFilter) { card.style.display = ''; shown++; }
+    else { card.style.display = 'none'; }
+  });
+  // Update count
+  var countEl = document.getElementById('networkCount');
+  if (countEl && _networkFilter !== 'all') countEl.textContent = shown + ' shown';
 }
 
 // ── Region Cards ──
