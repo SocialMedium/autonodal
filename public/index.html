@@ -1708,7 +1708,7 @@ a.stats-card-row:hover { background: var(--surface-warm); }
             <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-4);margin-bottom:8px">Signal volume by region</div>
             <div id="mhRegions" style="display:flex;flex-direction:column;gap:5px"></div>
             <div id="mhChart" style="margin-top:14px;display:none">
-              <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-4);margin-bottom:6px">30-day trend</div>
+              <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-4);margin-bottom:6px">7-day trend</div>
               <svg id="mhSparkline" width="100%" height="48" viewBox="0 0 200 48" preserveAspectRatio="none" style="display:block"></svg>
             </div>
           </div>
@@ -2362,14 +2362,16 @@ async function loadMarketHealthCard() {
     // 30-day sparkline — deduplicate to one point per day
     try {
       var hist = await api('/api/signal-index/history?horizon=7d&limit=200');
-      var points = (hist.history || hist || []).reverse(); // oldest first
-      // Deduplicate: keep last score per day
+      var points = (hist.history || hist || []).reverse();
+      // Deduplicate to one point per day
       var byDay = {};
       points.forEach(function(p) {
         var d = (p.snapshot_at || p.date || '').substring(0, 10);
         if (d) byDay[d] = { score: p.score || 50, date: d };
       });
       var daily = Object.values(byDay).sort(function(a, b) { return a.date < b.date ? -1 : 1; });
+      // Last 7 days only
+      daily = daily.slice(-7);
 
       if (daily.length >= 2) {
         var scores = daily.map(function(p) { return p.score; });
@@ -2386,19 +2388,16 @@ async function loadMarketHealthCard() {
         svg.setAttribute('viewBox', '0 0 ' + w + ' ' + (h + labelH));
         svg.setAttribute('height', h + labelH);
 
-        // Week date labels along x-axis
+        // Date label for each day
         var weekLabels = '';
-        var interval = Math.max(1, Math.floor(daily.length / 4));
-        for (var wi = 0; wi < daily.length; wi += interval) {
-          var xPos = (wi / (daily.length - 1)) * w;
-          var dParts = dates[wi].split('-');
-          var lbl = parseInt(dParts[2]) + '/' + parseInt(dParts[1]);
-          weekLabels += '<text x="' + xPos + '" y="' + (h + 11) + '" fill="#94a3b8" font-size="7" font-family="var(--mono,monospace)" text-anchor="middle">' + lbl + '</text>';
-        }
-        // Always show last date
-        var lastX = w;
-        var lastParts = dates[dates.length - 1].split('-');
-        weekLabels += '<text x="' + lastX + '" y="' + (h + 11) + '" fill="#94a3b8" font-size="7" font-family="var(--mono,monospace)" text-anchor="end">' + parseInt(lastParts[2]) + '/' + parseInt(lastParts[1]) + '</text>';
+        var dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        dates.forEach(function(d, i) {
+          var xPos = (i / (dates.length - 1)) * w;
+          var dt = new Date(d);
+          var lbl = dayNames[dt.getUTCDay()] + ' ' + dt.getUTCDate();
+          var anchor = i === 0 ? 'start' : i === dates.length - 1 ? 'end' : 'middle';
+          weekLabels += '<text x="' + xPos + '" y="' + (h + 11) + '" fill="#94a3b8" font-size="7" font-family="var(--mono,monospace)" text-anchor="' + anchor + '">' + lbl + '</text>';
+        });
 
         svg.innerHTML =
           '<defs><linearGradient id="mhGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + lineColor + '" stop-opacity="0.15"/><stop offset="100%" stop-color="' + lineColor + '" stop-opacity="0"/></linearGradient></defs>' +
