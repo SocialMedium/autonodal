@@ -6452,6 +6452,76 @@ app.get('/api/huddles/:id/signals', authenticateToken, async function(req, res) 
   }
 });
 
+// GET /api/huddles/:id/companies — combined company graph for a huddle
+app.get('/api/huddles/:id/companies', authenticateToken, async function(req, res) {
+  try {
+    var membership = await verifyHuddleMember(req.params.id, req.tenant_id);
+    if (!membership) return res.status(403).json({ error: 'Not a member of this huddle' });
+
+    var limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    var offset = parseInt(req.query.offset) || 0;
+    var search = req.query.q || '';
+
+    var { rows: members } = await platformPool.query(
+      `SELECT hm.tenant_id, t.name as tenant_name FROM huddle_members hm JOIN tenants t ON t.id = hm.tenant_id WHERE hm.huddle_id = $1 AND hm.status = 'active'`,
+      [req.params.id]
+    );
+    var memberTenantIds = members.map(function(m) { return m.tenant_id; });
+    if (!memberTenantIds.length) return res.json({ companies: [], total: 0 });
+
+    var searchWhere = search ? `AND c.name ILIKE '%' || $4 || '%'` : '';
+    var params = [memberTenantIds, req.params.id, limit, offset];
+    if (search) params.push(search);
+
+    var { rows } = await platformPool.query(`
+      WITH member_contacts AS (
+        SELECT p.current_company_id AS company_id, p.tenant_id,
+          COUNT(*) AS contact_count
+        FROM people p
+        WHERE p.tenant_id = ANY($1) AND p.current_company_id IS NOT NULL
+        GROUP BY p.current_company_id, p.tenant_id
+      ),
+      company_agg AS (
+        SELECT mc.company_id,
+          SUM(mc.contact_count) AS combined_contacts,
+          COUNT(DISTINCT mc.tenant_id) AS member_reach,
+          array_agg(DISTINCT mc.tenant_id) AS contributing_tenants
+        FROM member_contacts mc
+        GROUP BY mc.company_id
+      )
+      SELECT c.id, c.name, c.sector, c.geography, c.domain,
+        ca.combined_contacts, ca.member_reach,
+        COALESCE(c.is_client, false) AS is_client,
+        (SELECT array_agg(DISTINCT t.name) FROM companies c2
+          JOIN tenants t ON t.id = c2.tenant_id
+          WHERE c2.is_client = true AND LOWER(c2.name) = LOWER(c.name)
+            AND c2.tenant_id = ANY($1)) AS client_via,
+        (SELECT COUNT(*) FROM signal_events se
+          WHERE se.company_id = c.id AND se.tenant_id IS NULL
+          AND se.signal_date IS NOT NULL AND se.signal_date > NOW() - INTERVAL '90 days') AS signal_count
+      FROM company_agg ca
+      JOIN companies c ON c.id = ca.company_id
+      WHERE ca.combined_contacts >= 2 ${searchWhere}
+      ORDER BY
+        (SELECT COUNT(*) FROM companies c2 WHERE c2.is_client = true AND LOWER(c2.name) = LOWER(c.name) AND c2.tenant_id = ANY($1)) > 0 DESC,
+        ca.combined_contacts DESC,
+        ca.member_reach DESC
+      LIMIT $3 OFFSET $4
+    `, search ? [memberTenantIds, req.params.id, limit, offset, search] : [memberTenantIds, req.params.id, limit, offset]);
+
+    var { rows: [countRow] } = await platformPool.query(`
+      SELECT COUNT(DISTINCT p.current_company_id) AS total
+      FROM people p
+      WHERE p.tenant_id = ANY($1) AND p.current_company_id IS NOT NULL
+    `, [memberTenantIds]);
+
+    res.json({ companies: rows, total: parseInt(countRow.total) });
+  } catch (err) {
+    console.error('Huddle companies error:', err.message);
+    res.status(500).json({ error: 'Failed to load huddle companies' });
+  }
+});
+
 // GET /api/me/influence — individual influence dashboard
 app.get('/api/me/influence', authenticateToken, async function(req, res) {
   try {

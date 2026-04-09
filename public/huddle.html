@@ -221,6 +221,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
     <button class="tab active" data-tab="members" onclick="switchTab('members')">Members</button>
     <button class="tab" data-tab="network" onclick="switchTab('network')">Network</button>
     <button class="tab" data-tab="signals" onclick="switchTab('signals')">Signals</button>
+    <button class="tab" data-tab="companies" onclick="switchTab('companies')">Companies</button>
   </div>
 
   <!-- Members tab -->
@@ -265,6 +266,19 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
     <div id="signalFeed"></div>
     <div class="load-more-wrap" id="signalLoadMoreWrap" style="display:none;">
       <button class="btn btn-secondary" onclick="loadMoreSignals()">Load more</button>
+    </div>
+  </div>
+
+  <!-- Companies tab -->
+  <div id="tab-companies" class="tab-content" style="display:none;">
+    <div class="search-bar">
+      <div class="search-wrap">
+        <input type="text" class="search-input" id="companySearch" placeholder="Search companies..." oninput="debounceCompanySearch()">
+      </div>
+    </div>
+    <div id="companyFeed"></div>
+    <div class="load-more-wrap" id="companyLoadMoreWrap" style="display:none;">
+      <button class="btn btn-secondary" onclick="loadMoreCompanies()">Load more</button>
     </div>
   </div>
 </main>
@@ -366,6 +380,9 @@ function switchTab(tab) {
   }
   if (tab === 'signals' && document.getElementById('signalFeed').innerHTML === '') {
     loadHuddleSignals();
+  }
+  if (tab === 'companies' && document.getElementById('companyFeed').innerHTML === '') {
+    loadHuddleCompanies();
   }
 }
 
@@ -628,6 +645,73 @@ function setSignalType(type) {
 
 function loadMoreSignals() {
   loadHuddleSignals(true);
+}
+
+/* ═══════════════════════════════════════
+   COMPANIES TAB
+   ═══════════════════════════════════════ */
+var companyOffset = 0;
+var companyLimit = 50;
+var _companySearchTimeout;
+
+function debounceCompanySearch() {
+  clearTimeout(_companySearchTimeout);
+  _companySearchTimeout = setTimeout(function() { companyOffset = 0; loadHuddleCompanies(); }, 300);
+}
+
+async function loadHuddleCompanies(append) {
+  if (!append) companyOffset = 0;
+  var q = (document.getElementById('companySearch').value || '').trim();
+  var params = 'limit=' + companyLimit + '&offset=' + companyOffset;
+  if (q) params += '&q=' + encodeURIComponent(q);
+
+  try {
+    var data = await api('/api/huddles/' + HUDDLE_ID + '/companies?' + params);
+    var companies = data.companies || [];
+    var feed = document.getElementById('companyFeed');
+
+    if (!append) feed.innerHTML = '';
+    if (!companies.length && !append) {
+      feed.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink-3)">No companies found</div>';
+      document.getElementById('companyLoadMoreWrap').style.display = 'none';
+      return;
+    }
+
+    var html = '';
+    companies.forEach(function(c) {
+      var clientVia = c.client_via && c.client_via.length ? c.client_via : null;
+      html += '<div style="background:var(--surface);border:1px solid var(--rule);' +
+        (clientVia ? 'border-left:3px solid var(--amber);' : '') +
+        'border-radius:8px;padding:14px 18px;margin-bottom:8px;cursor:pointer" ' +
+        'onclick="window.location=\'/companies.html?q=' + encodeURIComponent(c.name) + '\'">' +
+        '<div style="display:flex;justify-content:space-between;align-items:start">' +
+          '<div style="min-width:0">' +
+            '<div style="font-family:var(--serif);font-size:15px;font-weight:600">' + esc(c.name) + '</div>' +
+            '<div style="font-size:12px;color:var(--ink-3);margin-top:2px">' +
+              [c.sector, c.geography].filter(Boolean).join(' · ') +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px;flex-shrink:0;align-items:center">' +
+            '<span style="font-size:11px;color:var(--blue);font-weight:600">' + (c.combined_contacts || 0) + ' contacts</span>' +
+            (c.member_reach > 1 ? '<span style="font-size:10px;color:var(--ink-4)">' + c.member_reach + ' members</span>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap">' +
+          (clientVia ? clientVia.map(function(t) { return '<span style="font-size:9px;padding:2px 8px;border-radius:8px;background:var(--amber-soft);color:var(--amber);font-weight:600">Client via ' + esc(t) + '</span>'; }).join('') : '') +
+          (c.signal_count > 0 ? '<span style="font-size:9px;padding:2px 8px;border-radius:8px;background:var(--emerald-soft);color:var(--emerald);font-weight:600">' + c.signal_count + ' signals</span>' : '') +
+        '</div>' +
+      '</div>';
+    });
+    feed.innerHTML += html;
+    companyOffset += companies.length;
+    document.getElementById('companyLoadMoreWrap').style.display = companies.length >= companyLimit ? '' : 'none';
+  } catch(e) {
+    document.getElementById('companyFeed').innerHTML = '<div style="padding:20px;color:var(--ink-3)">Failed to load companies</div>';
+  }
+}
+
+function loadMoreCompanies() {
+  loadHuddleCompanies(true);
 }
 
 /* ═══════════════════════════════════════
