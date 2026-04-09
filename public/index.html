@@ -2599,12 +2599,10 @@ async function loadHeroSignals() {
           '</div>' +
         '</div>';
       } else {
-        // Small hero card — image banner or dark fallback with company name prominent
+        // Small hero card — image banner where available, no dark fallback
         var banner = imgUrl
           ? '<div style="height:90px;background:url(' + esc(imgUrl) + ') center/cover no-repeat"></div>'
-          : '<div style="height:90px;background:linear-gradient(135deg,#111827,#1e293b);display:flex;align-items:center;justify-content:center;padding:12px">' +
-              '<span style="font-family:var(--serif);font-size:18px;font-weight:700;color:#fff;text-align:center;line-height:1.2">' + esc(s.company_name) + '</span>' +
-            '</div>';
+          : '';
         return '<div style="border-radius:10px;overflow:hidden;cursor:pointer;border:1px solid var(--rule);background:var(--surface);display:flex;flex-direction:column" onclick="location.href=\'' + link + '\'">' +
           banner +
           '<div style="padding:10px 12px;flex:1;display:flex;flex-direction:column">' +
@@ -2612,7 +2610,7 @@ async function loadHeroSignals() {
               '<span style="font-size:8px;padding:2px 6px;border-radius:8px;background:' + sc + '18;color:' + sc + ';font-weight:600;text-transform:uppercase;letter-spacing:.5px">' + sigLabel(s.signal_type) + '</span>' +
               (s.is_client ? '<span style="font-size:8px;padding:2px 6px;border-radius:8px;background:var(--amber-soft);color:var(--amber);font-weight:600">CLIENT</span>' : '') +
             '</div>' +
-            (imgUrl ? '<div style="font-family:var(--serif);font-size:14px;font-weight:600;line-height:1.25;margin-top:4px">' + esc(s.company_name) + '</div>' : '') +
+            '<div style="font-family:var(--serif);font-size:14px;font-weight:600;line-height:1.25;margin-top:4px">' + esc(s.company_name) + '</div>' +
             '<div style="font-size:11px;color:var(--ink-3);margin-top:3px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;flex:1">' + esc((s.evidence_summary || '').slice(0, 120)) + '</div>' +
             '<div style="display:flex;gap:6px;margin-top:6px;font-size:9px;color:var(--ink-4)">' +
               (contacts ? '<span>' + icon('users') + ' ' + contacts + '</span>' : '') +
