@@ -2359,26 +2359,53 @@ async function loadMarketHealthCard() {
       document.getElementById('mhRegions').innerHTML = geoHtml;
     } catch(e2) {}
 
-    // 30-day sparkline
+    // 30-day sparkline — deduplicate to one point per day
     try {
-      var hist = await api('/api/signal-index/history?horizon=7d&limit=30');
-      var points = (hist.history || hist || []);
-      if (points.length >= 3) {
-        var scores = points.map(function(p) { return p.score || 50; }).reverse();
-        var min = Math.min.apply(null, scores) - 5;
-        var max = Math.max.apply(null, scores) + 5;
+      var hist = await api('/api/signal-index/history?horizon=7d&limit=200');
+      var points = (hist.history || hist || []).reverse(); // oldest first
+      // Deduplicate: keep last score per day
+      var byDay = {};
+      points.forEach(function(p) {
+        var d = (p.snapshot_at || p.date || '').substring(0, 10);
+        if (d) byDay[d] = { score: p.score || 50, date: d };
+      });
+      var daily = Object.values(byDay).sort(function(a, b) { return a.date < b.date ? -1 : 1; });
+
+      if (daily.length >= 2) {
+        var scores = daily.map(function(p) { return p.score; });
+        var dates = daily.map(function(p) { return p.date; });
+        var min = Math.min.apply(null, scores) - 3;
+        var max = Math.max.apply(null, scores) + 3;
         var range = max - min || 1;
-        var w = 200, h = 48;
+        var w = 200, h = 40, labelH = 14;
         var pts = scores.map(function(s, i) {
           return (i / (scores.length - 1)) * w + ',' + (h - ((s - min) / range) * h);
         });
         var lineColor = scores[scores.length - 1] >= 60 ? '#10b981' : scores[scores.length - 1] <= 40 ? '#ef4444' : '#6b7280';
         var svg = document.getElementById('mhSparkline');
+        svg.setAttribute('viewBox', '0 0 ' + w + ' ' + (h + labelH));
+        svg.setAttribute('height', h + labelH);
+
+        // Week date labels along x-axis
+        var weekLabels = '';
+        var interval = Math.max(1, Math.floor(daily.length / 4));
+        for (var wi = 0; wi < daily.length; wi += interval) {
+          var xPos = (wi / (daily.length - 1)) * w;
+          var dParts = dates[wi].split('-');
+          var lbl = parseInt(dParts[2]) + '/' + parseInt(dParts[1]);
+          weekLabels += '<text x="' + xPos + '" y="' + (h + 11) + '" fill="#94a3b8" font-size="7" font-family="var(--mono,monospace)" text-anchor="middle">' + lbl + '</text>';
+        }
+        // Always show last date
+        var lastX = w;
+        var lastParts = dates[dates.length - 1].split('-');
+        weekLabels += '<text x="' + lastX + '" y="' + (h + 11) + '" fill="#94a3b8" font-size="7" font-family="var(--mono,monospace)" text-anchor="end">' + parseInt(lastParts[2]) + '/' + parseInt(lastParts[1]) + '</text>';
+
         svg.innerHTML =
           '<defs><linearGradient id="mhGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + lineColor + '" stop-opacity="0.15"/><stop offset="100%" stop-color="' + lineColor + '" stop-opacity="0"/></linearGradient></defs>' +
           '<polygon points="0,' + h + ' ' + pts.join(' ') + ' ' + w + ',' + h + '" fill="url(#mhGrad)"/>' +
           '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + lineColor + '" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>' +
-          '<circle cx="' + w + '" cy="' + (h - ((scores[scores.length-1] - min) / range) * h) + '" r="2.5" fill="' + lineColor + '"/>';
+          '<circle cx="' + w + '" cy="' + (h - ((scores[scores.length-1] - min) / range) * h) + '" r="2.5" fill="' + lineColor + '"/>' +
+          weekLabels;
         document.getElementById('mhChart').style.display = 'block';
       }
     } catch(e3) {}
