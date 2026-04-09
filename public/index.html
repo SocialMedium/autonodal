@@ -1651,12 +1651,14 @@ a.stats-card-row:hover { background: var(--surface-warm); }
         <div class="zone-subtitle">Ranked: client signals → network contacts → expansion → growth. Grouped by region.</div>
         <div class="zone-filters" id="signalFilters">
           <button class="filter-btn active" onclick="filterSignals('all', this)">All</button>
+          <button class="filter-btn" onclick="filterSignals('strategic_hiring', this)">Hiring</button>
           <button class="filter-btn" onclick="filterSignals('capital_raising', this)">Funding</button>
           <button class="filter-btn" onclick="filterSignals('geographic_expansion', this)">Expansion</button>
           <button class="filter-btn" onclick="filterSignals('ma_activity', this)">M&A</button>
           <button class="filter-btn" onclick="filterSignals('restructuring', this)">Restructuring</button>
           <button class="filter-btn" onclick="filterSignals('leadership_change', this)">Leadership</button>
           <button class="filter-btn" onclick="filterSignals('product_launch', this)">Product</button>
+          <button class="filter-btn" onclick="filterSignals('partnership', this)">Partnership</button>
         </div>
       </div>
 
@@ -1751,7 +1753,7 @@ a.stats-card-row:hover { background: var(--surface-warm); }
         <div class="zone-header">
           <div class="zone-rule"></div>
           <div class="zone-title-row">
-            <div class="zone-title">Talent in Motion</div>
+            <div class="zone-title">People on the Move</div>
             <div class="zone-count" id="talentCount"></div>
           </div>
           <div class="zone-subtitle">Movement signals — flight risk, hiring surges, re-engagement</div>

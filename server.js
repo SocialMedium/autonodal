@@ -1530,7 +1530,7 @@ app.get('/api/talent-in-motion', authenticateToken, async (req, res) => {
          WHERE sc.person_id = p.id AND sc.tenant_id = $2) as active_search_matches
       FROM people p
       JOIN companies c ON c.id = p.current_company_id AND c.tenant_id = $2
-      JOIN signal_events se ON se.company_id = c.id AND se.tenant_id = $2
+      JOIN signal_events se ON se.company_id = c.id AND (se.tenant_id IS NULL OR se.tenant_id = $2)
         AND se.signal_type::text IN ('restructuring', 'layoffs', 'ma_activity', 'leadership_change', 'strategic_hiring')
         AND se.detected_at > NOW() - INTERVAL '30 days'
         AND COALESCE(se.is_megacap, false) = false
@@ -2164,7 +2164,7 @@ app.get('/api/signals/:id', authenticateToken, async (req, res) => {
       FROM signal_events se
       LEFT JOIN companies c ON se.company_id = c.id
       LEFT JOIN external_documents ed ON se.source_document_id = ed.id
-      WHERE se.id = $1 AND se.tenant_id = $2
+      WHERE se.id = $1 AND (se.tenant_id IS NULL OR se.tenant_id = $2)
     `, [req.params.id, req.tenant_id]);
 
     if (rows.length === 0) return res.status(404).json({ error: 'Signal not found' });
@@ -4665,10 +4665,10 @@ app.get('/api/search', authenticateToken, async (req, res) => {
                    ORDER BY tp2.relationship_strength DESC LIMIT 1
                  )) AS best_connector,
                  (SELECT se.signal_type FROM signal_events se WHERE se.company_id = p.current_company_id
-                   AND se.detected_at > NOW() - INTERVAL '30 days' AND se.tenant_id = $2
+                   AND se.detected_at > NOW() - INTERVAL '30 days' AND (se.tenant_id IS NULL OR se.tenant_id = $2)
                    ORDER BY se.confidence_score DESC LIMIT 1) AS company_signal_type,
                  (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = p.current_company_id
-                   AND se.detected_at > NOW() - INTERVAL '30 days' AND se.tenant_id = $2) AS company_signal_count,
+                   AND se.detected_at > NOW() - INTERVAL '30 days' AND (se.tenant_id IS NULL OR se.tenant_id = $2)) AS company_signal_count,
                  c.is_client AS at_client_company
           FROM people p
           LEFT JOIN person_scores ps ON ps.person_id = p.id
@@ -4729,9 +4729,9 @@ app.get('/api/search', authenticateToken, async (req, res) => {
         const { rows: companies } = await db.query(`
           SELECT c.id, c.name, c.sector, c.geography, c.domain, c.is_client,
                  c.employee_count_band, c.description,
-                 (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.tenant_id = $2) AS signal_count,
-                 (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.tenant_id = $2 AND se.detected_at > NOW() - INTERVAL '30 days') AS recent_signal_count,
-                 (SELECT se.signal_type FROM signal_events se WHERE se.company_id = c.id AND se.tenant_id = $2 AND se.detected_at > NOW() - INTERVAL '30 days'
+                 (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND (se.tenant_id IS NULL OR se.tenant_id = $2)) AS signal_count,
+                 (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND (se.tenant_id IS NULL OR se.tenant_id = $2) AND se.detected_at > NOW() - INTERVAL '30 days') AS recent_signal_count,
+                 (SELECT se.signal_type FROM signal_events se WHERE se.company_id = c.id AND (se.tenant_id IS NULL OR se.tenant_id = $2) AND se.detected_at > NOW() - INTERVAL '30 days'
                    ORDER BY se.confidence_score DESC LIMIT 1) AS top_signal_type,
                  (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id AND p.tenant_id = $2) AS people_count,
                  (SELECT COUNT(DISTINCT tp.person_id) FROM team_proximity tp
@@ -4817,7 +4817,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
                        WHERE tp2.tenant_id = $2 ORDER BY tp2.relationship_strength DESC LIMIT 1
                      )) AS best_connector
               FROM signal_events se LEFT JOIN companies c ON c.id = se.company_id
-              WHERE se.id = ANY($1::uuid[]) AND se.tenant_id = $2
+              WHERE se.id = ANY($1::uuid[]) AND (se.tenant_id IS NULL OR se.tenant_id = $2)
             `, [sigIds, req.tenant_id]);
             const sigMap = new Map(signals.map(s => [s.id, s]));
             results.signals = qdrantResults.map(r => {
@@ -8124,7 +8124,7 @@ async function executeTool(name, input, userId, tenantId) {
       }
       case 'search_companies': {
         const { query, filters = {}, limit = 10 } = input;
-        const { rows } = await db.query(`SELECT c.id, c.name, c.sector, c.geography, c.domain, c.employee_count_band, c.is_client, c.description, (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id AND p.tenant_id = $3) AS people_count, (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND se.tenant_id = $3) AS signal_count FROM companies c WHERE (c.name ILIKE $1 OR c.sector ILIKE $1 OR c.geography ILIKE $1) AND c.tenant_id = $3 ${filters.is_client ? 'AND c.is_client = true' : ''} ORDER BY c.is_client DESC, c.name LIMIT $2`, [`%${query}%`, limit, tenantId]);
+        const { rows } = await db.query(`SELECT c.id, c.name, c.sector, c.geography, c.domain, c.employee_count_band, c.is_client, c.description, (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id AND p.tenant_id = $3) AS people_count, (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND (se.tenant_id IS NULL OR se.tenant_id = $3)) AS signal_count FROM companies c WHERE (c.name ILIKE $1 OR c.sector ILIKE $1 OR c.geography ILIKE $1) AND c.tenant_id = $3 ${filters.is_client ? 'AND c.is_client = true' : ''} ORDER BY c.is_client DESC, c.name LIMIT $2`, [`%${query}%`, limit, tenantId]);
         return JSON.stringify(rows);
       }
       case 'get_person_detail': {
@@ -8602,7 +8602,7 @@ async function executeTool(name, input, userId, tenantId) {
                AND p2.seniority_level IN ('c_suite','vp','director')) as senior_affected
             FROM people p
             JOIN companies c ON c.id = p.current_company_id AND c.tenant_id = $2
-            JOIN signal_events se ON se.company_id = c.id AND se.tenant_id = $2
+            JOIN signal_events se ON se.company_id = c.id AND (se.tenant_id IS NULL OR se.tenant_id = $2)
               AND se.signal_type::text IN ('restructuring', 'layoffs', 'ma_activity', 'leadership_change', 'strategic_hiring')
               AND se.detected_at > NOW() - INTERVAL '30 days'
               AND COALESCE(se.is_megacap, false) = false
