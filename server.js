@@ -13262,7 +13262,7 @@ app.get('/api/insights/today', authenticateToken, async (req, res) => {
     const { rows } = await pool.query(`
       SELECT * FROM daily_insights
       WHERE tenant_id = $1 AND (user_id = $2 OR user_id IS NULL)
-      AND insight_date >= CURRENT_DATE - 1
+      AND insight_date >= CURRENT_DATE - 3
       ORDER BY insight_date DESC, generated_at DESC
       LIMIT 3
     `, [req.tenant_id, req.user.user_id]);
