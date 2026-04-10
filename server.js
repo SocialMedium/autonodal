@@ -14100,6 +14100,235 @@ app.use(function(err, req, res, next) {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ONBOARDING ROUTES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function intentTypeToDefaultName(type) {
+  const map = {
+    raising_capital: 'Capital raise',
+    building_team: 'Team build',
+    growing_pipeline: 'Pipeline development',
+    tracking_market: 'Market intelligence',
+    managing_portfolio: 'Portfolio monitoring'
+  };
+  return map[type] || 'My first opportunity';
+}
+
+// POST /api/onboarding/intent — capture user intent + auto-create first opportunity
+app.post('/api/onboarding/intent', authenticateToken, async function(req, res) {
+  try {
+    var { intent_types, vertical, horizon_text, target_outcome } = req.body;
+    if (!intent_types || !Array.isArray(intent_types) || intent_types.length === 0) {
+      return res.status(400).json({ error: 'intent_types is required (array)' });
+    }
+
+    var db = new TenantDB(req.tenant_id);
+
+    // Create user_intent record
+    var { rows: intentRows } = await db.query(
+      `INSERT INTO user_intent (id, user_id, tenant_id, intent_types, vertical, horizon_text, target_outcome, created_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW()) RETURNING id`,
+      [req.user.user_id, req.tenant_id, JSON.stringify(intent_types), vertical || null, horizon_text || null, target_outcome || null]
+    );
+    var intent_id = intentRows[0].id;
+
+    // Auto-create first opportunity
+    var oppName = target_outcome || intentTypeToDefaultName(intent_types[0]);
+    var { rows: oppRows } = await db.query(
+      `INSERT INTO opportunities (id, name, tenant_id, created_by, status, created_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, 'active', NOW()) RETURNING id`,
+      [oppName, req.tenant_id, req.user.user_id]
+    );
+    var opportunity_id = oppRows[0].id;
+
+    // Set user vertical on users table
+    if (vertical) {
+      await platformPool.query(
+        `UPDATE users SET vertical = $1 WHERE id = $2`,
+        [vertical, req.user.user_id]
+      );
+    }
+
+    await db.release();
+    res.json({ intent_id: intent_id, opportunity_id: opportunity_id, vertical: vertical || null });
+  } catch (err) {
+    console.error('Onboarding intent error:', err.message);
+    res.status(500).json({ error: 'Failed to save onboarding intent' });
+  }
+});
+
+// POST /api/onboarding/watched-people — add people to watch list from onboarding
+app.post('/api/onboarding/watched-people', authenticateToken, async function(req, res) {
+  try {
+    var { people, opportunity_id } = req.body;
+    if (!people || !Array.isArray(people) || people.length === 0) {
+      return res.status(400).json({ error: 'people array is required' });
+    }
+
+    var db = new TenantDB(req.tenant_id);
+    var inserted = 0;
+    var matched = 0;
+
+    // Get user intent for watch_context inference
+    var { rows: intentRows } = await db.query(
+      `SELECT intent_types FROM user_intent WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [req.user.user_id]
+    );
+    var watchContext = null;
+    if (intentRows.length > 0) {
+      var types = intentRows[0].intent_types;
+      if (typeof types === 'string') types = JSON.parse(types);
+      watchContext = Array.isArray(types) ? types.join(', ') : null;
+    }
+
+    for (var i = 0; i < people.length; i++) {
+      var person = people[i];
+      if (!person.name) continue;
+
+      // Attempt fuzzy match against existing people (LOWER name match)
+      var { rows: existingRows } = await db.query(
+        `SELECT id FROM people WHERE LOWER(name) = LOWER($1) LIMIT 1`,
+        [person.name.trim()]
+      );
+      var personId = existingRows.length > 0 ? existingRows[0].id : null;
+      if (personId) matched++;
+
+      // Insert into watched_people
+      await db.query(
+        `INSERT INTO watched_people (id, tenant_id, user_id, person_id, name, company, reason, linkedin_url, watch_context, opportunity_id, added_at_onboarding, created_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, true, NOW())
+         ON CONFLICT DO NOTHING`,
+        [req.tenant_id, req.user.user_id, personId, person.name.trim(), person.company || null, person.reason || null, person.linkedin_url || null, watchContext, opportunity_id || null]
+      );
+      inserted++;
+    }
+
+    await db.release();
+    res.json({ inserted: inserted, matched: matched });
+  } catch (err) {
+    console.error('Onboarding watched-people error:', err.message);
+    res.status(500).json({ error: 'Failed to add watched people' });
+  }
+});
+
+// POST /api/onboarding/collaborators — create huddle + invite collaborators
+app.post('/api/onboarding/collaborators', authenticateToken, async function(req, res) {
+  try {
+    var { collaborators, opportunity_name } = req.body;
+    if (!collaborators || !Array.isArray(collaborators) || collaborators.length === 0) {
+      return res.status(400).json({ error: 'collaborators array is required' });
+    }
+    if (!opportunity_name) {
+      return res.status(400).json({ error: 'opportunity_name is required' });
+    }
+
+    // Create huddle (cross-tenant, use platformPool)
+    var slug = opportunity_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    slug = slug + '-' + Date.now().toString(36);
+
+    var { rows: huddleRows } = await platformPool.query(
+      `INSERT INTO huddles (name, slug, description, purpose, creator_tenant_id, visibility, phase_label)
+       VALUES ($1, $2, $3, 'onboarding', $4, 'private', 'setup') RETURNING id`,
+      [opportunity_name, slug, 'Created during onboarding for ' + opportunity_name, req.tenant_id]
+    );
+    var huddle_id = huddleRows[0].id;
+
+    // Add current user as admin member
+    await platformPool.query(
+      `INSERT INTO huddle_members (huddle_id, tenant_id, role, status, invited_by, joined_at)
+       VALUES ($1, $2, 'admin', 'active', $2, NOW())`,
+      [huddle_id, req.tenant_id]
+    );
+
+    // Invite each collaborator
+    var invitesSent = 0;
+    var inviteLinks = [];
+
+    for (var i = 0; i < collaborators.length; i++) {
+      var collab = collaborators[i];
+      if (!collab.email) continue;
+
+      var token = crypto.randomBytes(32).toString('hex');
+      await platformPool.query(
+        `INSERT INTO onboarding_invites (id, token, huddle_id, invited_by_user_id, invited_by_tenant_id, invitee_name, invitee_email, role_context, created_at, expires_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, NOW(), NOW() + INTERVAL '7 days')`,
+        [token, huddle_id, req.user.user_id, req.tenant_id, collab.name || null, collab.email, collab.role || null]
+      );
+      invitesSent++;
+      inviteLinks.push('/onboarding/invite/' + token);
+    }
+
+    res.json({ huddle_id: huddle_id, invites_sent: invitesSent, invite_links: inviteLinks });
+  } catch (err) {
+    console.error('Onboarding collaborators error:', err.message);
+    res.status(500).json({ error: 'Failed to create huddle and invites' });
+  }
+});
+
+// POST /api/onboarding/complete — mark onboarding as done
+app.post('/api/onboarding/complete', authenticateToken, async function(req, res) {
+  try {
+    var db = new TenantDB(req.tenant_id);
+
+    // Set user_intent.completed_at
+    await db.query(
+      `UPDATE user_intent SET completed_at = NOW() WHERE user_id = $1 AND completed_at IS NULL`,
+      [req.user.user_id]
+    );
+
+    // Set users.onboarding_complete
+    await platformPool.query(
+      `UPDATE users SET onboarding_complete = true WHERE id = $1`,
+      [req.user.user_id]
+    );
+
+    await db.release();
+    res.json({ redirect_to: '/index.html' });
+  } catch (err) {
+    console.error('Onboarding complete error:', err.message);
+    res.status(500).json({ error: 'Failed to complete onboarding' });
+  }
+});
+
+// GET /api/onboarding/invite/:token — validate invite token (no auth required)
+app.get('/api/onboarding/invite/:token', async function(req, res) {
+  try {
+    var { rows } = await platformPool.query(
+      `SELECT oi.id, oi.huddle_id, oi.role_context, oi.expires_at,
+              h.name as huddle_name,
+              u.name as invited_by_name
+       FROM onboarding_invites oi
+       JOIN huddles h ON h.id = oi.huddle_id
+       JOIN users u ON u.id = oi.invited_by_user_id
+       WHERE oi.token = $1`,
+      [req.params.token]
+    );
+
+    if (rows.length === 0) {
+      return res.json({ valid: false });
+    }
+
+    var invite = rows[0];
+    var isExpired = new Date(invite.expires_at) < new Date();
+
+    if (isExpired) {
+      return res.json({ valid: false });
+    }
+
+    res.json({
+      valid: true,
+      huddle_name: invite.huddle_name,
+      invited_by_name: invite.invited_by_name,
+      role_context: invite.role_context,
+      huddle_id: invite.huddle_id
+    });
+  } catch (err) {
+    console.error('Onboarding invite validation error:', err.message);
+    res.status(500).json({ error: 'Failed to validate invite' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // START SERVER
 // ═══════════════════════════════════════════════════════════════════════════════
 

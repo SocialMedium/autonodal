@@ -3,1305 +3,853 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Autonodal — Get Started</title>
+<title>Get Started — MLX Intelligence</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400;1,500&family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+      colors: {
+        ink: { DEFAULT: '#1A1A1A', 2: '#4A4A4A', 3: '#7A7A7A', 4: '#AAAAAA' },
+        bg: '#FAF9F7',
+        surface: '#FFFFFF',
+        rule: { DEFAULT: '#E0DDD8', bold: '#C8C4BE' },
+        emerald: { DEFAULT: '#0D7A50', soft: '#E8F5EE' },
+        blue: { DEFAULT: '#2563EB', soft: '#EBF1FE' },
+        violet: { DEFAULT: '#6D28D9', soft: '#F3EEFE' },
+        amber: { DEFAULT: '#B45309', soft: '#FEF7E8' },
+        rose: { DEFAULT: '#C41D3E', soft: '#FDF0F2' },
+      }
+    }
+  }
+}
+</script>
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#0a0e1a;
-  --bg-surface:#111627;
-  --bg-elevated:#1a1f35;
-  --border:#2a3050;
-  --cream:#e2e8f0;
-  --cream-dim:#94a3b8;
-  --amber:#f59e0b;
-  --amber-dim:#d97706;
-  --amber-bg:rgba(245,158,11,0.12);
-  --mono:'IBM Plex Mono',monospace;
-  --sans:'IBM Plex Sans',sans-serif;
-  --display:'Playfair Display',Georgia,serif;
-}
-html{scroll-behavior:smooth}
-body{
-  font-family:var(--sans);
-  background:var(--bg);
-  color:var(--cream);
-  font-size:16px;
-  line-height:1.6;
-  min-height:100vh;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-}
+  body { background: #FAF9F7; }
 
-/* Layout */
-.onboard-shell{
-  width:100%;
-  max-width:640px;
-  margin:0 auto;
-  padding:48px 24px;
-  min-height:100vh;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-}
+  /* Step transitions */
+  .step { display: none; animation: fadeUp 0.35s ease; }
+  .step.active { display: block; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 
-/* Step visibility */
-.step{display:none;animation:fadeUp .4s ease}
-.step.active{display:flex;flex-direction:column}
-@keyframes fadeUp{
-  from{opacity:0;transform:translateY(12px)}
-  to{opacity:1;transform:translateY(0)}
-}
+  /* Intent cards */
+  .intent-card {
+    border: 1.5px solid #E0DDD8;
+    border-radius: 10px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    background: #FFFFFF;
+    user-select: none;
+  }
+  .intent-card:hover { border-color: #C8C4BE; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+  .intent-card.selected {
+    border-color: #0D7A50;
+    background: #E8F5EE;
+    box-shadow: 0 0 0 1px #0D7A50;
+  }
 
-/* Typography */
-h1{font-family:var(--display);font-size:28px;font-weight:500;letter-spacing:-0.02em;line-height:1.25;margin-bottom:12px}
-h2{font-family:var(--display);font-size:22px;font-weight:500;letter-spacing:-0.01em;line-height:1.3;margin-bottom:8px}
-h3{font-family:var(--sans);font-size:13px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:16px}
-p.sub{color:var(--cream-dim);font-size:15px;line-height:1.55;margin-bottom:24px}
+  /* Pill selectors */
+  .pill-option {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    border: 1.5px solid #E0DDD8;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    background: #FFFFFF;
+    color: #4A4A4A;
+  }
+  .pill-option:hover { border-color: #C8C4BE; }
+  .pill-option.selected {
+    border-color: #0D7A50;
+    background: #E8F5EE;
+    color: #0D7A50;
+  }
 
-/* Buttons */
-.btn-primary{
-  display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  background:var(--amber);color:var(--bg);
-  font-family:var(--sans);font-size:14px;font-weight:500;
-  letter-spacing:0.04em;text-transform:uppercase;
-  padding:14px 32px;border:none;cursor:pointer;
-  transition:background .2s,transform .1s;
-}
-.btn-primary:hover{background:var(--amber-dim)}
-.btn-primary:active{transform:scale(0.98)}
-.btn-primary:disabled{opacity:0.5;cursor:not-allowed}
+  /* Source cards */
+  .source-card {
+    border: 1.5px solid #E0DDD8;
+    border-radius: 10px;
+    padding: 16px 18px;
+    background: #FFFFFF;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: all 0.15s ease;
+  }
+  .source-card:hover { border-color: #C8C4BE; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
 
-.btn-ghost{
-  display:inline-flex;align-items:center;justify-content:center;
-  background:transparent;color:var(--cream-dim);
-  font-family:var(--sans);font-size:13px;font-weight:400;
-  padding:12px 24px;border:1px solid var(--border);cursor:pointer;
-  transition:color .2s,border-color .2s;
-}
-.btn-ghost:hover{color:var(--cream);border-color:var(--cream-dim)}
+  /* Signal bundle cards */
+  .bundle-card {
+    border: 1.5px solid #E0DDD8;
+    border-radius: 10px;
+    padding: 14px 16px;
+    background: #FFFFFF;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+  }
+  .bundle-card:hover { border-color: #C8C4BE; }
+  .bundle-card.selected {
+    border-color: #0D7A50;
+    background: #E8F5EE;
+  }
 
-/* Sparkle mark */
-.sparkle-mark{
-  display:flex;align-items:center;gap:12px;margin-bottom:32px;
-}
-.sparkle-mark svg{flex-shrink:0}
-.sparkle-mark span{
-  font-family:var(--display);font-size:20px;font-weight:700;
-  letter-spacing:-0.02em;
-}
+  /* People rows */
+  .person-row { border-bottom: 1px solid #E0DDD8; padding-bottom: 14px; margin-bottom: 14px; }
+  .person-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
 
-/* ─── Step 1: Conversation ─── */
-.chat-thread{
-  flex:1;
-  overflow-y:auto;
-  display:flex;
-  flex-direction:column;
-  gap:16px;
-  padding:8px 0 24px;
-  max-height:420px;
-  min-height:280px;
-}
-.msg{
-  max-width:85%;
-  padding:12px 16px;
-  font-size:14px;
-  line-height:1.55;
-  border-radius:2px;
-  animation:fadeUp .3s ease;
-}
-.msg.assistant{
-  align-self:flex-start;
-  background:var(--bg-elevated);
-  color:var(--cream);
-  border-left:2px solid var(--border);
-}
-.msg.user{
-  align-self:flex-end;
-  background:var(--amber-bg);
-  color:var(--cream);
-  border-right:2px solid var(--amber);
-}
-.msg.typing{
-  align-self:flex-start;
-  background:var(--bg-elevated);
-  border-left:2px solid var(--border);
-  padding:14px 20px;
-}
-.typing-dots{display:flex;gap:5px}
-.typing-dots span{
-  width:6px;height:6px;border-radius:50%;
-  background:var(--cream-dim);
-  animation:blink 1.4s infinite both;
-}
-.typing-dots span:nth-child(2){animation-delay:.2s}
-.typing-dots span:nth-child(3){animation-delay:.4s}
-@keyframes blink{
-  0%,80%,100%{opacity:.3}
-  40%{opacity:1}
-}
+  /* Input styling */
+  input[type="text"], input[type="email"], input[type="url"], textarea, select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1.5px solid #E0DDD8;
+    border-radius: 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    color: #1A1A1A;
+    background: #FFFFFF;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  input:focus, textarea:focus, select:focus { border-color: #0D7A50; }
+  input::placeholder, textarea::placeholder { color: #AAAAAA; }
 
-.chat-input-row{
-  display:flex;gap:8px;align-items:flex-end;
-  border-top:1px solid var(--border);
-  padding-top:16px;
-}
-.chat-input-row textarea{
-  flex:1;
-  background:var(--bg-surface);
-  border:1px solid var(--border);
-  color:var(--cream);
-  font-family:var(--sans);font-size:14px;
-  padding:12px 14px;
-  resize:none;
-  min-height:44px;
-  max-height:120px;
-  line-height:1.5;
-  outline:none;
-  transition:border-color .2s;
-}
-.chat-input-row textarea:focus{border-color:var(--amber)}
-.chat-input-row textarea::placeholder{color:var(--cream-dim)}
-.chat-send{
-  background:var(--amber);color:var(--bg);
-  border:none;padding:12px 16px;cursor:pointer;
-  font-family:var(--sans);font-size:13px;font-weight:500;
-  letter-spacing:0.04em;text-transform:uppercase;
-  transition:background .2s;flex-shrink:0;
-}
-.chat-send:hover{background:var(--amber-dim)}
-.chat-send:disabled{opacity:0.4;cursor:not-allowed}
-
-/* ─── Step 2: Upload ─── */
-.upload-options{display:flex;flex-direction:column;gap:16px;margin:24px 0}
-.upload-card{
-  background:var(--bg-surface);
-  border:1px solid var(--border);
-  padding:20px;
-  display:flex;flex-direction:column;gap:8px;
-}
-.upload-card label{
-  font-family:var(--sans);font-size:13px;font-weight:500;
-  color:var(--cream-dim);letter-spacing:0.04em;text-transform:uppercase;
-}
-.upload-card input[type="file"],
-.upload-card input[type="text"]{
-  background:var(--bg-elevated);
-  border:1px solid var(--border);
-  color:var(--cream);
-  font-family:var(--mono);font-size:13px;
-  padding:10px 12px;
-  outline:none;
-}
-.upload-card input[type="text"]::placeholder{color:var(--cream-dim)}
-.upload-card input[type="file"]::-webkit-file-upload-button{
-  background:var(--bg);color:var(--cream-dim);
-  border:1px solid var(--border);
-  padding:6px 12px;margin-right:10px;
-  font-family:var(--sans);font-size:12px;cursor:pointer;
-}
-.badge-optional{
-  display:inline-block;
-  font-family:var(--mono);font-size:11px;
-  color:var(--cream-dim);background:var(--bg-elevated);
-  padding:2px 8px;margin-left:8px;
-  border:1px solid var(--border);
-  vertical-align:middle;
-}
-
-/* ─── Step 3: Connect ─── */
-.connect-cards{display:flex;flex-direction:column;gap:16px;margin:24px 0}
-.connect-card{
-  background:var(--bg-surface);
-  border:1px solid var(--border);
-  padding:24px;
-  cursor:pointer;
-  transition:border-color .2s,background .2s;
-  display:flex;align-items:center;gap:16px;
-}
-.connect-card:hover{border-color:var(--amber);background:var(--bg-elevated)}
-.connect-card .card-icon{
-  width:40px;height:40px;
-  display:flex;align-items:center;justify-content:center;
-  background:var(--bg-elevated);border:1px solid var(--border);
-  border-radius:50%;flex-shrink:0;
-}
-.connect-card .card-body{flex:1}
-.connect-card .card-body strong{font-size:15px;display:block;margin-bottom:2px}
-.connect-card .card-body small{font-size:12px;color:var(--cream-dim)}
-.badge-value{
-  font-family:var(--mono);font-size:10px;
-  color:var(--amber);background:var(--amber-bg);
-  padding:3px 8px;letter-spacing:0.05em;text-transform:uppercase;
-  flex-shrink:0;
-}
-
-/* ─── Step 4: Confirm + Feed Selection ─── */
-.profile-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0}
-.profile-card{
-  background:var(--bg-surface);
-  border:1px solid var(--border);
-  padding:16px;
-  cursor:pointer;
-  transition:border-color .2s;
-}
-.profile-card:hover{border-color:var(--amber)}
-.profile-card .card-label{
-  font-family:var(--mono);font-size:11px;
-  color:var(--cream-dim);letter-spacing:0.06em;text-transform:uppercase;
-  margin-bottom:6px;
-}
-.profile-card .card-value{
-  font-family:var(--sans);font-size:14px;
-  color:var(--cream);line-height:1.45;
-}
-.profile-card.editing .card-value{display:none}
-.profile-card.editing .card-edit{display:block}
-.card-edit{
-  display:none;
-  width:100%;
-  background:var(--bg-elevated);
-  border:1px solid var(--amber);
-  color:var(--cream);
-  font-family:var(--sans);font-size:14px;
-  padding:8px 10px;
-  outline:none;
-  resize:none;
-  line-height:1.45;
-}
-
-/* Always-on bar */
-.always-on-bar{
-  display:flex;align-items:center;gap:12px;
-  background:rgba(16,185,129,0.06);
-  border:1px solid rgba(16,185,129,0.15);
-  border-radius:2px;
-  padding:12px 14px;margin-bottom:16px;font-size:13px;
-}
-.always-on-label{
-  color:#10b981;font-family:var(--mono);font-size:11px;
-  letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;
-}
-.always-on-sources{color:var(--cream-dim);font-size:12px}
-
-/* Bundle selection */
-.feed-section{margin-bottom:16px}
-.feed-section-label{
-  font-family:var(--mono);font-size:11px;
-  letter-spacing:0.06em;text-transform:uppercase;
-  color:var(--cream-dim);margin-bottom:10px;
-}
-.bundle-select-grid{display:flex;flex-direction:column;gap:8px}
-.bundle-card{
-  background:var(--bg-surface);
-  border:1px solid var(--border);
-  border-radius:2px;padding:14px;
-  cursor:pointer;transition:border-color .15s,background .15s;
-}
-.bundle-card:hover{border-color:rgba(245,158,11,0.5)}
-.bundle-card.selected{
-  background:rgba(245,158,11,0.06);
-  border-color:rgba(245,158,11,0.4);
-}
-.bundle-card-header{
-  display:flex;align-items:center;gap:10px;margin-bottom:4px;
-}
-.bundle-card-header .bundle-meta{flex:1}
-.bundle-card-header .bundle-meta strong{display:block;font-size:14px}
-.bundle-card-header .bundle-source-count{font-size:12px;color:var(--cream-dim)}
-.bundle-check{
-  font-size:14px;color:var(--cream-dim);width:24px;text-align:center;
-  font-family:var(--mono);
-}
-.bundle-check.checked{color:var(--amber)}
-.bundle-desc{font-size:12px;color:var(--cream-dim);margin:0}
-.bundle-quality{font-size:11px;color:var(--cream-dim);margin-top:6px;font-family:var(--mono)}
-
-/* Browse more toggle */
-.browse-more-toggle{
-  background:none;
-  border:1px dashed var(--border);
-  border-radius:2px;color:var(--cream-dim);
-  cursor:pointer;font-size:13px;font-family:var(--sans);
-  padding:10px;width:100%;margin:12px 0;
-  transition:border-color .2s,color .2s;
-}
-.browse-more-toggle:hover{border-color:var(--amber);color:var(--amber)}
-
-/* Inline feed browser */
-.feed-browser{margin-bottom:16px}
-.browser-search{
-  width:100%;background:var(--bg-surface);
-  border:1px solid var(--border);border-radius:2px;
-  color:var(--cream);font-family:var(--sans);font-size:14px;
-  padding:10px 14px;outline:none;margin-bottom:12px;
-}
-.browser-search:focus{border-color:var(--amber)}
-.browser-search::placeholder{color:var(--cream-dim)}
-.browser-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
-.filter-chip{
-  background:var(--bg-surface);border:1px solid var(--border);
-  border-radius:20px;color:var(--cream-dim);cursor:pointer;
-  font-family:var(--sans);font-size:12px;padding:4px 12px;
-  transition:background .15s,border-color .15s,color .15s;
-}
-.filter-chip.active{
-  background:rgba(245,158,11,0.15);
-  border-color:rgba(245,158,11,0.4);color:var(--amber);
-}
-.browser-group-label{
-  font-family:var(--mono);font-size:11px;
-  letter-spacing:0.06em;text-transform:uppercase;
-  color:var(--cream-dim);margin-bottom:8px;
-}
-.browse-row{
-  display:flex;align-items:center;gap:12px;
-  background:var(--bg-surface);border:1px solid var(--border);
-  border-radius:2px;padding:12px 14px;margin-bottom:6px;
-  transition:border-color .15s;
-}
-.browse-row.active{border-color:rgba(245,158,11,0.4)}
-.browse-row .browse-meta{flex:1;min-width:0}
-.browse-row .browse-meta strong{font-size:13px;display:block}
-.browse-row .browse-meta span{font-size:12px;color:var(--cream-dim)}
-.btn-toggle{
-  background:none;border:1px solid var(--border);
-  border-radius:2px;color:var(--cream-dim);cursor:pointer;
-  font-family:var(--sans);font-size:12px;padding:5px 12px;white-space:nowrap;
-  transition:background .15s,border-color .15s,color .15s;
-}
-.btn-toggle.active{
-  background:rgba(245,158,11,0.15);
-  border-color:rgba(245,158,11,0.4);color:var(--amber);
-}
-
-/* Activate footer */
-.activate-footer{
-  margin-top:20px;border-top:1px solid var(--border);padding-top:16px;
-}
-.feed-summary{
-  font-family:var(--mono);font-size:12px;
-  color:var(--cream-dim);text-align:center;margin-bottom:8px;
-}
-
-/* ─── Step 5: Activating ─── */
-.activating-center{
-  display:flex;flex-direction:column;align-items:center;
-  justify-content:center;text-align:center;gap:20px;
-  min-height:300px;
-}
-.pulse-dot{
-  width:16px;height:16px;border-radius:50%;
-  background:var(--amber);
-  animation:pulse 1.5s ease infinite;
-}
-@keyframes pulse{
-  0%,100%{transform:scale(1);opacity:1}
-  50%{transform:scale(1.6);opacity:.4}
-}
-.progress-msg{
-  font-family:var(--mono);font-size:13px;
-  color:var(--cream-dim);
-}
-
-/* ─── Progress bar (top) ─── */
-.step-progress{
-  position:fixed;top:0;left:0;right:0;height:3px;
-  background:var(--bg-surface);z-index:100;
-}
-.step-progress .bar{
-  height:100%;background:var(--amber);
-  transition:width .4s ease;
-}
-
-/* Responsive */
-@media(max-width:480px){
-  .onboard-shell{padding:32px 16px}
-  .profile-cards{grid-template-columns:1fr}
-  h1{font-size:24px}
-}
+  /* Progress dots */
+  .progress-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    transition: all 0.2s ease;
+  }
+  .progress-dot.complete { background: #0D7A50; }
+  .progress-dot.current { background: #FFFFFF; border: 2.5px solid #0D7A50; }
+  .progress-dot.future { background: #E0DDD8; }
 </style>
 </head>
-<body>
+<body class="font-sans antialiased min-h-screen">
 
-<div class="step-progress"><div class="bar" id="progressBar" style="width:0%"></div></div>
+<!-- Shell -->
+<div class="max-w-[600px] mx-auto px-6 py-12 min-h-screen flex flex-col">
 
-<div class="onboard-shell">
-
-  <!-- SCIENCE: Step 0 — competence trust before benevolence trust -->
-  <!-- Value statement leads, privacy statement follows (Issue 9) -->
-  <div class="step active" id="step0">
-    <div class="sparkle-mark">
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-        <path d="M14 0L16.8 11.2L28 14L16.8 16.8L14 28L11.2 16.8L0 14L11.2 11.2L14 0Z" fill="#f59e0b"/>
-      </svg>
-      <span>Autonodal</span>
-    </div>
-    <h1>See what your network<br>can see.</h1>
-    <!-- SCIENCE: Competence signal first — show what the platform does concretely -->
-    <p class="sub" style="font-size:15px;line-height:1.6;margin-bottom:16px">Autonodal monitors thousands of sources for funding rounds, leadership changes, expansions, and M&A — then maps them against your professional network to surface warm paths you didn't know you had.</p>
-    <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:#94a3b8;line-height:1.5">
-      <span style="color:#f59e0b;font-weight:600">Example:</span> "Immutable just raised $200M — you have 3 warm connections there via your network."
-    </div>
-    <!-- SCIENCE: Privacy AFTER competence — now reads as a feature, not a disclaimer -->
-    <div style="font-size:12px;color:#64748b;margin-bottom:20px">
-      🔒 Your data stays in your private sandbox. Never merged, sold, or used to train AI.
-    </div>
-    <div>
-      <button class="btn-primary" onclick="goToStep(1)">Get started — 90 seconds →</button>
-    </div>
+  <!-- Brand -->
+  <div class="mb-2">
+    <span class="text-lg font-semibold tracking-tight text-ink">MLX <em class="font-normal italic">Intelligence</em></span>
   </div>
 
-  <!-- SCIENCE: Step 1 — foot-in-the-door + consequential framing (Issue 6) -->
-  <div class="step" id="step1">
-    <h3>Tell us about you</h3>
-    <!-- SCIENCE: Sets expectation that conversation has consequential output -->
-    <p style="font-size:13px;color:#94a3b8;margin-bottom:14px">Your answers configure your intelligence feed — 3 questions, takes 90 seconds.</p>
-    <div class="chat-thread" id="chatThread"></div>
-    <!-- SCIENCE: Profile confirmation shown after PROFILE_READY (integrity trust) -->
-    <div id="profileConfirmation" style="display:none;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:8px;padding:16px;margin-bottom:12px">
-      <p style="font-size:13px;color:#e2e8f0;margin:0 0 8px;font-weight:500">Got it. Here's what we've configured:</p>
-      <div id="extractedChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>
-      <p style="font-size:11px;color:#64748b;margin:0 0 10px">You can adjust these in the next step.</p>
-      <button class="btn-primary" onclick="goToStep(2)" style="width:auto;padding:8px 20px;font-size:13px">That's right →</button>
-    </div>
-    <div id="chatInputArea">
-      <div class="chat-input-row">
-        <textarea id="chatInput" rows="1" placeholder="Type your response..."></textarea>
-        <button class="chat-send" id="chatSend" onclick="sendMessage()">Send</button>
-      </div>
-      <p style="font-size:12px;color:#64748b;margin-top:8px;text-align:center">🔒 Your responses configure your feed. Nothing is shared.</p>
-    </div>
+  <!-- Progress dots -->
+  <div id="progressDots" class="flex items-center gap-2 mb-10">
+    <!-- Rendered by JS -->
   </div>
 
-  <!-- Step 2: Upload -->
-  <div class="step" id="step2">
-    <h2>Add context <span class="badge-optional">optional</span></h2>
-    <p class="sub">Help us build a richer profile. You can always add these later.</p>
-    <div class="privacy-trust" style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:16px;margin-bottom:16px">
-      <div style="font-size:13px;font-weight:500;color:#10b981;margin-bottom:6px">🔒 Your documents stay private.</div>
-      <p style="font-size:13px;color:#94a3b8;line-height:1.5;margin:0">Uploaded files are used only to build your personal profile. They are stored securely in your private sandbox and never shared or used for AI training.</p>
-    </div>
-    <div class="upload-options">
-      <div class="upload-card">
-        <label>Paste your LinkedIn profile URL</label>
-        <input type="text" id="linkedinUrl" placeholder="https://linkedin.com/in/your-name" style="width:100%;padding:10px;border:1px solid #1e2d3d;border-radius:6px;background:#111827;color:#e2e8f0;font-size:14px;margin-top:6px">
-        <span style="font-size:11px;color:#64748b;margin-top:4px;display:block">We use this to enrich your profile with career context.</span>
-      </div>
-      <div class="upload-card">
-        <label>Upload CV <span style="font-size:11px;color:#64748b;font-weight:400">optional</span></label>
-        <input type="file" id="uploadCV" accept=".pdf">
-      </div>
-    </div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px">
-      <button class="btn-primary" onclick="submitUploads()">Continue</button>
-      <button class="btn-ghost" onclick="goToStep(3)">Skip — I'll add later</button>
-    </div>
-  </div>
+  <!-- Steps container -->
+  <div id="stepsContainer" class="flex-1">
 
-  <!-- Step 3: Connect -->
-  <div class="step" id="step3">
-    <h2>Map your network</h2>
-    <p class="sub">Connect your email to see who in your network is closest to the signals that matter.</p>
-    <div class="privacy-trust" style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:16px;margin-bottom:16px">
-      <div style="font-size:13px;font-weight:500;color:#10b981;margin-bottom:6px">🔒 We never read your messages.</div>
-      <p style="font-size:13px;color:#94a3b8;line-height:1.5;margin:0 0 8px 0">Connecting Gmail maps your real relationship graph — who you talk to, how often, how recently. The content of every email you have ever written remains yours, always.</p>
-      <ul style="margin:0;padding:0;list-style:none">
-        <li style="font-size:12px;color:#64748b;padding:2px 0 2px 16px;position:relative"><span style="position:absolute;left:0;color:#10b981">→</span> We extract: who, when, frequency, reciprocity</li>
-        <li style="font-size:12px;color:#64748b;padding:2px 0 2px 16px;position:relative"><span style="position:absolute;left:0;color:#10b981">→</span> We never access: subject lines, message body, attachments</li>
-        <li style="font-size:12px;color:#64748b;padding:2px 0 2px 16px;position:relative"><span style="position:absolute;left:0;color:#10b981">→</span> Nothing leaves your session context</li>
-      </ul>
-    </div>
-    <!-- SCIENCE: Connection card anatomy with access detail (Issue 2) -->
-    <!-- Competence + benevolence trust signals precede OAuth request -->
-    <div class="connect-cards" style="display:flex;flex-direction:column;gap:12px">
-      <div style="background:#111827;border:1px solid #1e2d3d;border-radius:10px;padding:18px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-          <span style="font-size:20px">📧</span>
-          <div>
-            <strong style="font-size:14px;color:#e2e8f0">Gmail</strong>
-            <span style="display:block;font-size:12px;color:#f59e0b">Highest value — see how warm your relationships really are</span>
-          </div>
+    <!-- Step 1: Intent -->
+    <div class="step" data-step="1">
+      <h1 class="text-[22px] font-semibold tracking-tight text-ink leading-tight mb-2">What are you working on right now?</h1>
+      <p class="text-sm text-ink-3 mb-6">Select everything that applies</p>
+      <div class="grid grid-cols-2 gap-3 mb-8" id="intentGrid">
+        <div class="intent-card" data-intent="raising_capital" onclick="toggleIntent(this)">
+          <div class="text-sm font-semibold text-ink mb-1">Raising capital</div>
+          <div class="text-xs text-ink-3 leading-snug">Tracking investors, managing a raise</div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
-          <div>
-            <div style="font-size:10px;font-weight:600;color:#10b981;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">What we read</div>
-            <ul style="margin:0;padding:0;list-style:none;font-size:12px;color:#94a3b8">
-              <li style="padding:2px 0">✓ Who you've emailed</li>
-              <li style="padding:2px 0">✓ When you last had contact</li>
-              <li style="padding:2px 0">✓ Whether they replied</li>
-            </ul>
-          </div>
-          <!-- SCIENCE: "What we never read" is the benevolence signal — must be visible -->
-          <div>
-            <div style="font-size:10px;font-weight:600;color:#ef4444;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">What we never read</div>
-            <ul style="margin:0;padding:0;list-style:none;font-size:12px;color:#64748b">
-              <li style="padding:2px 0">✗ Email content or subjects</li>
-              <li style="padding:2px 0">✗ Attachments</li>
-              <li style="padding:2px 0">✗ Personal threads</li>
-            </ul>
-          </div>
+        <div class="intent-card" data-intent="building_team" onclick="toggleIntent(this)">
+          <div class="text-sm font-semibold text-ink mb-1">Building a team</div>
+          <div class="text-xs text-ink-3 leading-snug">Finding and engaging key hires</div>
         </div>
-        <div style="display:flex;gap:8px">
-          <!-- SCIENCE: "Continue" implies journey, not transaction -->
-          <button class="btn-primary" onclick="connectGmail()" style="flex:1;font-size:13px;padding:10px">Continue to Google →</button>
-          <!-- SCIENCE: Procedural justice — skip must always be visible -->
-          <button class="btn-ghost" onclick="goToStep(4)" style="font-size:12px;padding:10px 14px">Skip</button>
+        <div class="intent-card" data-intent="growing_pipeline" onclick="toggleIntent(this)">
+          <div class="text-sm font-semibold text-ink mb-1">Growing pipeline</div>
+          <div class="text-xs text-ink-3 leading-snug">BD, prospecting, account development</div>
+        </div>
+        <div class="intent-card" data-intent="tracking_market" onclick="toggleIntent(this)">
+          <div class="text-sm font-semibold text-ink mb-1">Tracking my market</div>
+          <div class="text-xs text-ink-3 leading-snug">Sector intelligence, competitor moves</div>
+        </div>
+        <div class="intent-card col-span-2 sm:col-span-1" data-intent="managing_portfolio" onclick="toggleIntent(this)">
+          <div class="text-sm font-semibold text-ink mb-1">Managing a portfolio</div>
+          <div class="text-xs text-ink-3 leading-snug">Portfolio companies, LP relationships</div>
         </div>
       </div>
+      <div id="step1Error" class="text-xs text-rose mb-3 hidden">Please select at least one option.</div>
+      <div class="flex justify-end">
+        <button onclick="nextStep()" class="px-6 py-2.5 bg-emerald text-white text-sm font-semibold rounded-lg hover:bg-emerald/90 transition-colors">Continue</button>
+      </div>
+    </div>
 
-      <div style="background:#111827;border:1px solid #1e2d3d;border-radius:10px;padding:14px">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="font-size:18px">👥</span>
-          <div style="flex:1">
-            <strong style="font-size:13px;color:#e2e8f0">Google Contacts</strong>
-            <span style="display:block;font-size:11px;color:#94a3b8">Import your address book as a starting network</span>
-          </div>
-          <button class="btn-ghost" onclick="connectGoogleContacts()" style="font-size:11px;padding:6px 12px">Connect</button>
+    <!-- Step 2: Horizon -->
+    <div class="step" data-step="2">
+      <h1 class="text-[22px] font-semibold tracking-tight text-ink leading-tight mb-2">What does success look like in 90 days?</h1>
+      <p class="text-sm text-ink-3 mb-6" id="horizonSub">Describe the outcome you're working toward.</p>
+      <div class="mb-5">
+        <textarea id="horizonText" rows="4" class="resize-none" placeholder="e.g. Close a $5M Series A with two lead investors committed..."></textarea>
+      </div>
+      <div class="mb-8">
+        <label class="block text-xs font-semibold text-ink-3 uppercase tracking-wide mb-2">What's the primary target?</label>
+        <input type="text" id="targetOutcome" placeholder="e.g. Series A, Hire CFO, 50 qualified leads">
+      </div>
+      <div class="flex justify-between">
+        <button onclick="prevStep()" class="px-5 py-2.5 text-sm font-medium text-ink-3 border border-rule rounded-lg hover:bg-white transition-colors">Back</button>
+        <button onclick="nextStep()" class="px-6 py-2.5 bg-emerald text-white text-sm font-semibold rounded-lg hover:bg-emerald/90 transition-colors">Continue</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Key People -->
+    <div class="step" data-step="3">
+      <h1 class="text-[22px] font-semibold tracking-tight text-ink leading-tight mb-2">Who are the 5-10 people most important to this goal?</h1>
+      <p class="text-sm text-ink-3 mb-6">These become your watched contacts — you'll get intelligence on them automatically.</p>
+      <div id="peopleList" class="mb-4">
+        <!-- Rows rendered by JS -->
+      </div>
+      <button onclick="addPersonRow()" id="addPersonBtn" class="text-sm font-medium text-emerald hover:text-emerald/80 transition-colors mb-6">+ Add another</button>
+      <div class="flex justify-between items-center">
+        <button onclick="prevStep()" class="px-5 py-2.5 text-sm font-medium text-ink-3 border border-rule rounded-lg hover:bg-white transition-colors">Back</button>
+        <div class="flex items-center gap-3">
+          <button onclick="skipStep()" class="text-sm text-ink-4 hover:text-ink-3 transition-colors">Skip</button>
+          <button onclick="nextStep()" class="px-6 py-2.5 bg-emerald text-white text-sm font-semibold rounded-lg hover:bg-emerald/90 transition-colors">Continue</button>
         </div>
       </div>
     </div>
-    <div id="connectSkip">
-      <button class="btn-ghost" onclick="goToStep(4)">Skip for now</button>
-    </div>
 
-    <!-- SCIENCE: Peak-end rule — network preview after first data connection (Issue 4) -->
-    <div id="peakMoment" style="display:none">
-      <div style="text-align:center;margin-bottom:16px">
-        <div style="width:12px;height:12px;border-radius:50%;background:#f59e0b;margin:0 auto 12px;animation:pulse 1.5s ease infinite"></div>
-        <h2 style="font-size:20px;color:#e2e8f0;margin:0 0 4px">Your network is live</h2>
-        <p style="font-size:14px;color:#94a3b8;margin:0" id="peakContactCount">Processing...</p>
+    <!-- Step 4: Collaborators -->
+    <div class="step" data-step="4">
+      <h1 class="text-[22px] font-semibold tracking-tight text-ink leading-tight mb-2">Are you working with others on this?</h1>
+      <p class="text-sm text-ink-3 mb-6">Invite collaborators to share intelligence and stay aligned.</p>
+
+      <div class="mb-6">
+        <label class="flex items-center gap-3 p-3 rounded-lg cursor-pointer hover:bg-white transition-colors">
+          <input type="radio" name="collab_mode" value="solo" checked onchange="toggleCollabMode()" class="accent-emerald w-4 h-4">
+          <span class="text-sm font-medium text-ink">Just me</span>
+        </label>
+        <label class="flex items-center gap-3 p-3 rounded-lg cursor-pointer hover:bg-white transition-colors">
+          <input type="radio" name="collab_mode" value="team" onchange="toggleCollabMode()" class="accent-emerald w-4 h-4">
+          <span class="text-sm font-medium text-ink">Yes — working with others</span>
+        </label>
       </div>
-      <div id="peakCompanies" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
-      <div style="display:flex;gap:8px">
-        <button class="btn-primary" onclick="goToStep(4)" style="flex:1">Continue setup →</button>
+
+      <div id="collabSection" class="hidden mb-6">
+        <div id="collabList">
+          <!-- Rows rendered by JS -->
+        </div>
+        <button onclick="addCollabRow()" id="addCollabBtn" class="text-sm font-medium text-emerald hover:text-emerald/80 transition-colors mt-3">+ Add another</button>
+      </div>
+
+      <div class="flex justify-between">
+        <button onclick="prevStep()" class="px-5 py-2.5 text-sm font-medium text-ink-3 border border-rule rounded-lg hover:bg-white transition-colors">Back</button>
+        <button onclick="nextStep()" class="px-6 py-2.5 bg-emerald text-white text-sm font-semibold rounded-lg hover:bg-emerald/90 transition-colors">Continue</button>
       </div>
     </div>
+
+    <!-- Step 5: Identity -->
+    <div class="step" data-step="5">
+      <h1 class="text-[22px] font-semibold tracking-tight text-ink leading-tight mb-2">Tell us a little about yourself</h1>
+      <p class="text-sm text-ink-3 mb-6">This helps us tailor your intelligence feed.</p>
+
+      <div class="space-y-4 mb-6">
+        <div>
+          <label class="block text-xs font-semibold text-ink-3 uppercase tracking-wide mb-1.5">Full name</label>
+          <input type="text" id="idFullName" placeholder="Jane Smith">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-ink-3 uppercase tracking-wide mb-1.5">Role / title</label>
+          <input type="text" id="idRole" placeholder="Partner, CEO, Head of Talent...">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-ink-3 uppercase tracking-wide mb-1.5">Company</label>
+          <input type="text" id="idCompany" placeholder="Your company name">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-ink-3 uppercase tracking-wide mb-2">Geography</label>
+          <div class="flex flex-wrap gap-2" id="geoPills">
+            <span class="pill-option" data-value="AU" onclick="togglePill(this, 'geo')">AU</span>
+            <span class="pill-option" data-value="SEA" onclick="togglePill(this, 'geo')">SEA</span>
+            <span class="pill-option" data-value="UK" onclick="togglePill(this, 'geo')">UK</span>
+            <span class="pill-option" data-value="US" onclick="togglePill(this, 'geo')">US</span>
+            <span class="pill-option" data-value="EU" onclick="togglePill(this, 'geo')">EU</span>
+            <span class="pill-option" data-value="Global" onclick="togglePill(this, 'geo')">Global</span>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-ink-3 uppercase tracking-wide mb-2">Sectors</label>
+          <div class="flex flex-wrap gap-2" id="sectorPills">
+            <span class="pill-option" data-value="FinTech" onclick="togglePill(this, 'sector')">FinTech</span>
+            <span class="pill-option" data-value="Web3" onclick="togglePill(this, 'sector')">Web3</span>
+            <span class="pill-option" data-value="SaaS" onclick="togglePill(this, 'sector')">SaaS</span>
+            <span class="pill-option" data-value="HealthTech" onclick="togglePill(this, 'sector')">HealthTech</span>
+            <span class="pill-option" data-value="DeepTech" onclick="togglePill(this, 'sector')">DeepTech</span>
+            <span class="pill-option" data-value="Consumer" onclick="togglePill(this, 'sector')">Consumer</span>
+            <span class="pill-option" data-value="PE/VC" onclick="togglePill(this, 'sector')">PE/VC</span>
+            <span class="pill-option" data-value="Professional Services" onclick="togglePill(this, 'sector')">Professional Services</span>
+            <span class="pill-option" data-value="Other" onclick="togglePill(this, 'sector')">Other</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-between">
+        <button onclick="prevStep()" class="px-5 py-2.5 text-sm font-medium text-ink-3 border border-rule rounded-lg hover:bg-white transition-colors">Back</button>
+        <button onclick="nextStep()" class="px-6 py-2.5 bg-emerald text-white text-sm font-semibold rounded-lg hover:bg-emerald/90 transition-colors">Continue</button>
+      </div>
+    </div>
+
+    <!-- Step 6: Connect Sources -->
+    <div class="step" data-step="6">
+      <h1 class="text-[22px] font-semibold tracking-tight text-ink leading-tight mb-2">Connect your network</h1>
+      <p class="text-sm text-ink-3 mb-6" id="sourcesSub">We'll surface intelligence from the tools you already use.</p>
+
+      <div class="space-y-3 mb-6" id="sourcesGrid">
+        <!-- Rendered by JS based on intent -->
+      </div>
+
+      <div class="flex justify-between items-center">
+        <button onclick="prevStep()" class="px-5 py-2.5 text-sm font-medium text-ink-3 border border-rule rounded-lg hover:bg-white transition-colors">Back</button>
+        <div class="flex items-center gap-3">
+          <button onclick="skipStep()" class="text-sm text-ink-4 hover:text-ink-3 transition-colors">Skip for now</button>
+          <button onclick="nextStep()" class="px-6 py-2.5 bg-emerald text-white text-sm font-semibold rounded-lg hover:bg-emerald/90 transition-colors">Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 7: Signal Feed -->
+    <div class="step" data-step="7">
+      <h1 class="text-[22px] font-semibold tracking-tight text-ink leading-tight mb-2">Your intelligence feed is ready</h1>
+      <p class="text-sm text-ink-3 mb-6">We've pre-selected signal bundles based on your goals. Toggle any you don't need.</p>
+
+      <div class="space-y-3 mb-8" id="bundlesGrid">
+        <!-- Rendered by JS based on intent -->
+      </div>
+
+      <div class="flex justify-between">
+        <button onclick="prevStep()" class="px-5 py-2.5 text-sm font-medium text-ink-3 border border-rule rounded-lg hover:bg-white transition-colors">Back</button>
+        <button onclick="completeOnboarding()" id="activateBtn" class="px-6 py-2.5 bg-emerald text-white text-sm font-semibold rounded-lg hover:bg-emerald/90 transition-colors">Activate feed</button>
+      </div>
+    </div>
+
   </div>
-
-  <!-- Step 4: Confirm + Feed Selection -->
-  <div class="step" id="step4">
-    <h2>Your signal feed <span class="hint-icon" data-hint="Your signal dial is automatically configured from your declared mission and sectors. It filters always-on sources like PR Newswire and Business Wire so you see signals relevant to your themes, not everything they publish." data-hint-title="Your signal dial" data-hint-id="onboard-signal-dial" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1px solid rgba(245,158,11,0.4);color:#f59e0b;font-size:10px;cursor:help;vertical-align:middle;margin-left:4px">ⓘ</span></h2>
-    <p class="sub">We've suggested sources based on your mission. Add or remove anything before activating.</p>
-
-    <!-- Editable profile cards -->
-    <div class="profile-cards" id="profileCards"></div>
-
-    <!-- Always-on global macro -->
-    <div class="always-on-bar">
-      <span class="always-on-label">Always on</span>
-      <span class="always-on-sources">SEC &middot; PR Newswire &middot; Business Wire &middot; Reuters &middot; FT</span>
-    </div>
-
-    <!-- Recommended bundles — pre-selected -->
-    <div class="feed-section">
-      <div class="feed-section-label">Recommended for you</div>
-      <div id="recommendedBundles" class="bundle-select-grid"></div>
-    </div>
-
-    <!-- Browse more -->
-    <button class="browse-more-toggle" id="browseToggle" onclick="toggleBrowseCatalog()">+ Browse all feeds</button>
-    <div id="feedBrowser" class="feed-browser" style="display:none"></div>
-
-    <!-- Activate footer -->
-    <div class="activate-footer">
-      <p id="feedSummary" class="feed-summary">0 feeds selected</p>
-      <button class="btn-primary" id="btnActivate" onclick="activateFeed()" disabled style="width:100%">Select at least one feed</button>
-    </div>
-  </div>
-
-  <!-- Step 5: Activating -->
-  <div class="step" id="step5">
-    <div class="activating-center">
-      <div class="pulse-dot"></div>
-      <h2>Activating your feed</h2>
-      <div class="progress-msg" id="activateMsg">Saving your profile...</div>
-    </div>
-  </div>
-
 </div>
 
+<script src="/js/terminology.js"></script>
+<script src="/js/user-menu.js"></script>
 <script>
-/* ═══════════════════════════════════════════════════════════════════════════
-   Onboarding — Intent-first conversational flow
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-var INTENT_TAXONOMY = {
-  talent_sourcing:  { label: 'Finding & hiring talent' },
-  job_seeking:      { label: 'Finding a new role' },
-  raising_capital:  { label: 'Raising capital' },
-  investing:        { label: 'Deal flow & investment' },
-  sales_growth:     { label: 'Finding customers' },
-  partnerships:     { label: 'Building partnerships' },
-  co_founding:      { label: 'Finding co-founders' },
-  advisory:         { label: 'Finding advisors' },
-  mandate_hunting:  { label: 'Finding client engagements' },
-  market_intel:     { label: 'Market intelligence' },
-  research_talent:  { label: 'Finding researchers & experts' }
+/* ════════════════════════════════════════
+   WIZARD STATE
+   ════════════════════════════════════════ */
+const wizardState = {
+  intent_types: [],
+  vertical: null,
+  horizon_text: '',
+  target_outcome: '',
+  people: [],
+  collab_mode: 'solo',
+  collaborators: [],
+  identity: { full_name: '', role: '', company: '', geography: [], sectors: [] },
+  connected_sources: [],
+  signal_bundles: [],
+  opportunity_id: null,
+  invite_token: null,
 };
 
-/* ─── State ─── */
-var currentStep = 0;
-var conversationHistory = [];
-var extractedProfile = null;
-var derivedConfig = null;
-// Extract token from URL params (set by OAuth callback) and persist
-(function() {
-  var p = new URLSearchParams(window.location.search);
-  if (p.get('token')) {
-    localStorage.setItem('ml_token', p.get('token'));
-    if (p.get('user')) localStorage.setItem('ml_user', p.get('user'));
-    // Clean URL but keep step param
-    var step = p.get('step');
-    var clean = '/onboarding.html' + (step ? '?step=' + step : '');
-    window.history.replaceState({}, '', clean);
-  }
-})();
-var token = localStorage.getItem('ml_token') || '';
+let currentStep = 1;
+const TOTAL_STEPS = 7;
 
-/* ─── API helper ─── */
-function api(method, path, body) {
-  var opts = {
-    method: method,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + token
-    }
-  };
-  if (body) { opts.body = JSON.stringify(body); }
-  return fetch(path, opts).then(function(r) {
-    if (!r.ok) { throw new Error('API ' + r.status); }
-    return r.json();
-  });
+const INTENT_VERTICALS = {
+  raising_capital: 'mandate',
+  building_team: 'talent',
+  growing_pipeline: 'revenue',
+  tracking_market: 'all',
+  managing_portfolio: 'mandate',
+};
+
+const HORIZON_PLACEHOLDERS = {
+  raising_capital: 'e.g. Close a $5M Series A with two lead investors committed...',
+  building_team: 'e.g. Have a VP Engineering and two senior devs onboarded...',
+  growing_pipeline: 'e.g. 50 qualified enterprise leads in pipeline with 10 in late stage...',
+  tracking_market: 'e.g. Comprehensive map of competitors and emerging players in my sector...',
+  managing_portfolio: 'e.g. Monthly intelligence briefs on all 12 portfolio companies...',
+};
+
+const HORIZON_SUBS = {
+  raising_capital: 'Think about your fundraise milestones.',
+  building_team: 'Think about the hires that would change your trajectory.',
+  growing_pipeline: 'Think about the pipeline and deals that would move the needle.',
+  tracking_market: 'Think about the intelligence that would sharpen your edge.',
+  managing_portfolio: 'Think about the visibility that would improve your portfolio outcomes.',
+};
+
+const SOURCE_DEFS = [
+  { id: 'gmail', name: 'Gmail', icon: mailIcon(), benefit: 'Auto-detect warm intros and relationship signals', link: '/api/auth/google', intents: ['raising_capital','building_team','growing_pipeline','tracking_market','managing_portfolio'] },
+  { id: 'linkedin', name: 'LinkedIn CSV', icon: linkedinIcon(), benefit: 'Import your professional network in seconds', link: '/profile.html#connections', intents: ['building_team','growing_pipeline','raising_capital','managing_portfolio','tracking_market'] },
+  { id: 'gdrive', name: 'Google Drive', icon: driveIcon(), benefit: 'Surface intelligence from shared documents', link: '/api/auth/google?scope=drive', intents: ['tracking_market','managing_portfolio','raising_capital'] },
+  { id: 'hubspot', name: 'HubSpot', icon: hubspotIcon(), benefit: 'Sync pipeline data and contact intelligence', link: '/api/auth/hubspot', intents: ['growing_pipeline','raising_capital'] },
+];
+
+const BUNDLE_DEFS = [
+  { id: 'leadership_moves', name: 'Leadership moves', desc: 'C-suite appointments, departures, board changes', intents: ['building_team','tracking_market','managing_portfolio'] },
+  { id: 'funding_rounds', name: 'Funding rounds', desc: 'New raises, valuations, investor activity', intents: ['raising_capital','tracking_market','managing_portfolio'] },
+  { id: 'market_signals', name: 'Market signals', desc: 'Sector trends, regulatory changes, M&A activity', intents: ['tracking_market','managing_portfolio','growing_pipeline'] },
+  { id: 'talent_flow', name: 'Talent flow', desc: 'Key hires, departures, team growth patterns', intents: ['building_team','tracking_market'] },
+  { id: 'deal_activity', name: 'Deal activity', desc: 'Pipeline movement, partnership announcements', intents: ['growing_pipeline','raising_capital'] },
+  { id: 'portfolio_alerts', name: 'Portfolio alerts', desc: 'News, press, risk signals on tracked companies', intents: ['managing_portfolio','tracking_market'] },
+  { id: 'competitive_intel', name: 'Competitive intel', desc: 'Competitor product launches, pricing, positioning', intents: ['tracking_market','growing_pipeline'] },
+];
+
+/* ════════════════════════════════════════
+   AUTH
+   ════════════════════════════════════════ */
+function getToken() {
+  return localStorage.getItem('ml_token');
 }
 
-/* ─── Step navigation ─── */
-function goToStep(n) {
-  var steps = document.querySelectorAll('.step');
-  for (var i = 0; i < steps.length; i++) {
-    steps[i].classList.remove('active');
-  }
-  document.getElementById('step' + n).classList.add('active');
-  currentStep = n;
-
-  var pct = [0, 20, 40, 60, 80, 100];
-  document.getElementById('progressBar').style.width = pct[n] + '%';
-
-  if (n === 1 && conversationHistory.length === 0) {
-    addAssistantMessage("What brings you to Autonodal? Tell me what you're trying to accomplish \u2014 one sentence is enough.");
-  }
-  if (n === 4) { renderConfirmStep(); }
+function apiHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  const t = getToken();
+  if (t) h['Authorization'] = 'Bearer ' + t;
+  return h;
 }
 
-/* ─── Chat ─── */
-function addAssistantMessage(text) {
-  conversationHistory.push({ role: 'assistant', content: text });
-  var div = document.createElement('div');
-  div.className = 'msg assistant';
-  div.textContent = text;
-  document.getElementById('chatThread').appendChild(div);
-  scrollChat();
-}
-
-function addUserMessage(text) {
-  conversationHistory.push({ role: 'user', content: text });
-  var div = document.createElement('div');
-  div.className = 'msg user';
-  div.textContent = text;
-  document.getElementById('chatThread').appendChild(div);
-  scrollChat();
-}
-
-function showTyping() {
-  var div = document.createElement('div');
-  div.className = 'msg typing';
-  div.id = 'typingIndicator';
-  div.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
-  document.getElementById('chatThread').appendChild(div);
-  scrollChat();
-}
-
-function hideTyping() {
-  var el = document.getElementById('typingIndicator');
-  if (el) { el.remove(); }
-}
-
-function scrollChat() {
-  var thread = document.getElementById('chatThread');
-  thread.scrollTop = thread.scrollHeight;
-}
-
-function sendMessage() {
-  var input = document.getElementById('chatInput');
-  var text = input.value.trim();
-  if (!text) return;
-
-  addUserMessage(text);
-  input.value = '';
-  input.style.height = 'auto';
-  document.getElementById('chatSend').disabled = true;
-  showTyping();
-
-  api('POST', '/api/onboarding/converse', {
-    messages: conversationHistory
-  }).then(function(data) {
-    hideTyping();
-    document.getElementById('chatSend').disabled = false;
-
-    if (data.type === 'profile_ready') {
-      extractedProfile = data.profile || {};
-      derivedConfig = data.config || {};
-      if (data.message) addAssistantMessage(data.message);
-      // SCIENCE: Integrity trust — show what was extracted as confirmation (Issue 6)
-      document.getElementById('chatInputArea').style.display = 'none';
-      var chips = [];
-      if (extractedProfile.role) chips.push(extractedProfile.role);
-      (extractedProfile.sectors || []).forEach(function(s) { chips.push(s.replace(/_/g, ' ')); });
-      (extractedProfile.geographies || []).forEach(function(g) { chips.push(g); });
-      (extractedProfile.intents || []).slice(0, 2).forEach(function(i) { chips.push(i.replace(/_/g, ' ')); });
-      var chipsHtml = chips.map(function(c) {
-        return '<span style="font-size:11px;padding:3px 10px;border-radius:12px;background:rgba(245,158,11,0.12);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">' + c + '</span>';
-      }).join('');
-      document.getElementById('extractedChips').innerHTML = chipsHtml;
-      document.getElementById('profileConfirmation').style.display = 'block';
-      scrollChat();
-    } else {
-      addAssistantMessage(data.message);
-      document.getElementById('chatInput').focus();
-    }
-  }).catch(function(err) {
-    hideTyping();
-    document.getElementById('chatSend').disabled = false;
-    addAssistantMessage("Sorry, something went wrong. Could you try again?");
-    console.error('Converse error:', err);
-  });
-}
-
-/* Textarea auto-resize + Enter to send */
-(function() {
-  var ta = document.getElementById('chatInput');
-  ta.addEventListener('input', function() {
-    ta.style.height = 'auto';
-    ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
-  });
-  ta.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  });
-})();
-
-/* ─── Step 2: Uploads ─── */
-function submitUploads() {
-  var cv = document.getElementById('uploadCV').files[0];
-  var linkedinUrl = document.getElementById('linkedinUrl').value.trim();
-  var linkedinExport = document.getElementById('uploadLinkedin').files[0];
-
-  if (!cv && !linkedinUrl && !linkedinExport) {
-    goToStep(3);
-    return;
-  }
-
-  var formData = new FormData();
-  if (cv) formData.append('cv', cv);
-  if (linkedinUrl) formData.append('linkedin_url', linkedinUrl);
-  if (linkedinExport) formData.append('linkedin_export', linkedinExport);
-
-  fetch('/api/onboarding/upload', {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + token },
-    body: formData
-  }).then(function(r) {
-    if (!r.ok) throw new Error('Upload failed');
-    return r.json();
-  }).then(function() {
-    goToStep(3);
-  }).catch(function(err) {
-    console.error('Upload error:', err);
-    goToStep(3);
-  });
-}
-
-/* ─── Step 3: Connect ─── */
-// SCIENCE: Peak-end rule — show what the platform discovered from their data
-function showPeakMoment() {
-  // Hide connection cards, show peak moment
-  document.querySelectorAll('.connect-cards, #connectSkip, .privacy-trust').forEach(function(el) { el.style.display = 'none'; });
-  document.getElementById('peakMoment').style.display = 'block';
-
-  // Fetch network preview
-  api('GET', '/api/onboarding/network-preview').then(function(data) {
-    var cc = data.contact_count || 0;
-    var coCount = data.company_count || 0;
-    document.getElementById('peakContactCount').innerHTML =
-      cc > 0
-        ? 'We found <strong style="color:#e2e8f0">' + cc.toLocaleString() + ' contacts</strong> across <strong style="color:#e2e8f0">' + coCount + ' companies</strong>'
-        : 'Your contacts are being processed — this takes a minute or two.';
-
-    var companiesHtml = '';
-    (data.preview_companies || []).forEach(function(co) {
-      var tierColor = co.signal_tier === 'critical' ? '#f59e0b' : co.signal_tier === 'active' ? '#10b981' : '#64748b';
-      companiesHtml += '<div style="background:#111827;border:1px solid #1e2d3d;border-radius:8px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center">' +
-        '<div><strong style="font-size:13px;color:#e2e8f0">' + (co.company_name || '') + '</strong>' +
-        '<span style="display:block;font-size:11px;color:#64748b">' + (co.sector || '') + ' · ' + co.contact_count + ' contacts</span></div>' +
-        (co.signal_tier ? '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:' + tierColor + '18;color:' + tierColor + ';font-weight:600">' + co.signal_tier + '</span>' : '') +
-      '</div>';
-    });
-    document.getElementById('peakCompanies').innerHTML = companiesHtml ||
-      '<div style="text-align:center;color:#64748b;font-size:13px;padding:16px">Your network data is still being imported — you can continue setup while it processes.</div>';
-  }).catch(function() {
-    document.getElementById('peakContactCount').textContent = 'Connected — your network is being mapped.';
-  });
-}
-
-function connectGmail() {
-  window.location.href = '/api/auth/gmail/connect?token=' + encodeURIComponent(token) + '&return_to=/onboarding.html?step=connect';
-}
-
-function connectGoogleContacts() {
-  window.location.href = '/api/auth/google-contacts/connect?token=' + encodeURIComponent(token) + '&return_to=/onboarding.html?step=connect';
-}
-
-/* ─── Step 4: Confirm + Feed Selection ─── */
-var selectedBundleIds = {};
-var allCatalogBundles = [];
-var activeBrowserFilter = '';
-
-function renderConfirmStep() {
-  var profile = extractedProfile || {};
-  var config = derivedConfig || {};
-
-  var cards = [
-    { label: 'You are', key: 'role_firm', value: formatRoleFirm(profile) },
-    { label: 'Seeking', key: 'intents', value: formatIntents(profile.intents || config.intents) },
-    { label: 'Markets', key: 'geos', value: formatList(profile.geos || config.geos) },
-    { label: 'Sectors', key: 'sectors', value: formatList(profile.sectors || config.sectors) }
-  ];
-
-  var container = document.getElementById('profileCards');
+/* ════════════════════════════════════════
+   RENDER HELPERS
+   ════════════════════════════════════════ */
+function renderDots() {
+  const container = document.getElementById('progressDots');
   container.innerHTML = '';
-
-  for (var i = 0; i < cards.length; i++) {
-    (function(card) {
-      var el = document.createElement('div');
-      el.className = 'profile-card';
-      el.setAttribute('data-key', card.key);
-
-      var labelDiv = document.createElement('div');
-      labelDiv.className = 'card-label';
-      labelDiv.textContent = card.label;
-
-      var valueDiv = document.createElement('div');
-      valueDiv.className = 'card-value';
-      valueDiv.textContent = card.value || 'Not specified';
-
-      var editInput = document.createElement('textarea');
-      editInput.className = 'card-edit';
-      editInput.rows = 2;
-      editInput.value = card.value || '';
-
-      editInput.addEventListener('blur', function() {
-        var newVal = editInput.value.trim();
-        valueDiv.textContent = newVal || 'Not specified';
-        el.classList.remove('editing');
-        updateProfileField(card.key, newVal);
-      });
-
-      editInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          editInput.blur();
-        }
-      });
-
-      el.addEventListener('click', function() {
-        if (!el.classList.contains('editing')) {
-          el.classList.add('editing');
-          editInput.focus();
-        }
-      });
-
-      el.appendChild(labelDiv);
-      el.appendChild(valueDiv);
-      el.appendChild(editInput);
-      container.appendChild(el);
-    })(cards[i]);
-  }
-
-  loadRecommendedBundles();
-}
-
-function formatRoleFirm(profile) {
-  var parts = [];
-  if (profile.role) parts.push(profile.role);
-  if (profile.firm) parts.push(profile.firm);
-  return parts.join(' at ') || (profile.title || '');
-}
-
-function formatIntents(intents) {
-  if (!intents || !intents.length) return '';
-  var labels = [];
-  for (var i = 0; i < intents.length; i++) {
-    var entry = INTENT_TAXONOMY[intents[i]];
-    labels.push(entry ? entry.label : intents[i]);
-  }
-  return labels.join(', ');
-}
-
-function formatList(arr) {
-  if (!arr || !arr.length) return '';
-  return arr.join(', ');
-}
-
-function updateProfileField(key, value) {
-  if (!extractedProfile) extractedProfile = {};
-  if (key === 'role_firm') {
-    var parts = value.split(' at ');
-    extractedProfile.role = parts[0] || '';
-    extractedProfile.firm = parts[1] || '';
-  } else if (key === 'intents' || key === 'geos' || key === 'sectors') {
-    var arr = value.split(',');
-    var cleaned = [];
-    for (var i = 0; i < arr.length; i++) {
-      var s = arr[i].trim();
-      if (s) cleaned.push(s);
-    }
-    extractedProfile[key] = cleaned;
+  for (let i = 1; i <= TOTAL_STEPS; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'progress-dot';
+    if (i < currentStep) dot.classList.add('complete');
+    else if (i === currentStep) dot.classList.add('current');
+    else dot.classList.add('future');
+    container.appendChild(dot);
   }
 }
 
-/* ─── Recommended bundles from profile ─── */
-function loadRecommendedBundles() {
-  var bundles = (derivedConfig && derivedConfig.bundles) || [];
-  if (!bundles.length) {
-    document.getElementById('recommendedBundles').innerHTML =
-      '<p style="color:var(--cream-dim);font-size:13px">No specific bundles recommended — browse the catalog below.</p>';
-    updateActivateButton();
-    return;
+function showStep(n) {
+  currentStep = n;
+  renderDots();
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  const target = document.querySelector('.step[data-step="' + n + '"]');
+  if (target) target.classList.add('active');
+
+  // Step-specific rendering
+  if (n === 2) renderStep2Context();
+  if (n === 3) renderPeopleRows();
+  if (n === 4) renderCollabRows();
+  if (n === 6) renderSources();
+  if (n === 7) renderBundles();
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderStep2Context() {
+  const intents = wizardState.intent_types;
+  const primary = intents[0] || 'tracking_market';
+  document.getElementById('horizonText').placeholder = HORIZON_PLACEHOLDERS[primary] || HORIZON_PLACEHOLDERS.tracking_market;
+  document.getElementById('horizonSub').textContent = HORIZON_SUBS[primary] || 'Describe the outcome you\'re working toward.';
+}
+
+/* ── People (Step 3) ── */
+function renderPeopleRows() {
+  if (wizardState.people.length === 0) {
+    wizardState.people = [emptyPerson(), emptyPerson(), emptyPerson()];
   }
+  const list = document.getElementById('peopleList');
+  list.innerHTML = '';
+  wizardState.people.forEach((p, i) => {
+    list.appendChild(createPersonRow(p, i));
+  });
+  updateAddPersonBtn();
+}
 
-  var params = bundles.map(function(s) { return 'slug=' + encodeURIComponent(s); }).join('&');
-  api('GET', '/api/feeds/bundles?' + params + '&limit=20').then(function(data) {
-    var rows = data.bundles || [];
-    var container = document.getElementById('recommendedBundles');
+function emptyPerson() { return { name: '', company: '', why: '', linkedin: '' }; }
 
-    if (!rows.length) {
-      container.innerHTML = '<p style="color:var(--cream-dim);font-size:13px">Bundles loading... browse below if needed.</p>';
-      updateActivateButton();
-      return;
-    }
+function createPersonRow(p, idx) {
+  const row = document.createElement('div');
+  row.className = 'person-row';
+  row.innerHTML = `
+    <div class="grid grid-cols-2 gap-3 mb-2">
+      <input type="text" placeholder="Name" value="${esc(p.name)}" onchange="wizardState.people[${idx}].name=this.value">
+      <input type="text" placeholder="Company" value="${esc(p.company)}" onchange="wizardState.people[${idx}].company=this.value">
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <input type="text" placeholder="Why they matter" value="${esc(p.why)}" onchange="wizardState.people[${idx}].why=this.value">
+      <input type="url" placeholder="LinkedIn URL" value="${esc(p.linkedin)}" onchange="wizardState.people[${idx}].linkedin=this.value">
+    </div>
+    ${wizardState.people.length > 1 ? `<button onclick="removePerson(${idx})" class="text-xs text-ink-4 hover:text-rose mt-2 transition-colors">Remove</button>` : ''}
+  `;
+  return row;
+}
 
-    container.innerHTML = '';
-    for (var i = 0; i < rows.length; i++) {
-      selectedBundleIds[rows[i].id] = true;
-      container.appendChild(createBundleCard(rows[i], true));
-    }
-    updateActivateButton();
-  }).catch(function() {
-    updateActivateButton();
+function addPersonRow() {
+  if (wizardState.people.length >= 15) return;
+  wizardState.people.push(emptyPerson());
+  renderPeopleRows();
+}
+
+function removePerson(idx) {
+  wizardState.people.splice(idx, 1);
+  renderPeopleRows();
+}
+
+function updateAddPersonBtn() {
+  const btn = document.getElementById('addPersonBtn');
+  if (btn) btn.style.display = wizardState.people.length >= 15 ? 'none' : '';
+}
+
+/* ── Collaborators (Step 4) ── */
+function renderCollabRows() {
+  if (wizardState.collaborators.length === 0) {
+    wizardState.collaborators = [emptyCollab()];
+  }
+  const list = document.getElementById('collabList');
+  list.innerHTML = '';
+  wizardState.collaborators.forEach((c, i) => {
+    list.appendChild(createCollabRow(c, i));
+  });
+  updateAddCollabBtn();
+}
+
+function emptyCollab() { return { name: '', email: '', role: '' }; }
+
+function createCollabRow(c, idx) {
+  const row = document.createElement('div');
+  row.className = 'person-row';
+  row.innerHTML = `
+    <div class="grid grid-cols-3 gap-3">
+      <input type="text" placeholder="Name" value="${esc(c.name)}" onchange="wizardState.collaborators[${idx}].name=this.value">
+      <input type="email" placeholder="Email" value="${esc(c.email)}" onchange="wizardState.collaborators[${idx}].email=this.value">
+      <input type="text" placeholder="Role" value="${esc(c.role)}" onchange="wizardState.collaborators[${idx}].role=this.value">
+    </div>
+    ${wizardState.collaborators.length > 1 ? `<button onclick="removeCollab(${idx})" class="text-xs text-ink-4 hover:text-rose mt-2 transition-colors">Remove</button>` : ''}
+  `;
+  return row;
+}
+
+function addCollabRow() {
+  if (wizardState.collaborators.length >= 10) return;
+  wizardState.collaborators.push(emptyCollab());
+  renderCollabRows();
+}
+
+function removeCollab(idx) {
+  wizardState.collaborators.splice(idx, 1);
+  renderCollabRows();
+}
+
+function updateAddCollabBtn() {
+  const btn = document.getElementById('addCollabBtn');
+  if (btn) btn.style.display = wizardState.collaborators.length >= 10 ? 'none' : '';
+}
+
+function toggleCollabMode() {
+  const mode = document.querySelector('input[name="collab_mode"]:checked').value;
+  wizardState.collab_mode = mode;
+  document.getElementById('collabSection').classList.toggle('hidden', mode === 'solo');
+  if (mode === 'team') renderCollabRows();
+}
+
+/* ── Sources (Step 6) ── */
+function renderSources() {
+  const intents = wizardState.intent_types;
+  // Contextual subheading
+  const subs = {
+    raising_capital: 'Connect your email and network to surface warm paths to investors.',
+    building_team: 'Connect your tools to find talent signals and warm introductions.',
+    growing_pipeline: 'Connect your CRM and email to enrich your pipeline with intelligence.',
+    tracking_market: 'Connect your sources to build a comprehensive market picture.',
+    managing_portfolio: 'Connect your tools to stay on top of your portfolio companies.',
+  };
+  document.getElementById('sourcesSub').textContent = subs[intents[0]] || 'We\'ll surface intelligence from the tools you already use.';
+
+  // Sort sources by intent relevance
+  const scored = SOURCE_DEFS.map(s => {
+    const score = intents.reduce((acc, i) => acc + (s.intents.includes(i) ? 1 : 0), 0);
+    return { ...s, score };
+  }).sort((a, b) => b.score - a.score);
+
+  const grid = document.getElementById('sourcesGrid');
+  grid.innerHTML = '';
+  scored.slice(0, 4).forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'source-card';
+    card.innerHTML = `
+      <div class="w-10 h-10 flex items-center justify-center rounded-lg bg-[#F7F5F2] flex-shrink-0">${s.icon}</div>
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-semibold text-ink">${s.name}</div>
+        <div class="text-xs text-ink-3">${s.benefit}</div>
+      </div>
+      <a href="${s.link}" class="px-4 py-1.5 text-xs font-semibold text-emerald border border-emerald rounded-md hover:bg-emerald-soft transition-colors flex-shrink-0">Connect</a>
+    `;
+    grid.appendChild(card);
   });
 }
 
-function createBundleCard(bundle, preSelected) {
-  var isSelected = preSelected || !!selectedBundleIds[bundle.id];
-  var el = document.createElement('div');
-  el.className = 'bundle-card' + (isSelected ? ' selected' : '');
-  el.id = 'bundle-' + bundle.id;
+/* ── Signal Bundles (Step 7) ── */
+function renderBundles() {
+  const intents = wizardState.intent_types;
+  const grid = document.getElementById('bundlesGrid');
+  grid.innerHTML = '';
 
-  var qualityHtml = '';
-  if (bundle.avg_quality_score) {
-    var filled = Math.round(parseFloat(bundle.avg_quality_score) * 5);
-    var bar = '';
-    for (var q = 0; q < 5; q++) bar += q < filled ? '\u25CF' : '\u25CB';
-    qualityHtml = '<div class="bundle-quality">Signal quality: ' + bar + '</div>';
-  }
+  // Pre-select bundles matching user intents
+  wizardState.signal_bundles = [];
 
-  el.innerHTML =
-    '<div class="bundle-card-header">' +
-      '<div class="bundle-meta">' +
-        '<strong>' + (bundle.name || bundle.slug) + '</strong>' +
-        '<span class="bundle-source-count">' + (bundle.source_count || 0) + ' sources</span>' +
-      '</div>' +
-      '<span class="bundle-check ' + (isSelected ? 'checked' : '') + '">' +
-        (isSelected ? '\u2713' : '+') +
-      '</span>' +
-    '</div>' +
-    '<p class="bundle-desc">' + (bundle.description || '') + '</p>' +
-    qualityHtml;
+  BUNDLE_DEFS.forEach(b => {
+    const relevant = intents.some(i => b.intents.includes(i));
+    if (relevant) wizardState.signal_bundles.push(b.id);
 
-  el.addEventListener('click', function() {
-    toggleBundleSelection(bundle.id, el);
+    const card = document.createElement('div');
+    card.className = 'bundle-card' + (relevant ? ' selected' : '');
+    card.dataset.bundle = b.id;
+    card.onclick = function() { toggleBundle(this); };
+    card.innerHTML = `
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="text-sm font-semibold text-ink">${b.name}</div>
+          <div class="text-xs text-ink-3 mt-0.5">${b.desc}</div>
+        </div>
+        <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${relevant ? 'border-emerald bg-emerald' : 'border-rule'}">
+          ${relevant ? '<svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}
+        </div>
+      </div>
+    `;
+    grid.appendChild(card);
   });
-
-  return el;
 }
 
-function toggleBundleSelection(bundleId, el) {
-  if (selectedBundleIds[bundleId]) {
-    delete selectedBundleIds[bundleId];
+function toggleBundle(el) {
+  const id = el.dataset.bundle;
+  const idx = wizardState.signal_bundles.indexOf(id);
+  if (idx >= 0) {
+    wizardState.signal_bundles.splice(idx, 1);
     el.classList.remove('selected');
-    var chk = el.querySelector('.bundle-check');
-    if (chk) { chk.textContent = '+'; chk.classList.remove('checked'); }
+    el.querySelector('.w-5').className = 'w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors border-rule';
+    el.querySelector('.w-5').innerHTML = '';
   } else {
-    selectedBundleIds[bundleId] = true;
+    wizardState.signal_bundles.push(id);
     el.classList.add('selected');
-    var chk2 = el.querySelector('.bundle-check');
-    if (chk2) { chk2.textContent = '\u2713'; chk2.classList.add('checked'); }
-  }
-  updateActivateButton();
-  /* Sync browse card if open */
-  var browseBtn = document.querySelector('#browse-' + bundleId + ' .btn-toggle');
-  if (browseBtn) {
-    var isNowActive = !!selectedBundleIds[bundleId];
-    browseBtn.textContent = isNowActive ? '\u2713 Added' : '+ Add';
-    browseBtn.className = 'btn-toggle' + (isNowActive ? ' active' : '');
-    var browseRow = document.getElementById('browse-' + bundleId);
-    if (browseRow) browseRow.className = 'browse-row' + (isNowActive ? ' active' : '');
+    el.querySelector('.w-5').className = 'w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors border-emerald bg-emerald';
+    el.querySelector('.w-5').innerHTML = '<svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   }
 }
 
-function updateActivateButton() {
-  var count = Object.keys(selectedBundleIds).length;
-  var btn = document.getElementById('btnActivate');
-  btn.disabled = count === 0;
-  btn.textContent = count > 0
-    ? 'Activate ' + count + ' feed' + (count > 1 ? 's' : '') + ' \u2192'
-    : 'Select at least one feed';
+/* ════════════════════════════════════════
+   INTENT TOGGLE
+   ════════════════════════════════════════ */
+function toggleIntent(el) {
+  const intent = el.dataset.intent;
+  el.classList.toggle('selected');
+  const idx = wizardState.intent_types.indexOf(intent);
+  if (idx >= 0) wizardState.intent_types.splice(idx, 1);
+  else wizardState.intent_types.push(intent);
 
-  var est = count * 85;
-  document.getElementById('feedSummary').textContent =
-    count + ' feed' + (count > 1 ? 's' : '') + ' selected \u00B7 ~' + est + ' signals/week';
-}
-
-/* ─── Browse catalog ─── */
-function toggleBrowseCatalog() {
-  var browser = document.getElementById('feedBrowser');
-  var btn = document.getElementById('browseToggle');
-  var isOpen = browser.style.display !== 'none';
-  browser.style.display = isOpen ? 'none' : 'block';
-  btn.textContent = isOpen ? '+ Browse all feeds' : '\u2212 Hide catalog';
-  if (!isOpen) loadFeedBrowser();
-}
-
-function loadFeedBrowser() {
-  var container = document.getElementById('feedBrowser');
-  var filterTypes = [
-    { label: 'All', value: '' },
-    { label: 'Region', value: 'region' },
-    { label: 'Sector', value: 'sector' },
-    { label: 'Signal type', value: 'signal_type' },
-    { label: 'Investor type', value: 'investor_type' }
-  ];
-
-  var filtersHtml = '';
-  for (var f = 0; f < filterTypes.length; f++) {
-    filtersHtml += '<button class="filter-chip' + (f === 0 ? ' active' : '') +
-      '" onclick="filterByType(this,\'' + filterTypes[f].value + '\')">' +
-      filterTypes[f].label + '</button>';
-  }
-
-  container.innerHTML =
-    '<input type="text" id="browserSearch" class="browser-search" ' +
-      'placeholder="Search by name, sector, or region..." ' +
-      'oninput="filterBrowser(this.value)" />' +
-    '<div class="browser-filters">' + filtersHtml + '</div>' +
-    '<div id="browserGrid"></div>';
-
-  renderBrowserGrid('', '');
-}
-
-function renderBrowserGrid(typeFilter, searchQuery) {
-  var params = [];
-  if (typeFilter) params.push('type=' + encodeURIComponent(typeFilter));
-  if (searchQuery) params.push('search=' + encodeURIComponent(searchQuery));
-  params.push('limit=100');
-
-  api('GET', '/api/feeds/bundles?' + params.join('&')).then(function(data) {
-    var bundles = data.bundles || [];
-    allCatalogBundles = bundles;
-    var grid = document.getElementById('browserGrid');
-
-    if (!bundles.length) {
-      grid.innerHTML = '<p style="color:var(--cream-dim);font-size:13px;padding:8px 0">No feeds found.</p>';
-      return;
-    }
-
-    var TYPE_LABELS = {
-      investor_type: 'Investor type',
-      sector: 'Sector',
-      region: 'Region',
-      signal_type: 'Signal type',
-      stage: 'Stage'
-    };
-
-    var grouped = {};
-    for (var i = 0; i < bundles.length; i++) {
-      var key = bundles[i].bundle_type || 'other';
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(bundles[i]);
-    }
-
-    var html = '';
-    var keys = Object.keys(grouped);
-    for (var k = 0; k < keys.length; k++) {
-      var type = keys[k];
-      var items = grouped[type];
-      html += '<div style="margin-bottom:20px">';
-      html += '<div class="browser-group-label">' + (TYPE_LABELS[type] || type) + '</div>';
-      for (var j = 0; j < items.length; j++) {
-        var b = items[j];
-        var isActive = !!selectedBundleIds[b.id];
-        html +=
-          '<div class="browse-row' + (isActive ? ' active' : '') + '" id="browse-' + b.id + '">' +
-            '<div class="browse-meta">' +
-              '<strong>' + b.name + '</strong>' +
-              '<span>' + (b.source_count || 0) + ' sources' +
-                (b.description ? ' \u00B7 ' + b.description.substring(0, 60) + (b.description.length > 60 ? '...' : '') : '') +
-              '</span>' +
-            '</div>' +
-            '<button class="btn-toggle' + (isActive ? ' active' : '') + '" ' +
-              'onclick="toggleFromBrowser(\'' + b.id + '\', this)">' +
-              (isActive ? '\u2713 Added' : '+ Add') +
-            '</button>' +
-          '</div>';
-      }
-      html += '</div>';
-    }
-    grid.innerHTML = html;
-  }).catch(function() {
-    document.getElementById('browserGrid').innerHTML =
-      '<p style="color:var(--cream-dim);font-size:13px">Failed to load catalog.</p>';
-  });
-}
-
-function toggleFromBrowser(bundleId, btn) {
-  if (selectedBundleIds[bundleId]) {
-    delete selectedBundleIds[bundleId];
-    btn.textContent = '+ Add';
-    btn.className = 'btn-toggle';
-    var row = document.getElementById('browse-' + bundleId);
-    if (row) row.className = 'browse-row';
+  // Infer vertical from first selected
+  if (wizardState.intent_types.length > 0) {
+    wizardState.vertical = INTENT_VERTICALS[wizardState.intent_types[0]];
   } else {
-    selectedBundleIds[bundleId] = true;
-    btn.textContent = '\u2713 Added';
-    btn.className = 'btn-toggle active';
-    var row2 = document.getElementById('browse-' + bundleId);
-    if (row2) row2.className = 'browse-row active';
+    wizardState.vertical = null;
   }
-  /* Sync recommended card if present */
-  var recCard = document.getElementById('bundle-' + bundleId);
-  if (recCard) {
-    var isNow = !!selectedBundleIds[bundleId];
-    recCard.className = 'bundle-card' + (isNow ? ' selected' : '');
-    var chk = recCard.querySelector('.bundle-check');
-    if (chk) {
-      chk.textContent = isNow ? '\u2713' : '+';
-      chk.className = 'bundle-check' + (isNow ? ' checked' : '');
+
+  document.getElementById('step1Error').classList.add('hidden');
+}
+
+/* ════════════════════════════════════════
+   PILL TOGGLE
+   ════════════════════════════════════════ */
+function togglePill(el, group) {
+  el.classList.toggle('selected');
+  const val = el.dataset.value;
+  const arr = group === 'geo' ? wizardState.identity.geography : wizardState.identity.sectors;
+  const idx = arr.indexOf(val);
+  if (idx >= 0) arr.splice(idx, 1);
+  else arr.push(val);
+}
+
+/* ════════════════════════════════════════
+   NAVIGATION
+   ════════════════════════════════════════ */
+function nextStep() {
+  if (!validateStep(currentStep)) return;
+  collectStepData(currentStep);
+
+  // API calls at boundaries
+  if (currentStep === 2) postIntent();
+  if (currentStep === 3) postWatchedPeople();
+  if (currentStep === 4) postCollaborators();
+
+  showStep(currentStep + 1);
+}
+
+function prevStep() {
+  collectStepData(currentStep);
+  showStep(currentStep - 1);
+}
+
+function skipStep() {
+  showStep(currentStep + 1);
+}
+
+function validateStep(n) {
+  if (n === 1) {
+    if (wizardState.intent_types.length === 0) {
+      document.getElementById('step1Error').classList.remove('hidden');
+      return false;
     }
   }
-  updateActivateButton();
+  return true;
 }
 
-function filterBrowser(query) {
-  renderBrowserGrid(activeBrowserFilter, query);
+function collectStepData(n) {
+  if (n === 2) {
+    wizardState.horizon_text = document.getElementById('horizonText').value;
+    wizardState.target_outcome = document.getElementById('targetOutcome').value;
+  }
+  if (n === 5) {
+    wizardState.identity.full_name = document.getElementById('idFullName').value;
+    wizardState.identity.role = document.getElementById('idRole').value;
+    wizardState.identity.company = document.getElementById('idCompany').value;
+  }
 }
 
-function filterByType(btn, type) {
-  var chips = document.querySelectorAll('.filter-chip');
-  for (var i = 0; i < chips.length; i++) chips[i].classList.remove('active');
-  btn.classList.add('active');
-  activeBrowserFilter = type;
-  var search = document.getElementById('browserSearch');
-  renderBrowserGrid(type, search ? search.value : '');
-}
-
-/* ─── Step 5: Activate ─── */
-function activateFeed() {
-  var bundleIds = Object.keys(selectedBundleIds);
-
-  goToStep(5);
-  var msgEl = document.getElementById('activateMsg');
-  msgEl.textContent = 'Saving your profile...';
-
-  api('POST', '/api/onboarding/complete-conversation', {
-    profile: extractedProfile,
-    config: derivedConfig,
-    bundles: bundleIds
-  }).then(function() {
-    if (bundleIds.length) {
-      msgEl.textContent = 'Subscribing to ' + bundleIds.length + ' signal feeds...';
-      return api('POST', '/api/feeds/subscribe', { bundle_ids: bundleIds });
-    }
-  }).then(function() {
-    msgEl.textContent = 'Finalizing...';
-    return api('POST', '/api/onboarding/finalize', {});
-  }).then(function() {
-    msgEl.textContent = 'Your feed is live.';
-    setTimeout(function() {
-      window.location.href = '/index.html?onboarded=true';
-    }, 800);
-  }).catch(function(err) {
-    console.error('Activation error:', err);
-    // Still try to finalize even if subscription failed
-    api('POST', '/api/onboarding/finalize', {}).then(function() {
-      window.location.href = '/index.html?onboarded=true';
-    }).catch(function() {
-      msgEl.textContent = 'Something went wrong. Please refresh and try again.';
+/* ════════════════════════════════════════
+   API CALLS
+   ════════════════════════════════════════ */
+async function postIntent() {
+  try {
+    const res = await fetch('/api/onboarding/intent', {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        intent_types: wizardState.intent_types,
+        vertical: wizardState.vertical,
+        horizon_text: wizardState.horizon_text,
+        target_outcome: wizardState.target_outcome,
+      })
     });
-  });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.opportunity_id) wizardState.opportunity_id = data.opportunity_id;
+    }
+  } catch (e) { console.warn('Intent POST failed:', e); }
 }
 
-/* ─── Init: check URL params + onboarding status ─── */
-(function() {
-  var params = new URLSearchParams(window.location.search);
-  var stepParam = params.get('step');
+async function postWatchedPeople() {
+  const filled = wizardState.people.filter(p => p.name.trim());
+  if (filled.length === 0) return;
+  try {
+    await fetch('/api/onboarding/watched-people', {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        people: filled,
+        opportunity_id: wizardState.opportunity_id,
+      })
+    });
+  } catch (e) { console.warn('Watched people POST failed:', e); }
+}
 
-  if (!token) {
-    window.location.href = '/login.html?return_to=/onboarding.html';
-    return;
-  }
+async function postCollaborators() {
+  if (wizardState.collab_mode === 'solo') return;
+  const filled = wizardState.collaborators.filter(c => c.email.trim());
+  if (filled.length === 0) return;
+  try {
+    await fetch('/api/onboarding/collaborators', {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify({ collaborators: filled })
+    });
+  } catch (e) { console.warn('Collaborators POST failed:', e); }
+}
 
-  api('GET', '/api/onboarding/status', null).then(function(data) {
-    var status = data.onboarding_status || data.status || '';
+async function completeOnboarding() {
+  const btn = document.getElementById('activateBtn');
+  btn.disabled = true;
+  btn.textContent = 'Activating...';
+  collectStepData(currentStep);
 
-    if (stepParam === 'connect') {
-      /* Returning from Gmail/Contacts OAuth — show peak moment */
-      extractedProfile = data.profile || null;
-      derivedConfig = data.config || null;
-      goToStep(3);
-      // SCIENCE: Peak-end rule — show network preview after connection
-      showPeakMoment();
-    } else if (status === 'complete') {
-      window.location.href = '/index.html';
-    } else if (status === 'profile_ready' || status === 'conversation_done') {
-      extractedProfile = data.profile || null;
-      derivedConfig = data.config || null;
-      goToStep(4);
-    } else if (status === 'conversation_started') {
-      conversationHistory = data.messages || [];
-      goToStep(1);
-      /* Re-render existing messages */
-      var thread = document.getElementById('chatThread');
-      for (var i = 0; i < conversationHistory.length; i++) {
-        var m = conversationHistory[i];
-        var div = document.createElement('div');
-        div.className = 'msg ' + m.role;
-        div.textContent = m.content;
-        thread.appendChild(div);
+  try {
+    await fetch('/api/onboarding/complete', {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        ...wizardState,
+        people: wizardState.people.filter(p => p.name.trim()),
+        collaborators: wizardState.collab_mode === 'team' ? wizardState.collaborators.filter(c => c.email.trim()) : [],
+      })
+    });
+  } catch (e) { console.warn('Complete POST failed:', e); }
+
+  window.location.href = '/index.html?onboarding=complete';
+}
+
+/* ════════════════════════════════════════
+   INVITE TOKEN CHECK
+   ════════════════════════════════════════ */
+async function checkInviteToken() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('invite');
+  if (!token) return;
+
+  wizardState.invite_token = token;
+  try {
+    const res = await fetch('/api/onboarding/invite/' + encodeURIComponent(token), {
+      headers: apiHeaders(),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      // Pre-fill context from invite
+      if (data.intent_types) {
+        wizardState.intent_types = data.intent_types;
+        data.intent_types.forEach(i => {
+          const card = document.querySelector('[data-intent="' + i + '"]');
+          if (card) card.classList.add('selected');
+        });
+        wizardState.vertical = INTENT_VERTICALS[data.intent_types[0]];
       }
-      scrollChat();
-    } else {
-      goToStep(0);
+      if (data.opportunity_id) wizardState.opportunity_id = data.opportunity_id;
+      if (data.full_name) wizardState.identity.full_name = data.full_name;
+      if (data.email) wizardState.identity.email = data.email;
     }
-  }).catch(function() {
-    goToStep(0);
-  });
+  } catch (e) { console.warn('Invite token check failed:', e); }
+}
+
+/* ════════════════════════════════════════
+   SVG ICONS
+   ════════════════════════════════════════ */
+function mailIcon() {
+  return '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4A4A4A" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4L12 13 2 4"/></svg>';
+}
+function linkedinIcon() {
+  return '<svg width="22" height="22" viewBox="0 0 24 24" fill="#0A66C2"><path d="M20.5 2h-17A1.5 1.5 0 002 3.5v17A1.5 1.5 0 003.5 22h17a1.5 1.5 0 001.5-1.5v-17A1.5 1.5 0 0020.5 2zM8 19H5v-9h3zM6.5 8.25A1.75 1.75 0 118.3 6.5a1.78 1.78 0 01-1.8 1.75zM19 19h-3v-4.74c0-1.42-.6-1.93-1.38-1.93A1.74 1.74 0 0013 14.19V19h-3v-9h2.9v1.3a3.11 3.11 0 012.7-1.4c1.55 0 3.36.86 3.36 3.66z"/></svg>';
+}
+function driveIcon() {
+  return '<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M8 2l7 12H1L8 2z" fill="#0D7A50" opacity="0.7"/><path d="M16 2l7 12H9" fill="#2563EB" opacity="0.7"/><path d="M1 14l3.5 6h15L16 14" fill="#B45309" opacity="0.7"/></svg>';
+}
+function hubspotIcon() {
+  return '<svg width="22" height="22" viewBox="0 0 24 24" fill="#FF7A59"><circle cx="17.5" cy="9" r="2.5"/><circle cx="6.5" cy="12" r="2"/><circle cx="17.5" cy="17" r="2"/><circle cx="11" cy="6" r="1.5"/><path d="M8.3 11.2l5.5-1.8M8.2 13l7 3M12.3 6.8l3.5 1.5" stroke="#FF7A59" stroke-width="1"/></svg>';
+}
+
+/* ════════════════════════════════════════
+   UTIL
+   ════════════════════════════════════════ */
+function esc(str) {
+  if (!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ════════════════════════════════════════
+   INIT
+   ════════════════════════════════════════ */
+(async function init() {
+  await checkInviteToken();
+  showStep(1);
 })();
 </script>
-<link rel="stylesheet" href="/css/tour.css">
-<script src="/js/hints.js"></script>
 </body>
 </html>
