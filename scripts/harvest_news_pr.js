@@ -258,7 +258,7 @@ async function harvestSource(source) {
       const result = await pool.query(`
         INSERT INTO external_documents (source_id, title, content, url, source_url_hash, published_at, document_type, metadata, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, 'news_pr', $7, NOW())
-        ON CONFLICT (source_url_hash) DO NOTHING RETURNING id
+        ON CONFLICT (source_url_hash, tenant_id) DO NOTHING RETURNING id
       `, [
         source.id, item.title.substring(0, 500), item.description.substring(0, 5000),
         (item.url || '').substring(0, 1000), urlHash,

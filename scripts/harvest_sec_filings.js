@@ -297,7 +297,7 @@ async function processFilings(hits, searchConfig, dryRun = false) {
          (source_type, source_name, source_url, source_url_hash, title, content,
           author, published_at, fetched_at, processing_status, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), 'pending', NOW())
-       ON CONFLICT (source_url_hash) DO NOTHING RETURNING id`,
+       ON CONFLICT (source_url_hash, tenant_id) DO NOTHING RETURNING id`,
       ['sec_filing', `SEC EDGAR (${searchConfig.name})`, sourceUrl, sourceUrlHash,
        title.slice(0, 255), content, companyName, filedAt ? new Date(filedAt) : new Date()]
     );

@@ -248,7 +248,7 @@ async function pipelineIngestSignals() {
             source_id, source_url, source_url_hash, source_type, source_name, title, content,
             published_at, author, image_url
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-          ON CONFLICT (source_url_hash) DO NOTHING
+          ON CONFLICT (source_url_hash, tenant_id) DO NOTHING
         `, [
           source.id, url, urlHash,
           source.source_type || 'rss',

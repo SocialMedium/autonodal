@@ -745,7 +745,7 @@ async function harvestFeeds(sourceFilter = null, dryRun = false) {
              (source_type, source_name, source_url, source_url_hash, title, content,
               author, published_at, fetched_at, processing_status, source_id, audio_url, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), 'pending', $9, $10, NOW())
-           ON CONFLICT (source_url_hash) DO NOTHING
+           ON CONFLICT (source_url_hash, tenant_id) DO NOTHING
            RETURNING id`,
           [source.source_type || 'podcast', source.name, url, sourceUrlHash,
            title.slice(0, 255), content, author, publishedAt, source.id, audioUrl]

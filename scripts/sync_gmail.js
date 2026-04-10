@@ -260,7 +260,7 @@ async function processThread(gmail, thread, userEmail, userId, dryRun) {
           INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash,
             tenant_id, uploaded_by_user_id, published_at, processing_status, created_at)
           VALUES ($1, $2, $3, 'newsletter', $4, $5, $6, $7, $8, 'pending', NOW())
-          ON CONFLICT (source_url_hash) DO NOTHING
+          ON CONFLICT (source_url_hash, tenant_id) DO NOTHING
         `, [
           subject.slice(0, 255) || 'Newsletter',
           bodyText.slice(0, 50000),

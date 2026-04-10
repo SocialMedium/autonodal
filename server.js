@@ -698,7 +698,7 @@ app.get('/api/auth/gmail/callback', async (req, res) => {
 
               await platformPool.query(
                 `INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash, tenant_id, uploaded_by_user_id, published_at, processing_status, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'context_only', NOW()) ON CONFLICT (source_url_hash) DO NOTHING`,
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'context_only', NOW()) ON CONFLICT (source_url_hash, tenant_id) DO NOTHING`,
                 [file.name, truncated, sourceName, typeLabel, file.webViewLink || '', hash, tenantId, userId, file.modifiedTime]
               );
 
