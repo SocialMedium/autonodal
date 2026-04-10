@@ -1296,14 +1296,16 @@ app.get('/api/signals/hero', authenticateToken, async (req, res) => {
         SELECT DISTINCT ON (se.company_id)
           se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
           se.evidence_summary, se.detected_at, se.source_url, se.image_url,
-          c.sector, c.geography, c.is_client, c.domain,
+          c.sector, c.geography,
+          COALESCE((SELECT true FROM companies c_own WHERE c_own.is_client = true AND LOWER(c_own.name) = LOWER(c.name) AND c_own.tenant_id = $1 LIMIT 1), false) AS is_client,
+          c.domain,
           ed.title AS doc_title, ed.source_name, ed.image_url AS doc_image_url, ed.audio_url AS doc_audio_url, ed.source_type AS doc_source_type,
           (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) AS contact_count,
           (SELECT COUNT(DISTINCT tp2.person_id) FROM team_proximity tp2
             JOIN people p2 ON p2.id = tp2.person_id AND p2.current_company_id = se.company_id AND p2.tenant_id = $1
             WHERE tp2.tenant_id = $1 AND tp2.relationship_strength >= 0.25
           ) AS prox_count,
-          CASE WHEN c.is_client = true THEN 100 ELSE 0 END +
+          CASE WHEN EXISTS (SELECT 1 FROM companies c_own WHERE c_own.is_client = true AND LOWER(c_own.name) = LOWER(c.name) AND c_own.tenant_id = $1) THEN 100 ELSE 0 END +
           CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) > 0 THEN 50 ELSE 0 END +
           (se.confidence_score * 30) +
           CASE WHEN se.image_url IS NOT NULL OR ed.image_url IS NOT NULL THEN 20 ELSE 0 END
@@ -2026,7 +2028,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
       } else {
         where += ` AND (
           EXISTS (SELECT 1 FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1)
-          OR c.is_client = true
+          OR EXISTS (SELECT 1 FROM companies c_cl WHERE c_cl.is_client = true AND LOWER(c_cl.name) = LOWER(c.name) AND c_cl.tenant_id = $1)
         )`;
       }
     }
@@ -2081,7 +2083,11 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
                se.detected_at, se.signal_date, se.source_url, se.signal_category,
                se.hiring_implications, se.is_megacap, se.image_url,
                se.signals_in_cluster,
-               c.sector, c.geography, c.is_client, c.country_code, c.company_tier,
+               c.sector, c.geography,
+               CASE WHEN c.tenant_id = $1 THEN c.is_client
+                 ELSE COALESCE((SELECT c2.is_client FROM companies c2 WHERE LOWER(c2.name) = LOWER(c.name) AND c2.tenant_id = $1 AND c2.is_client = true LIMIT 1), false)
+               END AS is_client,
+               c.country_code, c.company_tier,
                ed.source_name, ed.source_type AS doc_source_type,
                ed.title AS doc_title, ed.summary AS doc_summary,
                ed.image_url AS doc_image_url, ed.audio_url AS doc_audio_url,
@@ -2116,8 +2122,8 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
         ORDER BY
           -- 0. Exclude megacaps and tenant's own company
           CASE WHEN c.company_tier = 'tenant_company' THEN 2 WHEN se.is_megacap = true THEN 1 ELSE 0 END,
-          -- 1. CLIENT PRIORITY (own tenant OR huddle partner)
-          CASE WHEN c.is_client = true THEN 0
+          -- 1. CLIENT PRIORITY (own tenant only, or huddle partner if in huddle context)
+          CASE WHEN EXISTS (SELECT 1 FROM companies c_own WHERE c_own.is_client = true AND LOWER(c_own.name) = LOWER(c.name) AND c_own.tenant_id = $1) THEN 0
             ${huddleTenantParam ? `WHEN EXISTS (SELECT 1 FROM companies c2 WHERE c2.is_client = true AND LOWER(c2.name) = LOWER(c.name) AND c2.tenant_id = ANY($${huddleTenantParam})) THEN 0` : ''}
             ELSE 1 END,
           -- 2. NETWORK DENSITY (own tenant contacts, or huddle combined)
