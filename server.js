@@ -1114,6 +1114,29 @@ app.get('/api/config/terminology', authenticateToken, async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TERMINOLOGY — tenant-specific label overrides from tenant_terminology table
+// ─────────────────────────────────────────────────────────────────────────────
+
+app.get('/api/terminology', authenticateToken, async (req, res) => {
+  try {
+    const vertical = req.query.vertical || 'all';
+    const tid = req.tenant_id;
+    const { rows } = await platformPool.query(`
+      SELECT term_key, display_label FROM tenant_terminology
+      WHERE (tenant_id = $1 OR tenant_id IS NULL)
+        AND (vertical = $2 OR vertical = 'all')
+      ORDER BY tenant_id NULLS LAST, vertical = 'all' ASC
+    `, [tid, vertical]);
+    // Build map — tenant-specific overrides win over defaults
+    const labels = {};
+    rows.reverse().forEach(r => { labels[r.term_key] = r.display_label; });
+    res.json({ vertical, labels });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // FEED MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -12502,7 +12525,9 @@ try {
 // OPPORTUNITIES (Search Briefs / Pipeline)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-app.get('/api/opportunities', authenticateToken, async (req, res) => {
+// ─── Shared handlers (used by both /api/opportunities and /api/searches) ─────
+
+async function _handleListOpportunities(req, res) {
   try {
     const db = new TenantDB(req.tenant_id);
     const { status } = req.query;
@@ -12537,9 +12562,9 @@ app.get('/api/opportunities', authenticateToken, async (req, res) => {
     console.error('Opportunities list error:', err.message);
     res.status(500).json({ error: 'Failed to fetch opportunities' });
   }
-});
+}
 
-app.get('/api/opportunities/:id', authenticateToken, async (req, res) => {
+async function _handleGetOpportunity(req, res) {
   try {
     const db = new TenantDB(req.tenant_id);
     const { rows } = await db.query(`
@@ -12556,9 +12581,9 @@ app.get('/api/opportunities/:id', authenticateToken, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
+}
 
-app.get('/api/opportunities/:id/candidates', authenticateToken, async (req, res) => {
+async function _handleListCandidates(req, res) {
   try {
     const db = new TenantDB(req.tenant_id);
     const { rows } = await db.query(`
@@ -12575,9 +12600,9 @@ app.get('/api/opportunities/:id/candidates', authenticateToken, async (req, res)
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
+}
 
-app.get('/api/opportunities/:id/matches', authenticateToken, async (req, res) => {
+async function _handleListMatches(req, res) {
   try {
     const db = new TenantDB(req.tenant_id);
     const { limit = 20, status = 'all' } = req.query;
@@ -12606,9 +12631,9 @@ app.get('/api/opportunities/:id/matches', authenticateToken, async (req, res) =>
     console.error('Matches error:', err.message);
     res.status(500).json({ error: 'Failed to fetch matches' });
   }
-});
+}
 
-app.patch('/api/opportunities/:id/matches/:matchId', authenticateToken, async (req, res) => {
+async function _handlePatchMatch(req, res) {
   try {
     const db = new TenantDB(req.tenant_id);
     const { status } = req.body;
@@ -12624,6 +12649,54 @@ app.patch('/api/opportunities/:id/matches/:matchId', authenticateToken, async (r
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+}
+
+async function _handleOpportunityActivities(req, res) {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
+      SELECT a.*, u.name AS actor_name FROM activities a
+      LEFT JOIN users u ON u.id = a.user_id
+      WHERE a.tenant_id = $1 AND a.metadata->>'opportunity_id' = $2
+      ORDER BY a.created_at DESC LIMIT 50
+    `, [req.tenant_id, req.params.id]);
+    res.json({ activities: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ─── Primary routes: /api/opportunities ──────────────────────────────────────
+
+app.get('/api/opportunities', authenticateToken, _handleListOpportunities);
+app.get('/api/opportunities/:id', authenticateToken, _handleGetOpportunity);
+app.get('/api/opportunities/:id/candidates', authenticateToken, _handleListCandidates);
+app.get('/api/opportunities/:id/contacts', authenticateToken, _handleListCandidates);
+app.get('/api/opportunities/:id/matches', authenticateToken, _handleListMatches);
+app.patch('/api/opportunities/:id/matches/:matchId', authenticateToken, _handlePatchMatch);
+app.get('/api/opportunities/:id/activities', authenticateToken, _handleOpportunityActivities);
+
+// ─── Legacy aliases: /api/searches → same handlers ───────────────────────────
+
+app.get('/api/searches', authenticateToken, _handleListOpportunities);
+app.get('/api/searches/:id', authenticateToken, _handleGetOpportunity);
+app.post('/api/searches', authenticateToken, (req, res) => res.status(404).json({ error: 'Use POST /api/opportunities' }));
+app.patch('/api/searches/:id', authenticateToken, (req, res) => res.status(404).json({ error: 'Use PATCH /api/opportunities/:id' }));
+app.get('/api/searches/:id/candidates', authenticateToken, _handleListCandidates);
+app.get('/api/searches/:id/contacts', authenticateToken, _handleListCandidates);
+app.get('/api/searches/:id/matches', authenticateToken, _handleListMatches);
+app.patch('/api/searches/:id/matches/:matchId', authenticateToken, _handlePatchMatch);
+app.get('/api/searches/:id/activities', authenticateToken, _handleOpportunityActivities);
+
+// ─── 301 Redirects: browser clients hitting old search URLs ──────────────────
+app.use('/api/searches', (req, res, next) => {
+  // Only redirect non-API consumers (browsers) via Accept header check
+  if (req.headers.accept && req.headers.accept.includes('text/html')) {
+    const newPath = req.originalUrl.replace('/api/searches', '/api/opportunities')
+      .replace('/candidates', '/contacts');
+    return res.redirect(301, newPath);
+  }
+  next();
 });
 
 app.get('/api/people/:id/matches', authenticateToken, async (req, res) => {

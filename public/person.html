@@ -304,6 +304,24 @@ if(s.last_interaction)h+='<span style="font-size:10px;color:var(--ink-4);margin-
 h+='</div>';
 if(p.bio)h+='<div style="font-size:11px;color:var(--ink-3);line-height:1.45;overflow-wrap:break-word;max-height:34px;overflow:hidden;margin-bottom:12px">'+esc(p.bio)+'</div>';
 
+// ── Person Scores (terminology-aware) ──
+var _fs=parseFloat(p.flight_risk_score)||0, _ts=parseFloat(p.timing_score)||0, _sm=parseInt(p.active_search_matches)||0;
+if(_fs>0||_ts>0||_sm>0){
+  h+='<div class="stats" style="margin-bottom:12px">';
+  if(_fs>0){
+    var _fc=_fs>=0.6?'var(--rose)':_fs>=0.3?'var(--amber)':'var(--emerald)';
+    h+='<div class="st"><div style="font-family:var(--mono);font-size:18px;font-weight:600;color:'+_fc+'">'+Math.round(_fs*100)+'%</div><div style="font-size:10px;color:var(--ink-3)" data-term="score_transition">'+t('score_transition','Transition likelihood')+'</div></div>';
+  }
+  if(_ts>0){
+    var _tc=_ts>=0.6?'var(--emerald)':_ts>=0.3?'var(--amber)':'var(--ink-4)';
+    h+='<div class="st"><div style="font-family:var(--mono);font-size:18px;font-weight:600;color:'+_tc+'">'+Math.round(_ts*100)+'%</div><div style="font-size:10px;color:var(--ink-3)" data-term="score_window">'+t('score_window','Window score')+'</div></div>';
+  }
+  if(_sm>0){
+    h+='<div class="st"><div style="font-family:var(--mono);font-size:18px;font-weight:600;color:var(--blue)">'+_sm+'</div><div style="font-size:10px;color:var(--ink-3)" data-term="score_alignment">'+t('score_alignment','Opportunity alignment')+'</div></div>';
+  }
+  h+='</div>';
+}
+
 // ── Expertise & Skills ──
 var expTags = p.expertise_tags || [];
 var indTags = p.industries || [];
@@ -795,7 +813,7 @@ async function parseAndSaveCareer() {
   }
 }
 </script>
-<script src="/terminology.js"></script>
+<script src="/js/terminology.js"></script>
 <script src="/chat.js"></script>
 <div id="signal-ticker"></div>
 <script src="/signal-ticker.js" data-position="top"></script>
