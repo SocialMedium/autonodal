@@ -258,10 +258,10 @@ async function main() {
     }
   } catch (e) { /* tables may already exist */ }
 
-  // Find unclassified documents with content
+  // Find unclassified documents with content (Google Drive, Slides, Docs)
   const whereClause = RERUN
-    ? `WHERE ed.content IS NOT NULL AND LENGTH(ed.content) > 100 AND ed.source_name = 'Google Drive'`
-    : `WHERE ed.content IS NOT NULL AND LENGTH(ed.content) > 100 AND ed.source_name = 'Google Drive' AND ed.classified_at IS NULL`;
+    ? `WHERE ed.content IS NOT NULL AND LENGTH(ed.content) > 100 AND ed.source_type IN ('google_slides', 'google_doc', 'google_drive')`
+    : `WHERE ed.content IS NOT NULL AND LENGTH(ed.content) > 100 AND ed.source_type IN ('google_slides', 'google_doc', 'google_drive') AND ed.classified_at IS NULL`;
 
   const { rows: docs } = await pool.query(`
     SELECT ed.id, ed.title, ed.content, ed.source_type, ed.tenant_id
