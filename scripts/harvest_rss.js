@@ -73,7 +73,7 @@ function parseRSS(data, sourceName) {
   if (!channel?.item) return items;
   
   for (const item of channel.item.slice(0, MAX_ITEMS_PER_FEED)) {
-    const title = Array.isArray(item.title) ? item.title[0] : item.title;
+    const title = String(Array.isArray(item.title) ? item.title[0] : (item.title || item.summary || '')).slice(0, 500);
     let link = Array.isArray(item.link) ? item.link[0] : item.link;
     const description = Array.isArray(item.description) ? item.description[0] : item.description;
     const pubDate = Array.isArray(item.pubDate) ? item.pubDate[0] : item.pubDate;

@@ -245,15 +245,16 @@ async function pipelineIngestSignals() {
 
         await pool.query(`
           INSERT INTO external_documents (
-            source_id, source_url, source_url_hash, source_type, source_name, title, content,
+            tenant_id, source_id, source_url, source_url_hash, source_type, source_name, title, content,
             published_at, author, image_url
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
           ON CONFLICT (source_url_hash, tenant_id) DO NOTHING
         `, [
+          source.tenant_id || process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001',
           source.id, url, urlHash,
           source.source_type || 'rss',
           source.name,
-          (item.title || '').slice(0, 500),
+          String(item.title || item.summary || '').slice(0, 500),
           content,
           item.isoDate || item.pubDate || new Date().toISOString(),
           (item.creator || item.author || '').slice(0, 200),
@@ -1179,7 +1180,7 @@ Return JSON: {"topics":[],"insights":[],"entities":[],"career_signals":[],"exper
           ON CONFLICT (content_hash) DO NOTHING
         `, [
           source.person_id, source.id,
-          (item.title || '').slice(0, 500),
+          String(item.title || item.summary || '').slice(0, 500),
           item.link || '',
           contentHash, content,
           item.isoDate || new Date().toISOString(),
@@ -1981,6 +1982,61 @@ const PIPELINES = {
     },
     schedule: '45 */2 * * *',
     description: 'Classify Drive documents, extract case studies, identify shortlisted candidates in pitch decks'
+  },
+
+  harvest_gdelt: {
+    name: 'GDELT Global Intelligence',
+    icon: '🌍',
+    fn: async () => {
+      const { harvestGDELT } = require('./harvest_gdelt');
+      return harvestGDELT();
+    },
+    schedule: '*/15 * * * *',
+    description: 'Query GDELT for global signals across 100+ languages — geographic expansion, M&A, capital raising, leadership changes'
+  },
+
+  watchdog: {
+    name: 'Platform Watchdog',
+    icon: '🐕',
+    fn: async () => {
+      const { pipelineWatchdog } = require('./watchdog');
+      return pipelineWatchdog();
+    },
+    schedule: '0 */2 * * *',
+    description: 'Monitor pipeline freshness, data quality, external services, RSS health — alert on critical/high issues'
+  },
+
+  harvest_official_apis: {
+    name: 'Official API Harvest',
+    icon: '🏛️',
+    fn: async () => {
+      const { harvestOfficialApis } = require('./harvest_official_apis');
+      return harvestOfficialApis();
+    },
+    schedule: '0 */6 * * *',  // Every 6 hours
+    description: 'Harvest structured government/institutional APIs — procurement, patents, statistics, filings'
+  },
+
+  discover_ats: {
+    name: 'ATS Discovery',
+    icon: '🔍',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'discover_ats.js') + ' --limit 1000', { timeout: 600000, stdio: 'inherit' });
+    },
+    schedule: '0 2 * * 1',  // Monday 2am — weekly
+    description: 'Detect ATS providers for companies, register job feeds for harvesting'
+  },
+
+  harvest_jobs: {
+    name: 'Job Feed Harvest',
+    icon: '💼',
+    fn: async () => {
+      const { harvestAllJobFeeds } = require('./harvest_jobs');
+      return harvestAllJobFeeds();
+    },
+    schedule: '0 */6 * * *',  // Every 6 hours
+    description: 'Fetch job postings from discovered ATS feeds, detect removals, evaluate signals'
   }
 };
 

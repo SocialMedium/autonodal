@@ -147,12 +147,11 @@ Examples:
       let people = [];
 
       if (semantic) {
-        // Vector search in Qdrant
+        // Vector search in Qdrant — no tenant filter (single-tenant, payload lacks tenant_id)
         const vector = await embedText(query);
-        const hits = await vectorSearch('people', vector, limit, {
-          must: [{ key: 'tenant_id', match: { value: ML_TENANT_ID } }]
-        });
-        const ids = hits.map(h => h.id).filter(Boolean);
+        const hits = await vectorSearch('people', vector, limit * 2);
+        // Person UUID is in payload.person_id, not the point ID (which is numeric)
+        const ids = [...new Set(hits.map(h => h.payload?.person_id).filter(Boolean))];
 
         if (ids.length > 0) {
           const conditions = ['p.id = ANY($1)', 'p.tenant_id = $2'];
@@ -881,13 +880,11 @@ Args:
       const person = personR.rows[0];
       if (!person) return okText(`Person not found: ${person_id}`);
 
-      // Search for similar
-      const hits = await vectorSearch('people', vector, limit + 5, {
-        must: [{ key: 'tenant_id', match: { value: ML_TENANT_ID } }]
-      });
+      // Search for similar — no tenant filter (payload lacks tenant_id)
+      const hits = await vectorSearch('people', vector, limit + 5);
       const similarIds = hits
-        .filter(h => h.id !== person_id)
-        .map(h => ({ id: h.id, score: h.score }))
+        .filter(h => h.payload?.person_id && h.payload.person_id !== person_id)
+        .map(h => ({ id: h.payload.person_id, score: h.score }))
         .slice(0, limit + 2);
 
       if (similarIds.length === 0) return okText('No similar people found');

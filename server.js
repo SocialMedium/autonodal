@@ -1308,6 +1308,71 @@ app.get('/api/stats', authenticateToken, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// GDELT SIGNALS — global news intelligence from 100+ languages
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/signals/gdelt', authenticateToken, async (req, res) => {
+  try {
+    var db = new TenantDB(req.tenant_id);
+    var signalType = req.query.signal_type;
+    var language = req.query.language;
+    var days = parseInt(req.query.days) || 1;
+    var nonEnglish = req.query.non_english === 'true';
+    var limit = Math.min(parseInt(req.query.limit) || 50, 200);
+
+    var where = "se.detected_at > NOW() - INTERVAL '" + days + " days' AND ed.source_type = 'gdelt'";
+    var params = [];
+    var idx = 0;
+
+    if (signalType) { idx++; where += ' AND se.signal_type = $' + idx; params.push(signalType); }
+    if (language) { idx++; where += ' AND ed.source_language = $' + idx; params.push(language); }
+    if (nonEnglish) { where += " AND ed.source_language != 'en' AND ed.source_language != 'English'"; }
+
+    idx++; params.push(limit);
+
+    var { rows } = await db.query(`
+      SELECT se.signal_type, se.company_name, se.confidence_score,
+             se.evidence_summary, se.source_url, se.detected_at,
+             ed.title, ed.source_name AS source_domain,
+             ed.source_language, ed.gdelt_tone
+      FROM signal_events se
+      LEFT JOIN external_documents ed ON ed.source_url = se.source_url
+      WHERE ${where}
+      ORDER BY se.detected_at DESC
+      LIMIT $${idx}
+    `, params);
+
+    res.json({ signals: rows, count: rows.length, days: days });
+  } catch (err) {
+    console.error('GDELT signals error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch GDELT signals' });
+  }
+});
+
+app.get('/api/signals/gdelt/languages', authenticateToken, async (req, res) => {
+  try {
+    var db = new TenantDB(req.tenant_id);
+    var days = parseInt(req.query.days) || 7;
+    var { rows } = await db.query(`
+      SELECT ed.source_language AS language,
+             COUNT(DISTINCT ed.id) AS doc_count,
+             COUNT(DISTINCT se.id) AS signal_count,
+             ARRAY_AGG(DISTINCT se.signal_type) FILTER (WHERE se.signal_type IS NOT NULL) AS signal_types
+      FROM external_documents ed
+      LEFT JOIN signal_events se ON se.source_url = ed.source_url
+      WHERE ed.source_type = 'gdelt'
+        AND ed.created_at > NOW() - INTERVAL '${days} days'
+      GROUP BY ed.source_language
+      ORDER BY doc_count DESC
+    `);
+    res.json({ languages: rows, days: days });
+  } catch (err) {
+    console.error('GDELT languages error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch language breakdown' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // HERO SIGNALS — top 3 signals ranked by client proximity + network + confidence
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2736,6 +2801,7 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
 
     // Company signals (if person has a linked company)
     let companySignals = [];
+    let companyJobs = [];
     if (person.current_company_id) {
       const { rows } = await db.query(`
         SELECT id, signal_type, confidence_score, evidence_summary, detected_at, triage_status
@@ -2743,6 +2809,21 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
         ORDER BY detected_at DESC LIMIT 10
       `, [person.current_company_id, req.tenant_id]);
       companySignals = rows;
+
+      // Active senior job postings at their employer
+      try {
+        const { rows: jobs } = await db.query(`
+          SELECT jp.title, jp.location, jp.seniority_level, jp.function_area,
+                 jp.first_seen_at, jp.apply_url, jp.days_open
+          FROM job_postings jp
+          WHERE jp.company_id = $1 AND jp.tenant_id = $2
+            AND jp.status = 'active'
+            AND jp.seniority_level IN ('c_suite', 'vp', 'director')
+          ORDER BY jp.first_seen_at DESC
+          LIMIT 10
+        `, [person.current_company_id, req.tenant_id]);
+        companyJobs = jobs;
+      } catch (e) {}
     }
 
     // Interaction stats — count all types
@@ -2804,6 +2885,7 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
       interactions,
       person_signals: signals,
       company_signals: companySignals,
+      company_jobs: companyJobs,
       interaction_stats: stats,
       colleagues,
       proximity,
@@ -7049,6 +7131,17 @@ app.get('/api/health/pipelines', async (req, res) => {
   }
 });
 
+app.get('/api/health/watchdog', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { runWatchdog } = require('./scripts/watchdog');
+    const report = await runWatchdog();
+    var code = report.status === 'CRITICAL' ? 503 : report.status === 'DEGRADED' ? 206 : 200;
+    res.status(code).json(report);
+  } catch (err) {
+    res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // NETWORK TOPOLOGY — RANKED OPPORTUNITIES & DENSITY
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -7397,38 +7490,33 @@ app.post('/api/dispatches/generate', authenticateToken, async (req, res) => {
   }
 });
 
-// Generate dispatch for a specific signal
+// Generate dispatch for a specific signal (full pipeline — proximity, blog, distribution)
 app.post('/api/dispatches/generate-for-signal', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
     const { signal_id } = req.body;
     if (!signal_id) return res.status(400).json({ error: 'signal_id required' });
 
-    // Check signal exists
+    // Fetch full signal with company context
     const { rows: [signal] } = await db.query(
-      `SELECT id, company_id, company_name, signal_type, evidence_summary, confidence_score, source_url
-       FROM signal_events WHERE id = $1 AND tenant_id = $2`,
+      `SELECT se.id, se.company_id, se.company_name, se.signal_type,
+              se.evidence_summary, se.confidence_score, se.source_url,
+              c.sector, c.geography, c.employee_count_band
+       FROM signal_events se
+       LEFT JOIN companies c ON c.id = se.company_id
+       WHERE se.id = $1 AND se.tenant_id = $2`,
       [signal_id, req.tenant_id]
     );
     if (!signal) return res.status(404).json({ error: 'Signal not found' });
 
-    // Check if dispatch already exists for this signal
-    const { rows: existing } = await db.query(
-      `SELECT id FROM signal_dispatches WHERE signal_event_id = $1 LIMIT 1`, [signal_id]
-    );
-    if (existing.length) return res.json({ dispatch_id: existing[0].id, message: 'Dispatch already exists for this signal' });
+    // Run the full generation pipeline (async — respond immediately)
+    res.json({ message: 'Dispatch generation started', signal_id: signal.id });
 
-    // Create a basic dispatch — the generate pipeline will enrich it
-    const { rows: [dispatch] } = await db.query(`
-      INSERT INTO signal_dispatches (
-        signal_event_id, company_id, company_name, signal_type, signal_summary,
-        status, created_by, tenant_id, generated_at
-      ) VALUES ($1, $2, $3, $4, $5, 'draft', $6, $7, NOW())
-      RETURNING id
-    `, [signal.id, signal.company_id, signal.company_name, signal.signal_type,
-        signal.evidence_summary, req.user.user_id, req.tenant_id]);
-
-    res.json({ dispatch_id: dispatch.id, message: 'Dispatch created as draft' });
+    // Generate in background (don't block the response)
+    const { generateForSignal } = require('./scripts/generate_dispatches');
+    generateForSignal(signal).catch(err => {
+      console.error(`Dispatch generation failed for ${signal.company_name}:`, err.message);
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -13530,6 +13618,216 @@ app.post('/api/admin/compute-company-relationships', authenticateToken, requireA
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// JOB POSTINGS & ATS MONITORING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/companies/:id/jobs — Active job postings for a company
+app.get('/api/companies/:id/jobs', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { seniority, function_area, status, limit } = req.query;
+    let where = ['jp.tenant_id = $1', 'jp.company_id = $2'];
+    const params = [req.tenant_id, req.params.id];
+    let idx = 3;
+    if (seniority) { where.push(`jp.seniority_level = $${idx++}`); params.push(seniority); }
+    if (function_area) { where.push(`jp.function_area = $${idx++}`); params.push(function_area); }
+    where.push(`jp.status = $${idx++}`);
+    params.push(status || 'active');
+    const lim = Math.min(parseInt(limit) || 50, 200);
+    const { rows } = await db.query(`
+      SELECT jp.id, jp.title, jp.department, jp.location, jp.employment_type,
+             jp.seniority_level, jp.function_area, jp.is_leadership, jp.apply_url,
+             jp.status, jp.first_seen_at, jp.last_seen_at, jp.removed_at, jp.days_open,
+             jp.ats_type, jp.external_id
+      FROM job_postings jp
+      WHERE ${where.join(' AND ')}
+      ORDER BY jp.first_seen_at DESC
+      LIMIT ${lim}
+    `, params);
+    res.json({ jobs: rows, total: rows.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/jobs/signals — Recent job-derived signal events
+app.get('/api/jobs/signals', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { signal_type, days, company_id, limit } = req.query;
+    let where = ['se.tenant_id = $1', "se.source_url = 'jobs'"];
+    const params = [req.tenant_id];
+    let idx = 2;
+    if (signal_type) { where.push(`se.signal_type = $${idx++}::signal_type`); params.push(signal_type); }
+    if (company_id) { where.push(`se.company_id = $${idx++}`); params.push(company_id); }
+    const dayWindow = parseInt(days) || 30;
+    where.push(`se.detected_at > NOW() - ($${idx++} || ' days')::INTERVAL`);
+    params.push(String(dayWindow));
+    const lim = Math.min(parseInt(limit) || 50, 200);
+    const { rows } = await db.query(`
+      SELECT se.id, se.signal_type, se.company_id, se.company_name, se.confidence_score,
+             se.evidence_summary, se.scoring_breakdown, se.detected_at, se.triage_status
+      FROM signal_events se
+      WHERE ${where.join(' AND ')}
+      ORDER BY se.detected_at DESC
+      LIMIT ${lim}
+    `, params);
+    res.json({ signals: rows, total: rows.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/companies/:id/ats — ATS detection status for a company
+app.get('/api/companies/:id/ats', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const company = await db.queryOne(`
+      SELECT id, name, ats_type, ats_feed_url, ats_detected_at, ats_error, careers_url
+      FROM companies WHERE id = $1 AND tenant_id = $2
+    `, [req.params.id, req.tenant_id]);
+    if (!company) return res.status(404).json({ error: 'Company not found' });
+    const postingStats = await db.queryOne(`
+      SELECT COUNT(*) FILTER (WHERE status = 'active') AS active_postings,
+             COUNT(*) FILTER (WHERE status = 'removed') AS removed_postings,
+             MAX(last_seen_at) AS last_harvested
+      FROM job_postings WHERE company_id = $1 AND tenant_id = $2
+    `, [req.params.id, req.tenant_id]);
+    res.json({
+      ...company,
+      posting_count: parseInt(postingStats?.active_postings || 0),
+      removed_count: parseInt(postingStats?.removed_postings || 0),
+      last_harvested: postingStats?.last_harvested,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/jobs/stats — Aggregate job posting stats
+app.get('/api/jobs/stats', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const stats = await db.queryOne(`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'active') AS total_active_postings,
+        COUNT(DISTINCT company_id) FILTER (WHERE status = 'active') AS companies_with_active_postings
+      FROM job_postings WHERE tenant_id = $1
+    `, [req.tenant_id]);
+    const atsCount = await db.queryOne(`
+      SELECT COUNT(*) AS companies_with_ats FROM companies
+      WHERE tenant_id = $1 AND ats_type IS NOT NULL
+    `, [req.tenant_id]);
+    const bySeniority = await db.queryAll(`
+      SELECT seniority_level, COUNT(*) AS count
+      FROM job_postings WHERE tenant_id = $1 AND status = 'active'
+      GROUP BY seniority_level ORDER BY count DESC
+    `, [req.tenant_id]);
+    const signals7d = await db.queryOne(`
+      SELECT COUNT(*) AS count FROM signal_events
+      WHERE tenant_id = $1 AND source_url = 'jobs' AND detected_at > NOW() - INTERVAL '7 days'
+    `, [req.tenant_id]);
+    const topHiring = await db.queryAll(`
+      SELECT company_name, COUNT(*) AS count
+      FROM job_postings WHERE tenant_id = $1 AND status = 'active' AND company_name IS NOT NULL
+      GROUP BY company_name ORDER BY count DESC LIMIT 10
+    `, [req.tenant_id]);
+    res.json({
+      total_active_postings: parseInt(stats?.total_active_postings || 0),
+      companies_with_active_postings: parseInt(stats?.companies_with_active_postings || 0),
+      companies_with_ats: parseInt(atsCount?.companies_with_ats || 0),
+      postings_by_seniority: bySeniority,
+      signals_generated_7d: parseInt(signals7d?.count || 0),
+      top_hiring_companies: topHiring,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/jobs/geo-signals — Active geographic expansion signals from job postings
+app.get('/api/jobs/geo-signals', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { geography, geo_tier, days, limit } = req.query;
+    let where = ['jp.tenant_id = $1', 'jp.is_geo_expansion_role = true', "jp.status = 'active'"];
+    const params = [req.tenant_id];
+    let idx = 2;
+    if (geography) { where.push(`jp.target_geography = $${idx++}`); params.push(geography); }
+    if (geo_tier) { where.push(`jp.target_geo_tier = $${idx++}`); params.push(geo_tier); }
+    const dayWindow = parseInt(days) || 30;
+    where.push(`jp.first_seen_at > NOW() - ($${idx++} || ' days')::INTERVAL`);
+    params.push(String(dayWindow));
+    const lim = Math.min(parseInt(limit) || 50, 200);
+    const { rows } = await db.query(`
+      SELECT jp.id, jp.title, jp.company_id, jp.company_name, jp.location,
+             jp.seniority_level, jp.geo_role_class, jp.target_geography,
+             jp.target_geo_tier, jp.apply_url, jp.first_seen_at, jp.days_open,
+             c.sector AS company_sector
+      FROM job_postings jp
+      LEFT JOIN companies c ON c.id = jp.company_id
+      WHERE ${where.join(' AND ')}
+      ORDER BY jp.first_seen_at DESC
+      LIMIT ${lim}
+    `, params);
+    res.json({ signals: rows, total: rows.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/jobs/geo-waves — Market-level geographic entry waves
+app.get('/api/jobs/geo-waves', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { geography, min_companies } = req.query;
+    const minCo = parseInt(min_companies) || 3;
+    let havingExtra = '';
+    const params = [req.tenant_id];
+    let idx = 2;
+    if (geography) { havingExtra = ` AND jp.target_geography = $${idx++}`; params.push(geography); }
+    const { rows } = await db.query(`
+      SELECT
+        jp.target_geography,
+        jp.target_geo_tier,
+        COUNT(DISTINCT jp.company_id)   AS company_count,
+        COUNT(*)                        AS posting_count,
+        ARRAY_AGG(DISTINCT jp.geo_role_class) AS role_classes,
+        ARRAY_AGG(DISTINCT c.sector) FILTER (WHERE c.sector IS NOT NULL) AS sectors,
+        ARRAY_AGG(DISTINCT c.name) AS company_names,
+        MIN(jp.first_seen_at) AS earliest_posting
+      FROM job_postings jp
+      JOIN companies c ON c.id = jp.company_id
+      WHERE jp.tenant_id = $1
+        AND jp.is_geo_expansion_role = true
+        AND jp.status = 'active'
+        AND jp.first_seen_at > NOW() - INTERVAL '30 days'
+        AND jp.target_geography IS NOT NULL
+        ${havingExtra}
+      GROUP BY jp.target_geography, jp.target_geo_tier
+      HAVING COUNT(DISTINCT jp.company_id) >= ${minCo}
+      ORDER BY COUNT(DISTINCT jp.company_id) DESC
+    `, params);
+
+    const waves = rows.map(w => ({
+      ...w,
+      company_count: parseInt(w.company_count),
+      posting_count: parseInt(w.posting_count),
+      confidence: Math.min(0.70 + (parseInt(w.company_count) * 0.05), 0.97),
+    }));
+    res.json({ waves, total: waves.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/official-sources/stats — Official API source stats
+app.get('/api/official-sources/stats', authenticateToken, async (req, res) => {
+  try {
+    const { rows: sources } = await platformPool.query(`
+      SELECT source_key, name, region, category, enabled,
+             last_fetched_at, total_fetched, total_signals,
+             consecutive_errors, last_error, fetch_interval_minutes
+      FROM official_api_sources ORDER BY category, region
+    `);
+    const totals = sources.reduce((acc, s) => ({
+      total_fetched: acc.total_fetched + (s.total_fetched || 0),
+      total_signals: acc.total_signals + (s.total_signals || 0),
+      enabled: acc.enabled + (s.enabled ? 1 : 0),
+    }), { total_fetched: 0, total_signals: 0, enabled: 0 });
+    res.json({ sources, totals });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // FEED CATALOG & BUNDLES (Platform-level curation + tenant subscriptions)
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -14201,6 +14499,21 @@ app.post('/api/onboarding/watched-people', authenticateToken, async function(req
         [req.tenant_id, req.user.user_id, personId, person.name.trim(), person.company || null, person.reason || null, person.linkedin_url || null, watchContext, opportunity_id || null]
       );
       inserted++;
+
+      // Queue ATS discovery for watched person's employer (non-blocking)
+      if (personId) {
+        db.query(
+          `SELECT c.id FROM people p JOIN companies c ON c.id = p.current_company_id
+           WHERE p.id = $1 AND c.ats_detected_at IS NULL AND c.website_url IS NOT NULL`,
+          [personId]
+        ).then(function(r) {
+          if (r.rows.length > 0) {
+            const { detectATS } = require('./lib/ats_detector');
+            db.query('SELECT id, name, website_url, domain, careers_url FROM companies WHERE id = $1', [r.rows[0].id])
+              .then(function(cr) { if (cr.rows[0]) detectATS(cr.rows[0]).catch(function(){}); });
+          }
+        }).catch(function(){});
+      }
     }
 
     await db.release();
