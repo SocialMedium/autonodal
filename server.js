@@ -3503,7 +3503,9 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
       try {
         const { rows: gmailAccounts } = await db.query(
           `SELECT id, user_id, google_email, access_token, refresh_token, token_expires_at
-           FROM user_google_accounts WHERE sync_enabled = true LIMIT 5`
+           FROM user_google_accounts WHERE sync_enabled = true
+           ORDER BY CASE WHEN user_id = $1 THEN 0 ELSE 1 END, google_email`,
+          [req.user.user_id]
         ).catch(() => ({ rows: [] }));
 
         let newEmails = 0;
@@ -3548,7 +3550,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
             const emailQ = person.email.replace(/"/g, '');
             const searchQuery = encodeURIComponent(`from:"${emailQ}" OR to:"${emailQ}" OR cc:"${emailQ}" newer_than:10y`);
             const gmailRes = await fetch(
-              `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${searchQuery}&maxResults=20`,
+              `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${searchQuery}&maxResults=100`,
               { headers: { 'Authorization': `Bearer ${token}` } }
             );
 
@@ -3561,7 +3563,7 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
 
             // Fetch and store new messages as interactions
             if (gmailData.messages && gmailData.messages.length > 0) {
-              for (const msg of gmailData.messages.slice(0, 15)) {
+              for (const msg of gmailData.messages.slice(0, 50)) {
                 const { rows: existing } = await db.query(
                   `SELECT id FROM interactions WHERE person_id = $1 AND external_id = $2 AND tenant_id = $3`,
                   [req.params.id, msg.id, req.tenant_id]
