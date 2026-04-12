@@ -175,6 +175,7 @@ function esc(s){return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 function fmtD(t){return t?new Date(t).toLocaleDateString('en-AU',{year:'numeric',month:'short',day:'numeric'}):'—'}
 function ago(t){if(!t)return'';const m=Math.floor((Date.now()-new Date(t))/6e4);if(m<60)return m+'m';const h=Math.floor(m/60);if(h<24)return h+'h';const d=Math.floor(h/24);return d<30?d+'d':fmtD(t)}
 function money(v){if(!v)return'—';const n=parseFloat(v);return isNaN(n)?'—':'$'+n.toLocaleString('en-AU',{minimumFractionDigits:0,maximumFractionDigits:0})}
+function num(v){return v!=null?String(v):'0'}
 
 const SI={capital_raising:'💰',ma_activity:'🔗',product_launch:'🚀',partnership:'🤝',geographic_expansion:'🌐',restructuring:'⚙️',leadership_change:'👤',layoffs:'📉',strategic_hiring:'👥'};
 const SIC={capital_raising:'#EF9F27',ma_activity:'#AFA9EC',product_launch:'#97C459',partnership:'#85B7EB',geographic_expansion:'#378ADD',restructuring:'#E24B4A',leadership_change:'#D4537E',layoffs:'#E24B4A',strategic_hiring:'#5DCAA5'};
