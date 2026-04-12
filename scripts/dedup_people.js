@@ -56,7 +56,9 @@ async function mergePeople(keepId, removeId) {
     let idx = 1;
     const fields = ['email', 'phone', 'linkedin_url', 'current_title', 'current_company_name',
       'current_company_id', 'location', 'country', 'seniority_level', 'bio', 'headline',
-      'career_history', 'education', 'source_id'];
+      'source_id'];
+    // JSON fields need special handling
+    const jsonFields = ['career_history', 'education'];
     for (const f of fields) {
       if (!keep[f] && remove[f]) {
         idx++;
@@ -64,21 +66,43 @@ async function mergePeople(keepId, removeId) {
         params.push(remove[f]);
       }
     }
+    for (const f of jsonFields) {
+      if (!keep[f] && remove[f]) {
+        try {
+          // Validate JSON before copying
+          var val = typeof remove[f] === 'string' ? remove[f] : JSON.stringify(remove[f]);
+          JSON.parse(val); // throws if invalid
+          idx++;
+          updates.push(`${f} = $${idx}`);
+          params.push(val);
+        } catch (e) { /* skip invalid JSON */ }
+      }
+    }
     if (updates.length) {
       await pool.query(`UPDATE people SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $1`, params);
     }
   }
 
-  // Delete the duplicate — clean up all FK references
-  const fkTables = ['person_scores', 'team_proximity', 'interactions', 'pipeline_contacts',
-    'person_signals', 'person_content', 'person_content_sources', 'person_constraints'];
-  for (const t of fkTables) {
-    try { await pool.query(`DELETE FROM ${t} WHERE person_id = $1`, [removeId]); } catch(e) {}
-  }
-  // Also try conversions.person_id
-  try { await pool.query('UPDATE conversions SET person_id = $1 WHERE person_id = $2', [keepId, removeId]); } catch(e) {}
+  // Delete the duplicate — dynamically find and re-point ALL FK references
+  try {
+    const { rows: fks } = await pool.query(`
+      SELECT tc.table_name, kcu.column_name
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+      JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
+      WHERE ccu.table_name = 'people' AND ccu.column_name = 'id' AND tc.constraint_type = 'FOREIGN KEY'
+    `);
+    for (const fk of fks) {
+      try {
+        await pool.query(`UPDATE ${fk.table_name} SET ${fk.column_name} = $1 WHERE ${fk.column_name} = $2`, [keepId, removeId]);
+      } catch (e) {
+        // Unique constraint conflict — delete the conflicting row
+        try { await pool.query(`DELETE FROM ${fk.table_name} WHERE ${fk.column_name} = $1`, [removeId]); } catch (e2) {}
+      }
+    }
+  } catch (e) {}
   try { await pool.query('DELETE FROM people WHERE id = $1', [removeId]); } catch(e) {
-    console.log('    ⚠️ Could not delete', removeId, ':', e.message.slice(0, 60));
+    console.log('    Could not delete', removeId, ':', e.message.slice(0, 60));
   }
 }
 
@@ -200,6 +224,56 @@ async function main() {
       }
     }
   }
+
+  // 3b. Same name, different company — merge if same email OR same linkedin
+  LOG('👤', 'Finding same-name cross-company duplicates (email/linkedin match)...');
+  const { rows: nameOnlyDupes } = await pool.query(`
+    SELECT LOWER(TRIM(full_name)) AS name_key,
+           array_agg(id ORDER BY created_at) AS ids, COUNT(*) AS cnt
+    FROM people
+    WHERE full_name IS NOT NULL AND LENGTH(full_name) > 5
+      AND full_name NOT ILIKE 'unknown%' AND tenant_id = $1
+    GROUP BY LOWER(TRIM(full_name))
+    HAVING COUNT(*) > 1 AND COUNT(*) <= 10
+    ORDER BY COUNT(*) DESC
+  `, [ML_TENANT]);
+  LOG('👤', `  ${nameOnlyDupes.length} name-only groups to check`);
+  let crossMerged = 0;
+  for (const d of nameOnlyDupes) {
+    const { rows } = await pool.query(`
+      SELECT p.*, (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id) AS interaction_count,
+             (SELECT COUNT(*) FROM team_proximity tp WHERE tp.person_id = p.id) AS proximity_count
+      FROM people p WHERE p.id = ANY($1) ORDER BY
+        (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id) DESC,
+        CASE WHEN p.email IS NOT NULL THEN 0 ELSE 1 END,
+        p.created_at
+    `, [d.ids]);
+    if (rows.length < 2) continue;
+
+    // Group by shared email or linkedin — merge within those groups
+    const primary = rows[0];
+    for (let i = 1; i < rows.length; i++) {
+      const dupe = rows[i];
+      // Only auto-merge if they share email or linkedin (not just same name)
+      const shareEmail = primary.email && dupe.email && primary.email.toLowerCase() === dupe.email.toLowerCase();
+      const shareLinkedin = primary.linkedin_url && dupe.linkedin_url &&
+        primary.linkedin_url.replace(/\/+$/, '').toLowerCase() === dupe.linkedin_url.replace(/\/+$/, '').toLowerCase();
+      if (!shareEmail && !shareLinkedin && !doMerge) continue;
+      if (shareEmail || shareLinkedin) {
+        if (doMerge) {
+          const { keep, remove } = pickPrimary(primary, dupe);
+          await mergePeople(keep.id, remove.id);
+          totalMerged++;
+          crossMerged++;
+          LOG('  ', `  Merged ${remove.full_name} (${remove.current_company_name || '?'}) -> ${keep.full_name} (${keep.current_company_name || '?'}) [${shareEmail ? 'email' : 'linkedin'}]`);
+        } else {
+          totalFound++;
+          LOG('  ', `${primary.full_name}: ${primary.current_company_name || '?'} / ${dupe.current_company_name || '?'} [match: ${shareEmail ? 'email' : 'linkedin'}]`);
+        }
+      }
+    }
+  }
+  if (crossMerged > 0) LOG('👤', `  ${crossMerged} cross-company merges`);
 
   // 4. Company dedup
   LOG('🏢', 'Finding duplicate companies...');
