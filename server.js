@@ -3789,6 +3789,45 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
       enrichResults.gmail_linked = { error: e.message };
     }
 
+    // 7. Update team_proximity for this person — compute from all interaction types
+    try {
+      var tpCreated = 0;
+      var { rows: interactingUsers } = await db.query(
+        'SELECT DISTINCT user_id FROM interactions WHERE person_id = $1 AND user_id IS NOT NULL AND tenant_id = $2',
+        [req.params.id, req.tenant_id]
+      );
+      for (var iu of interactingUsers) {
+        for (var ixType of [
+          { types: ['email', 'email_sent', 'email_received'], rtype: 'email', source: 'enrich_gmail', thresholds: [10, 3] },
+          { types: ['research_note', 'note'], rtype: 'research_note', source: 'ezekia', thresholds: [20, 5] },
+          { types: ['linkedin_message'], rtype: 'linkedin_message', source: 'linkedin_import', thresholds: [10, 3] },
+          { types: ['meeting'], rtype: 'meeting', source: 'gcal_sync', thresholds: [5, 2] },
+        ]) {
+          var { rows: [ct] } = await db.query(
+            'SELECT COUNT(*) AS cnt, MAX(interaction_at) AS latest FROM interactions WHERE person_id = $1 AND user_id = $2 AND interaction_type = ANY($3)',
+            [req.params.id, iu.user_id, ixType.types]
+          );
+          var cnt = parseInt(ct.cnt);
+          if (cnt === 0) continue;
+          var strength = cnt >= ixType.thresholds[0] ? 0.85 : cnt >= ixType.thresholds[1] ? 0.60 : 0.30;
+          if (ixType.rtype === 'research_note') strength = cnt >= 20 ? 0.90 : cnt >= 10 ? 0.80 : cnt >= 5 ? 0.65 : cnt >= 2 ? 0.45 : 0.25;
+          await db.query(`
+            INSERT INTO team_proximity (person_id, team_member_id, relationship_type, relationship_strength, source, interaction_count, last_interaction_date, tenant_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (person_id, team_member_id, relationship_type) DO UPDATE SET
+              interaction_count = EXCLUDED.interaction_count,
+              relationship_strength = GREATEST(team_proximity.relationship_strength, EXCLUDED.relationship_strength),
+              last_interaction_date = GREATEST(team_proximity.last_interaction_date, EXCLUDED.last_interaction_date),
+              updated_at = NOW()
+          `, [req.params.id, iu.user_id, ixType.rtype, strength, ixType.source, cnt, ct.latest, req.tenant_id]);
+          tpCreated++;
+        }
+      }
+      enrichResults.proximity = { updated: tpCreated, users: interactingUsers.length };
+    } catch (e) {
+      enrichResults.proximity = { error: e.message };
+    }
+
     console.log(`Person enrich ${person.full_name}: ${JSON.stringify(Object.keys(enrichResults).map(k => k + '=' + (enrichResults[k]?.error || enrichResults[k]?.message || enrichResults[k]?.updated_fields?.join(',') || 'ok')))}`);
     res.json({ person_id: req.params.id, person_name: person.full_name, results: enrichResults });
   } catch (err) {
@@ -4284,6 +4323,41 @@ Only include genuine business signals. Ignore opinion pieces, listicles, or gene
       } catch (e) {
         enrichResults.ezekia_writeback = { error: e.message };
       }
+    }
+
+    // Update team_proximity for people discovered via Gmail domain search
+    if (enrichResults.gmail_contacts?.linked > 0) {
+      try {
+        var { rows: companyPeople } = await db.query(
+          'SELECT id FROM people WHERE current_company_id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]
+        );
+        var tpUpdated = 0;
+        for (var cp of companyPeople) {
+          var { rows: ixUsers } = await db.query(
+            'SELECT DISTINCT user_id FROM interactions WHERE person_id = $1 AND user_id IS NOT NULL AND tenant_id = $2', [cp.id, req.tenant_id]
+          );
+          for (var iu of ixUsers) {
+            var { rows: [ct] } = await db.query(
+              "SELECT COUNT(*) AS cnt, MAX(interaction_at) AS latest FROM interactions WHERE person_id = $1 AND user_id = $2 AND interaction_type IN ('email','email_sent','email_received')",
+              [cp.id, iu.user_id]
+            );
+            var cnt = parseInt(ct.cnt);
+            if (cnt === 0) continue;
+            var strength = cnt >= 10 ? 0.85 : cnt >= 3 ? 0.60 : 0.30;
+            await db.query(`
+              INSERT INTO team_proximity (person_id, team_member_id, relationship_type, relationship_strength, source, interaction_count, last_interaction_date, tenant_id)
+              VALUES ($1, $2, 'email', $3, 'enrich_gmail', $4, $5, $6)
+              ON CONFLICT (person_id, team_member_id, relationship_type) DO UPDATE SET
+                interaction_count = EXCLUDED.interaction_count,
+                relationship_strength = GREATEST(team_proximity.relationship_strength, EXCLUDED.relationship_strength),
+                last_interaction_date = GREATEST(team_proximity.last_interaction_date, EXCLUDED.last_interaction_date),
+                updated_at = NOW()
+            `, [cp.id, iu.user_id, strength, cnt, ct.latest, req.tenant_id]);
+            tpUpdated++;
+          }
+        }
+        if (tpUpdated > 0) enrichResults.proximity = { updated: tpUpdated };
+      } catch (e) { enrichResults.proximity = { error: e.message }; }
     }
 
     res.json({ company_id: req.params.id, company_name: company.name, results: enrichResults });
