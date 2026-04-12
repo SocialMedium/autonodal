@@ -80,15 +80,23 @@ function formatScore(score) {
 }
 
 function formatPerson(p, scores = null) {
+  const title = p.current_title || '—';
+  const company = p.current_company_name || '—';
   const lines = [
     `**${p.full_name}** (ID: ${p.id})`,
-    `${p.current_title || 'Unknown title'} @ ${p.current_company_name || 'Unknown company'}`,
+    `${title} @ ${company}`,
     p.location ? `📍 ${p.location}` : null,
     p.email ? `✉️  ${p.email}` : null,
     p.linkedin_url ? `🔗 ${p.linkedin_url}` : null,
     scores ? `Scores — Engagement: ${formatScore(scores.engagement_score)} | Receptivity: ${formatScore(scores.receptivity_score)} | Timing: ${formatScore(scores.timing_score)} | Flight Risk: ${formatScore(scores.flight_risk_score)}` : null
   ];
   return lines.filter(Boolean).join('\n');
+}
+
+function isJunkPerson(p) {
+  if (!p || !p.full_name) return true;
+  var n = p.full_name.toLowerCase().trim();
+  return n.startsWith('unknown') || n === 'n/a' || n === 'na' || n === '-' || n.length < 2;
 }
 
 function okText(text) {
@@ -154,7 +162,7 @@ Examples:
         const ids = [...new Set(hits.map(h => h.payload?.person_id).filter(Boolean))];
 
         if (ids.length > 0) {
-          const conditions = ['p.id = ANY($1)', 'p.tenant_id = $2'];
+          const conditions = ['p.id = ANY($1)', 'p.tenant_id = $2', "p.full_name NOT ILIKE 'unknown%'"];
           const params = [ids, ML_TENANT_ID];
           let pi = 3;
           if (company) { conditions.push(`p.current_company_name ILIKE $${pi++}`); params.push(`%${company}%`); }
@@ -172,7 +180,7 @@ Examples:
         }
       } else {
         // Keyword search
-        const conditions = [`(p.full_name ILIKE $1 OR p.current_title ILIKE $1 OR p.current_company_name ILIKE $1 OR p.headline ILIKE $1)`, `p.tenant_id = $2`];
+        const conditions = [`(p.full_name ILIKE $1 OR p.current_title ILIKE $1 OR p.current_company_name ILIKE $1 OR p.headline ILIKE $1)`, `p.tenant_id = $2`, "p.full_name NOT ILIKE 'unknown%'"];
         const params = [`%${query}%`, ML_TENANT_ID];
         let pi = 3;
         if (company) { conditions.push(`p.current_company_name ILIKE $${pi++}`); params.push(`%${company}%`); }
@@ -189,6 +197,9 @@ Examples:
         `, [...params, limit]);
         people = result.rows;
       }
+
+      // Filter out junk records (Unknown, N/A, etc.)
+      people = people.filter(p => !isJunkPerson(p));
 
       if (people.length === 0) return okText(`No people found matching "${query}"`);
 
