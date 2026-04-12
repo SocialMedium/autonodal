@@ -3503,9 +3503,9 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
       try {
         const { rows: gmailAccounts } = await db.query(
           `SELECT id, user_id, google_email, access_token, refresh_token, token_expires_at
-           FROM user_google_accounts WHERE sync_enabled = true
+           FROM user_google_accounts WHERE sync_enabled = true AND tenant_id = $2
            ORDER BY CASE WHEN user_id = $1 THEN 0 ELSE 1 END, google_email`,
-          [req.user.user_id]
+          [req.user.user_id, req.tenant_id]
         ).catch(() => ({ rows: [] }));
 
         let newEmails = 0;
@@ -10286,7 +10286,7 @@ app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) =
 
     // Optional tables — may not exist
     let googleCount = 0;
-    try { const r = await db.query('SELECT COUNT(*) AS cnt FROM user_google_accounts WHERE sync_enabled = true'); googleCount = r.rows[0]?.cnt || 0; } catch (e) {}
+    try { const r = await db.query('SELECT COUNT(*) AS cnt FROM user_google_accounts WHERE sync_enabled = true AND tenant_id = $1', [req.tenant_id]); googleCount = r.rows[0]?.cnt || 0; } catch (e) {}
     let grabsCount = 0;
     try { const r = await db.query('SELECT COUNT(*) AS cnt FROM signal_grabs WHERE tenant_id = $1', [req.tenant_id]); grabsCount = r.rows[0]?.cnt || 0; } catch (e) {}
 
@@ -10302,7 +10302,7 @@ app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) =
           (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND interaction_at > NOW() - INTERVAL '7 days') AS interactions_7d,
           (SELECT COUNT(DISTINCT person_id) FROM interactions WHERE tenant_id = $1 AND source = 'gmail_sync') AS gmail_people_matched,
           (SELECT COUNT(*) FROM team_proximity WHERE tenant_id = $1 AND source = 'gmail') AS gmail_proximity_links,
-          (SELECT MAX(last_sync_at) FROM user_google_accounts WHERE sync_enabled = true) AS last_gmail_sync,
+          (SELECT MAX(last_sync_at) FROM user_google_accounts WHERE sync_enabled = true AND tenant_id = $1) AS last_gmail_sync,
           (SELECT COUNT(*) FROM case_studies WHERE tenant_id = $1 AND status != 'deleted') AS total_case_studies,
           (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1 AND source = 'wip_workbook') AS wip_records,
           (SELECT COUNT(*) FROM conversions WHERE tenant_id = $1 AND source = 'xero_export') AS xero_records,
@@ -10428,6 +10428,7 @@ app.get('/api/admin/ingestion', authenticateToken, requireAdmin, async (req, res
           (SELECT COUNT(*) FROM email_signals es WHERE es.user_id = ug.user_id) AS email_signals
         FROM user_google_accounts ug
         JOIN users u ON u.id = ug.user_id
+        WHERE ug.tenant_id = $1
         ORDER BY ug.last_sync_at DESC NULLS LAST
       `, [tenantId]);
       googleAccounts = rows;
