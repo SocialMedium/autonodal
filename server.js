@@ -105,6 +105,11 @@ const REGION_CODES = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.set('trust proxy', 1);
+
+// ─── Performance: gzip compression (40-70% smaller responses) ───
+const compression = require('compression');
+app.use(compression());
+
 // Skip JSON parsing for Stripe webhook (needs raw body for signature verification)
 app.use(function(req, res, next) {
   if (req.path === '/api/billing/webhook') return next();
@@ -120,7 +125,13 @@ app.get('/', (req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+// ─── Performance: cache static assets (1h for JS/CSS/images, 5min for HTML) ───
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '1h',
+  setHeaders: function(res, filePath) {
+    if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'public, max-age=300');
+  }
+}));
 
 // CORS for development
 app.use((req, res, next) => {
@@ -132,14 +143,60 @@ app.use((req, res, next) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AUTH MIDDLEWARE
+// RESPONSE CACHE — for heavy endpoints that don't change frequently
+// Keyed by tenant_id + path. 2-minute TTL. Saves DB round-trips at 100 users.
 // ─────────────────────────────────────────────────────────────────────────────
+
+const responseCache = new Map();
+const RESPONSE_CACHE_TTL = 120000; // 2 min
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of responseCache) {
+    if (now - entry.at > RESPONSE_CACHE_TTL) responseCache.delete(key);
+  }
+}, 60000);
+
+function cachedResponse(tenantId, path) {
+  const key = tenantId + ':' + path;
+  const entry = responseCache.get(key);
+  if (entry && (Date.now() - entry.at) < RESPONSE_CACHE_TTL) return entry.data;
+  return null;
+}
+
+function setCachedResponse(tenantId, path, data) {
+  responseCache.set(tenantId + ':' + path, { data, at: Date.now() });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH MIDDLEWARE — with in-memory session cache (60s TTL)
+// Eliminates DB query on every request for recently authenticated users
+// ─────────────────────────────────────────────────────────────────────────────
+
+const sessionCache = new Map();
+const SESSION_CACHE_TTL = 60000; // 60s
+
+// Evict expired entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of sessionCache) {
+    if (now - entry.cachedAt > SESSION_CACHE_TTL) sessionCache.delete(key);
+  }
+}, 300000);
 
 async function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.replace('Bearer ', '');
 
   if (!token) return res.status(401).json({ error: 'No token provided' });
+
+  // Check session cache first
+  const cached = sessionCache.get(token);
+  if (cached && (Date.now() - cached.cachedAt) < SESSION_CACHE_TTL) {
+    req.user = cached.user;
+    req.tenant_id = cached.user.tenant_id;
+    return next();
+  }
 
   try {
     const { rows } = await platformPool.query(
@@ -153,15 +210,18 @@ async function authenticateToken(req, res, next) {
     );
 
     if (rows.length === 0) {
-      console.log('🔑 AUTH FAIL: no session found for token length:', token?.length, 'path:', req.path);
+      sessionCache.delete(token);
       try { const { audit } = require('./lib/auditLogger'); audit.invalidToken(req); } catch(e) {}
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
 
     req.user = rows[0];
-    // Ensure tenant_id is always available (fallback to ML tenant)
     req.user.tenant_id = req.user.tenant_id || process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
     req.tenant_id = req.user.tenant_id;
+
+    // Cache for 60s
+    sessionCache.set(token, { user: { ...req.user }, cachedAt: Date.now() });
+
     next();
   } catch (err) {
     console.error('Auth error:', err.message);
@@ -1450,8 +1510,11 @@ app.get('/api/signals/hero', authenticateToken, async (req, res) => {
 // ── Signal Index — Market Health Ticker ──────────────────────────────
 app.get('/api/signal-index', authenticateToken, async (req, res) => {
   try {
-    const db = new TenantDB(req.tenant_id);
     const horizon = req.query.horizon || '7d';
+    const cacheKey = '/api/signal-index?h=' + horizon;
+    const cached = cachedResponse(req.tenant_id, cacheKey);
+    if (cached) return res.json(cached);
+    const db = new TenantDB(req.tenant_id);
     const tid = req.tenant_id;
 
     // Market health is platform-wide (derived from market signals, not tenant data)
@@ -1472,13 +1535,15 @@ app.get('/api/signal-index', authenticateToken, async (req, res) => {
       };
     }
 
-    res.json({
+    const response = {
       horizon,
       market_health: mh.rows[0] || { score: 50, delta: 0, direction: 'flat' },
       signal_stocks: signalStocks,
       stats: stats.rows[0] || { people_tracked: 0, companies_tracked: 0, signals_7d: 0, signals_30d: 0 },
       computed_at: mh.rows[0]?.computed_at || null
-    });
+    };
+    setCachedResponse(req.tenant_id, cacheKey, response);
+    res.json(response);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
