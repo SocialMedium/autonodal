@@ -56,24 +56,40 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 // PERSON LOOKUP CACHE
 // ═══════════════════════════════════════════════════════════════════════════
 
-const nameCache = new Map();
-const phoneCache = new Map();
+// Per-tenant caches — keyed by tenantId to prevent cross-tenant pollution
+const tenantCaches = new Map();
+
+function getTenantCache(tenantId) {
+  if (!tenantCaches.has(tenantId)) {
+    tenantCaches.set(tenantId, { nameCache: new Map(), phoneCache: new Map() });
+  }
+  return tenantCaches.get(tenantId);
+}
+
+// Legacy global refs for findPerson — set per-sync-cycle
+let nameCache = new Map();
+let phoneCache = new Map();
 
 async function loadPeopleIndex(tenantId) {
+  const tc = getTenantCache(tenantId);
+  tc.nameCache.clear();
+  tc.phoneCache.clear();
   const { rows } = await pool.query(
     `SELECT id, full_name, phone FROM people WHERE tenant_id = $1 AND full_name IS NOT NULL`,
     [tenantId]
   );
   for (const p of rows) {
     const norm = p.full_name.toLowerCase().trim();
-    if (!nameCache.has(norm)) nameCache.set(norm, p);
+    if (!tc.nameCache.has(norm)) tc.nameCache.set(norm, p);
     if (p.phone) {
       const normPhone = p.phone.replace(/[\s\-()]/g, '');
-      phoneCache.set(normPhone, p);
-      // Also store last 10 digits for fuzzy match
-      if (normPhone.length >= 10) phoneCache.set(normPhone.slice(-10), p);
+      tc.phoneCache.set(normPhone, p);
+      if (normPhone.length >= 10) tc.phoneCache.set(normPhone.slice(-10), p);
     }
   }
+  // Set global refs for findPerson compatibility
+  nameCache = tc.nameCache;
+  phoneCache = tc.phoneCache;
   return rows.length;
 }
 

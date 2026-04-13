@@ -333,7 +333,7 @@ async function pipelineIngestSignals() {
   console.log('   🧠 Step 3: Claude signal analysis...');
 
   const unprocessed = await pool.query(`
-    SELECT id, title, content, source_name, published_at
+    SELECT id, title, content, source_name, published_at, tenant_id
     FROM external_documents
     WHERE signals_computed_at IS NULL AND embedded_at IS NOT NULL
       AND COALESCE(processing_status, 'pending') != 'context_only'
@@ -402,19 +402,20 @@ Return ONLY valid JSON array:
             continue;
           }
 
-          // Find or create company
+          // Find or create company — scope to tenant via source document
           let companyId;
+          const docTenantId = batch[signal.document_index - 1]?.tenant_id || batch[0]?.tenant_id;
           const companyResult = await pool.query(
-            `SELECT id FROM companies WHERE LOWER(name) = LOWER($1) LIMIT 1`,
-            [signal.company]
+            `SELECT id FROM companies WHERE LOWER(name) = LOWER($1) AND (tenant_id = $2 OR tenant_id IS NULL) LIMIT 1`,
+            [signal.company, docTenantId]
           );
 
           if (companyResult.rows.length > 0) {
             companyId = companyResult.rows[0].id;
           } else {
             const newCompany = await pool.query(
-              `INSERT INTO companies (name) VALUES ($1) ON CONFLICT DO NOTHING RETURNING id`,
-              [signal.company]
+              `INSERT INTO companies (name, tenant_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING id`,
+              [signal.company, docTenantId]
             );
             companyId = newCompany.rows[0]?.id;
           }
@@ -466,7 +467,7 @@ Return ONLY valid JSON array:
   console.log('   🔗 Step 4: Cross-referencing with MLX network...');
   
   const recentSignals = await pool.query(`
-    SELECT se.*, c.name as company_name 
+    SELECT se.*, c.name as company_name, c.tenant_id as company_tenant_id
     FROM signal_events se
     JOIN companies c ON se.company_id = c.id
     WHERE se.detected_at > NOW() - INTERVAL '1 day'
@@ -475,12 +476,13 @@ Return ONLY valid JSON array:
 
   let crossRefCount = 0;
   for (const signal of recentSignals.rows) {
-    // Find people in our network at this company
+    // Find people in our network at this company — scoped to same tenant
     const affected = await pool.query(`
-      SELECT id, full_name, current_title 
-      FROM people 
+      SELECT id, full_name, current_title
+      FROM people
       WHERE LOWER(current_company_name) LIKE LOWER($1)
-    `, [`%${signal.company_name}%`]);
+        AND tenant_id = $2
+    `, [`%${signal.company_name}%`, signal.company_tenant_id]);
 
     if (affected.rows.length > 0) {
       // Store cross-ref as triage note
@@ -889,7 +891,7 @@ async function pipelineComputeScores() {
   // Get people with signals or interactions that need rescoring
   const people = await pool.query(`
     SELECT p.id, p.full_name, p.current_company_name, p.current_title,
-           p.created_at,
+           p.tenant_id, p.created_at,
            (SELECT COUNT(*) FROM person_signals ps WHERE ps.person_id = p.id) as signal_count,
            (SELECT COUNT(*) FROM interactions i WHERE i.person_id = p.id) as interaction_count,
            (SELECT MAX(i.interaction_at) FROM interactions i WHERE i.person_id = p.id) as last_interaction,
@@ -906,13 +908,14 @@ async function pipelineComputeScores() {
   `);
 
   for (const person of people.rows) {
-    // Check for company signals (flight risk indicator)
+    // Check for company signals (flight risk indicator) — scoped to same tenant
     const companySignals = await pool.query(`
-      SELECT signal_type, confidence FROM signal_events se
+      SELECT signal_type, confidence_score AS confidence FROM signal_events se
       JOIN companies c ON se.company_id = c.id
       WHERE LOWER(c.name) LIKE LOWER($1)
-      AND se.detected_at > NOW() - INTERVAL '30 days'
-    `, [`%${person.current_company_name || 'NONE'}%`]).catch(() => ({ rows: [] }));
+        AND (c.tenant_id = $2 OR c.tenant_id IS NULL)
+        AND se.detected_at > NOW() - INTERVAL '30 days'
+    `, [`%${person.current_company_name || 'NONE'}%`, person.tenant_id]).catch(() => ({ rows: [] }));
 
     const hasLayoffs = companySignals.rows.some(s => 
       ['layoffs', 'restructuring'].includes(s.signal_type)

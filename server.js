@@ -2237,6 +2237,11 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
           WHERE sd2.signal_event_id = se.id
           ORDER BY sd2.generated_at DESC LIMIT 1
         ) sd ON true
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*) AS cnt FROM people p
+          WHERE p.current_company_id = se.company_id
+            AND p.tenant_id ${huddleTenantParam ? `= ANY($${huddleTenantParam})` : '= $1'}
+        ) net_density ON true
         WHERE se.rn = 1
         ORDER BY
           -- 0. Exclude megacaps and tenant's own company
@@ -2245,11 +2250,11 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
           CASE WHEN EXISTS (SELECT 1 FROM companies c_own WHERE c_own.is_client = true AND LOWER(c_own.name) = LOWER(c.name) AND c_own.tenant_id = $1) THEN 0
             ${huddleTenantParam ? `WHEN EXISTS (SELECT 1 FROM companies c2 WHERE c2.is_client = true AND LOWER(c2.name) = LOWER(c.name) AND c2.tenant_id = ANY($${huddleTenantParam})) THEN 0` : ''}
             ELSE 1 END,
-          -- 2. NETWORK DENSITY (fast: use company_id for sort, CTE for display)
+          -- 2. NETWORK DENSITY (single subquery, not 3x)
           CASE
-            WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id ${huddleTenantParam ? `= ANY($${huddleTenantParam})` : '= $1'}) >= 5 THEN 0
-            WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id ${huddleTenantParam ? `= ANY($${huddleTenantParam})` : '= $1'}) >= 2 THEN 1
-            WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id ${huddleTenantParam ? `= ANY($${huddleTenantParam})` : '= $1'}) >= 1 THEN 2
+            WHEN COALESCE(net_density.cnt, 0) >= 5 THEN 0
+            WHEN COALESCE(net_density.cnt, 0) >= 2 THEN 1
+            WHEN COALESCE(net_density.cnt, 0) >= 1 THEN 2
             ELSE 3 END,
           -- 3. GEOGRAPHIC RELEVANCE (user's focus countries)
           CASE WHEN c.country_code = ANY($${geoBoostParam}) THEN 0 ELSE 1 END,
