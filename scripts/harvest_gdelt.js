@@ -30,42 +30,44 @@ const DRY_RUN = process.argv.includes('--dry-run');
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // Signal type → GDELT query configuration
+// Consolidated: 1 query per signal type to stay within GDELT rate limits
+// Total: 6 queries × 6s delay = ~36s per run
 const HARVEST_CONFIGS = [
   {
     signal_type: 'geographic_expansion',
-    timespan: '15min',
-    maxrecords: 100,
-    queries: SIGNAL_QUERIES.geographic_expansion,
+    timespan: '2h',
+    maxrecords: 75,
+    queries: ['"country manager" OR "regional director" OR "expands to" OR "opens office" OR "market entry"'],
   },
   {
     signal_type: 'capital_raising',
-    timespan: '1h',
-    maxrecords: 150,
-    queries: SIGNAL_QUERIES.capital_raising,
+    timespan: '2h',
+    maxrecords: 75,
+    queries: ['"series A" OR "series B" OR "series C" OR "funding round" OR "raised" OR "IPO"'],
   },
   {
     signal_type: 'ma_activity',
-    timespan: '1h',
-    maxrecords: 150,
-    queries: SIGNAL_QUERIES.ma_activity,
+    timespan: '2h',
+    maxrecords: 75,
+    queries: ['"acquires" OR "acquisition" OR "merger" OR "merges with" OR "takeover" OR "buyout"'],
   },
   {
     signal_type: 'leadership_change',
-    timespan: '1h',
-    maxrecords: 100,
-    queries: SIGNAL_QUERIES.leadership_change,
+    timespan: '2h',
+    maxrecords: 75,
+    queries: ['"appointed" OR "named CEO" OR "named CFO" OR "named CTO" OR "resigns" OR "steps down"'],
   },
   {
     signal_type: 'restructuring',
-    timespan: '1h',
-    maxrecords: 100,
-    queries: SIGNAL_QUERIES.restructuring,
+    timespan: '2h',
+    maxrecords: 50,
+    queries: ['"layoffs" OR "redundancies" OR "job cuts" OR "restructuring" OR "downsizing"'],
   },
   {
     signal_type: 'product_launch',
-    timespan: '1h',
-    maxrecords: 100,
-    queries: SIGNAL_QUERIES.product_launch || ['"product launch" OR "launches" OR "introduces" OR "unveils"'],
+    timespan: '2h',
+    maxrecords: 50,
+    queries: ['"product launch" OR "launches" OR "introduces" OR "unveils"'],
   },
 ];
 

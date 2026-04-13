@@ -1997,7 +1997,7 @@ const PIPELINES = {
       const { harvestGDELT } = require('./harvest_gdelt');
       return harvestGDELT();
     },
-    schedule: '*/15 * * * *',
+    schedule: '10 */2 * * *',
     description: 'Query GDELT for global signals across 100+ languages — geographic expansion, M&A, capital raising, leadership changes'
   },
 
