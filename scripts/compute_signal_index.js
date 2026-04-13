@@ -227,7 +227,7 @@ async function computeSignalIndex() {
         COUNT(DISTINCT se.company_id) AS company_count
       FROM signal_events se
       LEFT JOIN companies c ON c.id = se.company_id
-      WHERE se.tenant_id = $3 AND se.detected_at > NOW() - ($2 || ' days')::INTERVAL
+      WHERE (se.tenant_id = $3 OR se.tenant_id IS NULL) AND se.detected_at > NOW() - ($2 || ' days')::INTERVAL
       GROUP BY COALESCE(c.sector, 'Unknown')
       HAVING COUNT(*) >= 3
       ORDER BY current_count DESC LIMIT 20
@@ -253,8 +253,8 @@ async function computeSignalIndex() {
     SELECT
       (SELECT COUNT(*) FROM people WHERE tenant_id = $1) AS people,
       (SELECT COUNT(*) FROM companies WHERE tenant_id = $1) AS companies,
-      (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '7 days') AS s7d,
-      (SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '30 days') AS s30d
+      (SELECT COUNT(*) FROM signal_events WHERE (tenant_id = $1 OR tenant_id IS NULL) AND detected_at > NOW() - INTERVAL '7 days') AS s7d,
+      (SELECT COUNT(*) FROM signal_events WHERE (tenant_id = $1 OR tenant_id IS NULL) AND detected_at > NOW() - INTERVAL '30 days') AS s30d
   `, [TENANT_ID]);
 
   await pool.query(`

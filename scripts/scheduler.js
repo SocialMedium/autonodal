@@ -687,43 +687,49 @@ async function pipelineEmbedIntelligence() {
   // ─── Signal events ───
   console.log('   📡 Embedding signal events...');
 
-  const signals = await pool.query(`
-    SELECT id, signal_type, company_name, evidence_summary, source_url, signal_date, confidence_score
-    FROM signal_events
-    WHERE embedded_at IS NULL
-    ORDER BY signal_date DESC NULLS LAST
-    LIMIT 200
-  `).catch(() => ({ rows: [] }));
+  try {
+    const signals = await pool.query(`
+      SELECT id, signal_type, company_name, evidence_summary, source_url, signal_date, confidence_score
+      FROM signal_events
+      WHERE embedded_at IS NULL
+      ORDER BY signal_date DESC NULLS LAST
+      LIMIT 200
+    `);
 
-  if (signals.rows.length > 0) {
-    const texts = signals.rows.map(s =>
-      `Signal: ${s.signal_type} at ${s.company_name || 'Unknown'}\nDate: ${s.signal_date || ''}\nConfidence: ${s.confidence_score || ''}\n\n${s.evidence_summary || ''}`
-    );
+    console.log(`     ${signals.rows.length} unembedded signals found`);
 
-    const sigEmbeddings = await embedBatch(texts);
+    if (signals.rows.length > 0) {
+      const texts = signals.rows.map(s =>
+        `Signal: ${s.signal_type} at ${s.company_name || 'Unknown'}\nDate: ${s.signal_date || ''}\nConfidence: ${s.confidence_score || ''}\n\n${s.evidence_summary || ''}`
+      );
 
-    const sigPoints = signals.rows.map((s, i) => ({
-      id: Date.now() * 1000 + 20000 + i,
-      vector: sigEmbeddings[i],
-      payload: {
-        type: 'signal_event',
-        signal_id: s.id,
-        signal_type: s.signal_type,
-        company_name: s.company_name,
-        signal_date: s.signal_date,
-        confidence: s.confidence_score,
-        content_preview: (s.evidence_summary || '').slice(0, 500)
-      }
-    }));
+      const sigEmbeddings = await embedBatch(texts);
 
-    await qdrantUpsert('signal_events', sigPoints);
+      const sigPoints = signals.rows.map((s, i) => ({
+        id: s.id,
+        vector: sigEmbeddings[i],
+        payload: {
+          type: 'signal_event',
+          signal_id: s.id,
+          signal_type: s.signal_type,
+          company_name: s.company_name,
+          signal_date: s.signal_date,
+          confidence: s.confidence_score,
+          content_preview: (s.evidence_summary || '').slice(0, 500)
+        }
+      }));
 
-    await pool.query(`
-      UPDATE signal_events SET embedded_at = NOW() WHERE id = ANY($1)
-    `, [signals.rows.map(s => s.id)]);
+      await qdrantUpsert('signal_events', sigPoints);
 
-    stats.signals = signals.rows.length;
-    console.log(`     ${stats.signals} signal events embedded`);
+      await pool.query(`
+        UPDATE signal_events SET embedded_at = NOW() WHERE id = ANY($1)
+      `, [signals.rows.map(s => s.id)]);
+
+      stats.signals = signals.rows.length;
+      console.log(`     ${stats.signals} signal events embedded`);
+    }
+  } catch (embedErr) {
+    console.error('     ⚠️ Signal embedding error:', embedErr.message);
   }
 
   // ─── Case studies ───
