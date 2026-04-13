@@ -1702,7 +1702,7 @@ a.stats-card-row:hover { background: var(--surface-warm); }
           <div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:18px 20px;height:100%">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
               <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-4)">Market Health Index</span>
-              <span id="mhHorizon" style="font-size:10px;color:var(--ink-4)">30 day</span>
+              <span id="mhHorizon" style="font-size:10px;color:var(--ink-4)">90 day</span>
             </div>
             <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:14px">
               <span id="mhScore" style="font-family:var(--serif);font-size:32px;font-weight:700;color:var(--ink)">—</span>
@@ -1713,8 +1713,8 @@ a.stats-card-row:hover { background: var(--surface-warm); }
             <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-4);margin-bottom:8px">Signal volume by region</div>
             <div id="mhRegions" style="display:flex;flex-direction:column;gap:5px"></div>
             <div id="mhChart" style="margin-top:14px;display:none">
-              <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-4);margin-bottom:6px">30-day trend</div>
-              <svg id="mhSparkline" width="100%" height="80" viewBox="0 0 240 80" preserveAspectRatio="none" style="display:block"></svg>
+              <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-4);margin-bottom:6px">90-day trend · deviation from mean</div>
+              <svg id="mhSparkline" width="100%" height="100" viewBox="0 0 280 100" preserveAspectRatio="none" style="display:block"></svg>
             </div>
           </div>
         </div>
@@ -2339,7 +2339,7 @@ async function loadTodayInsight() {
 
 async function loadMarketHealthCard() {
   try {
-    var data = await api('/api/signal-index?horizon=30d');
+    var data = await api('/api/signal-index?horizon=30d'); // score still uses 30d window
     if (!data) return;
     var mh = data.market_health || { score: 50, delta: 0, direction: 'flat' };
     var score = Math.round(mh.score || 50);
@@ -2399,94 +2399,131 @@ async function loadMarketHealthCard() {
       document.getElementById('mhRegions').innerHTML = geoHtml;
     } catch(e2) {}
 
-    // 30-day sparkline — deduplicate to one point per day, fill gaps
+    // 90-day sparkline — log-deviation from mean, weekly ticks
     try {
-      var hist = await api('/api/signal-index/history?horizon=30d&limit=200');
+      var hist = await api('/api/signal-index/history?horizon=30d&limit=365');
       var points = (hist.history || hist || []).reverse();
-      // Deduplicate to one point per day
       var byDay = {};
       points.forEach(function(p) {
         var d = (p.snapshot_at || p.date || '').substring(0, 10);
         if (d) byDay[d] = { score: p.score || 50, date: d };
       });
-      // Build full 30-day range ending today, interpolate missing days
+      // Build full 90-day range
       var today = new Date(); today.setHours(0,0,0,0);
       var daily = [];
-      for (var di = 29; di >= 0; di--) {
+      for (var di = 89; di >= 0; di--) {
         var dd = new Date(today); dd.setDate(dd.getDate() - di);
         var key = dd.toISOString().substring(0, 10);
         daily.push({ date: key, score: byDay[key] ? byDay[key].score : null });
       }
-      // Interpolate nulls from nearest known neighbours
+      // Interpolate nulls
       for (var fi = 0; fi < daily.length; fi++) {
         if (daily[fi].score !== null) continue;
-        var prev = null, next = null;
-        for (var bi = fi - 1; bi >= 0; bi--) { if (daily[bi].score !== null) { prev = bi; break; } }
-        for (var ai = fi + 1; ai < daily.length; ai++) { if (daily[ai].score !== null) { next = ai; break; } }
-        if (prev !== null && next !== null) {
-          var t = (fi - prev) / (next - prev);
-          daily[fi].score = Math.round((daily[prev].score * (1 - t) + daily[next].score * t) * 10) / 10;
-        } else if (prev !== null) { daily[fi].score = daily[prev].score;
-        } else if (next !== null) { daily[fi].score = daily[next].score;
-        } else { daily[fi].score = 50; }
+        var prevI = null, nextI = null;
+        for (var bi = fi - 1; bi >= 0; bi--) { if (daily[bi].score !== null) { prevI = bi; break; } }
+        for (var ai = fi + 1; ai < daily.length; ai++) { if (daily[ai].score !== null) { nextI = ai; break; } }
+        if (prevI !== null && nextI !== null) {
+          var t = (fi - prevI) / (nextI - prevI);
+          daily[fi].score = Math.round((daily[prevI].score * (1 - t) + daily[nextI].score * t) * 10) / 10;
+        } else if (prevI !== null) daily[fi].score = daily[prevI].score;
+        else if (nextI !== null) daily[fi].score = daily[nextI].score;
+        else daily[fi].score = 50;
       }
 
-      if (daily.length >= 2) {
+      if (daily.length >= 7) {
         var scores = daily.map(function(p) { return p.score; });
         var dates = daily.map(function(p) { return p.date; });
-        var min = Math.min.apply(null, scores) - 5;
-        var max = Math.max.apply(null, scores) + 5;
-        var range = max - min || 1;
-        var pad = 12, w = 240, h = 56, labelH = 16;
-        var chartW = w - pad * 2;
-        var pts = scores.map(function(s, i) {
-          return (pad + (i / (scores.length - 1)) * chartW) + ',' + (h - ((s - min) / range) * h);
+
+        // Compute mean and log-deviation
+        var mean = scores.reduce(function(a, b) { return a + b; }, 0) / scores.length;
+        var devs = scores.map(function(s) {
+          var diff = s - mean;
+          // Signed log: preserves direction, compresses extremes
+          return diff >= 0 ? Math.log(1 + diff) : -Math.log(1 - diff);
         });
-        var lineColor = scores[scores.length - 1] >= 60 ? '#10b981' : scores[scores.length - 1] <= 40 ? '#ef4444' : '#6b7280';
+        var maxDev = Math.max.apply(null, devs.map(Math.abs)) || 1;
+
+        var pad = 14, w = 280, h = 68, labelH = 16;
+        var chartW = w - pad * 2;
+        var midY = h / 2;
+
+        // Map deviations to Y coordinates (center = mean)
+        var pts = devs.map(function(d, i) {
+          var x = pad + (i / (scores.length - 1)) * chartW;
+          var y = midY - (d / maxDev) * (midY - 4); // 4px padding top/bottom
+          return [x, y];
+        });
+
         var svg = document.getElementById('mhSparkline');
         svg.setAttribute('viewBox', '0 0 ' + w + ' ' + (h + labelH));
 
-        // Grid lines at 25%, 50%, 75%
-        var gridLines = '';
-        [0.25, 0.5, 0.75].forEach(function(pct) {
-          var y = h - pct * h;
-          gridLines += '<line x1="' + pad + '" y1="' + y + '" x2="' + (w - pad) + '" y2="' + y + '" stroke="#e2e8f0" stroke-width="0.5" stroke-dasharray="2,3"/>';
+        // Mean line
+        var meanLine = '<line x1="' + pad + '" y1="' + midY + '" x2="' + (w - pad) + '" y2="' + midY + '" stroke="#cbd5e1" stroke-width="0.7" stroke-dasharray="4,3"/>';
+        // Mean label
+        meanLine += '<text x="' + (w - pad + 2) + '" y="' + (midY + 3) + '" fill="#94a3b8" font-size="6" font-family="var(--mono,monospace)">' + Math.round(mean) + '</text>';
+
+        // Subtle zone bands: above mean = green tint, below = red tint
+        var zoneBands = '<rect x="' + pad + '" y="0" width="' + chartW + '" height="' + midY + '" fill="#10b981" opacity="0.03"/>' +
+          '<rect x="' + pad + '" y="' + midY + '" width="' + chartW + '" height="' + midY + '" fill="#ef4444" opacity="0.03"/>';
+
+        // Weekly vertical gridlines
+        var weekLines = '';
+        dates.forEach(function(d, i) {
+          var dt = new Date(d);
+          if (dt.getUTCDay() === 1) { // Monday
+            var x = pad + (i / (dates.length - 1)) * chartW;
+            weekLines += '<line x1="' + x + '" y1="0" x2="' + x + '" y2="' + h + '" stroke="#e2e8f0" stroke-width="0.4"/>';
+          }
         });
 
-        // Show ~6 evenly-spaced date labels
-        var labelCount = Math.min(6, dates.length);
+        // Weekly date labels (~6 ticks)
         var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         var dateLabels = '';
-        for (var li = 0; li < labelCount; li++) {
-          var di = li === labelCount - 1 ? dates.length - 1 : Math.round(li * (dates.length - 1) / (labelCount - 1));
-          var xPos = pad + (di / (dates.length - 1)) * chartW;
-          var dt = new Date(dates[di]);
+        var labelWeeks = [0, 2, 4, 6, 9, 12]; // approximate week indices
+        labelWeeks.forEach(function(wk) {
+          var idx = Math.min(wk * 7, dates.length - 1);
+          var x = pad + (idx / (dates.length - 1)) * chartW;
+          var dt = new Date(dates[idx]);
           var lbl = monthNames[dt.getUTCMonth()] + ' ' + dt.getUTCDate();
-          var anchor = li === 0 ? 'start' : li === labelCount - 1 ? 'end' : 'middle';
-          dateLabels += '<text x="' + xPos + '" y="' + (h + 12) + '" fill="#94a3b8" font-size="7" font-family="var(--mono,monospace)" text-anchor="' + anchor + '">' + lbl + '</text>';
-        }
+          var anchor = idx === 0 ? 'start' : idx >= dates.length - 3 ? 'end' : 'middle';
+          dateLabels += '<text x="' + x + '" y="' + (h + 12) + '" fill="#94a3b8" font-size="6.5" font-family="var(--mono,monospace)" text-anchor="' + anchor + '">' + lbl + '</text>';
+        });
 
-        // Smooth the line with catmull-rom-like cubic bezier
-        var pathD = 'M' + pts[0].split(',').join(' ');
+        // Smooth bezier path
+        var pathD = 'M' + pts[0][0] + ' ' + pts[0][1];
         for (var pi = 1; pi < pts.length; pi++) {
-          var prev = pts[pi - 1].split(',').map(Number);
-          var curr = pts[pi].split(',').map(Number);
-          var cpx = (prev[0] + curr[0]) / 2;
-          pathD += ' C' + cpx + ' ' + prev[1] + ',' + cpx + ' ' + curr[1] + ',' + curr[0] + ' ' + curr[1];
+          var cpx = (pts[pi - 1][0] + pts[pi][0]) / 2;
+          pathD += ' C' + cpx + ' ' + pts[pi - 1][1] + ',' + cpx + ' ' + pts[pi][1] + ',' + pts[pi][0] + ' ' + pts[pi][1];
         }
 
-        // Area fill path
-        var lastPt = pts[pts.length - 1].split(',').map(Number);
-        var firstPt = pts[0].split(',').map(Number);
-        var areaD = pathD + ' L' + lastPt[0] + ' ' + h + ' L' + firstPt[0] + ' ' + h + ' Z';
+        // Area fill: from line to mean (not to bottom)
+        var areaAbove = '', areaBelow = '';
+        // Simple: fill from line to mean line
+        var areaD = pathD + ' L' + pts[pts.length - 1][0] + ' ' + midY + ' L' + pts[0][0] + ' ' + midY + ' Z';
 
-        svg.innerHTML =
-          '<defs><linearGradient id="mhGrad" x1="0" y1="0" x2="0" y2="1">' +
-            '<stop offset="0%" stop-color="' + lineColor + '" stop-opacity="0.18"/>' +
-            '<stop offset="100%" stop-color="' + lineColor + '" stop-opacity="0.02"/>' +
-          '</linearGradient></defs>' +
-          gridLines +
-          '<path d="' + areaD + '" fill="url(#mhGrad)"/>' +
+        // Current value colour
+        var lastScore = scores[scores.length - 1];
+        var lineColor = lastScore >= mean + 5 ? '#10b981' : lastScore <= mean - 5 ? '#ef4444' : '#6b7280';
+
+        // Gradient for area fill (green above mean, red below)
+        var gradDef = '<defs>' +
+          '<linearGradient id="mhGradUp" x1="0" y1="0" x2="0" y2="1">' +
+            '<stop offset="0%" stop-color="#10b981" stop-opacity="0.20"/>' +
+            '<stop offset="100%" stop-color="#10b981" stop-opacity="0.02"/>' +
+          '</linearGradient>' +
+          '<linearGradient id="mhGradDn" x1="0" y1="0" x2="0" y2="1">' +
+            '<stop offset="0%" stop-color="#ef4444" stop-opacity="0.02"/>' +
+            '<stop offset="100%" stop-color="#ef4444" stop-opacity="0.15"/>' +
+          '</linearGradient>' +
+          '<clipPath id="mhClipAbove"><rect x="' + pad + '" y="0" width="' + chartW + '" height="' + midY + '"/></clipPath>' +
+          '<clipPath id="mhClipBelow"><rect x="' + pad + '" y="' + midY + '" width="' + chartW + '" height="' + midY + '"/></clipPath>' +
+        '</defs>';
+
+        var lastPt = pts[pts.length - 1];
+
+        svg.innerHTML = gradDef + zoneBands + weekLines + meanLine +
+          '<path d="' + areaD + '" fill="url(#mhGradUp)" clip-path="url(#mhClipAbove)"/>' +
+          '<path d="' + areaD + '" fill="url(#mhGradDn)" clip-path="url(#mhClipBelow)"/>' +
           '<path d="' + pathD + '" fill="none" stroke="' + lineColor + '" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>' +
           '<circle cx="' + lastPt[0] + '" cy="' + lastPt[1] + '" r="2.5" fill="' + lineColor + '"/>' +
           '<circle cx="' + lastPt[0] + '" cy="' + lastPt[1] + '" r="5" fill="' + lineColor + '" opacity="0.2"/>' +
