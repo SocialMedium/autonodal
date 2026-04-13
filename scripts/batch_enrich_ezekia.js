@@ -34,6 +34,20 @@ const pool = new Pool({
 const TENANT_ID = process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
 const RATE_LIMIT_MS = 300; // Ezekia rate limit — ~3 req/s
 
+// OpenAI + Qdrant for re-embedding
+let openai, qdrantClient;
+try {
+  const OpenAI = require('openai');
+  openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+} catch (e) {}
+try {
+  const { QdrantClient } = require('@qdrant/js-client-rest');
+  qdrantClient = new QdrantClient({ url: process.env.QDRANT_URL, apiKey: process.env.QDRANT_API_KEY });
+} catch (e) {}
+
+const EMBEDDING_MODEL = 'text-embedding-3-small';
+const EMBED_BATCH_SIZE = 50; // OpenAI batch limit
+
 const args = process.argv.slice(2);
 const LIMIT = parseInt((args.find(a => a.startsWith('--limit=')) || '').split('=')[1]) || 0;
 const OFFSET = parseInt((args.find(a => a.startsWith('--offset=')) || '').split('=')[1]) || 0;
@@ -51,6 +65,36 @@ function deriveSeniority(careerName) {
   if (/\b(senior|lead|principal|staff)\b/.test(c)) return 'senior';
   if (/\b(manager|supervisor|controller)\b/.test(c)) return 'manager';
   return null;
+}
+
+// Batch embed + upsert to Qdrant
+// embedQueue and stats are set inside run() but accessed by flushEmbeddings
+var embedQueue = [], stats = {};
+async function flushEmbeddings() {
+  if (!embedQueue || !embedQueue.length || !openai || !qdrantClient) return;
+  try {
+    var texts = embedQueue.map(function(e) { return e.text; });
+    var response = await openai.embeddings.create({ model: EMBEDDING_MODEL, input: texts });
+    var points = embedQueue.map(function(e, i) {
+      return {
+        id: Date.now() * 1000 + i,
+        vector: response.data[i].embedding,
+        payload: { person_id: e.id, type: 'person' }
+      };
+    });
+    // Ensure collection exists
+    try { await qdrantClient.getCollection('people'); } catch (ce) {
+      await qdrantClient.createCollection('people', { vectors: { size: 1536, distance: 'Cosine' } });
+    }
+    await qdrantClient.upsert('people', { points: points });
+    // Mark embedded in DB
+    var ids = embedQueue.map(function(e) { return e.id; });
+    await pool.query('UPDATE people SET embedded_at = NOW() WHERE id = ANY($1)', [ids]);
+    stats.embedded += embedQueue.length;
+  } catch (e) {
+    console.log('  Embed batch error: ' + e.message.substring(0, 60));
+  }
+  embedQueue.length = 0;
 }
 
 async function run() {
@@ -94,8 +138,9 @@ async function run() {
     return;
   }
 
-  var stats = { enriched: 0, skipped: 0, errors: 0, skills_added: 0, seniority_set: 0, photos_set: 0 };
+  stats = { enriched: 0, skipped: 0, errors: 0, skills_added: 0, seniority_set: 0, photos_set: 0, embedded: 0 };
   var startTime = Date.now();
+  embedQueue = []; // { id, text } — batched for OpenAI efficiency
 
   for (var i = 0; i < candidates.length; i++) {
     var person = candidates[i];
@@ -119,6 +164,7 @@ async function run() {
 
       // Career history — full extraction for signal matching
       var positions = (d.profile?.positions || []).sort((a, b) => (b.startDate || '0000').localeCompare(a.startDate || '0000'));
+      var currentPos = positions.find(function(p) { return p.endDate === '9999-12-31' || !p.endDate; }) || positions[0];
       if (positions.length > 0) {
         var career = positions.map(function(p) {
           return {
@@ -147,7 +193,6 @@ async function run() {
         }
 
         // Seniority from career tag
-        var currentPos = positions.find(function(p) { return p.endDate === '9999-12-31' || !p.endDate; }) || positions[0];
         var sen = deriveSeniority(currentPos?.career?.name);
         if (!sen) sen = deriveSeniority(currentPos?.title);
         if (sen) {
@@ -198,10 +243,42 @@ async function run() {
       );
       stats.enriched++;
 
+      // Build embedding text from enriched data — same format as person enrich endpoint
+      if (openai && qdrantClient) {
+        var embParts = [d.fullName || person.full_name];
+        if (positions.length > 0) {
+          var cp = positions.find(function(p) { return p.tense || p.primary; }) || positions[0];
+          if (cp.title) embParts.push(cp.title);
+          if (cp.company?.name) embParts.push(cp.company.name);
+        }
+        if (d.profile?.headline) embParts.push(d.profile.headline);
+        var addr = d.addresses?.[0];
+        if (addr) embParts.push([addr.city, addr.country].filter(Boolean).join(', '));
+        var allSkills = [...new Set(positions.flatMap(function(p) { return p.skills || []; }))].filter(Boolean);
+        if (allSkills.length) embParts.push('Skills: ' + allSkills.join(', '));
+        // Add career summary from top 3 positions
+        positions.slice(0, 3).forEach(function(p) {
+          if (p.summary) embParts.push(p.summary.slice(0, 300));
+        });
+        // Add recent research notes for context
+        var notesRes = await pool.query(
+          "SELECT summary FROM interactions WHERE person_id = $1 AND interaction_type = 'research_note' AND tenant_id = $2 ORDER BY interaction_at DESC NULLS LAST LIMIT 3",
+          [person.id, TENANT_ID]
+        ).catch(function() { return { rows: [] }; });
+        notesRes.rows.forEach(function(n) { if (n.summary) embParts.push(n.summary.slice(0, 300)); });
+
+        embedQueue.push({ id: person.id, text: embParts.filter(Boolean).join('\n').slice(0, 8000) });
+
+        // Flush embed batch when full
+        if (embedQueue.length >= EMBED_BATCH_SIZE) {
+          await flushEmbeddings();
+        }
+      }
+
       if ((i + 1) % 50 === 0) {
         var elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
         var rate = (stats.enriched / (elapsed / 60)).toFixed(0);
-        console.log('  ' + (i + 1) + '/' + candidates.length + ' | enriched=' + stats.enriched + ' | ' + rate + '/min | ' + elapsed + 's');
+        console.log('  ' + (i + 1) + '/' + candidates.length + ' | enriched=' + stats.enriched + ' | embedded=' + stats.embedded + ' | ' + rate + '/min | ' + elapsed + 's');
       }
 
       await sleep(RATE_LIMIT_MS);
@@ -212,10 +289,14 @@ async function run() {
     }
   }
 
+  // Flush remaining embeddings
+  if (embedQueue.length > 0) await flushEmbeddings();
+
   var duration = ((Date.now() - startTime) / 1000).toFixed(0);
   console.log('\n═══════════════════════════════════════════════════════');
   console.log('  RESULTS (' + duration + 's)');
   console.log('  Enriched:      ' + stats.enriched);
+  console.log('  Embedded:      ' + stats.embedded);
   console.log('  Skipped:       ' + stats.skipped);
   console.log('  Errors:        ' + stats.errors);
   console.log('  Skills added:  ' + stats.skills_added);
