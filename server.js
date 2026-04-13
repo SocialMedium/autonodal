@@ -2124,15 +2124,15 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
         // Huddle context: contacts or clients from ANY member tenant
         paramIdx++;
         where += ` AND (
-          EXISTS (SELECT 1 FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = ANY($${paramIdx}))
+          EXISTS (SELECT 1 FROM people p JOIN companies c_h ON c_h.id = p.current_company_id AND LOWER(c_h.name) = LOWER(se.company_name) WHERE p.tenant_id = ANY($${paramIdx}))
           OR c.is_client = true
-          OR EXISTS (SELECT 1 FROM companies c2 WHERE c2.is_client = true AND LOWER(c2.name) = LOWER(c.name) AND c2.tenant_id = ANY($${paramIdx}))
+          OR EXISTS (SELECT 1 FROM companies c2 WHERE c2.is_client = true AND LOWER(c2.name) = LOWER(se.company_name) AND c2.tenant_id = ANY($${paramIdx}))
         )`;
         params.push(huddleTenantIds);
       } else {
         where += ` AND (
-          EXISTS (SELECT 1 FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1)
-          OR EXISTS (SELECT 1 FROM companies c_cl WHERE c_cl.is_client = true AND LOWER(c_cl.name) = LOWER(c.name) AND c_cl.tenant_id = $1)
+          EXISTS (SELECT 1 FROM people p JOIN companies c_n ON c_n.id = p.current_company_id AND LOWER(c_n.name) = LOWER(se.company_name) WHERE p.tenant_id = $1)
+          OR EXISTS (SELECT 1 FROM companies c_cl WHERE c_cl.is_client = true AND LOWER(c_cl.name) = LOWER(se.company_name) AND c_cl.tenant_id = $1)
         )`;
       }
     }
@@ -2288,7 +2288,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
             OR se.evidence_summary ILIKE '%United States%' OR se.evidence_summary ILIKE '%Silicon Valley%'
           ) AS us,
           COUNT(*) FILTER (WHERE c.is_client = true) AS client_signals,
-          COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM people p WHERE p.current_company_id = se.company_id)) AS network_signals,
+          COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM people p JOIN companies c_n ON c_n.id = p.current_company_id AND LOWER(c_n.name) = LOWER(se.company_name) WHERE p.tenant_id = $1)) AS network_signals,
           COUNT(*) AS total
         FROM signal_events se
         LEFT JOIN companies c ON se.company_id = c.id
@@ -5089,11 +5089,13 @@ app.get('/api/search', authenticateToken, async (req, res) => {
               SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
                      se.evidence_summary, se.detected_at, c.sector, c.geography, c.is_client,
                      (SELECT COUNT(DISTINCT tp.person_id) FROM team_proximity tp
-                       JOIN people p ON p.id = tp.person_id AND p.current_company_id = se.company_id AND p.tenant_id = $2
+                       JOIN people p ON p.id = tp.person_id AND p.tenant_id = $2
+                       JOIN companies c_n ON c_n.id = p.current_company_id AND LOWER(c_n.name) = LOWER(se.company_name)
                        WHERE tp.tenant_id = $2 AND tp.relationship_strength >= 0.3) AS network_connections,
                      (SELECT u.name FROM users u WHERE u.id = (
                        SELECT tp2.team_member_id FROM team_proximity tp2
-                       JOIN people p2 ON p2.id = tp2.person_id AND p2.current_company_id = se.company_id AND p2.tenant_id = $2
+                       JOIN people p2 ON p2.id = tp2.person_id AND p2.tenant_id = $2
+                       JOIN companies c_n2 ON c_n2.id = p2.current_company_id AND LOWER(c_n2.name) = LOWER(se.company_name)
                        WHERE tp2.tenant_id = $2 ORDER BY tp2.relationship_strength DESC LIMIT 1
                      )) AS best_connector
               FROM signal_events se LEFT JOIN companies c ON c.id = se.company_id
