@@ -205,6 +205,8 @@ h+='<div class="co-meta">';
 if(c.sector)h+='<span>'+esc(c.sector)+'</span>';
 if(c.geography)h+='<span>'+icon('map-pin')+' '+esc(c.geography)+'</span>';
 if(c.domain)h+='<span>'+icon('globe')+' <a href="https://'+esc(c.domain)+'" target="_blank">'+esc(c.domain)+'</a></span>';
+if(c.linkedin_url)h+='<span>'+icon('link')+' <a href="'+esc(c.linkedin_url)+'" target="_blank">LinkedIn</a></span>';
+h+='<span>'+icon('external-link')+' <a href="https://ezekia.com/#/search?type=company&query='+encodeURIComponent(c.name)+'" target="_blank">Ezekia</a></span>';
 h+='</div>';
 if(tags.length)h+='<div class="co-tags">'+tags.join('')+'</div>';
 if(c.description)h+='<div class="co-desc">'+esc(c.description)+'</div>';

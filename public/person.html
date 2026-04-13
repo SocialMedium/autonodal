@@ -256,6 +256,7 @@ h+='<div class="ci">'+icon('mail')+' <span class="editable" onclick="editField(t
 if(p.linkedin_url)h+='<div class="ci">'+icon('link')+' <a href="'+esc(p.linkedin_url)+'" target="_blank">LinkedIn</a></div>';
 else h+='<div class="ci">'+icon('link')+' <span class="editable" onclick="editField(this,\'linkedin_url\',\'\')">Add LinkedIn</span></div>';
 if(p.phone)h+='<div class="ci">'+icon('phone')+' <span class="editable" onclick="editField(this,\'phone\',\''+esc(p.phone)+'\')">'+esc(p.phone)+'</span></div>';
+if(p.source_id && (p.source === 'ezekia' || p.source === 'ezekia_enrich'))h+='<div class="ci">'+icon('external-link')+' <a href="https://ezekia.com/#/people/'+esc(p.source_id)+'/info" target="_blank">View in Ezekia</a></div>';
 h+='</div>';
 h+='<div class="pheader-actions">';
 h+='<button class="enrich-btn" id="enrichBtn" onclick="enrichPerson()">'+icon('refresh-cw')+' Refresh &amp; Enrich</button>';

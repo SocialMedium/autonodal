@@ -3342,16 +3342,46 @@ app.post('/api/people/:id/enrich', authenticateToken, async (req, res) => {
             if (altEmail) updates.email_alt = altEmail;
           }
 
-          // Career history from positions
+          // Career history from positions — extract everything useful for signal matching
           if (d.profile?.positions?.length > 0) {
             const career = d.profile.positions.map(p => ({
               title: p.title,
               company: p.company?.name || p.company,
+              company_id: p.company?.id || null,
+              location: p.location?.name || null,
               start_date: p.startDate,
               end_date: p.endDate,
-              current: p.current || !p.endDate
+              current: p.tense || p.primary || !p.endDate || p.endDate === '9999-12-31',
+              skills: p.skills || [],
+              summary: p.summary || null,
+              achievements: (p.achievements || []).filter(Boolean),
+              seniority_tag: p.career?.name || null,
+              department: p.department || null,
+              industry: p.industry || null,
             }));
             updates.career_history = JSON.stringify(career);
+
+            // Extract all skills across all positions → expertise_tags
+            const allSkills = [...new Set(d.profile.positions.flatMap(p => p.skills || []))].filter(Boolean);
+            if (allSkills.length > 0) updates.expertise_tags = allSkills;
+
+            // Derive seniority from Ezekia career tag (more reliable than title parsing)
+            const currentCareer = pos?.career?.name;
+            if (currentCareer) {
+              const ccl = currentCareer.toLowerCase();
+              let sen = null;
+              if (/\b(ceo|cfo|cto|coo|cmo|cio|chief|founder|co-founder|managing director|president|partner)\b/i.test(ccl)) sen = 'c_suite';
+              else if (/\b(vp|vice president|svp|evp)\b/i.test(ccl)) sen = 'vp';
+              else if (/\b(director|head of|general manager)\b/i.test(ccl)) sen = 'director';
+              else if (/\b(senior|lead|principal|staff)\b/i.test(ccl)) sen = 'senior';
+              else if (/\b(manager|supervisor|controller)\b/i.test(ccl)) sen = 'manager';
+              if (sen) updates.seniority_level = sen;
+            }
+          }
+
+          // Profile picture
+          if (d.profilePicture && !person.profile_photo_url) {
+            updates.profile_photo_url = d.profilePicture;
           }
 
           // Education
