@@ -2119,6 +2119,7 @@ function filterSignals(type, btn) {
   if (btn) btn.classList.add('active');
   currentFilter = type;
   signalOffset = 0;
+  loadHeroSignals();
   loadSignals();
   loadNetworkSignals();
   loadRegionCards();
@@ -2681,7 +2682,8 @@ async function loadRegionCards() {
 // ── Hero Signals — newspaper front page ──
 async function loadHeroSignals() {
   try {
-    const data = await api('/api/signals/hero');
+    const heroParams = currentFilter !== 'all' ? '?type=' + currentFilter : '';
+    const data = await api('/api/signals/hero' + heroParams);
     const container = document.getElementById('heroSignals');
     if (!data.heroes || !data.heroes.length) { container.style.display = 'none'; return; }
 

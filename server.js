@@ -1379,6 +1379,10 @@ app.get('/api/signals/gdelt/languages', authenticateToken, async (req, res) => {
 app.get('/api/signals/hero', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
+    const typeFilter = req.query.type && req.query.type !== 'all' ? req.query.type : null;
+    const params = [req.tenant_id];
+    let typeClause = '';
+    if (typeFilter) { params.push(typeFilter); typeClause = ` AND se.signal_type = $${params.length}`; }
     const { rows } = await db.query(`
       SELECT * FROM (
         SELECT DISTINCT ON (se.company_id)
@@ -1408,11 +1412,12 @@ app.get('/api/signals/hero', authenticateToken, async (req, res) => {
           AND COALESCE(c.company_tier, '') NOT IN ('megacap_indicator', 'tenant_company')
           AND se.company_name IS NOT NULL
           AND se.company_name NOT ILIKE '%mitchellake%' AND se.company_name NOT ILIKE '%mitchel lake%'
+          ${typeClause}
         ORDER BY se.company_id, se.confidence_score DESC, se.detected_at DESC
       ) deduped
       ORDER BY hero_score DESC
       LIMIT 5
-    `, [req.tenant_id]);
+    `, params);
 
     // Use doc_image_url as fallback
     rows.forEach(r => { if (!r.image_url && r.doc_image_url) r.image_url = r.doc_image_url; });

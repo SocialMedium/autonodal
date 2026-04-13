@@ -725,13 +725,15 @@ async function harvestFeeds(sourceFilter = null, dryRun = false) {
 
       for (const item of items) {
         const title = extractTitle(item);
-        const url = extractEpisodeLink(item);
+        let url = extractEpisodeLink(item);
         const content = extractText(item);
         const publishedAt = extractDate(item);
         const author = extractAuthor(item);
         const duration = extractDuration(item);
         // Extract audio enclosure URL separately for inline player
         const audioUrl = (item?.enclosure?.[0]?.$?.url) || null;
+        // If extracted link isn't a real URL, use audio URL as source_url
+        if (url && !url.startsWith('http') && audioUrl) url = audioUrl;
 
         if (!url) continue;
         const sourceUrlHash = md5(url);
