@@ -123,32 +123,63 @@ async function compute() {
 
   console.log('Companies to score: ' + companies.length + '\n');
 
+  // Pre-fetch ALL interactions grouped by company — single query instead of 60K queries
+  console.log('  Pre-fetching interactions...');
+  var { rows: allInteractions } = await pool.query(`
+    SELECT
+      p.current_company_id AS company_id, i.person_id,
+      i.interaction_type, i.direction, i.interaction_at, i.user_id,
+      EXTRACT(EPOCH FROM (NOW() - i.interaction_at)) / 86400 AS days_ago
+    FROM interactions i
+    JOIN people p ON p.id = i.person_id AND p.tenant_id = $1
+    WHERE i.tenant_id = $1
+      AND p.current_company_id IS NOT NULL
+      AND i.interaction_type NOT IN ('system_note', 'research_note', 'note')
+    ORDER BY i.interaction_at DESC
+  `, [TENANT_ID]);
+
+  // Group by company_id in memory
+  var interactionsByCompany = new Map();
+  for (var ix of allInteractions) {
+    if (!interactionsByCompany.has(ix.company_id)) interactionsByCompany.set(ix.company_id, []);
+    interactionsByCompany.get(ix.company_id).push(ix);
+  }
+  console.log('  ' + allInteractions.length + ' interactions across ' + interactionsByCompany.size + ' companies\n');
+
+  // Pre-fetch ALL signals for companies with no interactions (single query)
+  var companyIdsWithInteractions = new Set(interactionsByCompany.keys());
+  var companyIdsWithout = companies.filter(function(c) { return !companyIdsWithInteractions.has(c.id); }).map(function(c) { return c.id; });
+
+  // Pre-fetch ALL signals for ALL companies (single query)
+  console.log('  Pre-fetching signals...');
+  var signalsByCompany = new Map();
+  var allCompanyIds = companies.map(function(c) { return c.id; });
+  var { rows: allSignals } = await pool.query(`
+    SELECT company_id, signal_type, detected_at,
+           EXTRACT(EPOCH FROM (NOW() - detected_at)) / 86400 AS days_ago
+    FROM signal_events
+    WHERE company_id = ANY($1) AND detected_at > NOW() - INTERVAL '90 days'
+      AND (tenant_id IS NULL OR tenant_id = $2)
+    ORDER BY detected_at DESC
+  `, [allCompanyIds, TENANT_ID]);
+  for (var sig of allSignals) {
+    if (!signalsByCompany.has(sig.company_id)) signalsByCompany.set(sig.company_id, []);
+    signalsByCompany.get(sig.company_id).push(sig);
+  }
+  console.log('  ' + allSignals.length + ' signals across ' + signalsByCompany.size + ' companies\n');
+
   var stats = { total: 0, strong: 0, warm: 0, cool: 0, cold: 0, none: 0, skipped: 0 };
-  var BATCH_SIZE = 100;
 
   for (var i = 0; i < companies.length; i++) {
     var co = companies[i];
 
-    // Get all interactions with people at this company
-    var { rows: interactions } = await pool.query(`
-      SELECT
-        i.interaction_type, i.direction, i.interaction_at, i.user_id,
-        EXTRACT(EPOCH FROM (NOW() - i.interaction_at)) / 86400 AS days_ago
-      FROM interactions i
-      JOIN people p ON p.id = i.person_id AND p.current_company_id = $1
-      WHERE i.tenant_id = $2
-        AND i.interaction_type NOT IN ('system_note', 'research_note', 'note')
-      ORDER BY i.interaction_at DESC
-    `, [co.id, TENANT_ID]);
+    // Get interactions from pre-fetched map
+    var interactions = interactionsByCompany.get(co.id) || [];
 
     if (interactions.length === 0) {
-      // No real interactions — but may have signals
-      var { rows: noIxSignals } = await pool.query(`
-        SELECT signal_type, detected_at, EXTRACT(EPOCH FROM (NOW() - detected_at))/86400 AS days_ago
-        FROM signal_events WHERE company_id = $1 AND detected_at > NOW() - INTERVAL '90 days'
-          AND (tenant_id IS NULL OR tenant_id = $2)
-        ORDER BY detected_at DESC
-      `, [co.id, TENANT_ID]);
+      // No real interactions — use pre-fetched signals
+      var noIxSignals = signalsByCompany.get(co.id) || [];
+      if (noIxSignals.length === 0) { stats.none++; stats.total++; continue; }
       var noIxSigScores = noIxSignals.map(function(s) { return { type: s.signal_type, score: (SIGNAL_WEIGHTS[s.signal_type]||0.3) * signalRecencyMultiplier(s.days_ago), at: s.detected_at }; }).sort(function(a,b) { return b.score - a.score; });
       var noIxSigScore = Math.min(1.0, noIxSigScores.slice(0,3).reduce(function(s,x){return s+x.score},0));
       var noIxSig30 = noIxSignals.filter(function(s){return s.days_ago<=30});
@@ -195,19 +226,16 @@ async function compute() {
       if (ix.user_id) teamMemberIds.add(ix.user_id);
     });
 
-    // Get actual active contact count
-    var { rows: [contactCounts] } = await pool.query(`
-      SELECT
-        COUNT(DISTINCT CASE WHEN i.interaction_at > NOW() - INTERVAL '12 months' THEN i.person_id END) AS active_contacts,
-        COUNT(DISTINCT i.person_id) AS total_contacts
-      FROM interactions i
-      JOIN people p ON p.id = i.person_id AND p.current_company_id = $1
-      WHERE i.tenant_id = $2
-        AND i.interaction_type NOT IN ('system_note', 'research_note', 'note')
-    `, [co.id, TENANT_ID]);
-
-    var activeContacts = parseInt(contactCounts.active_contacts) || 0;
-    var totalContacts = parseInt(contactCounts.total_contacts) || parseInt(co.people_count) || 0;
+    // Compute contact counts from pre-fetched interactions (no extra query)
+    var personIds = new Set();
+    var activePersonIds = new Set();
+    var cutoff12m = Date.now() - 365 * 24 * 60 * 60 * 1000;
+    interactions.forEach(function(ix) {
+      if (ix.person_id) { personIds.add(ix.person_id); }
+      if (ix.person_id && new Date(ix.interaction_at).getTime() > cutoff12m) activePersonIds.add(ix.person_id);
+    });
+    var activeContacts = activePersonIds.size;
+    var totalContacts = personIds.size || parseInt(co.people_count) || 0;
     var teamMembers = teamMemberIds.size;
     var coverage = coverageScore(activeContacts, teamMembers);
 
@@ -225,15 +253,8 @@ async function compute() {
     var isStale = daysSince > 365;
     var staleReason = isStale ? 'no_recent_contact' : null;
 
-    // Signal scoring — company-level market activity
-    var { rows: signals } = await pool.query(`
-      SELECT signal_type, detected_at,
-        EXTRACT(EPOCH FROM (NOW() - detected_at)) / 86400 AS days_ago
-      FROM signal_events
-      WHERE company_id = $1 AND detected_at > NOW() - INTERVAL '90 days'
-        AND (tenant_id IS NULL OR tenant_id = $2)
-      ORDER BY detected_at DESC
-    `, [co.id, TENANT_ID]);
+    // Signal scoring — from pre-fetched data
+    var signals = signalsByCompany.get(co.id) || [];
 
     var signalScores = signals.map(function(s) {
       var w = SIGNAL_WEIGHTS[s.signal_type] || 0.3;

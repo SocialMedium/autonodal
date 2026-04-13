@@ -107,12 +107,18 @@ async function main() {
   console.log('  Step 3: Creating email signals...');
 
   const matchedEmails = await pool.query(`
-    SELECT id, person_id, user_id, direction, interaction_at, 
+    SELECT id, person_id, user_id, direction, interaction_at,
            email_thread_id, email_has_attachments, email_from
-    FROM interactions 
-    WHERE source = 'gmail_sync' 
+    FROM interactions
+    WHERE source = 'gmail_sync'
     AND person_id IS NOT NULL
-    AND id NOT IN (SELECT DISTINCT source FROM email_signals WHERE source IS NOT NULL)
+    AND interaction_at > NOW() - INTERVAL '90 days'
+    AND NOT EXISTS (
+      SELECT 1 FROM email_signals es
+      WHERE es.user_id = interactions.user_id
+      AND es.email_date = interactions.interaction_at
+      AND es.thread_id = interactions.email_thread_id
+    )
   `);
 
   let signals = 0;

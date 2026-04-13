@@ -27,48 +27,59 @@ const LOG = (icon, msg) => console.log(`${icon}  ${msg}`);
 async function computeCompanyAdjacency() {
   LOG('🏢', 'Phase A: Computing company adjacency scores...');
 
-  // Single query: aggregate people per company_name with interaction/seniority data
-  const { rows: companies } = await pool.query(`
-    WITH company_groups AS (
-      SELECT
-        LOWER(TRIM(p.current_company_name)) AS co_key,
-        MIN(p.current_company_name) AS co_name,
-        COUNT(DISTINCT p.id) AS contact_count,
-        COUNT(DISTINCT p.id) FILTER (
-          WHERE p.seniority_level IN ('c_suite','vp','director')
-        ) AS senior_count,
-        COUNT(DISTINCT p.id) FILTER (
-          WHERE EXISTS (
-            SELECT 1 FROM interactions i
-            WHERE i.person_id = p.id AND i.interaction_at > NOW() - INTERVAL '180 days'
-          )
-        ) AS active_count
-      FROM people p
-      WHERE p.current_company_name IS NOT NULL
-        AND TRIM(p.current_company_name) != ''
-      GROUP BY LOWER(TRIM(p.current_company_name))
-      HAVING COUNT(DISTINCT p.id) >= 1
-    )
-    SELECT cg.*,
-      -- Warmest contact: most recent interaction
-      (SELECT p2.id FROM people p2
-       JOIN interactions i2 ON i2.person_id = p2.id
-       WHERE LOWER(TRIM(p2.current_company_name)) = cg.co_key
-       ORDER BY i2.interaction_at DESC LIMIT 1
-      ) AS warmest_id,
-      (SELECT p2.full_name FROM people p2
-       JOIN interactions i2 ON i2.person_id = p2.id
-       WHERE LOWER(TRIM(p2.current_company_name)) = cg.co_key
-       ORDER BY i2.interaction_at DESC LIMIT 1
-      ) AS warmest_name,
-      -- Best connection user (most interactions)
-      (SELECT i3.user_id FROM interactions i3
-       JOIN people p3 ON p3.id = i3.person_id
-       WHERE LOWER(TRIM(p3.current_company_name)) = cg.co_key
-       GROUP BY i3.user_id ORDER BY COUNT(*) DESC LIMIT 1
-      ) AS best_user_id
-    FROM company_groups cg
+  // Pre-compute active people (interacted in last 180 days) in one pass
+  const { rows: activePeople } = await pool.query(`
+    SELECT DISTINCT person_id FROM interactions WHERE interaction_at > NOW() - INTERVAL '180 days'
   `);
+  const activeSet = new Set(activePeople.map(r => r.person_id));
+
+  // Pre-compute warmest contact and best user per company in one pass
+  const { rows: warmestData } = await pool.query(`
+    SELECT DISTINCT ON (LOWER(TRIM(p.current_company_name)))
+      LOWER(TRIM(p.current_company_name)) AS co_key,
+      p.id AS warmest_id, p.full_name AS warmest_name
+    FROM people p
+    JOIN interactions i ON i.person_id = p.id
+    WHERE p.current_company_name IS NOT NULL AND TRIM(p.current_company_name) != ''
+    ORDER BY LOWER(TRIM(p.current_company_name)), i.interaction_at DESC
+  `);
+  const warmestMap = new Map(warmestData.map(r => [r.co_key, r]));
+
+  const { rows: bestUserData } = await pool.query(`
+    SELECT DISTINCT ON (co_key) co_key, user_id AS best_user_id FROM (
+      SELECT LOWER(TRIM(p.current_company_name)) AS co_key, i.user_id, COUNT(*) AS cnt
+      FROM interactions i JOIN people p ON p.id = i.person_id
+      WHERE p.current_company_name IS NOT NULL AND i.user_id IS NOT NULL
+      GROUP BY LOWER(TRIM(p.current_company_name)), i.user_id
+    ) sub ORDER BY co_key, cnt DESC
+  `);
+  const bestUserMap = new Map(bestUserData.map(r => [r.co_key, r.best_user_id]));
+
+  // Main company aggregation — no correlated subqueries
+  const { rows: companies } = await pool.query(`
+    SELECT
+      LOWER(TRIM(p.current_company_name)) AS co_key,
+      MIN(p.current_company_name) AS co_name,
+      COUNT(DISTINCT p.id) AS contact_count,
+      COUNT(DISTINCT p.id) FILTER (
+        WHERE p.seniority_level IN ('c_suite','vp','director')
+      ) AS senior_count,
+      ARRAY_AGG(DISTINCT p.id) AS person_ids
+    FROM people p
+    WHERE p.current_company_name IS NOT NULL
+      AND TRIM(p.current_company_name) != ''
+    GROUP BY LOWER(TRIM(p.current_company_name))
+    HAVING COUNT(DISTINCT p.id) >= 1
+  `);
+
+  // Compute active_count from pre-built set
+  for (const co of companies) {
+    co.active_count = (co.person_ids || []).filter(id => activeSet.has(id)).length;
+    const w = warmestMap.get(co.co_key);
+    co.warmest_id = w?.warmest_id || null;
+    co.warmest_name = w?.warmest_name || null;
+    co.best_user_id = bestUserMap.get(co.co_key) || null;
+  }
 
   LOG('📊', `  Found ${companies.length} companies with contacts`);
 
