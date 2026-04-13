@@ -1682,7 +1682,7 @@ a.stats-card-row:hover { background: var(--surface-warm); }
       <div class="region-grid" id="regionGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:8px">
         <!-- Region cards injected by JS -->
       </div>
-      <div style="text-align:right;margin-bottom:20px"><a href="/signals.html?region=MENA" style="font-size:11px;color:var(--blue);text-decoration:none;font-weight:500">+ Middle East & Africa, more regions →</a></div>
+      <div style="text-align:right;margin-bottom:20px"><a href="#" id="toggleMoreRegions" onclick="event.preventDefault();window._showAllRegions=!window._showAllRegions;this.textContent=window._showAllRegions?'− Hide extra regions':'+ Middle East & Africa, more regions →';loadRegionCards()" style="font-size:11px;color:var(--blue);text-decoration:none;font-weight:500">+ Middle East & Africa, more regions →</a></div>
 
       <!-- Today's Insight + Market Health -->
       <div id="insightHealthRow" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
@@ -2582,12 +2582,16 @@ async function loadDashboardEvents() {
 }
 
 async function loadRegionCards() {
-  const regions = [
+  const baseRegions = [
     { code: 'AMER', flag: regionLabel('AMER'), name: 'Americas', color: '#B45309' },
     { code: 'EUR', flag: regionLabel('EUR'), name: 'Europe', color: '#2563EB' },
     { code: 'ASIA', flag: regionLabel('ASIA'), name: 'Asia', color: '#6D28D9' },
     { code: 'OCE', flag: regionLabel('OCE'), name: 'Oceania', color: '#0D7A50' },
   ];
+  const extraRegions = [
+    { code: 'MENA', flag: regionLabel('MENA'), name: 'Middle East & Africa', color: '#9F580A' },
+  ];
+  const regions = window._showAllRegions ? baseRegions.concat(extraRegions) : baseRegions;
 
   const grid = document.getElementById('regionGrid');
   grid.innerHTML = '';
