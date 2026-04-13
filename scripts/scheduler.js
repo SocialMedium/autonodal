@@ -2161,11 +2161,10 @@ async function startScheduler() {
   console.log('\n✅ All pipelines scheduled\n');
   console.log('Press Ctrl+C to stop\n');
 
-  // Run ingest on startup
-  console.log('🚀 Running initial pipeline cycle...\n');
-  await runPipeline('ingest_signals', 'startup');
-  await runPipeline('compute_scores', 'startup');
-  await runPipeline('compute_signal_index', 'startup');
+  // Skip initial pipeline run — let cron schedules handle it
+  // Running ingest_signals on startup saturates DB connections
+  // and blocks web process auth/API queries
+  console.log('  ℹ️  Pipelines will run on their cron schedules (ingest: */30, scores: */2h, index: */30m)');
 }
 
 async function runAll() {
