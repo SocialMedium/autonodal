@@ -213,7 +213,7 @@ const _from=_params.get('from'),_fromId=_params.get('from_id'),_fromName=decodeU
 const p=await api('/api/people/'+id);if(!p)return;
 document.title=(p.full_name||'Person')+' — Signals';
 const ini=(p.full_name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-const notes=p.research_notes||[];const ixs=p.interactions||[];const csig=p.company_signals||[];const psig=p.person_signals||[];const colls=p.colleagues||[];const s=p.interaction_stats||{};const prox=p.proximity||[];
+const notes=p.research_notes||[];const ixs=p.interactions||[];const csig=p.company_signals||[];const psig=p.person_signals||[];const colls=p.colleagues||[];const s=p.interaction_stats||{};const prox=p.proximity||[];const cjobs=p.company_jobs||[];
 window.proxData=prox;
 
 const coId=p.company_id_linked||p.current_company_id||'';
@@ -460,6 +460,17 @@ if(csig.length){
   h+='</div>';
 } else {
   h+='<div class="card" style="margin-bottom:0"><div class="card-head"><div class="card-title">Signals</div></div><div style="font-size:12px;color:var(--ink-4);padding:8px 0">No signals for '+(p.current_company_name||'this company')+'</div></div>';
+}
+
+// Hiring at their company (leadership roles)
+if(cjobs.length){
+  h+='</div><div class="card" style="margin-bottom:12px"><div class="card-head"><div class="card-title">Hiring at '+esc(p.current_company_name||'Company')+'</div><div class="card-count">'+cjobs.length+' leadership</div></div>';
+  cjobs.forEach(function(j){
+    var sLabel=j.seniority_level?j.seniority_level.replace(/_/g,' ').toUpperCase():'';
+    var daysStr=j.days_open?j.days_open+'d open':'new';
+    h+='<div class="sig" style="cursor:'+(j.apply_url?'pointer':'default')+'"'+(j.apply_url?' onclick="window.open(\''+esc(j.apply_url)+'\',\'_blank\')"':'')+'><div class="sig-icon">'+icon('briefcase')+'</div><div class="sig-info"><div class="sig-hl">'+esc(j.title)+(j.apply_url?' <span style="font-size:10px;color:var(--blue)">↗</span>':'')+'</div><div class="sig-det">'+sLabel+(j.location?' · '+esc(j.location):'')+(j.function_area?' · '+esc(j.function_area):'')+' · '+daysStr+'</div></div></div>';
+  });
+  h+='</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px" class="sig-ix-grid">';
 }
 
 // Interactions column

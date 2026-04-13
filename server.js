@@ -13905,6 +13905,66 @@ app.get('/api/official-sources/stats', authenticateToken, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// INVESTOR ENRICHMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/enrichment/investors — People tagged as investors, by fit score
+app.get('/api/enrichment/investors', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { min_score, context, limit } = req.query;
+    let where = ['p.tenant_id = $1', 'p.is_investor = true'];
+    const params = [req.tenant_id];
+    let idx = 2;
+    if (min_score) { where.push(`p.investor_fit_score >= $${idx++}`); params.push(parseFloat(min_score)); }
+    if (context) { where.push(`p.investor_fit_context ILIKE $${idx++}`); params.push(`%${context}%`); }
+    const lim = Math.min(parseInt(limit) || 50, 200);
+    const { rows } = await db.query(`
+      SELECT p.id, p.full_name, p.current_title, p.current_company_name,
+             p.linkedin_url, p.city, p.country,
+             p.investor_fit_score, p.investor_fit_rationale, p.investor_fit_context,
+             p.investor_type, p.enrichment_source
+      FROM people p
+      WHERE ${where.join(' AND ')}
+      ORDER BY p.investor_fit_score DESC NULLS LAST
+      LIMIT ${lim}
+    `, params);
+    res.json({ investors: rows, total: rows.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/enrichment/log — Enrichment log summary by action
+app.get('/api/enrichment/log', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { rows: summary } = await db.query(`
+      SELECT action, COUNT(*) AS count, COUNT(DISTINCT person_id) AS people,
+             MAX(created_at) AS last_at
+      FROM enrichment_log WHERE tenant_id = $1
+      GROUP BY action ORDER BY count DESC
+    `, [req.tenant_id]);
+    const { rows: docs } = await db.query(`
+      SELECT id, filename, document_type, row_count, matched_count,
+             enriched_count, skipped_count, status, processed_at
+      FROM enrichment_documents WHERE tenant_id = $1
+      ORDER BY created_at DESC LIMIT 20
+    `, [req.tenant_id]);
+    res.json({ summary, documents: docs });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/enrichment/template — Investor scoring template
+app.get('/api/enrichment/template', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await platformPool.query(`
+      SELECT id, name, version, source, criteria, notes, created_at
+      FROM investor_scoring_templates ORDER BY created_at DESC LIMIT 1
+    `);
+    res.json(rows[0] || null);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // FEED CATALOG & BUNDLES (Platform-level curation + tenant subscriptions)
 // ═══════════════════════════════════════════════════════════════════════════════
 

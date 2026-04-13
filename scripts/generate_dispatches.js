@@ -744,4 +744,60 @@ if (require.main === module) {
     });
 }
 
-module.exports = { generateDispatches, rescanProximity };
+// ═══════════════════════════════════════════════════════════════════════════════
+// SINGLE SIGNAL DISPATCH — called from API for on-demand generation
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function generateForSignal(signal) {
+  if (!signal?.id || !signal?.company_name) throw new Error('Signal must have id and company_name');
+
+  LOG('🔍', `Generating dispatch for: ${signal.signal_type} at ${signal.company_name}`);
+
+  // STEP 1: Build proximity map
+  const rawConnections = await buildProximityMap(signal);
+  const ranked = scoreConnections(rawConnections);
+  const bestEntry = selectBestEntryPoint(ranked);
+
+  LOG('📊', `  ${rawConnections.length} raw → ${ranked.length} ranked connections`);
+
+  // STEP 2: Approach angle
+  const approach = getApproachAngle(signal.signal_type);
+
+  // STEP 3: Generate blog
+  LOG('✍️', `  Generating thought leadership article...`);
+  const blog = await generateBlogPost(signal, {
+    sector: signal.sector,
+    geography: signal.geography,
+    employee_count_band: signal.employee_count_band,
+  }, approach);
+  LOG('📝', `  Blog: "${blog.title}" (${blog.body.length} chars)`);
+
+  // STEP 4: Distribution plan
+  const sendTo = generateDistributionPlan(ranked, signal, blog.title);
+
+  // STEP 5: Replace any existing stub dispatch, then insert full one
+  await pool.query(`DELETE FROM signal_dispatches WHERE signal_event_id = $1`, [signal.id]);
+
+  const result = await pool.query(`
+    INSERT INTO signal_dispatches (
+      signal_event_id, company_id, company_name, signal_type, signal_summary,
+      proximity_map, best_entry_point,
+      opportunity_angle, approach_rationale,
+      blog_theme, blog_title, blog_body, blog_keywords,
+      send_to, status, generated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'draft', NOW())
+    RETURNING id
+  `, [
+    signal.id, signal.company_id, signal.company_name, signal.signal_type,
+    signal.evidence_summary || `${signal.signal_type.replace(/_/g, ' ')} detected`,
+    JSON.stringify(ranked), JSON.stringify(bestEntry),
+    approach.angle, approach.rationale,
+    blog.theme, blog.title, blog.body, blog.keywords,
+    JSON.stringify(sendTo),
+  ]);
+
+  LOG('✅', `  Dispatch saved: ${result.rows[0].id}`);
+  return result.rows[0].id;
+}
+
+module.exports = { generateDispatches, rescanProximity, generateForSignal };

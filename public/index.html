@@ -1702,7 +1702,7 @@ a.stats-card-row:hover { background: var(--surface-warm); }
           <div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:18px 20px;height:100%">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
               <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-4)">Market Health Index</span>
-              <span id="mhHorizon" style="font-size:10px;color:var(--ink-4)">7 day</span>
+              <span id="mhHorizon" style="font-size:10px;color:var(--ink-4)">30 day</span>
             </div>
             <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:14px">
               <span id="mhScore" style="font-family:var(--serif);font-size:32px;font-weight:700;color:var(--ink)">—</span>
@@ -1713,7 +1713,7 @@ a.stats-card-row:hover { background: var(--surface-warm); }
             <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-4);margin-bottom:8px">Signal volume by region</div>
             <div id="mhRegions" style="display:flex;flex-direction:column;gap:5px"></div>
             <div id="mhChart" style="margin-top:14px;display:none">
-              <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-4);margin-bottom:6px">7-day trend</div>
+              <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-4);margin-bottom:6px">30-day trend</div>
               <svg id="mhSparkline" width="100%" height="48" viewBox="0 0 200 48" preserveAspectRatio="none" style="display:block"></svg>
             </div>
           </div>
@@ -2339,7 +2339,7 @@ async function loadTodayInsight() {
 
 async function loadMarketHealthCard() {
   try {
-    var data = await api('/api/signal-index?horizon=7d');
+    var data = await api('/api/signal-index?horizon=30d');
     if (!data) return;
     var mh = data.market_health || { score: 50, delta: 0, direction: 'flat' };
     var score = Math.round(mh.score || 50);
@@ -2401,7 +2401,7 @@ async function loadMarketHealthCard() {
 
     // 30-day sparkline — deduplicate to one point per day
     try {
-      var hist = await api('/api/signal-index/history?horizon=7d&limit=200');
+      var hist = await api('/api/signal-index/history?horizon=30d&limit=200');
       var points = (hist.history || hist || []).reverse();
       // Deduplicate to one point per day
       var byDay = {};
@@ -2410,8 +2410,8 @@ async function loadMarketHealthCard() {
         if (d) byDay[d] = { score: p.score || 50, date: d };
       });
       var daily = Object.values(byDay).sort(function(a, b) { return a.date < b.date ? -1 : 1; });
-      // Last 7 days only
-      daily = daily.slice(-7);
+      // Last 30 days
+      daily = daily.slice(-30);
 
       if (daily.length >= 2) {
         var scores = daily.map(function(p) { return p.score; });

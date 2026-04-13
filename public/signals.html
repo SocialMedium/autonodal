@@ -337,25 +337,38 @@
         return;
       }
 
-      container.innerHTML = signals.map(signal => `
+      container.innerHTML = signals.map(signal => {
+        const meta = signal.scoring_breakdown || signal.lead_score_breakdown || {};
+        const isGeoJob = signal.source_url === 'jobs' && meta.target_geography;
+        const isMarketWave = signal.source_url === 'market_aggregate' && meta.target_geography;
+        const geoLabel = meta.target_geography || '';
+        const geoRoleClass = (meta.geo_role_class || '').replace(/_/g, ' ');
+
+        return `
         <div class="p-4 hover:bg-slate-50 cursor-pointer transition" onclick="openSignal('${signal.id}')">
           <div class="flex items-start gap-3">
-            <div class="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-              ${getSignalIcon(signal.signal_type)}
+            <div class="w-10 h-10 rounded-lg ${isMarketWave ? 'bg-purple-100' : 'bg-slate-100'} flex items-center justify-center shrink-0">
+              ${isMarketWave ? '<i data-lucide="bar-chart-3" class="w-5 h-5 text-purple-600"></i>' : getSignalIcon(signal.signal_type)}
             </div>
             <div class="flex-1 min-w-0">
-              <h4 class="font-medium text-slate-900 truncate">${signal.company_name || 'Unknown'}</h4>
+              <h4 class="font-medium text-slate-900 truncate">${isMarketWave ? 'MARKET SIGNAL' : (signal.company_name || 'Unknown')}${geoLabel ? ' <span class="text-purple-600 font-normal">&middot; ' + geoLabel + '</span>' : ''}</h4>
               <p class="text-sm text-slate-600 line-clamp-2 mt-0.5">${signal.evidence_summary || signal.evidence_snippet || ''}</p>
-              <div class="flex items-center gap-2 mt-2">
+              <div class="flex items-center gap-2 mt-2 flex-wrap">
                 <span class="text-xs px-2 py-0.5 rounded-full ${getSignalColor(signal.signal_type)}">
                   ${formatType(signal.signal_type)}
                 </span>
+                ${isGeoJob && geoRoleClass ? `
+                  <span class="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-700">${geoRoleClass}</span>
+                ` : ''}
+                ${isMarketWave && meta.company_count ? `
+                  <span class="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-700">${meta.company_count} companies</span>
+                ` : ''}
                 ${signal.lead_score ? `
                   <span class="text-xs px-2 py-0.5 rounded-full ${getLeadScoreColor(signal.lead_score)}">
                     ${signal.lead_score} Lead Score
                  </span>
                 ` : ''}
-                ${signal.source_url ? `
+                ${signal.source_url && signal.source_url !== 'jobs' && signal.source_url !== 'market_aggregate' ? `
                   <a href="${signal.source_url}" target="_blank" rel="noopener noreferrer"
                      class="text-xs text-blue-500 hover:text-blue-700 ml-auto"
                      onclick="event.stopPropagation()" title="${signal.source_name || 'Source'}">↗ Source</a>
@@ -364,7 +377,7 @@
             </div>
           </div>
         </div>
-      `).join('');
+      `}).join('');
     }
 
     function getSignalIcon(type) {
