@@ -15,12 +15,13 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const rateLimit = require('express-rate-limit');
 
-// Global rate limit — 200 requests per minute per IP
+// Global rate limit — 200 requests per minute per IP+tenant
 app.use('/api/', rateLimit({
   windowMs: 60 * 1000,
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: false,
   keyGenerator: function(req) { return req.ip + ':' + (req.tenant_id || 'anon'); },
   handler: function(req, res) { res.status(429).json({ error: 'Rate limit exceeded. Try again in a minute.' }); },
 }));
@@ -42,6 +43,7 @@ app.use((req, res, next) => {
 app.use('/api/auth/', rateLimit({
   windowMs: 60 * 1000,
   max: 20,
+  validate: false,
   keyGenerator: function(req) { return req.ip; },
   handler: function(req, res) { res.status(429).json({ error: 'Too many auth requests.' }); },
 }));
@@ -50,6 +52,7 @@ app.use('/api/auth/', rateLimit({
 app.use('/api/waitlist', rateLimit({
   windowMs: 60 * 1000,
   max: 5,
+  validate: false,
   keyGenerator: function(req) { return req.ip; },
 }));
 
