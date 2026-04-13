@@ -474,9 +474,11 @@ app.get('/api/brief/personal', authenticateToken, async (req, res) => {
           se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
           se.evidence_summary, se.detected_at,
           cl.relationship_status, cl.relationship_tier,
-          (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) as contact_count
+          (SELECT COUNT(*) FROM people p
+            JOIN companies c_t ON c_t.id = p.current_company_id AND c_t.tenant_id = $1
+            WHERE p.tenant_id = $1 AND LOWER(c_t.name) = LOWER(se.company_name)) as contact_count
         FROM signal_events se
-        JOIN companies c ON c.id = se.company_id AND c.is_client = true AND c.tenant_id = $1
+        JOIN companies c ON LOWER(c.name) = LOWER(se.company_name) AND c.is_client = true AND c.tenant_id = $1
         JOIN accounts cl ON cl.company_id = c.id AND cl.tenant_id = $1
         WHERE se.detected_at > NOW() - INTERVAL '7 days' AND (se.tenant_id IS NULL OR se.tenant_id = $1)
         ORDER BY se.company_id, se.confidence_score DESC
@@ -1383,22 +1385,31 @@ app.get('/api/signals/hero', authenticateToken, async (req, res) => {
     const params = [req.tenant_id];
     let typeClause = '';
     if (typeFilter) { params.push(typeFilter); typeClause = ` AND se.signal_type = $${params.length}`; }
+    // Resolve contacts/proximity by company NAME within viewing tenant,
+    // not by signal's company_id (which may belong to a different tenant)
     const { rows } = await db.query(`
       SELECT * FROM (
-        SELECT DISTINCT ON (se.company_id)
+        SELECT DISTINCT ON (LOWER(se.company_name))
           se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
           se.evidence_summary, se.detected_at, se.source_url, se.image_url,
           c.sector, c.geography,
-          COALESCE((SELECT true FROM companies c_own WHERE c_own.is_client = true AND LOWER(c_own.name) = LOWER(c.name) AND c_own.tenant_id = $1 LIMIT 1), false) AS is_client,
+          COALESCE((SELECT true FROM companies c_own WHERE c_own.is_client = true AND LOWER(c_own.name) = LOWER(se.company_name) AND c_own.tenant_id = $1 LIMIT 1), false) AS is_client,
           c.domain,
           ed.title AS doc_title, ed.source_name, ed.image_url AS doc_image_url, ed.audio_url AS doc_audio_url, ed.source_type AS doc_source_type,
-          (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) AS contact_count,
+          (SELECT COUNT(*) FROM people p
+            JOIN companies c_t ON c_t.id = p.current_company_id AND c_t.tenant_id = $1
+            WHERE p.tenant_id = $1 AND LOWER(c_t.name) = LOWER(se.company_name)
+          ) AS contact_count,
           (SELECT COUNT(DISTINCT tp2.person_id) FROM team_proximity tp2
-            JOIN people p2 ON p2.id = tp2.person_id AND p2.current_company_id = se.company_id AND p2.tenant_id = $1
+            JOIN people p2 ON p2.id = tp2.person_id AND p2.tenant_id = $1
+            JOIN companies c_t2 ON c_t2.id = p2.current_company_id AND c_t2.tenant_id = $1
             WHERE tp2.tenant_id = $1 AND tp2.relationship_strength >= 0.25
+              AND LOWER(c_t2.name) = LOWER(se.company_name)
           ) AS prox_count,
-          CASE WHEN EXISTS (SELECT 1 FROM companies c_own WHERE c_own.is_client = true AND LOWER(c_own.name) = LOWER(c.name) AND c_own.tenant_id = $1) THEN 100 ELSE 0 END +
-          CASE WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) > 0 THEN 50 ELSE 0 END +
+          CASE WHEN EXISTS (SELECT 1 FROM companies c_own WHERE c_own.is_client = true AND LOWER(c_own.name) = LOWER(se.company_name) AND c_own.tenant_id = $1) THEN 100 ELSE 0 END +
+          CASE WHEN (SELECT COUNT(*) FROM people p
+            JOIN companies c_t ON c_t.id = p.current_company_id AND c_t.tenant_id = $1
+            WHERE p.tenant_id = $1 AND LOWER(c_t.name) = LOWER(se.company_name)) > 0 THEN 50 ELSE 0 END +
           (se.confidence_score * 30) +
           CASE WHEN se.image_url IS NOT NULL OR ed.image_url IS NOT NULL THEN 20 ELSE 0 END
           AS hero_score
@@ -1413,7 +1424,7 @@ app.get('/api/signals/hero', authenticateToken, async (req, res) => {
           AND se.company_name IS NOT NULL
           AND se.company_name NOT ILIKE '%mitchellake%' AND se.company_name NOT ILIKE '%mitchel lake%'
           ${typeClause}
-        ORDER BY se.company_id, se.confidence_score DESC, se.detected_at DESC
+        ORDER BY LOWER(se.company_name), se.confidence_score DESC, se.detected_at DESC
       ) deduped
       ORDER BY hero_score DESC
       LIMIT 5
@@ -2184,19 +2195,27 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
                ed.source_name, ed.source_type AS doc_source_type,
                ed.title AS doc_title, ed.summary AS doc_summary,
                ed.image_url AS doc_image_url, ed.audio_url AS doc_audio_url,
-               (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1) AS contact_count,
+               (SELECT COUNT(*) FROM people p
+                JOIN companies c_t ON c_t.id = p.current_company_id AND c_t.tenant_id = $1
+                WHERE p.tenant_id = $1 AND LOWER(c_t.name) = LOWER(se.company_name)
+               ) AS contact_count,
                (SELECT COUNT(DISTINCT tp2.person_id) FROM team_proximity tp2
-                JOIN people p2 ON p2.id = tp2.person_id AND p2.current_company_id = se.company_id AND p2.tenant_id = $1
+                JOIN people p2 ON p2.id = tp2.person_id AND p2.tenant_id = $1
+                JOIN companies c_t2 ON c_t2.id = p2.current_company_id AND c_t2.tenant_id = $1
                 WHERE tp2.tenant_id = $1 AND tp2.relationship_strength >= 0.25
+                  AND LOWER(c_t2.name) = LOWER(se.company_name)
                ) AS prox_connection_count,
                (SELECT u2.name FROM team_proximity tp3
-                JOIN people p3 ON p3.id = tp3.person_id AND p3.current_company_id = se.company_id AND p3.tenant_id = $1
+                JOIN people p3 ON p3.id = tp3.person_id AND p3.tenant_id = $1
+                JOIN companies c_t3 ON c_t3.id = p3.current_company_id AND c_t3.tenant_id = $1
                 JOIN users u2 ON u2.id = tp3.team_member_id
                 WHERE tp3.tenant_id = $1 AND tp3.relationship_strength >= 0.25
+                  AND LOWER(c_t3.name) = LOWER(se.company_name)
                 ORDER BY tp3.relationship_strength DESC LIMIT 1
                ) AS best_connector_name,
                (SELECT COUNT(*) FROM conversions pl JOIN accounts cl ON cl.id = pl.client_id
-                WHERE cl.company_id = se.company_id AND pl.tenant_id = $1) AS placement_count,
+                JOIN companies c_pl ON c_pl.id = cl.company_id AND c_pl.tenant_id = $1
+                WHERE pl.tenant_id = $1 AND LOWER(c_pl.name) = LOWER(se.company_name)) AS placement_count,
                sd.id AS dispatch_id, sd.status AS dispatch_status,
                sd.claimed_by, sd.claimed_by_name, sd.blog_title AS dispatch_blog_title,
                CASE WHEN c.country_code = ANY($${geoBoostParam}) THEN true ELSE false END AS geo_relevant
@@ -2219,11 +2238,11 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
           CASE WHEN EXISTS (SELECT 1 FROM companies c_own WHERE c_own.is_client = true AND LOWER(c_own.name) = LOWER(c.name) AND c_own.tenant_id = $1) THEN 0
             ${huddleTenantParam ? `WHEN EXISTS (SELECT 1 FROM companies c2 WHERE c2.is_client = true AND LOWER(c2.name) = LOWER(c.name) AND c2.tenant_id = ANY($${huddleTenantParam})) THEN 0` : ''}
             ELSE 1 END,
-          -- 2. NETWORK DENSITY (own tenant contacts, or huddle combined)
+          -- 2. NETWORK DENSITY (own tenant contacts by company name, or huddle combined)
           CASE
-            WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id ${huddleTenantParam ? `= ANY($${huddleTenantParam})` : '= $1'}) >= 5 THEN 0
-            WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id ${huddleTenantParam ? `= ANY($${huddleTenantParam})` : '= $1'}) >= 2 THEN 1
-            WHEN (SELECT COUNT(*) FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id ${huddleTenantParam ? `= ANY($${huddleTenantParam})` : '= $1'}) >= 1 THEN 2
+            WHEN (SELECT COUNT(*) FROM people p JOIN companies c_n ON c_n.id = p.current_company_id AND LOWER(c_n.name) = LOWER(se.company_name) WHERE p.tenant_id ${huddleTenantParam ? `= ANY($${huddleTenantParam})` : '= $1'}) >= 5 THEN 0
+            WHEN (SELECT COUNT(*) FROM people p JOIN companies c_n ON c_n.id = p.current_company_id AND LOWER(c_n.name) = LOWER(se.company_name) WHERE p.tenant_id ${huddleTenantParam ? `= ANY($${huddleTenantParam})` : '= $1'}) >= 2 THEN 1
+            WHEN (SELECT COUNT(*) FROM people p JOIN companies c_n ON c_n.id = p.current_company_id AND LOWER(c_n.name) = LOWER(se.company_name) WHERE p.tenant_id ${huddleTenantParam ? `= ANY($${huddleTenantParam})` : '= $1'}) >= 1 THEN 2
             ELSE 3 END,
           -- 3. GEOGRAPHIC RELEVANCE (user's focus countries)
           CASE WHEN c.country_code = ANY($${geoBoostParam}) THEN 0 ELSE 1 END,
