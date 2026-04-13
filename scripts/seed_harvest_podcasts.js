@@ -495,12 +495,16 @@ function extractEpisodeLink(item) {
   // For podcasts, prefer the webpage link over the enclosure (audio file)
   if (item?.link?.[0] && typeof item.link[0] === 'string') return item.link[0].trim();
   if (item?.link?.[0]?.$ && item.link[0].$.href) return item.link[0].$.href.trim();
-  if (item?.guid?.[0]?._) return item.guid[0]._.trim();
+  // GUID — only use if it's actually a URL
+  if (item?.guid?.[0]?._) {
+    const g = item.guid[0]._.trim();
+    if (g.startsWith('http')) return g;
+  }
   if (item?.guid?.[0] && typeof item.guid[0] === 'string') {
     const g = item.guid[0].trim();
     if (g.startsWith('http')) return g;
   }
-  // Fallback to enclosure
+  // Fallback to enclosure audio URL (still a valid link)
   if (item?.enclosure?.[0]?.$ && item.enclosure[0].$.url) return item.enclosure[0].$.url.trim();
   return null;
 }
