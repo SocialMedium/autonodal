@@ -14897,19 +14897,8 @@ app.listen(PORT, async () => {
   try {
     await db.query(`ALTER TABLE user_google_accounts ADD COLUMN IF NOT EXISTS emails_synced INTEGER DEFAULT 0`);
     await db.query(`ALTER TABLE external_documents ADD COLUMN IF NOT EXISTS audio_url TEXT`);
-    // Always run podcast audio backfill on startup
-    console.log('  🎧 Running podcast audio backfill...');
-    const { spawn: spawnAudio } = require('child_process');
-    spawnAudio('node', [require('path').join(__dirname, 'scripts', 'backfill_podcast_audio.js')], { stdio: 'inherit', timeout: 300000 })
-      .on('exit', (code) => console.log(`  ✅ Podcast audio backfill exited (code ${code})`));
-  } catch (e) {}
-
-  // Extract companies from contacts on startup
-  try {
-    console.log('  🏢 Running company extraction from contacts...');
-    const { spawn: spawnExtract } = require('child_process');
-    spawnExtract('node', [require('path').join(__dirname, 'scripts', 'extract_companies_from_contacts.js')], { stdio: 'inherit', timeout: 900000 })
-      .on('exit', (code) => console.log(`  ✅ Company extraction exited (code ${code})`));
+    // Podcast backfill + company extraction moved to worker process (scheduler.js)
+    // to avoid blocking web process on deploy
   } catch (e) {}
 
   // Platform-wide migration moved below multi-tenant migration (must run after)
@@ -15277,45 +15266,7 @@ app.listen(PORT, async () => {
     console.log('  ⚠️ Client backfill skipped:', e.message);
   }
 
-  // One-time: Sophie's LinkedIn connections import
-  try {
-    const sophieCsv = require('path').join(__dirname, 'data', 'sophie_linkedin_connections.csv');
-    if (require('fs').existsSync(sophieCsv)) {
-      const { rows: [check] } = await db.query(
-        `SELECT COUNT(*) AS cnt FROM team_proximity WHERE source = 'linkedin_import' AND team_member_id = (SELECT id FROM users WHERE email = 'sophiec@mitchellake.com' LIMIT 1)`
-      ).catch(() => ({ rows: [{ cnt: '0' }] }));
-      if (parseInt(check.cnt) < 100) {
-        console.log('  📋 Sophie LinkedIn CSV found — importing in background...');
-        const { spawn } = require('child_process');
-        const connProc = spawn('node', [require('path').join(__dirname, 'scripts', 'ingest_linkedin_connections.js')], { stdio: 'inherit', timeout: 1200000 });
-        connProc.on('exit', (code) => console.log(`  ✅ Sophie LinkedIn connections import exited (code ${code})`));
-      } else {
-        console.log(`  ℹ️  Sophie LinkedIn already imported (${check.cnt} links)`);
-      }
-    }
-  } catch (e) {}
-
-  // One-time: Sophie's LinkedIn messages import
-  try {
-    const sophieMsgs = require('path').join(__dirname, 'data', 'sophie_linkedin_messages.csv');
-    if (require('fs').existsSync(sophieMsgs)) {
-      const { rows: [check] } = await db.query(
-        `SELECT COUNT(*) AS cnt FROM interactions WHERE source = 'linkedin_import' AND user_id = (SELECT id FROM users WHERE email = 'sophiec@mitchellake.com' LIMIT 1)`
-      ).catch(() => ({ rows: [{ cnt: '0' }] }));
-      if (parseInt(check.cnt) < 100) {
-        console.log('  💬 Sophie LinkedIn messages found — importing in background...');
-        const { exec } = require('child_process');
-        exec(`node ${require('path').join(__dirname, 'scripts', 'ingest_linkedin_messages.js')}`, { timeout: 1200000 }, (err, stdout, stderr) => {
-          if (stdout) console.log(stdout.slice(-800));
-          if (stderr) console.error('  stderr:', stderr.slice(-300));
-          if (err) console.error('  ⚠️ Sophie messages import error:', err.message?.slice(0, 200));
-          else console.log('  ✅ Sophie LinkedIn messages import complete');
-        });
-      } else {
-        console.log(`  ℹ️  Sophie LinkedIn messages already imported (${check.cnt} interactions)`);
-      }
-    }
-  } catch (e) {}
+  // LinkedIn imports moved to admin UI / worker pipeline — not run on web startup
 
   // Backfill: create team_proximity for LinkedIn-imported people missing proximity links
   try {
@@ -15332,111 +15283,7 @@ app.listen(PORT, async () => {
     if (proxCreated > 0) console.log(`  ✅ Backfilled ${proxCreated} LinkedIn proximity links`);
   } catch (e) {}
 
-  // One-time backfill: link orphaned interactions to people
-  try {
-    // 1. Sent emails — match recipients against people.email
-    const { rowCount: sentLinked } = await db.query(`
-      UPDATE interactions i
-      SET person_id = p.id
-      FROM people p,
-           unnest(i.email_to) AS recipient
-      WHERE i.person_id IS NULL
-        AND i.source = 'gmail_sync'
-        AND i.direction IN ('outbound', 'sent')
-        AND p.email IS NOT NULL AND p.email != ''
-        AND lower(p.email) = lower(recipient)
-    `).catch(() => ({ rowCount: 0 }));
-    if (sentLinked > 0) console.log(`  ✅ Backfilled ${sentLinked} sent-email interactions → people`);
+  // Interaction backfills + session purge moved to worker pipeline — not run on web startup
 
-    // 2. Received emails — match sender against people.email
-    const { rowCount: recvLinked } = await db.query(`
-      UPDATE interactions i
-      SET person_id = p.id
-      FROM people p
-      WHERE i.person_id IS NULL
-        AND i.source = 'gmail_sync'
-        AND i.direction IN ('inbound', 'received')
-        AND i.email_from IS NOT NULL AND i.email_from != ''
-        AND p.email IS NOT NULL AND p.email != ''
-        AND lower(p.email) = lower(i.email_from)
-    `).catch(() => ({ rowCount: 0 }));
-    if (recvLinked > 0) console.log(`  ✅ Backfilled ${recvLinked} received-email interactions → people`);
-
-    // 3. Also try email_alt
-    const { rowCount: altLinked } = await db.query(`
-      UPDATE interactions i
-      SET person_id = p.id
-      FROM people p
-      WHERE i.person_id IS NULL
-        AND i.source = 'gmail_sync'
-        AND p.email_alt IS NOT NULL AND p.email_alt != ''
-        AND (
-          (i.direction IN ('outbound','sent') AND lower(p.email_alt) = ANY(SELECT lower(unnest(i.email_to))))
-          OR
-          (i.direction IN ('inbound','received') AND lower(p.email_alt) = lower(i.email_from))
-        )
-    `).catch(() => ({ rowCount: 0 }));
-    if (altLinked > 0) console.log(`  ✅ Backfilled ${altLinked} interactions via email_alt`);
-
-    // 4. Delete noise rows that slipped through before filter
-    const { rowCount: noiseDeleted } = await db.query(`
-      DELETE FROM interactions
-      WHERE source = 'gmail_sync'
-        AND person_id IS NULL
-        AND (email_from = '' OR email_from IS NULL)
-        AND (email_to IS NULL OR email_to = '{}')
-    `).catch(() => ({ rowCount: 0 }));
-    if (noiseDeleted > 0) console.log(`  🗑️  Cleaned ${noiseDeleted} noise interaction rows`);
-
-    // 5. Link signals to people via company — people at signalling companies
-    const { rowCount: sigLinked } = await db.query(`
-      UPDATE person_signals ps
-      SET person_id = p.id
-      FROM signal_events se, people p
-      WHERE ps.signal_event_id = se.id
-        AND ps.person_id IS NULL
-        AND p.current_company_id = se.company_id
-        AND p.current_company_id IS NOT NULL
-    `).catch(() => ({ rowCount: 0 }));
-    if (sigLinked > 0) console.log(`  ✅ Backfilled ${sigLinked} person↔signal links via company`);
-
-    const total = sentLinked + recvLinked + altLinked + noiseDeleted + sigLinked;
-    if (total > 0) console.log(`  ✅ Backfill complete: ${total} records updated`);
-  } catch (e) {
-    console.log('  ⚠️ Backfill:', e.message);
-  }
-
-  // One-time: force re-auth for all users to pick up new Gmail+Drive scopes
-  // Remove this block after everyone has re-authenticated (deploy after 2026-03-27)
-  try {
-    const { rowCount } = await db.query(`DELETE FROM sessions WHERE created_at < '2026-03-26T12:00:00Z'`);
-    if (rowCount > 0) console.log(`  🔑 Cleared ${rowCount} old sessions — users will re-auth with full Gmail+Drive scopes`);
-  } catch (e) { /* ok */ }
-
-  // One-time WIP workbook ingestion (runs once, guarded by check)
-  try {
-    const wipFile = require('path').join(__dirname, 'data', 'Global_Billings_and_WIP.xlsx');
-    if (require('fs').existsSync(wipFile)) {
-      // Check if already fully ingested (need at least 500 WIP records — invoices + WIP combined)
-      const { rows: [check] } = await db.query(
-        `SELECT COUNT(*) AS cnt FROM conversions WHERE source IN ('wip_workbook', 'xero_export') LIMIT 1`
-      ).catch(() => ({ rows: [{ cnt: '0' }] }));
-      if (parseInt(check.cnt) < 500) {
-        // Run async — don't block server startup
-        console.log('\n  📊 WIP workbook found — running ingestion in background...');
-        const { exec } = require('child_process');
-        const scriptDir = require('path').join(__dirname, 'scripts');
-        // Chain: invoices → WIP → receivables, non-blocking
-        exec(`node ${scriptDir}/ingest_invoice_ledgers.js && node ${scriptDir}/ingest_consultant_wip.js && node ${scriptDir}/ingest_receivables.js`, { timeout: 900000 }, (err, stdout, stderr) => {
-          if (stdout) console.log(stdout.slice(-500));
-          if (err) console.error('  ⚠️ WIP ingestion error:', err.message?.slice(0, 200));
-          else console.log('  ✅ WIP workbook ingestion complete');
-        });
-      } else {
-        console.log(`  ℹ️  WIP data already loaded (${check.cnt} records) — skipping ingestion`);
-      }
-    }
-  } catch (e) {
-    console.log('  ⚠️ WIP ingestion check:', e.message);
-  }
+  // WIP ingestion moved to admin pipeline — not run on web startup
 });
