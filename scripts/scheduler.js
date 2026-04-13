@@ -47,7 +47,7 @@ const fs = require('fs');
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-  max: 5
+  max: 10
 });
 
 let openai;
@@ -1628,7 +1628,7 @@ const PIPELINES = {
     name: 'Ingest & Detect Signals',
     icon: '📡',
     fn: pipelineIngestSignals,
-    schedule: '*/30 * * * *',
+    schedule: '2,32 * * * *',
     description: 'RSS → Embed → Claude Signal Detection → Network Cross-ref'
   },
   embed_intelligence: {
@@ -1642,7 +1642,7 @@ const PIPELINES = {
     name: 'Compute Scores',
     icon: '📊',
     fn: pipelineComputeScores,
-    schedule: '0 * * * *',
+    schedule: '8 * * * *',
     description: 'Update engagement, timing, flight risk scores'
   },
   match_searches: {
@@ -1663,7 +1663,7 @@ const PIPELINES = {
     name: 'Daily Brief',
     icon: '📋',
     fn: pipelineDailyBrief,
-    schedule: '0 6 * * *',
+    schedule: '3 6 * * *',
     description: 'Generate daily intelligence briefing via Claude'
   },
   network_insights: {
@@ -1680,7 +1680,7 @@ const PIPELINES = {
       const { compute } = require('./compute_company_relationships');
       return compute();
     },
-    schedule: '0 3 * * *',
+    schedule: '12 3 * * *',
     description: 'Score company-level relationship quality from interaction data'
   },
   detect_rel_changes: {
@@ -1690,7 +1690,7 @@ const PIPELINES = {
       const { detect } = require('./detect_relationship_changes');
       return detect();
     },
-    schedule: '0 */6 * * *',
+    schedule: '18 */6 * * *',
     description: 'Detect staleness and relationship tier changes every 6h'
   },
   daily_digest_email: {
@@ -1704,7 +1704,7 @@ const PIPELINES = {
     name: 'Waitlist Digest',
     icon: '📝',
     fn: pipelineWaitlistDigest,
-    schedule: '0 7 * * *',
+    schedule: '22 7 * * *',
     description: 'Daily waitlist activity digest — new signups, pending count'
   },
   harvest_events: {
@@ -1725,7 +1725,7 @@ const PIPELINES = {
       } catch (e) { console.warn('Event embedding skipped:', e.message); }
       return result;
     },
-    schedule: '0 */2 * * *',
+    schedule: '14 */2 * * *',
     description: 'Fetch EventMedium RSS feeds → Link entities → Embed to Qdrant'
   },
   sync_xero: {
@@ -1735,7 +1735,7 @@ const PIPELINES = {
       const { pipelineSyncXero } = require('./sync_xero');
       return pipelineSyncXero();
     },
-    schedule: '0 7,19 * * *',
+    schedule: '6 7,19 * * *',
     description: 'Fetch new/updated invoices from Xero, update placements & financials'
   },
   signal_dispatch: {
@@ -1745,7 +1745,7 @@ const PIPELINES = {
       const { generateDispatches } = require('./generate_dispatches');
       return generateDispatches();
     },
-    schedule: '0 */2 * * *',
+    schedule: '24 */2 * * *',
     description: 'Generate intelligence briefs with proximity maps, approach angles, and thought leadership content'
   },
   compute_network_topology: {
@@ -1755,7 +1755,7 @@ const PIPELINES = {
       const { computeNetworkTopology } = require('./compute_network_topology');
       return computeNetworkTopology();
     },
-    schedule: '0 2 * * *',
+    schedule: '28 2 * * *',
     description: 'Compute network density, company adjacency scores, and geo mapping'
   },
   compute_triangulation: {
@@ -1776,7 +1776,7 @@ const PIPELINES = {
       const { execSync } = require('child_process');
       execSync('node ' + require('path').join(__dirname, 'compute_signal_grabs.js'), { timeout: 120000, stdio: 'inherit' });
     },
-    schedule: '0 5 * * *',
+    schedule: '16 5 * * *',
     description: 'Generate daily editorial intelligence grabs from signal clusters'
   },
 
@@ -1787,7 +1787,7 @@ const PIPELINES = {
       const { execSync } = require('child_process');
       execSync('node ' + require('path').join(__dirname, 'generate_weekly_wrap.js'), { timeout: 180000, stdio: 'inherit' });
     },
-    schedule: '0 6 * * 0',
+    schedule: '36 6 * * 0',
     description: 'Generate weekly regional intelligence wrap with key numbers and insights'
   },
 
@@ -1795,7 +1795,7 @@ const PIPELINES = {
     name: 'EventMedium Ingestion',
     icon: '🎪',
     fn: pipelineIngestEvents,
-    schedule: '0 */4 * * *',
+    schedule: '42 */4 * * *',
     description: 'Poll EventMedium feed, upsert upcoming events with region bucketing and theme scoring'
   },
 
@@ -1806,7 +1806,7 @@ const PIPELINES = {
       const { execSync } = require('child_process');
       execSync('node ' + require('path').join(__dirname, 'seed_harvest_podcasts.js'), { timeout: 300000, stdio: 'inherit' });
     },
-    schedule: '0 4 * * *',
+    schedule: '48 4 * * *',
     description: 'Harvest new episodes from all podcast RSS feeds into external_documents'
   },
 
@@ -1838,7 +1838,7 @@ const PIPELINES = {
       const { execSync } = require('child_process');
       execSync('node ' + require('path').join(__dirname, 'sync_gmail.js'), { timeout: 600000, stdio: 'inherit' });
     },
-    schedule: '0 */4 * * *',  // Every 4 hours — DB lock prevents overlaps, worker process only
+    schedule: '4 */4 * * *',
     description: 'Delta sync Gmail threads for connected accounts → interactions + team_proximity'
   },
 
@@ -1849,7 +1849,7 @@ const PIPELINES = {
       const { execSync } = require('child_process');
       execSync('node ' + require('path').join(__dirname, 'gmail_match.js'), { timeout: 180000, stdio: 'inherit' });
     },
-    schedule: '10 */2 * * *',
+    schedule: '11 */2 * * *',
     description: 'Match synced emails to people, compute engagement signals, update person_scores'
   },
 
@@ -1860,7 +1860,7 @@ const PIPELINES = {
       const { execSync } = require('child_process');
       execSync('node ' + require('path').join(__dirname, 'sync_drive.js'), { timeout: 300000, stdio: 'inherit' });
     },
-    schedule: '30 */2 * * *',
+    schedule: '34 */2 * * *',
     description: 'Scan connected Google accounts for new/modified Drive documents, ingest as companion data'
   },
 
@@ -1893,7 +1893,7 @@ const PIPELINES = {
       const { execSync } = require('child_process');
       execSync('node ' + require('path').join(__dirname, 'extract_companies_from_contacts.js'), { timeout: 900000, stdio: 'inherit' });
     },
-    schedule: '0 5 * * *',  // Daily at 05:00
+    schedule: '52 5 * * *',
     description: 'Extract company records from contact names + email domains, link people, derive sectors'
   },
 
@@ -2008,7 +2008,7 @@ const PIPELINES = {
       const { pipelineWatchdog } = require('./watchdog');
       return pipelineWatchdog();
     },
-    schedule: '0 */2 * * *',
+    schedule: '56 */2 * * *',
     description: 'Monitor pipeline freshness, data quality, external services, RSS health — alert on critical/high issues'
   },
 
@@ -2019,7 +2019,7 @@ const PIPELINES = {
       const { harvestOfficialApis } = require('./harvest_official_apis');
       return harvestOfficialApis();
     },
-    schedule: '0 */6 * * *',  // Every 6 hours
+    schedule: '38 */6 * * *',
     description: 'Harvest structured government/institutional APIs — procurement, patents, statistics, filings'
   },
 
@@ -2030,7 +2030,7 @@ const PIPELINES = {
       const { execSync } = require('child_process');
       execSync('node ' + require('path').join(__dirname, 'discover_ats.js') + ' --limit 1000', { timeout: 600000, stdio: 'inherit' });
     },
-    schedule: '0 2 * * 1',  // Monday 2am — weekly
+    schedule: '50 2 * * 1',
     description: 'Detect ATS providers for companies, register job feeds for harvesting'
   },
 
@@ -2041,7 +2041,7 @@ const PIPELINES = {
       const { harvestAllJobFeeds } = require('./harvest_jobs');
       return harvestAllJobFeeds();
     },
-    schedule: '0 */6 * * *',  // Every 6 hours
+    schedule: '44 */6 * * *',
     description: 'Fetch job postings from discovered ATS feeds, detect removals, evaluate signals'
   }
 };
@@ -2072,10 +2072,33 @@ CREATE INDEX IF NOT EXISTS idx_pipeline_runs_key ON pipeline_runs(pipeline_key);
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started ON pipeline_runs(started_at DESC);
 `;
 
+// ─── Concurrency semaphore — max 3 pipelines at once ───
+const MAX_CONCURRENT = 3;
+let runningCount = 0;
+const waitQueue = [];
+
+function acquireSemaphore() {
+  if (runningCount < MAX_CONCURRENT) {
+    runningCount++;
+    return Promise.resolve();
+  }
+  return new Promise(resolve => waitQueue.push(resolve));
+}
+
+function releaseSemaphore() {
+  runningCount--;
+  if (waitQueue.length > 0 && runningCount < MAX_CONCURRENT) {
+    runningCount++;
+    waitQueue.shift()();
+  }
+}
+
 async function runPipeline(key, triggeredBy = 'scheduler') {
   const pipeline = PIPELINES[key];
   if (!pipeline) { console.error(`❌ Unknown: ${key}`); return; }
   if (pipelineState[key].status === 'running') { console.log(`⏭️  ${pipeline.name} already running`); return; }
+
+  await acquireSemaphore();
 
   const start = Date.now();
   pipelineState[key].status = 'running';
@@ -2107,6 +2130,7 @@ async function runPipeline(key, triggeredBy = 'scheduler') {
     }
 
     console.log(`   ✅ Done in ${(duration/1000).toFixed(1)}s`);
+    releaseSemaphore();
     return result;
 
   } catch (e) {
@@ -2121,6 +2145,7 @@ async function runPipeline(key, triggeredBy = 'scheduler') {
     }
 
     console.error(`   ❌ Failed (${(duration/1000).toFixed(1)}s): ${e.message}`);
+    releaseSemaphore();
   }
 
   // Reset to idle
