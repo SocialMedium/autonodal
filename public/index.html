@@ -3009,18 +3009,27 @@ async function doSearch() {
   body.innerHTML = '<div class="search-loading"><div class="spinner"></div><div>Searching ' + collLabel + '...</div></div>';
 
   try {
-    const data = await api(`/api/search?q=${encodeURIComponent(q)}&collection=${activeCollection}&limit=${activeCollection === 'all' ? 20 : 50}`);
+    const data = await api(`/api/search?q=${encodeURIComponent(q)}&collection=${activeCollection}&limit=${activeCollection === 'all' ? 50 : 100}`);
     const r = data.results;
     title.textContent = `"${q}" — ${data.total} results`;
 
     const SIG_C = { capital_raising:'#EF9F27', strategic_hiring:'#5DCAA5', geographic_expansion:'#378ADD', leadership_change:'#D4537E', ma_activity:'#AFA9EC', product_launch:'#97C459', layoffs:'#E24B4A', restructuring:'#E24B4A', partnership:'#85B7EB' };
     window._searchRenderers = {};
 
+    var INITIAL_SHOW = 6;
     function mkGroup(key, label, items, cols, renderFn) {
       window._searchRenderers[key] = renderFn;
       if (!items || !items.length) return '';
+      var initial = items.slice(0, INITIAL_SHOW);
+      var rest = items.slice(INITIAL_SHOW);
+      var expandId = 'expand_' + key;
+      var expandBtn = rest.length > 0
+        ? '<div style="text-align:center;padding:4px 16px 14px"><button onclick="document.getElementById(\'' + expandId + '\').style.display=\'grid\';this.style.display=\'none\'" style="background:none;border:1px solid var(--rule);padding:6px 18px;border-radius:6px;font-size:12px;color:var(--ink-3);cursor:pointer">Show ' + rest.length + ' more ' + label.toLowerCase() + '</button></div>'
+        : '';
       return '<div data-group="' + key + '"><div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px 5px"><span style="font-size:9px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)">' + label + '</span><span style="font-size:9px;color:var(--ink-4)">' + items.length + ' results</span></div>' +
-        '<div style="display:grid;grid-template-columns:repeat(' + cols + ',minmax(0,1fr));gap:8px;padding:0 16px 14px">' + items.map(renderFn).join('') + '</div></div>';
+        '<div style="display:grid;grid-template-columns:repeat(' + cols + ',minmax(0,1fr));gap:8px;padding:0 16px 8px">' + initial.map(renderFn).join('') + '</div>' +
+        (rest.length > 0 ? '<div id="' + expandId + '" style="display:none;grid-template-columns:repeat(' + cols + ',minmax(0,1fr));gap:8px;padding:0 16px 8px">' + rest.map(renderFn).join('') + '</div>' : '') +
+        expandBtn + '</div>';
     }
 
     function card(inner, url, ext) {

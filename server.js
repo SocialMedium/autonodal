@@ -2520,7 +2520,7 @@ app.get('/api/signals/:id/proximity-graph', authenticateToken, async (req, res) 
       JOIN team_proximity tp ON tp.person_id = p.id AND tp.tenant_id = $1
       LEFT JOIN person_scores ps ON ps.person_id = p.id AND ps.tenant_id = $1
       WHERE p.tenant_id = $1
-        AND (p.current_company_id = $2 OR LOWER(TRIM(p.current_company_name)) = LOWER(TRIM($3)))
+        AND (p.current_company_id = $2 OR (p.current_company_id IS NULL AND LENGTH(TRIM($3)) > 3 AND LOWER(TRIM(p.current_company_name)) = LOWER(TRIM($3))))
         AND tp.relationship_strength >= 0.15
       GROUP BY p.id, p.full_name, p.current_title, p.current_company_name,
                ps.timing_score, ps.receptivity_score
@@ -4980,7 +4980,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     const db = new TenantDB(req.tenant_id);
     const q = req.query.q;
     const collection = req.query.collection || 'all'; // people, documents, all
-    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const limit = Math.min(parseInt(req.query.limit) || 20, 200);
 
     if (!q || q.trim().length < 2) {
       return res.status(400).json({ error: 'Search query too short' });
@@ -5068,7 +5068,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
     // Search companies
     if (collection === 'companies' || collection === 'all') {
-      const compLimit = collection === 'all' ? Math.min(limit, 12) : limit;
+      const compLimit = collection === 'all' ? Math.min(limit, 30) : limit;
       const qdrantResults = await qdrantSearch('companies', vector, compLimit);
 
       if (qdrantResults.length > 0) {
@@ -5114,7 +5114,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
     // Search documents
     if (collection === 'documents' || collection === 'all') {
-      const docLimit = collection === 'all' ? Math.min(limit, 12) : limit;
+      const docLimit = collection === 'all' ? Math.min(limit, 30) : limit;
       const qdrantResults = await qdrantSearch('documents', vector, docLimit);
 
       if (qdrantResults.length > 0) {
@@ -5152,7 +5152,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Search signals (direct)
     if (collection === 'signals' || collection === 'all') {
       try {
-        const sigLimit = collection === 'all' ? Math.min(limit, 12) : limit;
+        const sigLimit = collection === 'all' ? Math.min(limit, 30) : limit;
         const qdrantResults = await qdrantSearch('signal_events', vector, sigLimit);
         if (qdrantResults.length > 0) {
           const sigIds = qdrantResults.map(r => r.payload?.signal_id).filter(Boolean);
@@ -5187,7 +5187,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Search case studies (replaces placements in search — more useful, no duplicate retainer stages)
     if (collection === 'case_studies' || collection === 'all') {
       try {
-        const csLimit = collection === 'all' ? Math.min(limit, 12) : limit;
+        const csLimit = collection === 'all' ? Math.min(limit, 30) : limit;
         // Try Qdrant first
         let csResults = [];
         try {
@@ -5230,7 +5230,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Search interactions
     if (collection === 'interactions' || collection === 'all') {
       try {
-        const intLimit = collection === 'all' ? Math.min(limit, 10) : limit;
+        const intLimit = collection === 'all' ? Math.min(limit, 20) : limit;
         const qdrantResults = await qdrantSearch('interactions', vector, intLimit);
         if (qdrantResults.length > 0) {
           const intIds = qdrantResults.map(r => r.payload?.interaction_id).filter(Boolean);
