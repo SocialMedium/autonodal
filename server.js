@@ -15144,8 +15144,9 @@ app.listen(PORT, async () => {
   console.log(`  API:       http://localhost:${PORT}/api/health`);
   console.log('═══════════════════════════════════════════════════\n');
 
-  // Startup migrations use platformPool (superuser) for DDL
+  // Startup migrations use platformPool (superuser) for DDL — extended timeout for Railway
   const db = platformPool;
+  try { await db.query('SET statement_timeout = 120000'); } catch(e) {} // 2 min for startup DDL
 
   // Ensure user profile columns exist
   try {
