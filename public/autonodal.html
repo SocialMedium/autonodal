@@ -41,7 +41,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--cream);color:var(--
 .hero-glow::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,rgba(232,155,62,0.22) 0%,transparent 70%);animation:breathe 5s ease-in-out infinite .8s}
 @keyframes breathe{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.08);opacity:1}}
 .hero-tag{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--amber);margin-bottom:32px;display:flex;align-items:center;gap:14px;position:relative}
-.hero-tag::before{content:'';display:block;width:28px;height:1px;background:var(--amber)}
+.hero-tag::before{content:'';display:block;width:28px;height:6px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='6' fill='none'%3E%3Cpath d='M0 3h24m0 0l-3-2.5M24 3l-3 2.5' stroke='%23e89b3e' stroke-width='1'/%3E%3C/svg%3E") no-repeat center}
 .hero-h1{font-family:'Playfair Display',serif;font-size:clamp(52px,7.5vw,100px);font-weight:400;line-height:1.0;letter-spacing:-0.025em;color:var(--cream);max-width:860px;margin-bottom:36px;position:relative}
 .hero-h1 em{font-style:italic;color:rgba(245,243,239,0.68)}
 .hero-sub{font-size:17px;font-weight:300;line-height:1.8;color:rgba(245,243,239,0.65);max-width:480px;margin-bottom:52px;position:relative}
