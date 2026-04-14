@@ -15144,9 +15144,10 @@ app.listen(PORT, async () => {
   console.log(`  API:       http://localhost:${PORT}/api/health`);
   console.log('═══════════════════════════════════════════════════\n');
 
-  // Startup migrations use platformPool (superuser) for DDL — extended timeout for Railway
+  // Defer startup migrations — run after healthcheck passes
+  setTimeout(async function() {
+  try {
   const db = platformPool;
-  try { await db.query('SET statement_timeout = 120000'); } catch(e) {} // 2 min for startup DDL
 
   // Ensure user profile columns exist
   try {
@@ -15605,4 +15606,6 @@ app.listen(PORT, async () => {
   // Interaction backfills + session purge moved to worker pipeline — not run on web startup
 
   // WIP ingestion moved to admin pipeline — not run on web startup
+  } catch (e) { console.error('Startup migration error:', e.message); }
+  }, 5000); // 5s delay — let healthcheck pass first
 });
