@@ -4980,8 +4980,8 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     const db = new TenantDB(req.tenant_id);
     const q = req.query.q;
     const collection = req.query.collection || 'all';
-    const limit = parseInt(req.query.limit) || 500;
     const minScore = parseFloat(req.query.min_score) || 0.25; // relevance threshold
+    const qdrantLimit = 100; // max vectors to request from Qdrant per collection
 
     if (!q || q.trim().length < 2) {
       return res.status(400).json({ error: 'Search query too short' });
@@ -4994,7 +4994,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
     // Search people
     if (collection === 'people' || collection === 'all') {
-      const qdrantResultsRaw = await qdrantSearch('people', vector, limit);
+      const qdrantResultsRaw = await qdrantSearch('people', vector, qdrantLimit);
       const qdrantResults = qdrantResultsRaw.filter(r => r.score >= minScore);
 
       if (qdrantResults.length > 0) {
@@ -5070,8 +5070,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
     // Search companies
     if (collection === 'companies' || collection === 'all') {
-      const compLimit = limit;
-      const qdrantResults = (await qdrantSearch('companies', vector, compLimit)).filter(r => r.score >= minScore);
+      const qdrantResults = (await qdrantSearch('companies', vector, qdrantLimit)).filter(r => r.score >= minScore);
 
       if (qdrantResults.length > 0) {
         const uuidRx = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -5116,8 +5115,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
     // Search documents
     if (collection === 'documents' || collection === 'all') {
-      const docLimit = limit;
-      const qdrantResults = (await qdrantSearch('documents', vector, docLimit)).filter(r => r.score >= minScore);
+      const qdrantResults = (await qdrantSearch('documents', vector, qdrantLimit)).filter(r => r.score >= minScore);
 
       if (qdrantResults.length > 0) {
         // IDs may be UUIDs or numeric — document_id is in payload for numeric IDs
@@ -5154,25 +5152,28 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Search signals (direct)
     if (collection === 'signals' || collection === 'all') {
       try {
-        const sigLimit = limit;
-        const qdrantResults = (await qdrantSearch('signal_events', vector, sigLimit)).filter(r => r.score >= minScore);
+        const qdrantResults = (await qdrantSearch('signal_events', vector, qdrantLimit)).filter(r => r.score >= minScore);
         if (qdrantResults.length > 0) {
           const sigIds = qdrantResults.map(r => r.payload?.signal_id).filter(Boolean);
           if (sigIds.length > 0) {
             const { rows: signals } = await db.query(`
               SELECT se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
                      se.evidence_summary, se.detected_at, c.sector, c.geography, c.is_client,
-                     (SELECT COUNT(DISTINCT tp.person_id) FROM team_proximity tp
-                       JOIN people p ON p.id = tp.person_id AND p.tenant_id = $2
-                       JOIN companies c_n ON c_n.id = p.current_company_id AND LOWER(c_n.name) = LOWER(se.company_name)
-                       WHERE tp.tenant_id = $2 AND tp.relationship_strength >= 0.3) AS network_connections,
-                     (SELECT u.name FROM users u WHERE u.id = (
-                       SELECT tp2.team_member_id FROM team_proximity tp2
-                       JOIN people p2 ON p2.id = tp2.person_id AND p2.tenant_id = $2
-                       JOIN companies c_n2 ON c_n2.id = p2.current_company_id AND LOWER(c_n2.name) = LOWER(se.company_name)
-                       WHERE tp2.tenant_id = $2 ORDER BY tp2.relationship_strength DESC LIMIT 1
-                     )) AS best_connector
-              FROM signal_events se LEFT JOIN companies c ON c.id = se.company_id
+                     COALESCE(pc.cnt, 0) AS network_connections,
+                     pc.best_name AS best_connector
+              FROM signal_events se
+              LEFT JOIN companies c ON c.id = se.company_id
+              LEFT JOIN LATERAL (
+                SELECT COUNT(DISTINCT tp.person_id) AS cnt,
+                       (SELECT u.name FROM team_proximity tp2
+                        JOIN people p2 ON p2.id = tp2.person_id AND p2.tenant_id = $2
+                        JOIN users u ON u.id = tp2.team_member_id
+                        WHERE tp2.tenant_id = $2 AND p2.current_company_id = se.company_id AND tp2.relationship_strength >= 0.3
+                        ORDER BY tp2.relationship_strength DESC LIMIT 1) AS best_name
+                FROM team_proximity tp
+                JOIN people p ON p.id = tp.person_id AND p.tenant_id = $2
+                WHERE tp.tenant_id = $2 AND tp.relationship_strength >= 0.3 AND p.current_company_id = se.company_id
+              ) pc ON true
               WHERE se.id = ANY($1::uuid[]) AND (se.tenant_id IS NULL OR se.tenant_id = $2)
             `, [sigIds, req.tenant_id]);
             const sigMap = new Map(signals.map(s => [s.id, s]));
@@ -5183,13 +5184,13 @@ app.get('/api/search', authenticateToken, async (req, res) => {
             }).filter(Boolean);
           }
         }
-      } catch (e) { /* collection may not exist yet */ }
+      } catch (e) { console.error('Search collection error:', e.message?.substring(0, 80)); }
     }
 
     // Search case studies (replaces placements in search — more useful, no duplicate retainer stages)
     if (collection === 'case_studies' || collection === 'all') {
       try {
-        const csLimit = limit;
+        const csLimit = qdrantLimit;
         // Try Qdrant first
         let csResults = [];
         try {
@@ -5232,8 +5233,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Search interactions
     if (collection === 'interactions' || collection === 'all') {
       try {
-        const intLimit = limit;
-        const qdrantResults = (await qdrantSearch('interactions', vector, intLimit)).filter(r => r.score >= minScore);
+        const qdrantResults = (await qdrantSearch('interactions', vector, qdrantLimit)).filter(r => r.score >= minScore);
         if (qdrantResults.length > 0) {
           const intIds = qdrantResults.map(r => r.payload?.interaction_id).filter(Boolean);
           if (intIds.length > 0) {
@@ -5252,7 +5252,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
             }).filter(Boolean);
           }
         }
-      } catch (e) { /* collection may not exist yet */ }
+      } catch (e) { console.error('Search collection error:', e.message?.substring(0, 80)); }
     }
 
     // Add score field to existing results
