@@ -113,15 +113,15 @@ const compression = require('compression');
 app.use(compression());
 
 // ─── Security: per-IP rate limiting for expensive endpoints ───
-const rateLimitMap = new Map();
-setInterval(() => rateLimitMap.clear(), 60000); // reset every minute
+const endpointLimitMap = new Map();
+setInterval(() => endpointLimitMap.clear(), 60000);
 
-function rateLimit(maxPerMinute) {
+function endpointLimit(maxPerMinute) {
   return function(req, res, next) {
     var key = (req.ip || 'unknown') + ':' + req.path;
-    var count = rateLimitMap.get(key) || 0;
+    var count = endpointLimitMap.get(key) || 0;
     if (count >= maxPerMinute) return res.status(429).json({ error: 'Too many requests' });
-    rateLimitMap.set(key, count + 1);
+    endpointLimitMap.set(key, count + 1);
     next();
   };
 }
@@ -5100,7 +5100,7 @@ app.patch('/api/signals/:id/visibility', authenticateToken, async (req, res) => 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/search', authenticateToken, rateLimit(30), async (req, res) => {
+app.get('/api/search', authenticateToken, endpointLimit(30), async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
     const q = req.query.q;
