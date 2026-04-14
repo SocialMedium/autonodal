@@ -1448,39 +1448,34 @@ app.get('/api/signals/hero', authenticateToken, async (req, res) => {
     const params = [req.tenant_id];
     let typeClause = '';
     if (typeFilter) { params.push(typeFilter); typeClause = ` AND se.signal_type = $${params.length}`; }
-    // Resolve contacts/proximity by company NAME within viewing tenant,
-    // using CTE to pre-resolve tenant companies once for performance
+    // Signal brief — uses direct company_id join instead of name-matching CTE
     const { rows } = await db.query(`
-      WITH tenant_cos AS (
-        SELECT id, LOWER(name) AS lname, is_client FROM companies WHERE tenant_id = $1
-      )
       SELECT * FROM (
         SELECT DISTINCT ON (LOWER(se.company_name))
           se.id, se.signal_type, se.company_name, se.company_id, se.confidence_score,
           se.evidence_summary, se.detected_at, se.source_url, se.image_url,
           c.sector, c.geography,
-          COALESCE((SELECT true FROM tenant_cos tc WHERE tc.is_client = true AND tc.lname = LOWER(se.company_name) LIMIT 1), false) AS is_client,
+          COALESCE(c.is_client, false) AS is_client,
           c.domain,
           ed.title AS doc_title, ed.source_name, ed.image_url AS doc_image_url, ed.audio_url AS doc_audio_url, ed.source_type AS doc_source_type,
-          (SELECT COUNT(*) FROM people p
-            WHERE p.tenant_id = $1
-              AND p.current_company_id IN (SELECT tc.id FROM tenant_cos tc WHERE tc.lname = LOWER(se.company_name))
-          ) AS contact_count,
-          (SELECT COUNT(DISTINCT tp2.person_id) FROM team_proximity tp2
-            JOIN people p2 ON p2.id = tp2.person_id AND p2.tenant_id = $1
-            WHERE tp2.tenant_id = $1 AND tp2.relationship_strength >= 0.25
-              AND p2.current_company_id IN (SELECT tc.id FROM tenant_cos tc WHERE tc.lname = LOWER(se.company_name))
-          ) AS prox_count,
-          CASE WHEN EXISTS (SELECT 1 FROM tenant_cos tc WHERE tc.is_client = true AND tc.lname = LOWER(se.company_name)) THEN 100 ELSE 0 END +
-          CASE WHEN (SELECT COUNT(*) FROM people p
-            WHERE p.tenant_id = $1
-              AND p.current_company_id IN (SELECT tc.id FROM tenant_cos tc WHERE tc.lname = LOWER(se.company_name))) > 0 THEN 50 ELSE 0 END +
+          COALESCE(pc.cnt, 0) AS contact_count,
+          COALESCE(px.cnt, 0) AS prox_count,
+          CASE WHEN c.is_client = true THEN 100 ELSE 0 END +
+          CASE WHEN COALESCE(pc.cnt, 0) > 0 THEN 50 ELSE 0 END +
           (se.confidence_score * 30) +
           CASE WHEN se.image_url IS NOT NULL OR ed.image_url IS NOT NULL THEN 20 ELSE 0 END
           AS hero_score
         FROM signal_events se
         LEFT JOIN companies c ON c.id = se.company_id
         LEFT JOIN external_documents ed ON ed.id = se.source_document_id
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*) AS cnt FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1
+        ) pc ON true
+        LEFT JOIN LATERAL (
+          SELECT COUNT(DISTINCT tp2.person_id) AS cnt FROM team_proximity tp2
+          JOIN people p2 ON p2.id = tp2.person_id AND p2.tenant_id = $1
+          WHERE tp2.tenant_id = $1 AND tp2.relationship_strength >= 0.25 AND p2.current_company_id = se.company_id
+        ) px ON true
         WHERE (se.tenant_id IS NULL OR se.tenant_id = $1)
           AND se.detected_at > NOW() - INTERVAL '7 days'
           AND se.signal_date IS NOT NULL AND se.signal_date > NOW() - INTERVAL '30 days'
