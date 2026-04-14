@@ -110,6 +110,29 @@ app.set('trust proxy', 1);
 const compression = require('compression');
 app.use(compression());
 
+// ─── Security: per-IP rate limiting for expensive endpoints ───
+const rateLimitMap = new Map();
+setInterval(() => rateLimitMap.clear(), 60000); // reset every minute
+
+function rateLimit(maxPerMinute) {
+  return function(req, res, next) {
+    var key = (req.ip || 'unknown') + ':' + req.path;
+    var count = rateLimitMap.get(key) || 0;
+    if (count >= maxPerMinute) return res.status(429).json({ error: 'Too many requests' });
+    rateLimitMap.set(key, count + 1);
+    next();
+  };
+}
+
+// ─── Security: sanitise error responses — never leak stack traces or schema ───
+function safeError(err) {
+  if (process.env.NODE_ENV === 'development') return err.message;
+  // Strip SQL details, file paths, and stack traces
+  var msg = (err.message || 'Internal error').replace(/at \/.*$/gm, '').replace(/relation ".*?"/g, 'relation').replace(/column ".*?"/g, 'column');
+  if (msg.length > 200) msg = msg.substring(0, 200);
+  return msg;
+}
+
 // Skip JSON parsing for Stripe webhook (needs raw body for signature verification)
 app.use(function(req, res, next) {
   if (req.path === '/api/billing/webhook') return next();
@@ -4993,7 +5016,7 @@ app.patch('/api/signals/:id/visibility', authenticateToken, async (req, res) => 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/search', authenticateToken, async (req, res) => {
+app.get('/api/search', authenticateToken, rateLimit(30), async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
     const q = req.query.q;
@@ -7305,19 +7328,7 @@ app.get('/api/db-test', authenticateToken, requireAdmin, async (req, res) => {
     res.json({ ok: false, error: e.message });
   }
 });
-// Temporary: check sales data
-app.get('/api/debug/sales', async (req, res) => {
-  try {
-    const [conversions, accounts, financials, recent, cols] = await Promise.all([
-      platformPool.query('SELECT tenant_id, COUNT(*) AS c, COALESCE(SUM(placement_fee),0) AS total_fees FROM conversions GROUP BY tenant_id'),
-      platformPool.query('SELECT tenant_id, COUNT(*) AS c FROM accounts GROUP BY tenant_id'),
-      platformPool.query('SELECT tenant_id, COUNT(*) AS c, COALESCE(SUM(total_invoiced),0) AS total FROM account_financials GROUP BY tenant_id').catch(() => ({ rows: [] })),
-      platformPool.query('SELECT id, role_title, placement_fee, source, created_at FROM conversions ORDER BY created_at DESC LIMIT 5'),
-      platformPool.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'conversions' ORDER BY ordinal_position"),
-    ]);
-    res.json({ conversions: conversions.rows, accounts: accounts.rows, financials: financials.rows, recent: recent.rows, conversions_columns: cols.rows.map(r => r.column_name) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+// Debug endpoint removed — was exposing cross-tenant financial data without auth
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -12694,9 +12705,15 @@ app.post('/api/admin/trigger-crm-sync', authenticateToken, requireAdmin, async (
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Initiate OAuth flow — visit this in browser
+// In-memory OAuth state store — maps state token to tenant_id (5 min TTL)
+const xeroOAuthStates = new Map();
+setInterval(() => { var now = Date.now(); for (var [k, v] of xeroOAuthStates) { if (now - v.at > 300000) xeroOAuthStates.delete(k); } }, 60000);
+
 app.get('/api/xero/connect', authenticateToken, (req, res) => {
   if (!process.env.XERO_CLIENT_ID) return res.status(500).json({ error: 'XERO_CLIENT_ID not configured' });
   const state = crypto.randomBytes(16).toString('hex');
+  // Store state → tenant mapping for callback validation
+  xeroOAuthStates.set(state, { tenant_id: req.tenant_id, user_id: req.user.user_id, at: Date.now() });
   const authUrl = 'https://login.xero.com/identity/connect/authorize?' + new URLSearchParams({
     response_type: 'code',
     client_id: process.env.XERO_CLIENT_ID,
@@ -12707,8 +12724,13 @@ app.get('/api/xero/connect', authenticateToken, (req, res) => {
   res.redirect(authUrl);
 });
 
-// OAuth callback — exchanges code for tokens
+// OAuth callback — validates state parameter, then exchanges code for tokens
 app.get('/api/xero/callback', async (req, res) => {
+  // Validate OAuth state — prevents CSRF and tenant hijacking
+  const stateData = xeroOAuthStates.get(req.query.state);
+  if (!stateData) return res.status(403).send('Invalid or expired OAuth state. Please retry from Settings.');
+  xeroOAuthStates.delete(req.query.state);
+  const callbackTenantId = stateData.tenant_id;
   const { code } = req.query;
   if (!code) return res.status(400).send('Missing authorization code');
 
