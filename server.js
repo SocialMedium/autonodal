@@ -6551,20 +6551,55 @@ async function verifyHuddleMember(huddleId, tenantId) {
   return rows[0] || null;
 }
 
+// Embed huddle mission into Qdrant for semantic signal matching
+async function embedHuddleMission(huddleId, huddle) {
+  if (!process.env.OPENAI_API_KEY || !process.env.QDRANT_URL) return;
+  try {
+    var parts = [huddle.name, huddle.purpose || huddle.description || ''];
+    var cfg = huddle.signal_config || {};
+    if (cfg.sectors?.length) parts.push('Sectors: ' + cfg.sectors.join(', '));
+    if (cfg.geography?.length) parts.push('Geography: ' + cfg.geography.join(', '));
+    if (cfg.mission_keywords) parts.push(cfg.mission_keywords);
+    var text = parts.filter(Boolean).join('\n').slice(0, 8000);
+    if (text.length < 5) return;
+
+    var vector = await generateQueryEmbedding(text);
+    var body = JSON.stringify({ points: [{ id: Date.now(), vector: vector, payload: { huddle_id: huddleId, name: huddle.name, type: 'huddle_mission' } }] });
+    var url = new URL('/collections/searches/points', process.env.QDRANT_URL);
+    await new Promise(function(resolve, reject) {
+      var req = https.request({ hostname: url.hostname, port: url.port || 443, path: url.pathname + '?wait=true', method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'api-key': process.env.QDRANT_API_KEY }, timeout: 10000 },
+        function(res) { var c = []; res.on('data', function(d) { c.push(d); }); res.on('end', function() { resolve(); }); });
+      req.on('error', reject);
+      req.write(body);
+      req.end();
+    });
+    console.log('[Huddle] Mission embedded for ' + huddle.name);
+  } catch (e) { console.warn('[Huddle] Embed failed:', e.message); }
+}
+
 // POST /api/huddles — create a new huddle
 app.post('/api/huddles', authenticateToken, async function(req, res) {
   try {
-    var { name, description, purpose, visibility, phase_label, target_date } = req.body;
+    var { name, description, purpose, visibility, phase_label, target_date, geography, sectors, signal_types } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
 
     var slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     slug = slug + '-' + Date.now().toString(36);
 
+    // Build signal_config from mission parameters
+    var signalConfig = {};
+    if (geography?.length) signalConfig.geography = geography;
+    if (sectors?.length) signalConfig.sectors = sectors;
+    if (signal_types?.length) signalConfig.signal_types = signal_types;
+    if (purpose) signalConfig.mission_keywords = purpose.replace(/[^\w\s]/g, ' ').split(/\s+/).filter(function(w) { return w.length > 3; }).slice(0, 20).join(' ');
+
     var { rows } = await platformPool.query(
-      `INSERT INTO huddles (name, slug, description, purpose, creator_tenant_id, visibility, phase_label, target_date)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      `INSERT INTO huddles (name, slug, description, purpose, creator_tenant_id, visibility, phase_label, target_date, signal_config)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
       [name, slug, description || null, purpose || null, req.tenant_id,
-       visibility || 'private', phase_label || null, target_date || null]
+       visibility || 'private', phase_label || null, target_date || null,
+       JSON.stringify(signalConfig)]
     );
     var huddle = rows[0];
 
@@ -6575,10 +6610,64 @@ app.post('/api/huddles', authenticateToken, async function(req, res) {
       [huddle.id, req.tenant_id]
     );
 
+    // Embed mission for semantic signal matching
+    await embedHuddleMission(huddle.id, { name, purpose, signal_config: signalConfig });
+
     res.status(201).json(huddle);
   } catch (err) {
     console.error('Create huddle error:', err.message);
     res.status(500).json({ error: 'Failed to create huddle' });
+  }
+});
+
+// PATCH /api/huddles/:id — update huddle mission, config, metadata
+app.patch('/api/huddles/:id', authenticateToken, async function(req, res) {
+  try {
+    // Verify membership
+    var membership = await verifyHuddleMember(req.params.id, req.tenant_id);
+    if (!membership) return res.status(403).json({ error: 'Not a member of this huddle' });
+
+    var { name, description, purpose, geography, sectors, signal_types, phase_label, target_date, visibility } = req.body;
+
+    // Load current huddle
+    var { rows: [current] } = await platformPool.query('SELECT * FROM huddles WHERE id = $1', [req.params.id]);
+    if (!current) return res.status(404).json({ error: 'Huddle not found' });
+
+    // Build updated signal_config
+    var cfg = current.signal_config || {};
+    var missionChanged = false;
+    if (geography !== undefined) { cfg.geography = geography; missionChanged = true; }
+    if (sectors !== undefined) { cfg.sectors = sectors; missionChanged = true; }
+    if (signal_types !== undefined) { cfg.signal_types = signal_types; missionChanged = true; }
+    if (purpose !== undefined && purpose !== current.purpose) {
+      cfg.mission_keywords = purpose.replace(/[^\w\s]/g, ' ').split(/\s+/).filter(function(w) { return w.length > 3; }).slice(0, 20).join(' ');
+      missionChanged = true;
+    }
+
+    // Update
+    var { rows: [updated] } = await platformPool.query(`
+      UPDATE huddles SET
+        name = COALESCE($2, name),
+        description = COALESCE($3, description),
+        purpose = COALESCE($4, purpose),
+        signal_config = $5,
+        phase_label = COALESCE($6, phase_label),
+        target_date = COALESCE($7, target_date),
+        visibility = COALESCE($8, visibility),
+        updated_at = NOW()
+      WHERE id = $1 RETURNING *
+    `, [req.params.id, name || null, description || null, purpose || null,
+        JSON.stringify(cfg), phase_label || null, target_date || null, visibility || null]);
+
+    // Re-embed mission if config changed
+    if (missionChanged) {
+      await embedHuddleMission(updated.id, { name: updated.name, purpose: updated.purpose, signal_config: cfg });
+    }
+
+    res.json(updated);
+  } catch (err) {
+    console.error('Update huddle error:', err.message);
+    res.status(500).json({ error: 'Failed to update huddle' });
   }
 });
 
