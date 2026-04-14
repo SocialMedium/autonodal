@@ -4865,7 +4865,25 @@ app.get('/api/companies/:id', authenticateToken, async (req, res) => {
 // SEMANTIC SEARCH
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ─── Embedding cache — same query text = same vector, skip OpenAI call ───
+const embeddingCache = new Map();
+const EMBEDDING_CACHE_TTL = 300000; // 5 min
+setInterval(() => {
+  var now = Date.now();
+  for (var [k, v] of embeddingCache) { if (now - v.at > EMBEDDING_CACHE_TTL) embeddingCache.delete(k); }
+}, 60000);
+
 async function generateQueryEmbedding(text) {
+  var cacheKey = text.trim().toLowerCase().slice(0, 200);
+  var cached = embeddingCache.get(cacheKey);
+  if (cached && (Date.now() - cached.at) < EMBEDDING_CACHE_TTL) return cached.vector;
+
+  var vector = await _generateQueryEmbeddingRaw(text);
+  embeddingCache.set(cacheKey, { vector, at: Date.now() });
+  return vector;
+}
+
+function _generateQueryEmbeddingRaw(text) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       model: 'text-embedding-3-small',
@@ -4987,15 +5005,33 @@ app.get('/api/search', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Search query too short' });
     }
 
-    // Generate embedding for the query
+    // Generate embedding (cached — repeat searches skip OpenAI)
     const vector = await generateQueryEmbedding(q);
 
     const results = { people: [], companies: [], documents: [] };
 
+    // Fire all Qdrant searches in parallel — biggest speed win
+    const collectionsToSearch = [];
+    if (collection === 'people' || collection === 'all') collectionsToSearch.push('people');
+    if (collection === 'companies' || collection === 'all') collectionsToSearch.push('companies');
+    if (collection === 'documents' || collection === 'all') collectionsToSearch.push('documents');
+    if (collection === 'signals' || collection === 'all') collectionsToSearch.push('signal_events');
+    if (collection === 'case_studies' || collection === 'all') collectionsToSearch.push('case_studies');
+    if (collection === 'interactions' || collection === 'all') collectionsToSearch.push('interactions');
+
+    const qdrantStartTime = Date.now();
+    const qdrantResultsMap = {};
+    const qdrantPromises = collectionsToSearch.map(async (coll) => {
+      try {
+        const raw = await qdrantSearch(coll, vector, qdrantLimit);
+        qdrantResultsMap[coll] = raw.filter(r => r.score >= minScore);
+      } catch (e) { qdrantResultsMap[coll] = []; }
+    });
+    await Promise.all(qdrantPromises);
+
     // Search people
     if (collection === 'people' || collection === 'all') {
-      const qdrantResultsRaw = await qdrantSearch('people', vector, qdrantLimit);
-      const qdrantResults = qdrantResultsRaw.filter(r => r.score >= minScore);
+      const qdrantResults = qdrantResultsMap['people'] || [];
 
       if (qdrantResults.length > 0) {
         // IDs may be UUIDs or numeric — person_id is in payload for numeric IDs
@@ -5070,7 +5106,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
     // Search companies
     if (collection === 'companies' || collection === 'all') {
-      const qdrantResults = (await qdrantSearch('companies', vector, qdrantLimit)).filter(r => r.score >= minScore);
+      const qdrantResults = qdrantResultsMap['companies'] || [];
 
       if (qdrantResults.length > 0) {
         const uuidRx = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -5115,7 +5151,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
     // Search documents
     if (collection === 'documents' || collection === 'all') {
-      const qdrantResults = (await qdrantSearch('documents', vector, qdrantLimit)).filter(r => r.score >= minScore);
+      const qdrantResults = qdrantResultsMap['documents'] || [];
 
       if (qdrantResults.length > 0) {
         // IDs may be UUIDs or numeric — document_id is in payload for numeric IDs
@@ -5152,7 +5188,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Search signals (direct)
     if (collection === 'signals' || collection === 'all') {
       try {
-        const qdrantResults = (await qdrantSearch('signal_events', vector, qdrantLimit)).filter(r => r.score >= minScore);
+        const qdrantResults = qdrantResultsMap['signal_events'] || [];
         if (qdrantResults.length > 0) {
           const sigIds = qdrantResults.map(r => r.payload?.signal_id).filter(Boolean);
           if (sigIds.length > 0) {
@@ -5190,11 +5226,11 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Search case studies (replaces placements in search — more useful, no duplicate retainer stages)
     if (collection === 'case_studies' || collection === 'all') {
       try {
-        const csLimit = qdrantLimit;
+
         // Try Qdrant first
         let csResults = [];
         try {
-          const qdrantResults = (await qdrantSearch('case_studies', vector, csLimit)).filter(r => r.score >= minScore);
+          const qdrantResults = qdrantResultsMap['case_studies'] || [];
           if (qdrantResults.length > 0) {
             // IDs are numeric timestamps — case_study_id is in the payload
             const csIds = qdrantResults.map(r => r.payload?.case_study_id).filter(Boolean);
@@ -5233,7 +5269,7 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Search interactions
     if (collection === 'interactions' || collection === 'all') {
       try {
-        const qdrantResults = (await qdrantSearch('interactions', vector, qdrantLimit)).filter(r => r.score >= minScore);
+        const qdrantResults = qdrantResultsMap['interactions'] || [];
         if (qdrantResults.length > 0) {
           const intIds = qdrantResults.map(r => r.payload?.interaction_id).filter(Boolean);
           if (intIds.length > 0) {
