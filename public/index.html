@@ -3009,14 +3009,14 @@ async function doSearch() {
   body.innerHTML = '<div class="search-loading"><div class="spinner"></div><div>Searching ' + collLabel + '...</div></div>';
 
   try {
-    const data = await api(`/api/search?q=${encodeURIComponent(q)}&collection=${activeCollection}&limit=${activeCollection === 'all' ? 50 : 100}`);
+    const data = await api(`/api/search?q=${encodeURIComponent(q)}&collection=${activeCollection}&min_score=0.25`);
     const r = data.results;
     title.textContent = `"${q}" — ${data.total} results`;
 
     const SIG_C = { capital_raising:'#EF9F27', strategic_hiring:'#5DCAA5', geographic_expansion:'#378ADD', leadership_change:'#D4537E', ma_activity:'#AFA9EC', product_launch:'#97C459', layoffs:'#E24B4A', restructuring:'#E24B4A', partnership:'#85B7EB' };
     window._searchRenderers = {};
 
-    var INITIAL_SHOW = 6;
+    var INITIAL_SHOW = 12;
     function mkGroup(key, label, items, cols, renderFn) {
       window._searchRenderers[key] = renderFn;
       if (!items || !items.length) return '';
@@ -3162,7 +3162,7 @@ async function loadMoreResults(collection) {
   if (btn) { btn.textContent = 'Loading...'; btn.disabled = true; }
 
   try {
-    var data = await api('/api/search?q=' + encodeURIComponent(q) + '&collection=' + collection + '&limit=50');
+    var data = await api('/api/search?q=' + encodeURIComponent(q) + '&collection=' + collection + '&min_score=0.25');
     var items = data.results[collection] || [];
     if (!items.length) { if (btn) btn.textContent = 'No more results'; return; }
 

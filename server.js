@@ -4979,8 +4979,9 @@ app.get('/api/search', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
     const q = req.query.q;
-    const collection = req.query.collection || 'all'; // people, documents, all
-    const limit = Math.min(parseInt(req.query.limit) || 20, 200);
+    const collection = req.query.collection || 'all';
+    const limit = parseInt(req.query.limit) || 500;
+    const minScore = parseFloat(req.query.min_score) || 0.25; // relevance threshold
 
     if (!q || q.trim().length < 2) {
       return res.status(400).json({ error: 'Search query too short' });
@@ -4993,7 +4994,8 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
     // Search people
     if (collection === 'people' || collection === 'all') {
-      const qdrantResults = await qdrantSearch('people', vector, limit);
+      const qdrantResultsRaw = await qdrantSearch('people', vector, limit);
+      const qdrantResults = qdrantResultsRaw.filter(r => r.score >= minScore);
 
       if (qdrantResults.length > 0) {
         // IDs may be UUIDs or numeric — person_id is in payload for numeric IDs
@@ -5068,8 +5070,8 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
     // Search companies
     if (collection === 'companies' || collection === 'all') {
-      const compLimit = collection === 'all' ? Math.min(limit, 30) : limit;
-      const qdrantResults = await qdrantSearch('companies', vector, compLimit);
+      const compLimit = limit;
+      const qdrantResults = (await qdrantSearch('companies', vector, compLimit)).filter(r => r.score >= minScore);
 
       if (qdrantResults.length > 0) {
         const uuidRx = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -5114,8 +5116,8 @@ app.get('/api/search', authenticateToken, async (req, res) => {
 
     // Search documents
     if (collection === 'documents' || collection === 'all') {
-      const docLimit = collection === 'all' ? Math.min(limit, 30) : limit;
-      const qdrantResults = await qdrantSearch('documents', vector, docLimit);
+      const docLimit = limit;
+      const qdrantResults = (await qdrantSearch('documents', vector, docLimit)).filter(r => r.score >= minScore);
 
       if (qdrantResults.length > 0) {
         // IDs may be UUIDs or numeric — document_id is in payload for numeric IDs
@@ -5152,8 +5154,8 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Search signals (direct)
     if (collection === 'signals' || collection === 'all') {
       try {
-        const sigLimit = collection === 'all' ? Math.min(limit, 30) : limit;
-        const qdrantResults = await qdrantSearch('signal_events', vector, sigLimit);
+        const sigLimit = limit;
+        const qdrantResults = (await qdrantSearch('signal_events', vector, sigLimit)).filter(r => r.score >= minScore);
         if (qdrantResults.length > 0) {
           const sigIds = qdrantResults.map(r => r.payload?.signal_id).filter(Boolean);
           if (sigIds.length > 0) {
@@ -5187,11 +5189,11 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Search case studies (replaces placements in search — more useful, no duplicate retainer stages)
     if (collection === 'case_studies' || collection === 'all') {
       try {
-        const csLimit = collection === 'all' ? Math.min(limit, 30) : limit;
+        const csLimit = limit;
         // Try Qdrant first
         let csResults = [];
         try {
-          const qdrantResults = await qdrantSearch('case_studies', vector, csLimit);
+          const qdrantResults = (await qdrantSearch('case_studies', vector, csLimit)).filter(r => r.score >= minScore);
           if (qdrantResults.length > 0) {
             // IDs are numeric timestamps — case_study_id is in the payload
             const csIds = qdrantResults.map(r => r.payload?.case_study_id).filter(Boolean);
@@ -5230,8 +5232,8 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     // Search interactions
     if (collection === 'interactions' || collection === 'all') {
       try {
-        const intLimit = collection === 'all' ? Math.min(limit, 20) : limit;
-        const qdrantResults = await qdrantSearch('interactions', vector, intLimit);
+        const intLimit = limit;
+        const qdrantResults = (await qdrantSearch('interactions', vector, intLimit)).filter(r => r.score >= minScore);
         if (qdrantResults.length > 0) {
           const intIds = qdrantResults.map(r => r.payload?.interaction_id).filter(Boolean);
           if (intIds.length > 0) {
