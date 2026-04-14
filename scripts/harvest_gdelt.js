@@ -76,15 +76,27 @@ async function matchCompanyFromTitle(title, domain) {
 
   // Extract capitalised multi-word phrases as company name candidates
   var candidates = title.match(/\b[A-Z][A-Za-z]+(?:\s[A-Z][A-Za-z]+){0,2}\b/g) || [];
-  var stopwords = ['The', 'New', 'Says', 'How', 'Why', 'What', 'CEO', 'CFO', 'CTO', 'Has', 'Will', 'For', 'And', 'But'];
+  var stopwords = ['The', 'New', 'Says', 'How', 'Why', 'What', 'CEO', 'CFO', 'CTO', 'Has', 'Will', 'For', 'And', 'But',
+    'Inc', 'Ltd', 'Corp', 'Global', 'Group', 'World', 'First', 'Next', 'One', 'All', 'Just', 'Most', 'Top',
+    'Native', 'Level', 'Signal', 'Standard', 'Prime', 'Rise', 'Core', 'Apex', 'Edge', 'Nova', 'Alpha', 'Beta',
+    'Bold', 'True', 'Clear', 'Bright', 'Pure', 'Open', 'Live', 'Real', 'Fast', 'Smart'];
 
   for (var i = 0; i < Math.min(candidates.length, 5); i++) {
     var c = candidates[i];
     if (c.length < 3 || stopwords.includes(c)) continue;
-    var r = await pool.query(
-      "SELECT id, name FROM companies WHERE tenant_id = $1 AND (name ILIKE $2 OR name ILIKE $3) LIMIT 1",
-      [TENANT_ID, c, '%' + c + '%']
-    );
+    // For short names (<=5 chars), only exact match to avoid false positives
+    var r;
+    if (c.length <= 5) {
+      r = await pool.query(
+        "SELECT id, name FROM companies WHERE tenant_id = $1 AND LOWER(name) = LOWER($2) LIMIT 1",
+        [TENANT_ID, c]
+      );
+    } else {
+      r = await pool.query(
+        "SELECT id, name FROM companies WHERE tenant_id = $1 AND (LOWER(name) = LOWER($2) OR name ILIKE $3) LIMIT 1",
+        [TENANT_ID, c, c + '%']
+      );
+    }
     if (r.rows.length > 0) return r.rows[0];
   }
 

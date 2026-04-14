@@ -209,16 +209,28 @@ async function storeSignals(document, analysis, source) {
   
   let stored = 0;
   
-  // Find or create company if detected
+  // Find or create company if detected — disambiguate generic names
   let companyId = null;
   if (analysis.company?.name) {
-    const company = await db.queryOne(
-      'SELECT id FROM companies WHERE LOWER(name) = LOWER($1)',
+    const candidates = await db.queryAll(
+      'SELECT id, name, domain, sector FROM companies WHERE LOWER(name) = LOWER($1) ORDER BY domain IS NOT NULL DESC, created_at ASC',
       [analysis.company.name]
     );
-    
-    if (company) {
-      companyId = company.id;
+
+    if (candidates?.length === 1) {
+      companyId = candidates[0].id;
+    } else if (candidates?.length > 1) {
+      // Multiple companies share this name — disambiguate
+      // Prefer: matching sector > has domain > has signals > oldest record
+      let best = candidates[0];
+      const signalSector = (analysis.company.sector || '').toLowerCase();
+      for (const c of candidates) {
+        if (signalSector && c.sector && c.sector.toLowerCase().includes(signalSector)) {
+          best = c; break;
+        }
+        if (c.domain && !best.domain) best = c;
+      }
+      companyId = best.id;
     } else {
       // Create new company
       const newCompany = await db.queryOne(`
