@@ -2233,10 +2233,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
 
     const [signalsResult, countResult] = await Promise.all([
       db.query(`
-        WITH tenant_cos AS (
-          SELECT id, LOWER(name) AS lname, is_client FROM companies WHERE tenant_id = $1
-        ),
-        ranked_signals AS (
+        WITH ranked_signals AS (
           SELECT se.*,
                  ROW_NUMBER() OVER (
                    PARTITION BY se.company_id, date_trunc('day', se.detected_at)
@@ -2256,33 +2253,15 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
                se.hiring_implications, se.is_megacap, se.image_url,
                se.signals_in_cluster,
                c.sector, c.geography,
-               CASE WHEN c.tenant_id = $1 THEN c.is_client
-                 ELSE COALESCE((SELECT tc.is_client FROM tenant_cos tc WHERE tc.lname = LOWER(c.name) AND tc.is_client = true LIMIT 1), false)
-               END AS is_client,
+               COALESCE(c.is_client, false) AS is_client,
                c.country_code, c.company_tier,
                ed.source_name, ed.source_type AS doc_source_type,
                ed.title AS doc_title, ed.summary AS doc_summary,
                ed.image_url AS doc_image_url, ed.audio_url AS doc_audio_url,
-               (SELECT COUNT(*) FROM people p
-                WHERE p.tenant_id = $1
-                  AND p.current_company_id IN (SELECT tc.id FROM tenant_cos tc WHERE tc.lname = LOWER(se.company_name))
-               ) AS contact_count,
-               (SELECT COUNT(DISTINCT tp2.person_id) FROM team_proximity tp2
-                JOIN people p2 ON p2.id = tp2.person_id AND p2.tenant_id = $1
-                WHERE tp2.tenant_id = $1 AND tp2.relationship_strength >= 0.25
-                  AND p2.current_company_id IN (SELECT tc.id FROM tenant_cos tc WHERE tc.lname = LOWER(se.company_name))
-               ) AS prox_connection_count,
-               (SELECT u2.name FROM team_proximity tp3
-                JOIN people p3 ON p3.id = tp3.person_id AND p3.tenant_id = $1
-                JOIN users u2 ON u2.id = tp3.team_member_id
-                WHERE tp3.tenant_id = $1 AND tp3.relationship_strength >= 0.25
-                  AND p3.current_company_id IN (SELECT tc.id FROM tenant_cos tc WHERE tc.lname = LOWER(se.company_name))
-                ORDER BY tp3.relationship_strength DESC LIMIT 1
-               ) AS best_connector_name,
-               (SELECT COUNT(*) FROM conversions pl JOIN accounts cl ON cl.id = pl.client_id
-                WHERE pl.tenant_id = $1
-                  AND cl.company_id IN (SELECT tc.id FROM tenant_cos tc WHERE tc.lname = LOWER(se.company_name))
-               ) AS placement_count,
+               COALESCE(pc.cnt, 0) AS contact_count,
+               COALESCE(px.cnt, 0) AS prox_connection_count,
+               px.best_name AS best_connector_name,
+               COALESCE(plc.cnt, 0) AS placement_count,
                sd.id AS dispatch_id, sd.status AS dispatch_status,
                sd.claimed_by, sd.claimed_by_name, sd.blog_title AS dispatch_blog_title,
                CASE WHEN c.country_code = ANY($${geoBoostParam}) THEN true ELSE false END AS geo_relevant
@@ -2297,6 +2276,26 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
           WHERE sd2.signal_event_id = se.id
           ORDER BY sd2.generated_at DESC LIMIT 1
         ) sd ON true
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*) AS cnt FROM people p
+          WHERE p.current_company_id = se.company_id AND p.tenant_id = $1
+        ) pc ON true
+        LEFT JOIN LATERAL (
+          SELECT COUNT(DISTINCT tp2.person_id) AS cnt,
+                 (SELECT u3.name FROM team_proximity tp3
+                  JOIN people p3 ON p3.id = tp3.person_id
+                  JOIN users u3 ON u3.id = tp3.team_member_id
+                  WHERE tp3.tenant_id = $1 AND p3.current_company_id = se.company_id AND tp3.relationship_strength >= 0.25
+                  ORDER BY tp3.relationship_strength DESC LIMIT 1) AS best_name
+          FROM team_proximity tp2
+          JOIN people p2 ON p2.id = tp2.person_id AND p2.tenant_id = $1
+          WHERE tp2.tenant_id = $1 AND tp2.relationship_strength >= 0.25 AND p2.current_company_id = se.company_id
+        ) px ON true
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*) AS cnt FROM conversions pl
+          JOIN accounts cl ON cl.id = pl.client_id
+          WHERE pl.tenant_id = $1 AND cl.company_id = se.company_id
+        ) plc ON true
         LEFT JOIN LATERAL (
           SELECT COUNT(*) AS cnt FROM people p
           WHERE p.current_company_id = se.company_id
