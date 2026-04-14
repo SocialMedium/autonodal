@@ -73,6 +73,8 @@ const pool = new Pool({
 
 // Tenant-isolated DB client — use for all tenant-scoped queries
 const { TenantDB, platformPool } = require('./lib/TenantDB');
+const { searchPublications, computeResearchMomentum } = require('./lib/research_search');
+const RESEARCH_SEARCH_ENABLED = process.env.RESEARCH_SEARCH_ENABLED !== 'false';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED CONSTANTS
@@ -2077,6 +2079,7 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
     // If huddle context, get all member tenant IDs
     let huddleTenantIds = null;
     let huddleTenantNames = {};
+    let huddleConfig = null;
     if (huddleId) {
       try {
         const membership = await verifyHuddleMember(huddleId, req.tenant_id);
@@ -2087,6 +2090,9 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
           );
           huddleTenantIds = members.map(m => m.tenant_id);
           members.forEach(m => { huddleTenantNames[m.tenant_id] = m.name; });
+          // Load huddle signal config for mission-based filtering
+          const { rows: [huddle] } = await platformPool.query('SELECT signal_config, purpose FROM huddles WHERE id = $1', [huddleId]);
+          huddleConfig = huddle?.signal_config || {};
         }
       } catch (e) {}
     }
@@ -2175,6 +2181,37 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
       });
 
       where += ` AND (${orParts.join(' OR ')})`;
+    }
+
+    // Huddle mission filter — boost/filter by sectors and signal types from huddle config
+    if (huddleConfig && !type) {
+      var missionOr = [];
+      if (huddleConfig.signal_types?.length) {
+        paramIdx++;
+        missionOr.push(`se.signal_type = ANY($${paramIdx})`);
+        params.push(huddleConfig.signal_types);
+      }
+      if (huddleConfig.sectors?.length) {
+        huddleConfig.sectors.forEach(function(s) {
+          paramIdx++;
+          missionOr.push(`c.sector ILIKE $${paramIdx}`);
+          params.push('%' + s + '%');
+          paramIdx++;
+          missionOr.push(`se.evidence_summary ILIKE $${paramIdx}`);
+          params.push('%' + s + '%');
+        });
+      }
+      if (huddleConfig.mission_keywords) {
+        huddleConfig.mission_keywords.split(/\s+/).slice(0, 5).forEach(function(kw) {
+          if (kw.length < 3) return;
+          paramIdx++;
+          missionOr.push(`(se.evidence_summary ILIKE $${paramIdx} OR se.company_name ILIKE $${paramIdx})`);
+          params.push('%' + kw + '%');
+        });
+      }
+      if (missionOr.length > 0) {
+        where += ' AND (' + missionOr.join(' OR ') + ')';
+      }
     }
 
     // Network filter — only signals where we have contacts at the company
@@ -2968,6 +3005,52 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
       proximity = rows;
     } catch (e) {}
 
+    // Huddle proximity — if huddle context active, show all members' connections
+    var huddle_proximity = null;
+    var huddleId = req.query.huddle_id;
+    if (huddleId) {
+      try {
+        var hMembership = await verifyHuddleMember(huddleId, req.tenant_id);
+        if (hMembership) {
+          var { rows: hMembers } = await platformPool.query(
+            `SELECT hm.tenant_id, t.name AS tenant_name FROM huddle_members hm JOIN tenants t ON t.id = hm.tenant_id WHERE hm.huddle_id = $1 AND hm.status = 'active'`,
+            [huddleId]
+          );
+          var hProx = [];
+          for (var hm of hMembers) {
+            var { rows: tp } = await platformPool.query(
+              `SELECT MAX(tp.relationship_strength) AS score,
+                      MAX(tp.last_interaction_date) AS last_contact,
+                      STRING_AGG(DISTINCT tp.relationship_type, ', ') AS types
+               FROM team_proximity tp
+               JOIN users u ON u.id = tp.team_member_id
+               WHERE tp.person_id = $1 AND u.tenant_id = $2`,
+              [req.params.id, hm.tenant_id]
+            );
+            var score = tp[0]?.score || 0;
+            hProx.push({
+              member_name: hm.tenant_name,
+              tenant_id: hm.tenant_id,
+              score: parseFloat(score) || 0,
+              classification: score >= 0.7 ? 'Strong' : score >= 0.4 ? 'Warm' : score >= 0.2 ? 'Cool' : 'Cold',
+              last_contact: tp[0]?.last_contact || null,
+              types: tp[0]?.types || null,
+            });
+          }
+          hProx.sort(function(a, b) { return b.score - a.score; });
+          var bestPath = hProx[0];
+          huddle_proximity = {
+            members: hProx,
+            best_entry_point: bestPath?.score > 0 ? {
+              member_name: bestPath.member_name,
+              score: bestPath.score,
+              classification: bestPath.classification,
+            } : null,
+          };
+        }
+      } catch (e) {}
+    }
+
     res.json({
       ...person,
       research_notes: notes,
@@ -2978,6 +3061,7 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
       interaction_stats: stats,
       colleagues,
       proximity,
+      huddle_proximity,
     });
   } catch (err) {
     console.error('Person detail error:', err.message);
@@ -5041,6 +5125,7 @@ app.get('/api/search', authenticateToken, rateLimit(30), async (req, res) => {
     if (collection === 'signals' || collection === 'all') collectionsToSearch.push('signal_events');
     if (collection === 'case_studies' || collection === 'all') collectionsToSearch.push('case_studies');
     if (collection === 'interactions' || collection === 'all') collectionsToSearch.push('interactions');
+    const searchPublicationsEnabled = RESEARCH_SEARCH_ENABLED && (collection === 'publications' || collection === 'all');
 
     const qdrantStartTime = Date.now();
     const qdrantResultsMap = {};
@@ -5314,6 +5399,17 @@ app.get('/api/search', authenticateToken, rateLimit(30), async (req, res) => {
       } catch (e) { console.error('Search collection error:', e.message?.substring(0, 80)); }
     }
 
+    // Search publications (ResearchMedium — separate collection, no tenant filter)
+    if (searchPublicationsEnabled) {
+      try {
+        const pubs = await searchPublications(vector, { limit: 10, scoreThreshold: 0.35 });
+        if (pubs.length > 0) {
+          results.publications = pubs;
+          results._research_momentum = computeResearchMomentum(pubs);
+        }
+      } catch (e) { /* RM unavailable — graceful degradation */ }
+    }
+
     // Add score field to existing results
     results.people = (results.people || []).map(p => ({ ...p, score: (p.match_score || 50) / 100 }));
     results.companies = (results.companies || []).map(c => ({ ...c, score: (c.match_score || 50) / 100 }));
@@ -5332,7 +5428,8 @@ app.get('/api/search', authenticateToken, rateLimit(30), async (req, res) => {
       results,
       total: (results.people?.length || 0) + (results.companies?.length || 0) +
              (results.documents?.length || 0) + (results.signals?.length || 0) +
-             (results.case_studies?.length || 0) + (results.interactions?.length || 0),
+             (results.case_studies?.length || 0) + (results.interactions?.length || 0) +
+             (results.publications?.length || 0),
     });
   } catch (err) {
     console.error('Search error:', err.message);
@@ -5667,6 +5764,13 @@ app.get('/api/public/stats', async (req, res) => {
       upcoming_events_30d: parseInt(s.upcoming_events_30d || 0),
       active_event_sources: parseInt(s.active_event_sources || 0),
       regions: ['AMER', 'EUR', 'MENA', 'ASIA', 'OCE'],
+      research: RESEARCH_SEARCH_ENABLED ? {
+        publications: 2067759,
+        researchers: 939804,
+        repositories: 58,
+        year_range: '1898-2026',
+        embedded_pct: 99.5,
+      } : null,
       updated_at: new Date().toISOString()
     };
 

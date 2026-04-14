@@ -213,7 +213,7 @@ const _from=_params.get('from'),_fromId=_params.get('from_id'),_fromName=decodeU
 const p=await api('/api/people/'+id);if(!p)return;
 document.title=(p.full_name||'Person')+' — Signals';
 const ini=(p.full_name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-const notes=p.research_notes||[];const ixs=p.interactions||[];const csig=p.company_signals||[];const psig=p.person_signals||[];const colls=p.colleagues||[];const s=p.interaction_stats||{};const prox=p.proximity||[];const cjobs=p.company_jobs||[];
+const notes=p.research_notes||[];const ixs=p.interactions||[];const csig=p.company_signals||[];const psig=p.person_signals||[];const colls=p.colleagues||[];const s=p.interaction_stats||{};const prox=p.proximity||[];const cjobs=p.company_jobs||[];const hProx=p.huddle_proximity||null;
 window.proxData=prox;
 
 const coId=p.company_id_linked||p.current_company_id||'';
@@ -499,6 +499,30 @@ if(ixs.length){
   h+='<div class="card" style="margin-bottom:0"><div class="card-head"><div class="card-title">Interactions</div></div><div style="font-size:12px;color:var(--ink-4);padding:8px 0">No interactions recorded</div></div>';
 }
 h+='</div>'; // close sig-ix-grid
+
+// Huddle Proximity Panel — shown when viewing through a Huddle context
+if(hProx && hProx.members && hProx.members.length > 0){
+  var hpColors = { Strong: 'color:#059669;background:#ecfdf5', Warm: 'color:#2563eb;background:#eff6ff', Cool: 'color:#d97706;background:#fffbeb', Cold: 'color:#6b7280;background:#f3f4f6' };
+  h+='<div style="background:#fff;border:1px solid var(--rule);border-radius:10px;padding:16px 20px;margin-bottom:16px">';
+  h+='<div style="font-size:13px;font-weight:600;color:var(--ink-1);margin-bottom:12px;display:flex;align-items:center;gap:8px">&#x1F91D; Huddle Proximity';
+  h+='<span style="font-size:11px;font-weight:400;color:var(--ink-4)">' + esc(sessionStorage.getItem('activeHuddleName')||'') + '</span></div>';
+  if(hProx.best_entry_point && hProx.best_entry_point.score > 0){
+    h+='<div style="background:#eff6ff;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#1e40af">';
+    h+='<div style="font-size:11px;font-weight:600;margin-bottom:2px">Recommended approach</div>';
+    h+='Via <strong>' + esc(hProx.best_entry_point.member_name) + '</strong> — ' + hProx.best_entry_point.classification + ' connection</div>';
+  }
+  hProx.members.forEach(function(m){
+    var pct = Math.round(m.score * 100);
+    var cs = hpColors[m.classification] || hpColors.Cold;
+    h+='<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:13px">';
+    h+='<span style="color:var(--ink-2)">' + esc(m.member_name) + '</span>';
+    h+='<div style="display:flex;align-items:center;gap:8px">';
+    h+='<div style="width:80px;height:5px;background:var(--rule);border-radius:3px;overflow:hidden"><div style="width:' + pct + '%;height:100%;border-radius:3px;background:' + (m.classification==='Strong'?'#059669':m.classification==='Warm'?'#2563eb':m.classification==='Cool'?'#d97706':'#9ca3af') + '"></div></div>';
+    h+='<span style="font-size:11px;font-weight:500;padding:1px 6px;border-radius:4px;' + cs + '">' + m.classification + '</span>';
+    h+='</div></div>';
+  });
+  h+='</div>';
+}
 
 h+='<div class="card-grid">';
 
@@ -831,5 +855,6 @@ async function parseAndSaveCareer() {
 <script src="/signal-ticker.js" data-position="top"></script>
 <script src="/js/brand.js"></script>
 <script src="/js/user-menu.js"></script>
+<script src="/huddle-context.js"></script>
 </body>
 </html>
