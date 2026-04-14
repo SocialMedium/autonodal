@@ -67,8 +67,8 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--cream);color:var(--
 
 .w{max-width:1160px;margin:0 auto}.pad{padding:112px 48px}
 .tag{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--cobalt);display:flex;align-items:center;gap:12px;margin-bottom:28px}
-.tag::before{content:'';display:block;width:20px;height:1px;background:var(--cobalt)}
-.tag-light{color:var(--amber-light)}.tag-light::before{background:var(--amber-light)}
+.tag::before{content:'';display:block;width:24px;height:6px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='6' fill='none'%3E%3Cpath d='M0 3h20m0 0l-3-2.5M20 3l-3 2.5' stroke='%232851a3' stroke-width='1'/%3E%3C/svg%3E") no-repeat center}
+.tag-light{color:var(--amber-light)}.tag-light::before{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='6' fill='none'%3E%3Cpath d='M0 3h20m0 0l-3-2.5M20 3l-3 2.5' stroke='%23e89b3e' stroke-width='1'/%3E%3C/svg%3E") no-repeat center}
 h2{font-family:'Playfair Display',serif;font-size:clamp(34px,4vw,56px);font-weight:400;line-height:1.1;letter-spacing:-0.02em;margin-bottom:28px}
 h2 em{font-style:italic}.dark h2{color:var(--cream)}.dark h2 em{color:rgba(245,243,239,0.62)}.light h2 em{color:var(--ink-muted)}
 .body-l{font-size:19px;font-weight:300;line-height:1.8;color:var(--ink-mid);max-width:640px}
@@ -80,8 +80,8 @@ p.body{font-size:16px;font-weight:300;line-height:1.8;color:var(--ink-mid);margi
 .r{opacity:0;transform:translateY(20px);transition:opacity .65s ease,transform .65s ease}.r.on{opacity:1;transform:none}
 
 .icon-mark{display:flex;align-items:center;gap:16px;margin-bottom:40px}
-.icon-mark-line{flex:1;height:1px;background:rgba(26,25,22,0.08)}
-.icon-mark-line.dark-line{background:rgba(245,243,239,0.08)}
+.icon-mark-line{flex:1;height:6px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='6' fill='none'%3E%3Cpath d='M0 3h36m0 0l-3-2.5M36 3l-3 2.5' stroke='rgba(26,25,22,0.12)' stroke-width='1'/%3E%3C/svg%3E") no-repeat right center}
+.icon-mark-line.dark-line{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='6' fill='none'%3E%3Cpath d='M0 3h36m0 0l-3-2.5M36 3l-3 2.5' stroke='rgba(245,243,239,0.12)' stroke-width='1'/%3E%3C/svg%3E") no-repeat right center}
 .icon-mark svg{flex-shrink:0}
 
 .snapin{background:var(--void-mid);border-top:1px solid var(--void-border);border-bottom:1px solid var(--void-border)}
