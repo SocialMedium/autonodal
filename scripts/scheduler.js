@@ -403,16 +403,47 @@ Return ONLY valid JSON array:
           }
 
           // Find or create company — scope to tenant via source document
+          // For short names (<=8 chars), disambiguate by picking the record with most people/signals
+          // to avoid matching client "Factory" (AU) with signal about "Factory AI" (US)
           let companyId;
           const docTenantId = batch[signal.document_index - 1]?.tenant_id || batch[0]?.tenant_id;
+          const signalCompanyName = (signal.company || '').trim();
+
+          // Check if the evidence contains a longer/qualified name
+          const evidence = signal.summary || signal.evidence || '';
+          const qualifiedName = evidence.match(new RegExp(signalCompanyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[\\s.,]+(Inc|AI|Labs|Group|Ltd|Corp|Technologies|Tech|Digital|Platform|Health|Capital|Ventures|Studio)', 'i'));
+          const searchName = qualifiedName ? signalCompanyName + ' ' + qualifiedName[1] : signalCompanyName;
+
           const companyResult = await pool.query(
-            `SELECT id FROM companies WHERE LOWER(name) = LOWER($1) AND (tenant_id = $2 OR tenant_id IS NULL) LIMIT 1`,
-            [signal.company, docTenantId]
+            `SELECT id, name, is_client,
+                    (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) AS people_count
+             FROM companies c
+             WHERE LOWER(name) = LOWER($1) AND (tenant_id = $2 OR tenant_id IS NULL)
+             ORDER BY is_client DESC NULLS LAST, (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id) DESC
+             LIMIT 1`,
+            [searchName, docTenantId]
           );
 
           if (companyResult.rows.length > 0) {
-            companyId = companyResult.rows[0].id;
-          } else {
+            // For short common names, only match client if evidence mentions their geography/context
+            const match = companyResult.rows[0];
+            if (signalCompanyName.length <= 8 && match.is_client) {
+              // Check if evidence contradicts the client match (different geo, different product)
+              // Skip client match if evidence clearly refers to a different entity
+              const evidLower = evidence.toLowerCase();
+              const clientName = match.name.toLowerCase();
+              if (evidLower.includes(clientName)) {
+                companyId = match.id;
+              } else {
+                // Create a new company record for this distinct entity
+                companyId = null;
+              }
+            } else {
+              companyId = match.id;
+            }
+          }
+
+          if (!companyId) {
             const newCompany = await pool.query(
               `INSERT INTO companies (name, tenant_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING id`,
               [signal.company, docTenantId]
