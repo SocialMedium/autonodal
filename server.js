@@ -2183,7 +2183,8 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
       where += ` AND (${orParts.join(' OR ')})`;
     }
 
-    // Huddle mission filter — boost/filter by sectors and signal types from huddle config
+    // Huddle mission filter — uses indexed fields only (signal_type, sector, geography)
+    // Avoids ILIKE on evidence_summary which causes full table scans
     if (huddleConfig && !type) {
       var missionOr = [];
       if (huddleConfig.signal_types?.length) {
@@ -2196,17 +2197,21 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
           paramIdx++;
           missionOr.push(`c.sector ILIKE $${paramIdx}`);
           params.push('%' + s + '%');
-          paramIdx++;
-          missionOr.push(`se.evidence_summary ILIKE $${paramIdx}`);
-          params.push('%' + s + '%');
         });
       }
-      if (huddleConfig.mission_keywords) {
-        huddleConfig.mission_keywords.split(/\s+/).slice(0, 5).forEach(function(kw) {
-          if (kw.length < 3) return;
-          paramIdx++;
-          missionOr.push(`(se.evidence_summary ILIKE $${paramIdx} OR se.company_name ILIKE $${paramIdx})`);
-          params.push('%' + kw + '%');
+      if (huddleConfig.geography?.length) {
+        huddleConfig.geography.forEach(function(g) {
+          if (REGION_CODES[g]) {
+            REGION_CODES[g].forEach(function(code) {
+              paramIdx++;
+              missionOr.push(`c.country_code = $${paramIdx}`);
+              params.push(code);
+            });
+          } else {
+            paramIdx++;
+            missionOr.push(`c.geography ILIKE $${paramIdx}`);
+            params.push('%' + g + '%');
+          }
         });
       }
       if (missionOr.length > 0) {
