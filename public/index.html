@@ -2078,7 +2078,7 @@ const SIGNAL_BADGE_CLASS = {
 let currentFilter = 'all';
 let currentRegion = 'all';
 let signalOffset = 0;
-let activeHuddleId = '';
+let activeHuddleId = sessionStorage.getItem('activeHuddleId') || '';
 
 // Load user's huddles for context selector
 async function loadHuddleSelector() {
@@ -3775,6 +3775,17 @@ async function init() {
   loadConvergingThemes();
   loadReengageWindows();
   checkGoogleConnection();
+}
+
+// Called by huddle-context.js when context switches
+function refreshPageData() {
+  activeHuddleId = sessionStorage.getItem('activeHuddleId') || '';
+  signalOffset = 0;
+  loadHeroSignals();
+  loadSignals();
+  loadNetworkSignals();
+  loadTopPodcasts();
+  loadTalentInMotion();
 
   // Deep-link: highlight shared signal
   var sharedSig = new URLSearchParams(location.search).get('signal');

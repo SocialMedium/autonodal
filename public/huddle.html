@@ -211,9 +211,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
         <div class="huddle-meta" id="huddleMeta"></div>
       </div>
       <div class="header-actions">
+        <button class="btn btn-secondary" onclick="window._openEditHuddle()" id="editBtn" style="display:none;"></button>
+        <button class="btn btn-secondary" onclick="activateHuddleContext()" id="activateBtn" style="display:none;"></button>
         <button class="btn btn-secondary" onclick="openInviteModal()" id="inviteBtn" style="display:none;"></button>
         <button class="btn btn-danger" onclick="openExitConfirm()" id="exitBtn" style="display:none;"></button>
       </div>
+    </div>
+    <!-- Mission & config panel -->
+    <div id="missionPanel" style="margin-top:16px;padding:16px 20px;background:var(--surface-cool);border-radius:8px;display:none">
+      <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:8px">Mission</div>
+      <div id="missionText" style="font-size:14px;color:var(--ink-2);line-height:1.6;margin-bottom:12px"></div>
+      <div id="missionTags" style="display:flex;flex-wrap:wrap;gap:6px"></div>
     </div>
   </div>
 
@@ -389,6 +397,14 @@ function switchTab(tab) {
 /* ═══════════════════════════════════════
    LOAD HUDDLE
    ═══════════════════════════════════════ */
+function activateHuddleContext() {
+  var h = window._currentHuddle;
+  if (!h) return;
+  sessionStorage.setItem('activeHuddleId', HUDDLE_ID);
+  sessionStorage.setItem('activeHuddleName', h.name || '');
+  window.location.href = '/index.html';
+}
+
 function loadHuddle() {
   api('/api/huddles/' + HUDDLE_ID).then(function(data) {
     var h = data.huddle || data;
@@ -401,10 +417,29 @@ function loadHuddle() {
     meta += '<span><span class="icon-wrap">' + icon('users') + '</span> ' + (h.member_count || 0) + ' members</span>';
     document.getElementById('huddleMeta').innerHTML = meta;
 
+    document.getElementById('editBtn').style.display = '';
+    document.getElementById('editBtn').innerHTML = icon('settings') + ' Edit Huddle';
+    document.getElementById('activateBtn').style.display = '';
+    document.getElementById('activateBtn').innerHTML = icon('radar') + ' View Signals';
     document.getElementById('inviteBtn').style.display = '';
     document.getElementById('inviteBtn').innerHTML = icon('link') + ' Invite';
     document.getElementById('exitBtn').style.display = '';
-    document.getElementById('exitBtn').innerHTML = icon('user-minus') + ' Exit Huddle';
+    document.getElementById('exitBtn').innerHTML = icon('user-minus') + ' Exit';
+
+    // Mission panel
+    var cfg = h.signal_config || {};
+    if (h.purpose || cfg.sectors?.length || cfg.geography?.length) {
+      document.getElementById('missionPanel').style.display = '';
+      document.getElementById('missionText').textContent = h.purpose || '';
+      var tags = '';
+      (cfg.geography || []).forEach(function(g) { tags += '<span style="padding:3px 10px;border-radius:12px;font-size:11px;font-weight:500;background:var(--blue-soft);color:var(--blue)">' + esc(g) + '</span>'; });
+      (cfg.sectors || []).forEach(function(s) { tags += '<span style="padding:3px 10px;border-radius:12px;font-size:11px;font-weight:500;background:var(--violet-soft);color:var(--violet)">' + esc(s) + '</span>'; });
+      (cfg.signal_types || []).forEach(function(t) { tags += '<span style="padding:3px 10px;border-radius:12px;font-size:11px;font-weight:500;background:var(--emerald-soft);color:var(--emerald)">' + esc(t.replace(/_/g,' ')) + '</span>'; });
+      document.getElementById('missionTags').innerHTML = tags;
+    }
+
+    // Store for edit modal
+    window._currentHuddle = h;
 
     renderMembers(h.members || []);
 
