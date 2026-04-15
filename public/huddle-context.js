@@ -274,10 +274,19 @@
     ' .hc-pill-on{background:#2563eb;color:#fff;border-color:#2563eb}' +
     ' .hc-pill:hover{border-color:#2563eb}';
 
+  // ─── Set masthead logo to tenant name ───
+  function setTenantLogo() {
+    var logo = document.getElementById('mastheadLogo');
+    if (logo) {
+      var name = getTenantName();
+      if (name && name !== 'Dashboard') logo.textContent = name + ' Signals';
+    }
+  }
+
   // ─── Init on DOM ready ───
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() { injectSwitcher(); updateBanner(); });
+    document.addEventListener('DOMContentLoaded', function() { injectSwitcher(); updateBanner(); setTenantLogo(); });
   } else {
-    injectSwitcher(); updateBanner();
+    injectSwitcher(); updateBanner(); setTenantLogo();
   }
 })();

@@ -16,9 +16,9 @@
 html, body { overflow-x: hidden; }
 body { font-family: var(--sans); background: var(--surface-warm); color: var(--ink); }
 
-.masthead { background: var(--surface); border-bottom: 1px solid var(--rule); padding: 0 clamp(14px, 3vw, 40px); }
+.masthead { background: var(--surface); border-bottom: 2px solid var(--ink); padding: 0 clamp(14px, 3vw, 40px); position: sticky; top: 0; z-index: 100; }
 .masthead-inner { max-width: 1320px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; height: 56px; }
-.mast-title { font-family: var(--serif); font-size: 16px; font-weight: 700; color: var(--ink); text-decoration: none; }
+.mast-title { font-family: var(--serif); font-size: 16px; font-weight: 600; color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
 .mast-title:hover { color: var(--blue); }
 .mast-nav { display: flex; gap: 20px; }
 .mast-nav a { font-size: 13px; font-weight: 500; color: var(--ink-3); text-decoration: none; }
@@ -130,7 +130,7 @@ body { font-family: var(--sans); background: var(--surface-warm); color: var(--i
 
 <div class="masthead">
   <div class="masthead-inner">
-    <a class="mast-title" href="/index.html">Signals</a>
+    <a class="mast-title" href="/index.html" id="mastheadLogo">Signals</a>
     <nav class="mast-nav">
       <a href="/index.html">Dashboard</a>
       <a href="/people.html">People</a>
