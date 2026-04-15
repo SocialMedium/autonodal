@@ -1447,6 +1447,20 @@ app.post('/api/feeds/propose', authenticateToken, async (req, res) => {
   }
 });
 
+// My feed proposals with status
+app.get('/api/feeds/proposals', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await platformPool.query(
+      `SELECT id, proposed_url, proposed_name, status, reviewer_notes, created_at
+       FROM feed_proposals WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 20`,
+      [req.tenant_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD STATS
 // ═══════════════════════════════════════════════════════════════════════════════

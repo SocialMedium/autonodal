@@ -244,6 +244,19 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
     <div id="pendingInvites"></div>
   </div>
 
+  <!-- Feed Suggestions -->
+  <div class="section">
+    <div class="section-title">Contribute a Feed</div>
+    <p style="font-size:13px;color:var(--ink-3);margin-bottom:12px">Suggest an RSS feed, newsletter, or news source. We'll review it and add it to the signal pipeline if it passes quality checks.</p>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <input type="url" id="feedUrl" placeholder="https://example.com/feed.xml" style="flex:1;padding:8px 12px;border:1px solid var(--rule);border-radius:8px;font-size:14px">
+      <input type="text" id="feedName" placeholder="Source name (optional)" style="width:180px;padding:8px 12px;border:1px solid var(--rule);border-radius:8px;font-size:14px">
+      <button onclick="suggestFeed()" id="suggestBtn" style="padding:8px 18px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap">Suggest</button>
+    </div>
+    <div id="feedResult" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:12px"></div>
+    <div id="feedProposals"></div>
+  </div>
+
   <!-- Data Imports -->
   <div class="section">
     <div class="section-title">Import Data <span class="badge" id="importCount">0</span></div>
@@ -421,7 +434,7 @@ function toast(msg) {
   setTimeout(function() { t.classList.remove('show'); }, 3000);
 }
 
-function doLogout() { localStorage.removeItem('ml_token'); localStorage.removeItem('ml_user'); location.href = '/index.html'; }
+function doLogout() { localStorage.removeItem('ml_token'); localStorage.removeItem('ml_user'); sessionStorage.clear(); location.href = '/index.html'; }
 
 async function loadProfile() {
   try {
@@ -987,6 +1000,58 @@ function loadPendingInvites() {
   });
 }
 loadPendingInvites();
+
+// Feed suggestions
+function suggestFeed() {
+  var url = document.getElementById('feedUrl').value.trim();
+  if (!url) return;
+  var name = document.getElementById('feedName').value.trim();
+  var btn = document.getElementById('suggestBtn');
+  btn.disabled = true; btn.textContent = 'Submitting...';
+
+  fetch('/api/feeds/propose', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('ml_token') },
+    body: JSON.stringify({ proposed_url: url, proposed_name: name || null })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    btn.disabled = false; btn.textContent = 'Suggest';
+    var result = document.getElementById('feedResult');
+    if (data.error) {
+      result.style.background = 'var(--rose-soft)'; result.style.color = 'var(--rose)';
+      result.textContent = data.error;
+    } else {
+      result.style.background = 'var(--emerald-soft)'; result.style.color = 'var(--emerald)';
+      result.textContent = 'Feed suggestion submitted for review. We\'ll let you know when it\'s live.';
+      document.getElementById('feedUrl').value = '';
+      document.getElementById('feedName').value = '';
+    }
+    result.style.display = '';
+    loadFeedProposals();
+  })
+  .catch(function() { btn.disabled = false; btn.textContent = 'Suggest'; });
+}
+
+function loadFeedProposals() {
+  fetch('/api/feeds/proposals', { headers: { Authorization: 'Bearer ' + localStorage.getItem('ml_token') } })
+  .then(function(r) { return r.json(); })
+  .then(function(proposals) {
+    if (!Array.isArray(proposals) || !proposals.length) { document.getElementById('feedProposals').innerHTML = ''; return; }
+    var statusIcons = { pending: '\u23F3', accepted: '\u2705', rejected: '\u274C', testing: '\u{1F9EA}' };
+    var statusColors = { pending: 'var(--ink-3)', accepted: 'var(--emerald)', rejected: 'var(--rose)', testing: 'var(--blue)' };
+    var html = '';
+    proposals.forEach(function(p) {
+      var st = p.status || 'pending';
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;border-bottom:1px solid var(--rule)">' +
+        '<span style="font-size:14px">' + (statusIcons[st] || '') + '</span>' +
+        '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (p.proposed_name || p.proposed_url) + '</span>' +
+        '<span style="color:' + (statusColors[st] || 'var(--ink-3)') + ';font-size:12px;font-weight:500;text-transform:uppercase">' + st + '</span></div>';
+    });
+    document.getElementById('feedProposals').innerHTML = html;
+  });
+}
+loadFeedProposals();
 </script>
 <div id="signal-ticker"></div>
 <script src="/signal-ticker.js" data-position="top"></script>
