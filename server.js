@@ -5176,9 +5176,12 @@ app.get('/api/search', authenticateToken, endpointLimit(30), async (req, res) =>
 
         const peopleMap = new Map(people.map(p => [p.id, p]));
 
+        const seenPeople = new Set();
         results.people = qdrantResults
           .map(r => {
             const pid = r.payload?.person_id || r.payload?.id || String(r.id);
+            if (seenPeople.has(pid)) return null; // dedup multiple vectors per person
+            seenPeople.add(pid);
             const person = peopleMap.get(pid);
             if (!person) return null;
             return {
