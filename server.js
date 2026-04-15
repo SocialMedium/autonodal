@@ -6714,7 +6714,10 @@ app.get('/api/huddles/:id', authenticateToken, async function(req, res) {
     var { rows: members } = await platformPool.query(
       `SELECT hm.tenant_id, hm.role, hm.status, hm.joined_at,
               hm.contributed_people_count, hm.net_new_people_count,
-              t.name as tenant_name, t.slug as tenant_slug
+              t.name as display_name, t.name as name, t.slug as tenant_slug,
+              (SELECT COUNT(*) FROM people p WHERE p.tenant_id = hm.tenant_id) AS people_count,
+              (SELECT COUNT(*) FROM interactions i WHERE i.tenant_id = hm.tenant_id) AS interaction_count,
+              (SELECT COUNT(DISTINCT tp.person_id) FROM team_proximity tp WHERE tp.tenant_id = hm.tenant_id) AS proximity_count
        FROM huddle_members hm
        JOIN tenants t ON t.id = hm.tenant_id
        WHERE hm.huddle_id = $1 AND hm.status IN ('active', 'invited')
@@ -7050,7 +7053,11 @@ app.get('/api/huddles/:id/signals', authenticateToken, async function(req, res) 
     var typeFilter = req.query.type || null;
     var regionFilter = req.query.region || null;
 
-    var conditions = ['se.tenant_id IS NULL'];
+    // Load huddle mission config for filtering
+    var { rows: [huddleData] } = await platformPool.query('SELECT signal_config FROM huddles WHERE id = $1', [req.params.id]);
+    var cfg = huddleData?.signal_config || {};
+
+    var conditions = ['(se.tenant_id IS NULL OR se.tenant_id = ANY(SELECT tenant_id FROM huddle_members WHERE huddle_id = $1 AND status = \'active\'))'];
     var params = [req.params.id];
     var paramIdx = 1;
 
@@ -7066,6 +7073,15 @@ app.get('/api/huddles/:id/signals', authenticateToken, async function(req, res) 
       paramIdx++;
       conditions.push('(c.geography ILIKE $' + paramIdx + ' OR c.country_code = $' + paramIdx + ')');
       params.push('%' + regionFilter + '%');
+    }
+
+    // Mission filter — signal_types, sectors, geography from huddle config
+    if (!typeFilter) {
+      var missionOr = [];
+      if (cfg.signal_types?.length) { paramIdx++; missionOr.push('se.signal_type = ANY($' + paramIdx + ')'); params.push(cfg.signal_types); }
+      if (cfg.sectors?.length) { cfg.sectors.forEach(function(s) { paramIdx++; missionOr.push('c.sector ILIKE $' + paramIdx); params.push('%' + s + '%'); }); }
+      if (cfg.geography?.length) { cfg.geography.forEach(function(g) { paramIdx++; missionOr.push('(c.geography ILIKE $' + paramIdx + ' OR c.country_code = $' + paramIdx + ')'); params.push(g); }); }
+      if (missionOr.length > 0) conditions.push('(' + missionOr.join(' OR ') + ')');
     }
 
     var where = conditions.join(' AND ');

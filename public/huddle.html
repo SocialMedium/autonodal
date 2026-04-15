@@ -408,6 +408,10 @@ function loadHuddle() {
     meta += '<span><span class="icon-wrap">' + icon('users') + '</span> ' + (h.member_count || 0) + ' members</span>';
     document.getElementById('huddleMeta').innerHTML = meta;
 
+    // Set sessionStorage so huddle-context.js edit modal works
+    sessionStorage.setItem('activeHuddleId', HUDDLE_ID);
+    sessionStorage.setItem('activeHuddleName', h.name || '');
+
     document.getElementById('editBtn').style.display = '';
     document.getElementById('editBtn').innerHTML = icon('settings') + ' Edit Huddle';
     document.getElementById('activateBtn').style.display = '';
@@ -459,14 +463,15 @@ function renderMembers(members) {
       statusBadge = ' <span class="badge badge-pending">Pending</span>';
     }
     return '<div class="member-row">'
-      + '<div class="member-avatar">' + initials(m.display_name || m.name) + '</div>'
+      + '<div class="member-avatar">' + initials(m.display_name || m.name || '?') + '</div>'
       + '<div class="member-info">'
-      + '  <div class="member-name">' + esc(m.display_name || m.name) + statusBadge + '</div>'
-      + '  <div class="member-detail">' + esc(m.role || 'member') + (m.company ? ' at ' + esc(m.company) : '') + '</div>'
+      + '  <div class="member-name">' + esc(m.display_name || m.name || 'Member') + statusBadge + '</div>'
+      + '  <div class="member-detail">' + esc(m.role || 'member') + '</div>'
       + '</div>'
       + '<div class="member-stats">'
-      + '  <span>' + icon('user') + ' ' + (m.contributed_count || 0) + ' contributed</span>'
-      + '  <span>' + icon('sparkle') + ' ' + (m.net_new_count || 0) + ' net new</span>'
+      + '  <span>' + icon('users') + ' ' + (parseInt(m.people_count) || 0).toLocaleString() + ' people</span>'
+      + '  <span>' + icon('message-square') + ' ' + (parseInt(m.interaction_count) || 0).toLocaleString() + ' interactions</span>'
+      + '  <span>' + icon('link') + ' ' + (parseInt(m.proximity_count) || 0).toLocaleString() + ' proximity</span>'
       + '</div>'
       + '</div>';
   }).join('');
