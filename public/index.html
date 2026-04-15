@@ -2931,8 +2931,31 @@ function renderDealCard(s) {
           ${!s.claimed_by ? `<button class="deal-action-btn qualify" onclick="event.stopPropagation();claimDispatch('${s.dispatch_id}',this)">${icon('user')} Claim</button>` : `<span class="deal-action-btn" style="cursor:default;font-size:10px;opacity:0.7">${icon('lock')} ${esc(s.claimed_by_name || 'Claimed')}</span>`}
         ` : ''}
         ${s.source_url ? `<a href="${s.source_url}" target="_blank" class="deal-action-btn source" onclick="event.stopPropagation()">↗ Source</a>` : ''}
+        <button class="deal-action-btn" onclick="event.stopPropagation();shareSignal('${s.id}','${esc(s.company_name || '')}','${esc(label)}',this)" style="color:var(--ink-3)">${icon('share-2')} Share</button>
       </div>
     </div>`;
+}
+
+function shareSignal(id, company, type, btn) {
+  var url = window.location.origin + '/index.html?signal=' + id;
+  var text = (company || 'Signal') + ' — ' + (type || 'market signal');
+
+  // Try native share first (mobile)
+  if (navigator.share) {
+    navigator.share({ title: text, url: url }).catch(function() {});
+    return;
+  }
+
+  // Fallback: copy link
+  navigator.clipboard.writeText(url).then(function() {
+    var orig = btn.innerHTML;
+    btn.innerHTML = icon('check') + ' Copied';
+    btn.style.color = 'var(--emerald)';
+    setTimeout(function() { btn.innerHTML = orig; btn.style.color = 'var(--ink-3)'; }, 2000);
+  }).catch(function() {
+    // Double fallback
+    prompt('Copy this link:', url);
+  });
 }
 
 async function triageSignal(id, status) {
@@ -3752,6 +3775,20 @@ async function init() {
   loadConvergingThemes();
   loadReengageWindows();
   checkGoogleConnection();
+
+  // Deep-link: highlight shared signal
+  var sharedSig = new URLSearchParams(location.search).get('signal');
+  if (sharedSig) {
+    setTimeout(function() {
+      var el = document.getElementById('signal-' + sharedSig);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.style.outline = '2px solid var(--blue)';
+        el.style.outlineOffset = '4px';
+        setTimeout(function() { el.style.outline = ''; el.style.outlineOffset = ''; }, 4000);
+      }
+    }, 1500);
+  }
 }
 
 // ── Onboarding ──
