@@ -6742,23 +6742,117 @@ app.get('/api/huddles/:id', authenticateToken, async function(req, res) {
   }
 });
 
-// POST /api/huddles/:id/invite — generate invite token
+// POST /api/huddles/:id/invite — invite existing user or send email to new user
 app.post('/api/huddles/:id/invite', authenticateToken, async function(req, res) {
   try {
     var membership = await verifyHuddleMember(req.params.id, req.tenant_id);
     if (!membership) return res.status(403).json({ error: 'Not a member of this huddle' });
 
-    var { email, role } = req.body || {};
-    var { rows } = await platformPool.query(
+    var { email, user_id, tenant_id: inviteTenantId, role } = req.body || {};
+    if (!email && !user_id && !inviteTenantId) return res.status(400).json({ error: 'email, user_id, or tenant_id required' });
+
+    // Get huddle name for emails
+    var { rows: [huddle] } = await platformPool.query('SELECT name, purpose FROM huddles WHERE id = $1', [req.params.id]);
+
+    // Path 1: Invite by user_id — find their tenant and add as member
+    if (user_id) {
+      var { rows: [user] } = await platformPool.query('SELECT id, name, email, tenant_id FROM users WHERE id = $1', [user_id]);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      inviteTenantId = user.tenant_id;
+      email = user.email;
+    }
+
+    // Path 2: Invite by email — check if they're an existing user
+    if (email && !inviteTenantId) {
+      var { rows: [existingUser] } = await platformPool.query('SELECT id, name, tenant_id FROM users WHERE email = $1', [email]);
+      if (existingUser) {
+        inviteTenantId = existingUser.tenant_id;
+      }
+    }
+
+    // If we have a tenant_id, add them as a member directly
+    if (inviteTenantId) {
+      // Check if already a member
+      var { rows: existing } = await platformPool.query(
+        'SELECT status FROM huddle_members WHERE huddle_id = $1 AND tenant_id = $2', [req.params.id, inviteTenantId]
+      );
+      if (existing.length && existing[0].status === 'active') {
+        return res.status(409).json({ error: 'Already a member', status: 'active' });
+      }
+      if (existing.length) {
+        // Reactivate
+        await platformPool.query(
+          "UPDATE huddle_members SET status = 'active', detached_at = NULL, joined_at = NOW() WHERE huddle_id = $1 AND tenant_id = $2",
+          [req.params.id, inviteTenantId]
+        );
+      } else {
+        await platformPool.query(
+          "INSERT INTO huddle_members (huddle_id, tenant_id, role, status, invited_by, invited_at, joined_at) VALUES ($1, $2, $3, 'active', $4, NOW(), NOW())",
+          [req.params.id, inviteTenantId, role || 'member', req.tenant_id]
+        );
+      }
+      return res.status(201).json({ status: 'added', tenant_id: inviteTenantId, email: email });
+    }
+
+    // Path 3: Email not in system — create invite token and send onboarding email
+    var { rows: [invite] } = await platformPool.query(
       `INSERT INTO huddle_invites (huddle_id, invited_by, email, role)
        VALUES ($1, $2, $3, $4) RETURNING id, token, email, role, expires_at`,
-      [req.params.id, req.tenant_id, email || null, role || 'member']
+      [req.params.id, req.tenant_id, email, role || 'member']
     );
 
-    res.status(201).json(rows[0]);
+    // Send invite email via Resend
+    if (process.env.RESEND_API_KEY && email) {
+      try {
+        var baseUrl = process.env.APP_URL || 'https://' + req.get('host');
+        var joinUrl = baseUrl + '/onboarding.html?invite=' + invite.token + '&huddle=' + req.params.id;
+        var inviterName = req.user.name || req.user.email;
+        var emailFrom = process.env.EMAIL_FROM || 'Autonodal <notifications@autonodal.com>';
+
+        var { Resend } = require('resend');
+        var resend = new Resend(process.env.RESEND_API_KEY);
+        await resend.emails.send({
+          from: emailFrom,
+          to: email,
+          subject: inviterName + ' invited you to ' + (huddle?.name || 'a huddle') + ' on Autonodal',
+          html: '<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px">' +
+            '<h2 style="margin:0 0 8px">' + inviterName + ' invited you to join a Huddle</h2>' +
+            '<p style="color:#4a4a4a;margin:0 0 20px"><strong>' + (huddle?.name || 'Huddle') + '</strong>' +
+            (huddle?.purpose ? '<br><span style="color:#7a7a7a">' + huddle.purpose + '</span>' : '') + '</p>' +
+            '<a href="' + joinUrl + '" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Accept & Join</a>' +
+            '<p style="color:#aaa;font-size:12px;margin-top:24px">This invite expires in 7 days.</p>' +
+            '</div>'
+        });
+        invite.email_sent = true;
+      } catch (e) {
+        invite.email_sent = false;
+        console.warn('Huddle invite email failed:', e.message);
+      }
+    }
+
+    res.status(201).json({ status: 'invited', ...invite });
   } catch (err) {
     console.error('Huddle invite error:', err.message);
     res.status(500).json({ error: 'Failed to create invite' });
+  }
+});
+
+// GET /api/huddles/:id/members/search — search users to invite
+app.get('/api/huddles/:id/members/search', authenticateToken, async function(req, res) {
+  try {
+    var q = req.query.q;
+    if (!q || q.length < 2) return res.json([]);
+    var { rows } = await platformPool.query(
+      `SELECT u.id, u.name, u.email, u.tenant_id, t.name AS tenant_name
+       FROM users u JOIN tenants t ON t.id = u.tenant_id
+       WHERE (u.name ILIKE $1 OR u.email ILIKE $1)
+         AND u.tenant_id != $2
+       ORDER BY u.name LIMIT 10`,
+      ['%' + q + '%', req.tenant_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Search failed' });
   }
 });
 

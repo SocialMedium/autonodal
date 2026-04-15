@@ -293,30 +293,21 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 
 <!-- Invite Modal -->
 <div class="modal-overlay" id="inviteModal">
-  <div class="modal">
-    <h2>Invite to Huddle</h2>
+  <div class="modal" style="max-width:480px">
+    <h2 style="margin-bottom:4px">Invite to Huddle</h2>
+    <p style="font-size:13px;color:var(--ink-3);margin-bottom:20px">Search for an existing user or enter an email to send an onboarding invite.</p>
+
     <div class="form-group">
-      <label>Email <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-      <input type="email" id="inviteEmail" placeholder="colleague@company.com">
-      <div class="hint">Leave blank to generate a general invite link</div>
+      <label>Search users or enter email</label>
+      <input type="text" id="inviteSearch" placeholder="Name or email..." autocomplete="off" oninput="searchInviteUsers(this.value)">
+      <div id="inviteSearchResults" style="margin-top:6px"></div>
     </div>
-    <div class="form-group">
-      <label>Role</label>
-      <select id="inviteRole">
-        <option value="member">Member</option>
-        <option value="observer">Observer</option>
-      </select>
-    </div>
-    <div id="inviteResult" style="display:none;" class="invite-result">
-      <div class="invite-url" id="inviteUrl"></div>
-      <div class="invite-actions">
-        <button class="btn btn-secondary btn-sm" onclick="copyInviteLink()">Copy link</button>
-        <a class="btn btn-secondary btn-sm" id="inviteMailto" href="#">Share via email</a>
-      </div>
-    </div>
-    <div class="modal-actions">
+
+    <div id="inviteResult" style="display:none;margin-top:12px;padding:12px 16px;background:var(--emerald-soft);border-radius:8px;font-size:13px;color:var(--emerald)"></div>
+
+    <div class="modal-actions" style="margin-top:20px">
       <button class="btn btn-secondary" onclick="closeInviteModal()">Close</button>
-      <button class="btn btn-primary" id="genInviteBtn" onclick="generateInvite()">Generate Invite Link</button>
+      <button class="btn btn-primary" id="inviteSendBtn" onclick="sendInvite()" style="display:none">Send Invite</button>
     </div>
   </div>
 </div>
@@ -752,11 +743,17 @@ function loadMoreCompanies() {
 /* ═══════════════════════════════════════
    INVITE
    ═══════════════════════════════════════ */
+var _inviteTarget = null; // { user_id, email, name } or { email } for new user
+var _searchTimer = null;
+
 function openInviteModal() {
+  _inviteTarget = null;
+  document.getElementById('inviteSearch').value = '';
+  document.getElementById('inviteSearchResults').innerHTML = '';
   document.getElementById('inviteResult').style.display = 'none';
-  document.getElementById('inviteEmail').value = '';
-  document.getElementById('inviteRole').value = 'member';
+  document.getElementById('inviteSendBtn').style.display = 'none';
   document.getElementById('inviteModal').classList.add('open');
+  setTimeout(function() { document.getElementById('inviteSearch').focus(); }, 100);
 }
 function closeInviteModal() {
   document.getElementById('inviteModal').classList.remove('open');
@@ -765,37 +762,104 @@ document.getElementById('inviteModal').addEventListener('click', function(e) {
   if (e.target === this) closeInviteModal();
 });
 
-function generateInvite() {
-  var btn = document.getElementById('genInviteBtn');
-  btn.disabled = true;
-  btn.textContent = 'Generating...';
+function searchInviteUsers(q) {
+  clearTimeout(_searchTimer);
+  var results = document.getElementById('inviteSearchResults');
+  if (!q || q.length < 2) { results.innerHTML = ''; document.getElementById('inviteSendBtn').style.display = 'none'; return; }
 
-  var body = {
-    role: document.getElementById('inviteRole').value
-  };
-  var email = document.getElementById('inviteEmail').value.trim();
-  if (email) body.email = email;
+  _searchTimer = setTimeout(function() {
+    // Check if it's an email
+    var isEmail = q.includes('@') && q.includes('.');
+
+    api('/api/huddles/' + HUDDLE_ID + '/members/search?q=' + encodeURIComponent(q)).then(function(users) {
+      var html = '';
+      if (users.length > 0) {
+        users.forEach(function(u) {
+          html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;cursor:pointer;transition:background .1s" ' +
+            'onmouseenter="this.style.background=\'var(--blue-soft)\'" onmouseleave="this.style.background=\'transparent\'" ' +
+            'onclick="selectInviteUser(\'' + u.id + '\',\'' + esc(u.name) + '\',\'' + esc(u.email) + '\')">' +
+            '<div style="width:32px;height:32px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">' +
+            esc((u.name || '?').split(' ').map(function(w) { return w[0]; }).join('').slice(0, 2).toUpperCase()) + '</div>' +
+            '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">' + esc(u.name) + '</div>' +
+            '<div style="font-size:11px;color:var(--ink-3)">' + esc(u.email) + ' · ' + esc(u.tenant_name || '') + '</div></div></div>';
+        });
+      }
+
+      if (isEmail && !users.find(function(u) { return u.email.toLowerCase() === q.toLowerCase(); })) {
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;cursor:pointer;border:1px dashed var(--rule);margin-top:6px" ' +
+          'onmouseenter="this.style.background=\'var(--blue-soft)\'" onmouseleave="this.style.background=\'transparent\'" ' +
+          'onclick="selectInviteEmail(\'' + esc(q) + '\')">' +
+          '<div style="width:32px;height:32px;border-radius:50%;background:var(--violet-soft);color:var(--violet);display:flex;align-items:center;justify-content:center;font-size:14px">+</div>' +
+          '<div><div style="font-size:13px;font-weight:500">Invite ' + esc(q) + '</div>' +
+          '<div style="font-size:11px;color:var(--ink-3)">Send onboarding invite via email</div></div></div>';
+      }
+
+      if (!html) html = '<div style="padding:8px 12px;font-size:13px;color:var(--ink-3)">No users found. Enter a full email to send an invite.</div>';
+      results.innerHTML = html;
+    }).catch(function() {
+      if (isEmail) {
+        results.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;cursor:pointer;border:1px dashed var(--rule)" ' +
+          'onclick="selectInviteEmail(\'' + esc(q) + '\')">' +
+          '<div style="width:32px;height:32px;border-radius:50%;background:var(--violet-soft);color:var(--violet);display:flex;align-items:center;justify-content:center;font-size:14px">+</div>' +
+          '<div><div style="font-size:13px;font-weight:500">Invite ' + esc(q) + '</div>' +
+          '<div style="font-size:11px;color:var(--ink-3)">Send onboarding invite via email</div></div></div>';
+      }
+    });
+  }, 300);
+}
+
+function selectInviteUser(userId, name, email) {
+  _inviteTarget = { user_id: userId, name: name, email: email };
+  document.getElementById('inviteSearchResults').innerHTML =
+    '<div style="padding:8px 12px;background:var(--blue-soft);border-radius:6px;display:flex;align-items:center;gap:8px">' +
+    '<strong>' + esc(name) + '</strong> <span style="color:var(--ink-3)">' + esc(email) + '</span>' +
+    '<button onclick="_inviteTarget=null;searchInviteUsers(document.getElementById(\'inviteSearch\').value)" style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--ink-3)">x</button></div>';
+  document.getElementById('inviteSendBtn').style.display = '';
+  document.getElementById('inviteSendBtn').textContent = 'Add ' + name.split(' ')[0];
+}
+
+function selectInviteEmail(email) {
+  _inviteTarget = { email: email };
+  document.getElementById('inviteSearchResults').innerHTML =
+    '<div style="padding:8px 12px;background:var(--violet-soft);border-radius:6px;display:flex;align-items:center;gap:8px">' +
+    '<strong>' + esc(email) + '</strong> <span style="color:var(--ink-3)">New user — will receive onboarding email</span>' +
+    '<button onclick="_inviteTarget=null;searchInviteUsers(document.getElementById(\'inviteSearch\').value)" style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--ink-3)">x</button></div>';
+  document.getElementById('inviteSendBtn').style.display = '';
+  document.getElementById('inviteSendBtn').textContent = 'Send Invite';
+}
+
+function sendInvite() {
+  if (!_inviteTarget) return;
+  var btn = document.getElementById('inviteSendBtn');
+  btn.disabled = true; btn.textContent = 'Sending...';
 
   api('/api/huddles/' + HUDDLE_ID + '/invite', {
     method: 'POST',
-    body: JSON.stringify(body)
+    body: JSON.stringify(_inviteTarget)
   }).then(function(data) {
     btn.disabled = false;
-    btn.textContent = 'Generate Invite Link';
-    if (data.invite_url || data.url) {
-      generatedInviteUrl = data.invite_url || data.url;
-      document.getElementById('inviteUrl').textContent = generatedInviteUrl;
-      document.getElementById('inviteResult').style.display = '';
-      var subject = encodeURIComponent('Join my huddle on MLX Intelligence');
-      var mailBody = encodeURIComponent('You have been invited to a huddle. Click here to join: ' + generatedInviteUrl);
-      document.getElementById('inviteMailto').href = 'mailto:' + (email || '') + '?subject=' + subject + '&body=' + mailBody;
+    var result = document.getElementById('inviteResult');
+    if (data.status === 'added') {
+      result.textContent = (_inviteTarget.name || _inviteTarget.email) + ' added to the huddle.';
+      result.style.display = '';
+      loadHuddle(); // refresh members
+    } else if (data.status === 'invited') {
+      result.textContent = 'Invite sent to ' + _inviteTarget.email + (data.email_sent ? ' via email.' : '. Share the link manually.');
+      result.style.display = '';
     } else {
-      alert(data.error || 'Failed to generate invite');
+      result.textContent = data.error || 'Something went wrong.';
+      result.style.background = 'var(--rose-soft)';
+      result.style.color = 'var(--rose)';
+      result.style.display = '';
     }
-  }).catch(function() {
-    btn.disabled = false;
-    btn.textContent = 'Generate Invite Link';
-    alert('Network error');
+    _inviteTarget = null;
+    document.getElementById('inviteSendBtn').style.display = 'none';
+    document.getElementById('inviteSearchResults').innerHTML = '';
+    document.getElementById('inviteSearch').value = '';
+    btn.textContent = 'Send Invite';
+  }).catch(function(e) {
+    btn.disabled = false; btn.textContent = 'Send Invite';
+    alert('Failed: ' + (e.message || 'network error'));
   });
 }
 
