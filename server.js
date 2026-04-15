@@ -2931,7 +2931,7 @@ app.get('/api/people/:id', authenticateToken, async (req, res) => {
     if (person.current_company_id) {
       const { rows } = await db.query(`
         SELECT id, signal_type, confidence_score, evidence_summary, detected_at, triage_status
-        FROM signal_events WHERE company_id = $1 AND tenant_id = $2
+        FROM signal_events WHERE company_id = $1 AND (tenant_id IS NULL OR tenant_id = $2)
         ORDER BY detected_at DESC LIMIT 10
       `, [person.current_company_id, req.tenant_id]);
       companySignals = rows;
@@ -4481,7 +4481,7 @@ Only include genuine business signals. Ignore opinion pieces, listicles, or gene
       const { rows: [latest] } = await db.query('SELECT * FROM companies WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenant_id]);
       const parts = [latest.name, latest.sector, latest.geography, latest.description, latest.domain].filter(Boolean);
 
-      const { rows: signals } = await db.query(`SELECT evidence_summary FROM signal_events WHERE company_id = $1 AND evidence_summary IS NOT NULL AND tenant_id = $2 ORDER BY detected_at DESC LIMIT 5`, [req.params.id, req.tenant_id]);
+      const { rows: signals } = await db.query(`SELECT evidence_summary FROM signal_events WHERE company_id = $1 AND evidence_summary IS NOT NULL AND (tenant_id IS NULL OR tenant_id = $2) ORDER BY detected_at DESC LIMIT 5`, [req.params.id, req.tenant_id]);
       signals.forEach(s => parts.push(s.evidence_summary));
 
       const { rows: people } = await db.query(`SELECT full_name, current_title FROM people WHERE current_company_id = $1 AND current_title IS NOT NULL AND tenant_id = $2 LIMIT 10`, [req.params.id, req.tenant_id]);
