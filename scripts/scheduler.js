@@ -337,7 +337,7 @@ async function pipelineIngestSignals() {
     FROM external_documents
     WHERE signals_computed_at IS NULL AND embedded_at IS NOT NULL
       AND COALESCE(processing_status, 'pending') != 'context_only'
-      AND source_name NOT IN ('Google Docs', 'Google Sheets', 'Google Slides')
+      AND source_type NOT IN ('google_doc', 'google_slides', 'google_sheets', 'google_drive')
       AND published_at > NOW() - INTERVAL '3 months'
     ORDER BY published_at DESC LIMIT 200
   `);
