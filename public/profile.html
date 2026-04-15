@@ -228,6 +228,22 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
     </div>
   </div>
 
+  <!-- Invite Teammates -->
+  <div class="section">
+    <div class="section-title">Invite Teammates</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <input type="email" id="inviteEmail" placeholder="colleague@company.com" style="flex:1;padding:8px 12px;border:1px solid var(--rule);border-radius:8px;font-size:14px">
+      <select id="inviteRole" style="padding:8px 12px;border:1px solid var(--rule);border-radius:8px;font-size:14px">
+        <option value="viewer">Viewer</option>
+        <option value="consultant">Consultant</option>
+        <option value="admin">Admin</option>
+      </select>
+      <button onclick="inviteTeammate()" id="inviteTeamBtn" style="padding:8px 18px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap">Invite</button>
+    </div>
+    <div id="inviteResult" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:12px"></div>
+    <div id="pendingInvites"></div>
+  </div>
+
   <!-- Data Imports -->
   <div class="section">
     <div class="section-title">Import Data <span class="badge" id="importCount">0</span></div>
@@ -923,6 +939,54 @@ function setRegionCheckboxes(regionStr) {
     cb.checked = regions.includes(cb.value);
   });
 }
+
+// Invite teammates
+function inviteTeammate() {
+  var email = document.getElementById('inviteEmail').value.trim();
+  if (!email) return;
+  var role = document.getElementById('inviteRole').value;
+  var btn = document.getElementById('inviteTeamBtn');
+  btn.disabled = true; btn.textContent = 'Sending...';
+
+  fetch('/api/tenant/invite', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('ml_token') },
+    body: JSON.stringify({ email: email, role: role })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    btn.disabled = false; btn.textContent = 'Invite';
+    var result = document.getElementById('inviteResult');
+    if (data.error) {
+      result.style.background = 'var(--rose-soft)'; result.style.color = 'var(--rose)';
+      result.textContent = data.error;
+    } else {
+      result.style.background = 'var(--emerald-soft)'; result.style.color = 'var(--emerald)';
+      result.textContent = 'Invite sent to ' + email + (data.email_sent ? ' via email' : ' — share the signup link manually');
+      document.getElementById('inviteEmail').value = '';
+    }
+    result.style.display = '';
+    loadPendingInvites();
+  })
+  .catch(function() { btn.disabled = false; btn.textContent = 'Invite'; });
+}
+
+function loadPendingInvites() {
+  fetch('/api/tenant/invites', { headers: { Authorization: 'Bearer ' + localStorage.getItem('ml_token') } })
+  .then(function(r) { return r.json(); })
+  .then(function(invites) {
+    if (!Array.isArray(invites) || !invites.length) { document.getElementById('pendingInvites').innerHTML = ''; return; }
+    var html = '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:8px">Invites</div>';
+    invites.forEach(function(inv) {
+      var statusColor = inv.status === 'accepted' ? 'var(--emerald)' : 'var(--ink-3)';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid var(--rule)">' +
+        '<span>' + inv.email + '</span>' +
+        '<span style="color:' + statusColor + ';font-size:12px">' + inv.status + ' · ' + inv.role + '</span></div>';
+    });
+    document.getElementById('pendingInvites').innerHTML = html;
+  });
+}
+loadPendingInvites();
 </script>
 <div id="signal-ticker"></div>
 <script src="/signal-ticker.js" data-position="top"></script>

@@ -391,7 +391,29 @@ app.get('/api/auth/google/callback', async (req, res) => {
         user = newUser;
         console.log(`✅ New MitchelLake team member: ${user.name} (${user.email})`);
       } else {
-        // External user → auto-provision a new tenant
+        // Check for tenant invite — join existing tenant instead of creating new one
+      var tenantInvite = null;
+      try {
+        var { rows: [inv] } = await platformPool.query(
+          "SELECT ti.*, t.name AS tenant_name FROM tenant_invites ti JOIN tenants t ON t.id = ti.tenant_id WHERE ti.email = $1 AND ti.status = 'pending' AND ti.expires_at > NOW() ORDER BY ti.created_at DESC LIMIT 1",
+          [userInfo.email]
+        );
+        if (inv) tenantInvite = inv;
+      } catch (e) {}
+
+      if (tenantInvite) {
+        // Invited user → join existing tenant
+        const { rows: [newUser] } = await platformPool.query(
+          `INSERT INTO users (id, email, name, role, password_hash, tenant_id, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, 'oauth_google', $4, NOW(), NOW())
+           RETURNING id, email, name, role`,
+          [userInfo.email, displayName, tenantInvite.role || 'viewer', tenantInvite.tenant_id]
+        );
+        user = newUser;
+        await platformPool.query("UPDATE tenant_invites SET status = 'accepted', accepted_at = NOW() WHERE id = $1", [tenantInvite.id]);
+        console.log('✅ Invited user joined tenant ' + tenantInvite.tenant_name + ': ' + user.name + ' (' + user.email + ')');
+      } else {
+      // External user → auto-provision a new tenant
         const slug = userInfo.email.split('@')[0]
           .toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 30) + '-' + Date.now().toString(36);
 
@@ -411,6 +433,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
         user = newUser;
         console.log(`✅ New tenant provisioned: ${displayName} (${slug}) for ${userInfo.email}`);
       }
+      } // close tenantInvite else
       auditLog(user.id, 'user_registered', 'user', user.id, { name: user.name || displayName, email: user.email });
     }
 
@@ -474,6 +497,70 @@ app.get('/api/auth/google/callback', async (req, res) => {
   } catch (err) {
     console.error('🔑 CATCH — Google auth error:', err.message, err.stack?.split('\n')[1]);
     res.redirect(returnTo + '?auth_error=server_error');
+  }
+});
+
+// ─── Tenant teammate invites ───
+app.post('/api/tenant/invite', authenticateToken, async (req, res) => {
+  try {
+    var { email, role } = req.body;
+    if (!email) return res.status(400).json({ error: 'email required' });
+
+    // Check if already a user on this tenant
+    var { rows: existing } = await platformPool.query('SELECT id FROM users WHERE email = $1 AND tenant_id = $2', [email, req.tenant_id]);
+    if (existing.length) return res.status(409).json({ error: 'Already a member of this tenant' });
+
+    // Create invite
+    var { rows: [invite] } = await platformPool.query(
+      `INSERT INTO tenant_invites (tenant_id, email, role, invited_by) VALUES ($1, $2, $3, $4) RETURNING id, token, email, role, expires_at`,
+      [req.tenant_id, email, role || 'viewer', req.user.user_id]
+    );
+
+    // Send email
+    if (process.env.RESEND_API_KEY) {
+      try {
+        var baseUrl = process.env.APP_URL || 'https://' + req.get('host');
+        var joinUrl = baseUrl + '/api/auth/google?return_to=/index.html';
+        var inviterName = req.user.name || req.user.email;
+        var { rows: [tenant] } = await platformPool.query('SELECT name FROM tenants WHERE id = $1', [req.tenant_id]);
+
+        var { Resend } = require('resend');
+        var resend = new Resend(process.env.RESEND_API_KEY);
+        await resend.emails.send({
+          from: process.env.EMAIL_FROM || 'Autonodal <notifications@autonodal.com>',
+          to: email,
+          subject: inviterName + ' invited you to ' + (tenant?.name || 'their team') + ' on Autonodal',
+          html: '<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px">' +
+            '<h2 style="margin:0 0 8px">You\'ve been invited to join ' + (tenant?.name || 'a team') + '</h2>' +
+            '<p style="color:#4a4a4a;margin:0 0 20px">' + inviterName + ' wants you to join their team on Autonodal — market intelligence mapped to your relationships.</p>' +
+            '<a href="' + joinUrl + '" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Join with Google</a>' +
+            '<p style="color:#aaa;font-size:12px;margin-top:24px">This invite expires in 14 days. Sign in with <strong>' + email + '</strong> to join automatically.</p>' +
+            '</div>'
+        });
+        invite.email_sent = true;
+      } catch (e) {
+        invite.email_sent = false;
+      }
+    }
+
+    res.status(201).json(invite);
+  } catch (err) {
+    console.error('Tenant invite error:', err.message);
+    res.status(500).json({ error: 'Failed to send invite' });
+  }
+});
+
+app.get('/api/tenant/invites', authenticateToken, async (req, res) => {
+  try {
+    var { rows } = await platformPool.query(
+      `SELECT ti.id, ti.email, ti.role, ti.status, ti.created_at, ti.accepted_at, u.name AS invited_by_name
+       FROM tenant_invites ti LEFT JOIN users u ON u.id = ti.invited_by
+       WHERE ti.tenant_id = $1 ORDER BY ti.created_at DESC LIMIT 50`,
+      [req.tenant_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load invites' });
   }
 });
 
