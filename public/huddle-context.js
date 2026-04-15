@@ -12,6 +12,11 @@
   var TK = localStorage.getItem('ml_token');
   if (!TK) return; // Not logged in
 
+  // Lucide SVG icons — no emoji slop
+  var _icDash = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>';
+  var _icAtom = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 4.54 4.52 9.87 6.54 11.9 4.5Z"/><path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 11.9 2.03 2.04 7.36.02 11.9-4.5Z"/></svg>';
+  var _icPlus = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+
   // ─── State ───
   var activeHuddleId = sessionStorage.getItem('activeHuddleId') || null;
   var activeHuddleName = sessionStorage.getItem('activeHuddleName') || null;
@@ -29,7 +34,7 @@
       '<button id="ctxBtn" onclick="document.getElementById(\'ctxDrop\').classList.toggle(\'hc-show\')" ' +
       'style="display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:8px;border:1px solid var(--rule);' +
       'background:var(--surface);font-size:13px;font-weight:500;color:var(--ink-1);cursor:pointer;transition:all .15s;white-space:nowrap">' +
-      '<span id="ctxIcon">' + (activeHuddleId ? '&#x1F91D;' : '&#x1F3E2;') + '</span>' +
+      '<span id="ctxIcon">' + (activeHuddleId ? _icAtom : _icDash) + '</span>' +
       '<span id="ctxName">' + esc(activeHuddleName || getTenantName()) + '</span>' +
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>' +
       '</button>' +
@@ -65,7 +70,7 @@
     var html = '';
     // Main tenant
     html += '<button onclick="window._switchCtx(null)" style="' + itemStyle(!activeHuddleId) + '">' +
-      '<span style="font-size:16px">&#x1F3E2;</span>' +
+      '<span style="opacity:.5">' + _icDash + '</span>' +
       '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">' + esc(getTenantName()) + '</div>' +
       '<div style="font-size:11px;color:var(--ink-4)">Main dashboard</div></div></button>';
 
@@ -75,7 +80,7 @@
         var h = huddles[i];
         var isActive = activeHuddleId === h.id;
         html += '<button onclick="window._switchCtx(\'' + h.id + '\',\'' + esc(h.name) + '\')" style="' + itemStyle(isActive) + '">' +
-          '<span style="font-size:16px">&#x1F91D;</span>' +
+          '<span style="opacity:.5">' + _icAtom + '</span>' +
           '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(h.name) + '</div>' +
           '<div style="font-size:11px;color:var(--ink-4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
           esc(h.purpose || h.description || '') + ' &middot; ' + (h.member_count || 1) + ' members</div></div></button>';
@@ -84,7 +89,7 @@
 
     html += '<div style="border-top:1px solid var(--rule);margin:4px 0"></div>';
     html += '<button onclick="window.location=\'/huddles.html\'" style="' + itemStyle(false) + 'color:var(--blue)">' +
-      '<span style="font-size:16px">+</span>' +
+      '<span style="opacity:.5">' + _icPlus + '</span>' +
       '<div style="font-size:13px;font-weight:500">Manage Huddles</div></button>';
 
     list.innerHTML = html;
@@ -112,7 +117,7 @@
     // Update button
     var icon = document.getElementById('ctxIcon');
     var name = document.getElementById('ctxName');
-    if (icon) icon.innerHTML = huddleId ? '&#x1F91D;' : '&#x1F3E2;';
+    if (icon) icon.innerHTML = huddleId ? _icAtom : _icDash;
     if (name) textContent = huddleId ? huddleName : getTenantName();
     if (name) name.textContent = huddleId ? huddleName : getTenantName();
 
@@ -144,7 +149,7 @@
         if (masthead) masthead.after(existing);
       }
       var h = huddles.find(function(h) { return h.id === activeHuddleId; });
-      existing.innerHTML = '<span>&#x1F3AF;</span> Viewing through: <strong>' + esc(activeHuddleName || '') + '</strong>' +
+      existing.innerHTML = '<span style="display:inline-flex;vertical-align:middle">' + _icAtom + '</span> Viewing through: <strong>' + esc(activeHuddleName || '') + '</strong>' +
         (h?.purpose ? '<span style="color:#3b82f680;margin:0 6px">&middot;</span><span style="color:#3b82f6aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:400px">' + esc(h.purpose) + '</span>' : '') +
         '<button onclick="window._openEditHuddle()" style="margin-left:auto;background:none;border:1px solid #93c5fd;' +
         'padding:3px 10px;border-radius:6px;font-size:12px;color:#2563eb;cursor:pointer;font-weight:500">Edit Mission</button>' +
