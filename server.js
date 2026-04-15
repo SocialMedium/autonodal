@@ -1432,9 +1432,11 @@ app.post('/api/feeds/propose', authenticateToken, async (req, res) => {
     const { proposed_url, proposed_name, proposed_geographies, proposed_sectors, proposed_signal_types, rationale } = req.body;
     if (!proposed_url) return res.status(400).json({ error: 'URL required' });
 
-    // Check for duplicate
-    const { rows: existing } = await db.query('SELECT id FROM feed_inventory WHERE url = $1', [proposed_url]);
-    if (existing.length) return res.status(409).json({ error: 'Feed already exists', feed_id: existing[0].id });
+    // Check if already in the harvester (rss_sources or feed_inventory)
+    var { rows: existingRss } = await platformPool.query('SELECT id, name FROM rss_sources WHERE url = $1', [proposed_url]);
+    if (existingRss.length) return res.status(409).json({ error: 'already_tracked', message: 'This feed is already in our signal pipeline.', feed_name: existingRss[0].name });
+    var { rows: existingFi } = await platformPool.query('SELECT id FROM feed_inventory WHERE url = $1', [proposed_url]).catch(() => ({ rows: [] }));
+    if (existingFi.length) return res.status(409).json({ error: 'already_tracked', message: 'This feed is already in our signal pipeline.' });
 
     const { rows } = await db.query(`
       INSERT INTO feed_proposals (tenant_id, proposed_url, proposed_name, proposed_geographies, proposed_sectors, proposed_signal_types, rationale)

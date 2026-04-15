@@ -1018,12 +1018,16 @@ function suggestFeed() {
   .then(function(data) {
     btn.disabled = false; btn.textContent = 'Suggest';
     var result = document.getElementById('feedResult');
-    if (data.error) {
+    if (data.error === 'already_tracked') {
+      result.style.background = 'var(--blue-soft)'; result.style.color = 'var(--blue)';
+      result.innerHTML = icon('check-circle') + ' ' + (data.message || 'This feed is already in our signal pipeline.') + (data.feed_name ? ' <strong>(' + data.feed_name + ')</strong>' : '');
+      document.getElementById('feedUrl').value = '';
+    } else if (data.error) {
       result.style.background = 'var(--rose-soft)'; result.style.color = 'var(--rose)';
       result.textContent = data.error;
     } else {
       result.style.background = 'var(--emerald-soft)'; result.style.color = 'var(--emerald)';
-      result.textContent = 'Feed suggestion submitted for review. We\'ll let you know when it\'s live.';
+      result.innerHTML = icon('send') + ' Suggestion submitted for review. We\'ll update the status when it\'s tested.';
       document.getElementById('feedUrl').value = '';
       document.getElementById('feedName').value = '';
     }
@@ -1038,15 +1042,16 @@ function loadFeedProposals() {
   .then(function(r) { return r.json(); })
   .then(function(proposals) {
     if (!Array.isArray(proposals) || !proposals.length) { document.getElementById('feedProposals').innerHTML = ''; return; }
-    var statusIcons = { pending: '\u23F3', accepted: '\u2705', rejected: '\u274C', testing: '\u{1F9EA}' };
+    var statusIcon = { pending: icon('clock'), accepted: icon('check-circle'), rejected: icon('x-circle'), testing: icon('flask-conical') };
     var statusColors = { pending: 'var(--ink-3)', accepted: 'var(--emerald)', rejected: 'var(--rose)', testing: 'var(--blue)' };
     var html = '';
     proposals.forEach(function(p) {
       var st = p.status || 'pending';
+      var sc = statusColors[st] || 'var(--ink-3)';
       html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;border-bottom:1px solid var(--rule)">' +
-        '<span style="font-size:14px">' + (statusIcons[st] || '') + '</span>' +
+        '<span style="color:' + sc + ';display:inline-flex">' + (statusIcon[st] || icon('circle')) + '</span>' +
         '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (p.proposed_name || p.proposed_url) + '</span>' +
-        '<span style="color:' + (statusColors[st] || 'var(--ink-3)') + ';font-size:12px;font-weight:500;text-transform:uppercase">' + st + '</span></div>';
+        '<span style="color:' + sc + ';font-size:12px;font-weight:500;text-transform:uppercase">' + st + '</span></div>';
     });
     document.getElementById('feedProposals').innerHTML = html;
   });
