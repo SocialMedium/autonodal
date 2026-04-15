@@ -1318,34 +1318,45 @@ app.get('/api/terminology', authenticateToken, async (req, res) => {
 // FEED MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Tenant's active feeds — returns summary stats only, not source URLs
+// Feed overview — aggregate stats only, no individual sources
 app.get('/api/feeds', authenticateToken, async (req, res) => {
   try {
-    const db = new TenantDB(req.tenant_id);
-    const { rows } = await db.query(`
-      SELECT fi.id, fi.name, fi.category, fi.region, fi.source_type, fi.quality_score,
-             tf.active, tf.local_signal_yield, tf.tenant_rating, tf.selection_method, tf.activated_at
-      FROM feed_inventory fi
-      JOIN tenant_feeds tf ON tf.feed_id = fi.id
-      WHERE tf.tenant_id = $1
-      ORDER BY fi.quality_score DESC
-    `, [req.tenant_id]);
-    res.json(rows);
+    const { rows: byType } = await platformPool.query(
+      "SELECT source_type, COUNT(*) AS count FROM rss_sources WHERE enabled = true GROUP BY source_type ORDER BY count DESC"
+    );
+    const { rows: byRegion } = await platformPool.query(
+      "SELECT UNNEST(regions) AS region, COUNT(*) AS count FROM rss_sources WHERE enabled = true AND regions IS NOT NULL GROUP BY 1 ORDER BY count DESC LIMIT 15"
+    ).catch(() => ({ rows: [] }));
+    const { rows: [totals] } = await platformPool.query(
+      "SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE enabled) AS active FROM rss_sources"
+    );
+
+    res.json({
+      total_feeds: parseInt(totals.total),
+      active_feeds: parseInt(totals.active),
+      by_type: byType.map(r => ({ type: r.source_type, count: parseInt(r.count) })),
+      regions: byRegion.map(r => r.region),
+      coverage: {
+        wire_services: 'PR Newswire, Business Wire, GlobeNewswire',
+        research: 'Macro economic, labour market, industry verticals',
+        news: 'Technology, financial services, venture capital',
+        podcasts: '46 shows across business and technology',
+        global: '100+ language coverage via GDELT'
+      }
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Feed inventory — admin only, no source URLs exposed to regular users
+// Feed inventory — admin only
 app.get('/api/feeds/inventory', authenticateToken, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
   try {
     const db = new TenantDB(req.tenant_id);
     const vertical = req.user.vertical || 'talent';
-    const isAdmin = req.user.role === 'admin';
     const { rows } = await db.query(`
-      SELECT fi.id, fi.name, fi.category, fi.region, fi.source_type, fi.quality_score,
-             fi.avg_signals_per_week, fi.verticals,
-             ${isAdmin ? 'fi.url,' : ''}
+      SELECT fi.*,
         EXISTS(
           SELECT 1 FROM tenant_feeds tf
           WHERE tf.feed_id = fi.id AND tf.tenant_id = $1 AND tf.active = TRUE
