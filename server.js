@@ -1318,12 +1318,13 @@ app.get('/api/terminology', authenticateToken, async (req, res) => {
 // FEED MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Tenant's active feeds
+// Tenant's active feeds — returns summary stats only, not source URLs
 app.get('/api/feeds', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
     const { rows } = await db.query(`
-      SELECT fi.*, tf.active, tf.local_signal_yield, tf.tenant_rating, tf.selection_method, tf.activated_at
+      SELECT fi.id, fi.name, fi.category, fi.region, fi.source_type, fi.quality_score,
+             tf.active, tf.local_signal_yield, tf.tenant_rating, tf.selection_method, tf.activated_at
       FROM feed_inventory fi
       JOIN tenant_feeds tf ON tf.feed_id = fi.id
       WHERE tf.tenant_id = $1
@@ -1335,13 +1336,16 @@ app.get('/api/feeds', authenticateToken, async (req, res) => {
   }
 });
 
-// Full platform feed inventory (for feed selection UI)
+// Feed inventory — admin only, no source URLs exposed to regular users
 app.get('/api/feeds/inventory', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
     const vertical = req.user.vertical || 'talent';
+    const isAdmin = req.user.role === 'admin';
     const { rows } = await db.query(`
-      SELECT fi.*,
+      SELECT fi.id, fi.name, fi.category, fi.region, fi.source_type, fi.quality_score,
+             fi.avg_signals_per_week, fi.verticals,
+             ${isAdmin ? 'fi.url,' : ''}
         EXISTS(
           SELECT 1 FROM tenant_feeds tf
           WHERE tf.feed_id = fi.id AND tf.tenant_id = $1 AND tf.active = TRUE
@@ -5221,9 +5225,16 @@ app.get('/api/search', authenticateToken, endpointLimit(30), async (req, res) =>
 
     const qdrantStartTime = Date.now();
     const qdrantResultsMap = {};
+    // Build tenant filter for Qdrant — match current tenant OR platform-wide (null tenant)
+    const tenantFilter = {
+      should: [
+        { key: 'tenant_id', match: { value: req.tenant_id } },
+        { is_empty: { key: 'tenant_id' } },
+      ]
+    };
     const qdrantPromises = collectionsToSearch.map(async (coll) => {
       try {
-        const raw = await qdrantSearch(coll, vector, qdrantLimit);
+        const raw = await qdrantSearch(coll, vector, qdrantLimit, tenantFilter);
         qdrantResultsMap[coll] = raw.filter(r => r.score >= minScore);
       } catch (e) { qdrantResultsMap[coll] = []; }
     });
