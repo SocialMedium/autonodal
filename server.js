@@ -5405,7 +5405,7 @@ app.get('/api/search', authenticateToken, endpointLimit(30), async (req, res) =>
     // Search publications (ResearchMedium — separate collection, no tenant filter)
     if (searchPublicationsEnabled) {
       try {
-        const pubs = await searchPublications(vector, { limit: 10, scoreThreshold: 0.35 });
+        const pubs = await searchPublications(vector, { limit: 30, scoreThreshold: minScore });
         if (pubs.length > 0) {
           results.publications = pubs;
           results._research_momentum = computeResearchMomentum(pubs);

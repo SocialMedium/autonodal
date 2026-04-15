@@ -3170,8 +3170,8 @@ async function doSearch() {
     if (r.documents?.length) tabs.push({ k: 'documents', l: 'Documents', c: r.documents.length });
     if (r.companies?.length) tabs.push({ k: 'companies', l: 'Companies', c: r.companies.length });
     if (r.case_studies?.length) tabs.push({ k: 'case_studies', l: 'Case Studies', c: r.case_studies.length });
-    if (r.publications?.length) tabs.push({ k: 'publications', l: 'Research', c: r.publications.length });
     if (r.interactions?.length) tabs.push({ k: 'interactions', l: 'Interactions', c: r.interactions.length });
+    if (r.publications?.length) tabs.push({ k: 'publications', l: 'Published Research', c: r.publications.length });
 
     var tabHtml = '<div style="display:flex;gap:4px;padding:8px 16px;border-bottom:1px solid var(--rule);flex-wrap:wrap">';
     tabs.forEach(function(t, i) {
