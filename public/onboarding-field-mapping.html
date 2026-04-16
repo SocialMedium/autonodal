@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Field Mapping — Autonodal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ml-primary: #2563eb;
+      --ml-accent: #10b981;
+      --ml-warning: #f59e0b;
+      --ml-danger: #ef4444;
+      --ml-bg: #f8fafc;
+      --ml-surface: #ffffff;
+      --ml-border: #e2e8f0;
+      --ml-text: #1e293b;
+      --ml-text-sec: #64748b;
+      --ml-text-dim: #94a3b8;
+      --ml-primary-soft: #eff6ff;
+      --ml-accent-soft: #ecfdf5;
+      --ml-warning-soft: #fffbeb;
+      --radius: 12px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--ml-bg);
+      color: var(--ml-text);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+    .container { max-width: 640px; width: 100%; }
+
+    /* Header */
+    .header { margin-bottom: 32px; }
+    .header .sparkle { font-size: 24px; margin-bottom: 8px; }
+    .header h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; line-height: 1.3; }
+    .header p { font-size: 14px; color: var(--ml-text-sec); line-height: 1.5; }
+    .header .auto-count {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--ml-accent-soft); color: #059669;
+      font-size: 12px; font-weight: 600; padding: 4px 10px;
+      border-radius: 20px; margin-top: 10px;
+    }
+
+    /* Progress */
+    .progress-bar {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 28px; font-size: 12px; color: var(--ml-text-sec);
+    }
+    .progress-bar .bar { flex: 1; height: 4px; background: var(--ml-border); border-radius: 2px; overflow: hidden; }
+    .progress-bar .bar-fill { height: 100%; background: var(--ml-accent); border-radius: 2px; transition: width 0.3s ease; }
+
+    /* Field card */
+    .field-card {
+      background: var(--ml-surface);
+      border: 1px solid var(--ml-border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+      transition: border-color 0.2s;
+    }
+    .field-card.decided { border-color: var(--ml-accent); }
+    .field-card .field-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    .field-card .field-name {
+      font-size: 15px; font-weight: 600; color: var(--ml-text);
+    }
+    .field-card .confidence-badge {
+      font-size: 10px; font-weight: 600; padding: 2px 8px;
+      border-radius: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .badge-high { background: var(--ml-primary-soft); color: var(--ml-primary); }
+    .badge-medium { background: var(--ml-warning-soft); color: #b45309; }
+    .badge-uncertain { background: #fef2f2; color: var(--ml-danger); }
+
+    .field-card .samples {
+      display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;
+    }
+    .field-card .sample {
+      font-size: 11px; background: var(--ml-bg); color: var(--ml-text-sec);
+      padding: 3px 8px; border-radius: 6px; font-family: 'SF Mono', monospace;
+    }
+    .field-card .ai-note {
+      font-size: 12px; color: var(--ml-text-sec); line-height: 1.4;
+      margin-bottom: 14px; font-style: italic;
+    }
+
+    /* Radio options */
+    .options { display: flex; flex-direction: column; gap: 8px; }
+    .option {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; border-radius: 8px; cursor: pointer;
+      border: 1px solid var(--ml-border); transition: all 0.15s;
+      min-height: 44px;
+    }
+    .option:hover { border-color: var(--ml-primary); background: var(--ml-primary-soft); }
+    .option.selected { border-color: var(--ml-primary); background: var(--ml-primary-soft); }
+    .option input[type="radio"] { display: none; }
+    .option .radio-dot {
+      width: 16px; height: 16px; border-radius: 50%;
+      border: 2px solid var(--ml-border); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+    }
+    .option.selected .radio-dot {
+      border-color: var(--ml-primary);
+    }
+    .option.selected .radio-dot::after {
+      content: ''; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--ml-primary);
+    }
+    .option .option-label { font-size: 13px; font-weight: 500; }
+    .option .recommended {
+      font-size: 10px; color: var(--ml-primary); font-weight: 600;
+      margin-left: auto; white-space: nowrap;
+    }
+
+    /* Apply button */
+    .apply-section {
+      position: sticky; bottom: 0; padding: 20px 0;
+      background: linear-gradient(transparent, var(--ml-bg) 20%);
+    }
+    .apply-btn {
+      width: 100%; padding: 14px; border: none; border-radius: var(--radius);
+      font-size: 15px; font-weight: 600; cursor: pointer;
+      font-family: inherit; transition: all 0.2s;
+      background: var(--ml-primary); color: white;
+    }
+    .apply-btn:disabled {
+      background: var(--ml-border); color: var(--ml-text-dim); cursor: not-allowed;
+    }
+    .apply-btn:not(:disabled):hover { background: #1d4ed8; }
+
+    /* States */
+    .loading-state, .success-state, .error-state {
+      text-align: center; padding: 60px 20px;
+    }
+    .loading-state .spinner {
+      width: 32px; height: 32px; border: 3px solid var(--ml-border);
+      border-top-color: var(--ml-primary); border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .success-state .check { font-size: 48px; margin-bottom: 16px; }
+    .success-state h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+    .success-state p { color: var(--ml-text-sec); font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container" id="app">
+    <div class="loading-state" id="loadingState">
+      <div class="spinner"></div>
+      <div style="font-size:14px;color:var(--ml-text-sec)">Analysing your data...</div>
+    </div>
+  </div>
+
+  <script>
+    var SESSION_ID = new URLSearchParams(window.location.search).get('session');
+    var TOKEN = localStorage.getItem('ml_token');
+
+    async function api(path, opts) {
+      var res = await fetch(path, Object.assign({
+        headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }
+      }, opts || {}));
+      if (!res.ok) throw new Error('API error ' + res.status);
+      return res.json();
+    }
+
+    var decisions = {};
+    var totalReview = 0;
+
+    async function init() {
+      if (!SESSION_ID) {
+        document.getElementById('app').innerHTML = '<div class="error-state"><h2>No session</h2><p>This page requires a field mapping session ID.</p></div>';
+        return;
+      }
+
+      try {
+        var data = await api('/api/onboarding/field-mapping/' + SESSION_ID);
+        renderReview(data);
+      } catch (e) {
+        document.getElementById('app').innerHTML = '<div class="error-state"><h2>Failed to load</h2><p>' + e.message + '</p><button onclick="init()" style="margin-top:12px;padding:8px 20px;border:1px solid var(--ml-border);border-radius:8px;background:white;cursor:pointer;font-family:inherit">Retry</button></div>';
+      }
+    }
+
+    function renderReview(data) {
+      var session = data.session;
+      var toReview = data.mappings_to_review || [];
+      var autoCount = data.auto_applied_count || 0;
+      var schema = data.target_schema || [];
+      totalReview = toReview.length;
+
+      if (toReview.length === 0) {
+        renderSuccess(autoCount);
+        return;
+      }
+
+      var html = '';
+
+      // Header
+      html += '<div class="header">';
+      html += '<div class="sparkle">&#10022;</div>';
+      html += '<h1>Almost there — just ' + toReview.length + ' quick decision' + (toReview.length > 1 ? 's' : '') + '</h1>';
+      html += '<p>I\'ve mapped ' + autoCount + ' field' + (autoCount !== 1 ? 's' : '') + ' automatically. These ' + toReview.length + ' need your input:</p>';
+      html += '<div class="auto-count">&#10003; ' + autoCount + ' fields auto-mapped</div>';
+      html += '</div>';
+
+      // Progress bar
+      html += '<div class="progress-bar">';
+      html += '<span id="progressText">0 of ' + toReview.length + '</span>';
+      html += '<div class="bar"><div class="bar-fill" id="progressFill" style="width:0%"></div></div>';
+      html += '</div>';
+
+      // Field cards
+      toReview.forEach(function(field, idx) {
+        var badgeClass = field.confidence_label === 'high' ? 'badge-high' : field.confidence_label === 'medium' ? 'badge-medium' : 'badge-uncertain';
+        html += '<div class="field-card" id="card-' + idx + '">';
+        html += '<div class="field-header">';
+        html += '<div class="field-name">"' + esc(field.source_field.replace(/^(properties|fields)\./, '')) + '"</div>';
+        html += '<span class="confidence-badge ' + badgeClass + '">' + field.confidence_label + '</span>';
+        html += '</div>';
+
+        // Samples
+        if (field.source_sample && field.source_sample.length) {
+          html += '<div class="samples">';
+          field.source_sample.forEach(function(s) {
+            html += '<span class="sample">' + esc(s) + '</span>';
+          });
+          html += '</div>';
+        }
+
+        // AI reasoning
+        if (field.ai_reasoning) {
+          html += '<div class="ai-note">' + esc(field.ai_reasoning) + '</div>';
+        }
+
+        // Options
+        html += '<div class="options">';
+
+        // If there's an AI recommendation, show it first
+        if (field.target_field) {
+          var targetLabel = field.target_label || field.target_field;
+          html += makeOption(idx, field.source_field, field.target_field, 'Map to ' + targetLabel, field.confidence_label === 'high');
+        }
+
+        // Show other plausible targets
+        schema.forEach(function(s) {
+          if (s.field === field.target_field) return; // skip the recommendation
+          html += makeOption(idx, field.source_field, s.field, 'Map to ' + s.label, false);
+        });
+
+        // Skip option
+        html += makeOption(idx, field.source_field, 'skip', 'Skip this field', !field.target_field);
+
+        html += '</div>'; // options
+        html += '</div>'; // card
+      });
+
+      // Apply button
+      html += '<div class="apply-section">';
+      html += '<button class="apply-btn" id="applyBtn" disabled onclick="applyMappings()">Make all decisions to continue</button>';
+      html += '</div>';
+
+      document.getElementById('app').innerHTML = html;
+
+      // Pre-select recommended options for HIGH confidence
+      toReview.forEach(function(field, idx) {
+        if (field.confidence_label === 'high' && field.target_field) {
+          selectOption(idx, field.source_field, field.target_field);
+        }
+      });
+    }
+
+    function makeOption(idx, sourceField, value, label, isRecommended) {
+      var id = 'opt-' + idx + '-' + value;
+      return '<label class="option" id="' + id + '" onclick="selectOption(' + idx + ',\'' + esc(sourceField) + '\',\'' + esc(value) + '\')">' +
+        '<input type="radio" name="field-' + idx + '" value="' + esc(value) + '">' +
+        '<div class="radio-dot"></div>' +
+        '<span class="option-label">' + esc(label) + '</span>' +
+        (isRecommended ? '<span class="recommended">recommended</span>' : '') +
+        '</label>';
+    }
+
+    function selectOption(idx, sourceField, value) {
+      decisions[sourceField] = value;
+
+      // Update visual state
+      var card = document.getElementById('card-' + idx);
+      if (card) {
+        card.classList.add('decided');
+        card.querySelectorAll('.option').forEach(function(o) { o.classList.remove('selected'); });
+        var selected = document.getElementById('opt-' + idx + '-' + value);
+        if (selected) selected.classList.add('selected');
+      }
+
+      // Update progress
+      var decided = Object.keys(decisions).length;
+      var pct = Math.round((decided / totalReview) * 100);
+      var fill = document.getElementById('progressFill');
+      var text = document.getElementById('progressText');
+      if (fill) fill.style.width = pct + '%';
+      if (text) text.textContent = decided + ' of ' + totalReview;
+
+      // Enable button when all done
+      var btn = document.getElementById('applyBtn');
+      if (btn) {
+        if (decided >= totalReview) {
+          btn.disabled = false;
+          btn.textContent = 'Apply mappings \u2192';
+        } else {
+          btn.disabled = true;
+          btn.textContent = (totalReview - decided) + ' decision' + (totalReview - decided > 1 ? 's' : '') + ' remaining';
+        }
+      }
+    }
+
+    async function applyMappings() {
+      var btn = document.getElementById('applyBtn');
+      btn.disabled = true;
+      btn.textContent = 'Applying...';
+
+      try {
+        // Submit each decision
+        for (var sourceField in decisions) {
+          await api('/api/onboarding/field-mapping/' + SESSION_ID + '/decision', {
+            method: 'PATCH',
+            body: JSON.stringify({ source_field: sourceField, decision: decisions[sourceField] }),
+          });
+        }
+
+        // Apply the mappings
+        var result = await api('/api/onboarding/field-mapping/' + SESSION_ID + '/apply', {
+          method: 'POST',
+        });
+
+        renderSuccess(result.summary ? result.summary.auto_applied + result.summary.review_required : 0);
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = 'Retry \u2192';
+        alert('Failed to apply: ' + e.message);
+      }
+    }
+
+    function renderSuccess(totalMapped) {
+      document.getElementById('app').innerHTML =
+        '<div class="success-state">' +
+        '<div class="check">&#10003;</div>' +
+        '<h2>Fields mapped successfully</h2>' +
+        '<p>' + totalMapped + ' fields mapped to your Autonodal schema.</p>' +
+        '<p style="margin-top:16px;color:var(--ml-accent);font-weight:600">Your data is ready for import.</p>' +
+        '<a href="/onboarding.html" style="display:inline-block;margin-top:20px;padding:10px 24px;background:var(--ml-primary);color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Continue to signal feeds \u2192</a>' +
+        '</div>';
+    }
+
+    function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    init();
+  </script>
+</body>
+</html>

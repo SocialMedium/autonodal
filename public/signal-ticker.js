@@ -159,7 +159,11 @@
     if (_panelMode === 'chart') { var h = await api('/api/signal-index/history?horizon=' + HORIZON + '&limit=90'); if (h) renderChart(h); }
   }
 
-  window.__siHz = function(h) { load(h); };
+  window.__siHz = function(h) {
+    load(h);
+    // Sync the market health card if it exists
+    if (typeof window.loadMarketHealthCard === 'function') window.loadMarketHealthCard(h);
+  };
   window.__siChart = function() {
     var p = document.getElementById('si-panel');
     if (_panelMode === 'chart') { _panelMode = null; if (p) { p.classList.remove('open'); p.style.display = 'none'; } return; }

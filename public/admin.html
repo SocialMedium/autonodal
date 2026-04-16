@@ -400,7 +400,7 @@ async function api(path, options) {
 }
 
 function showLogin() { document.getElementById('loginOverlay').classList.add('active'); }
-function doLogout() { if (!confirm('Sign out?')) return; api('/api/auth/logout', { method: 'POST' }).catch(function(){}); localStorage.removeItem('ml_token'); localStorage.removeItem('ml_user'); window.location = '/admin.html'; }
+function doLogout() { if (!confirm('Sign out?')) return; api('/api/auth/logout', { method: 'POST' }).catch(function(){}); localStorage.removeItem('ml_token'); localStorage.removeItem('ml_user'); sessionStorage.clear(); window.location = '/admin.html'; }
 
 // Auth callback
 (function() {

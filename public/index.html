@@ -1702,7 +1702,7 @@ a.stats-card-row:hover { background: var(--surface-warm); }
           <div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:18px 20px;height:100%">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
               <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-4)">Market Health Index</span>
-              <span id="mhHorizon" style="font-size:10px;color:var(--ink-4)">90 day</span>
+              <span id="mhHorizon" style="font-size:10px;color:var(--ink-4)">7 day</span>
             </div>
             <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:14px">
               <span id="mhScore" style="font-family:var(--serif);font-size:32px;font-weight:700;color:var(--ink)">—</span>
@@ -1901,6 +1901,7 @@ function doLogout() {
   api('/api/auth/logout', { method: 'POST' }).catch(() => {});
   localStorage.removeItem('ml_token');
   localStorage.removeItem('ml_user');
+  sessionStorage.clear(); // Clear huddle context + any tenant-scoped state
   showLogin();
 }
 
@@ -2085,6 +2086,15 @@ async function loadHuddleSelector() {
   try {
     var data = await api('/api/huddles');
     var huddles = data || [];
+    // Validate stored huddle belongs to current user's tenant
+    if (activeHuddleId) {
+      var valid = huddles.some(function(h) { return h.id === activeHuddleId && h.status === 'active'; });
+      if (!valid) {
+        activeHuddleId = '';
+        sessionStorage.removeItem('activeHuddleId');
+        sessionStorage.removeItem('activeHuddleName');
+      }
+    }
     if (!huddles.length) return;
     var sel = document.getElementById('huddleSelector');
     huddles.forEach(function(h) {
@@ -2338,11 +2348,14 @@ async function loadTodayInsight() {
   } catch(e) {}
 }
 
-async function loadMarketHealthCard() {
+async function loadMarketHealthCard(horizon) {
   try {
-    var data = await api('/api/signal-index?horizon=30d'); // score still uses 30d window
+    var hz = horizon || '7d';
+    var data = await api('/api/signal-index?horizon=' + hz); // aligned with ticker
     if (!data) return;
     var mh = data.market_health || { score: 50, delta: 0, direction: 'flat' };
+    var hzLabels = { '7d': '7 day', '30d': '30 day', '90d': '90 day' };
+    document.getElementById('mhHorizon').textContent = hzLabels[hz] || hz;
     var score = Math.round(mh.score || 50);
     var delta = mh.delta || 0;
     var dir = mh.direction || 'flat';
@@ -2373,18 +2386,23 @@ async function loadMarketHealthCard() {
       if (stocks[k]) bearish += stocks[k].current_count || 0;
     });
     var sentiment = bullish > bearish * 1.5 ? 'Growth signals dominating' : bearish > bullish ? 'Caution signals elevated' : 'Balanced market activity';
-    dirEl.textContent = sentiment + ' — ' + totalSigs.toLocaleString() + ' signals this week';
+    var sigPeriod = hz === '7d' ? 'this week' : hz === '30d' ? 'this month' : 'past ' + hz;
+    dirEl.textContent = sentiment + ' — ' + totalSigs.toLocaleString() + ' signals ' + sigPeriod;
 
     // Geographic breakdown with bar chart
     try {
       var regionData = await api('/api/signals/brief?limit=1&region=all');
       var rs = regionData.region_stats || {};
+      var totalRegional = (parseInt(rs.au)||0) + (parseInt(rs.us)||0) + (parseInt(rs.uk)||0) + (parseInt(rs.sg)||0);
+      var totalAll = parseInt(rs.total) || totalRegional || 1;
+      var otherCount = Math.max(0, totalAll - totalRegional);
       var geos = [
-        { label: 'Oceania', count: rs.oce || rs.au || 0, color: '#0D7A50' },
-        { label: 'Americas', count: rs.us || 0, color: '#B45309' },
-        { label: 'Europe', count: rs.uk || 0, color: '#2563EB' },
-        { label: 'Asia', count: rs.sg || 0, color: '#6D28D9' },
+        { label: 'Oceania', count: parseInt(rs.au) || 0, color: '#0D7A50' },
+        { label: 'Americas', count: parseInt(rs.us) || 0, color: '#B45309' },
+        { label: 'Europe', count: parseInt(rs.uk) || 0, color: '#2563EB' },
+        { label: 'Asia', count: parseInt(rs.sg) || 0, color: '#6D28D9' },
       ];
+      if (otherCount > 0) geos.push({ label: 'Other', count: otherCount, color: '#94A3B8' });
       var maxCount = Math.max.apply(null, geos.map(function(g) { return g.count; })) || 1;
       var geoHtml = '';
       geos.forEach(function(g) {
@@ -2402,7 +2420,7 @@ async function loadMarketHealthCard() {
 
     // 90-day sparkline — log-deviation from mean, weekly ticks
     try {
-      var hist = await api('/api/signal-index/history?horizon=30d&limit=365');
+      var hist = await api('/api/signal-index/history?horizon=' + hz + '&limit=365');
       var points = (hist.history || hist || []).reverse();
       var byDay = {};
       points.forEach(function(p) {

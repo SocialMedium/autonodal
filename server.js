@@ -15687,17 +15687,130 @@ app.post('/api/onboarding/field-mapping/:sessionId/apply', authenticateToken, as
   }
 });
 
-// GET /api/onboarding/ai/status — get current onboarding AI session state
+// GET /api/onboarding/ai/status — get or create onboarding AI session with full context
 app.get('/api/onboarding/ai/status', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
+
+    // Get tenant metadata
+    const { rows: [tenant] } = await platformPool.query(
+      'SELECT name, tenant_type, vertical, plan, onboarding_complete FROM tenants WHERE id = $1',
+      [req.tenant_id]
+    );
+
+    // Get or create session
+    let { rows: [session] } = await db.query(
+      'SELECT * FROM onboarding_ai_sessions WHERE tenant_id = $1',
+      [req.tenant_id]
+    );
+
+    const tenantType = tenant?.tenant_type || 'individual';
+    const isCompany = tenantType === 'company';
+
+    // Determine which phases apply to this tenant type
+    const allPhases = isCompany
+      ? ['connect', 'field_mapping', 'feed_config', 'health_check', 'complete']
+      : ['connect', 'feed_config', 'health_check', 'complete']; // individuals skip field_mapping
+
+    if (!session) {
+      // Create a fresh session
+      const { rows: [newSession] } = await db.query(`
+        INSERT INTO onboarding_ai_sessions (tenant_id, current_phase, phase_data)
+        VALUES ($1, 'connect', $2)
+        ON CONFLICT (tenant_id) DO UPDATE SET updated_at = NOW()
+        RETURNING *
+      `, [req.tenant_id, JSON.stringify({ tenant_type: tenantType, phases: allPhases })]);
+      session = newSession;
+    }
+
+    // Network stats for concierge context
+    const { rows: [stats] } = await db.query(`
+      SELECT
+        (SELECT COUNT(*) FROM people WHERE tenant_id = $1) AS people_count,
+        (SELECT COUNT(*) FROM companies WHERE tenant_id = $1) AS company_count,
+        (SELECT COUNT(*) FROM interactions WHERE tenant_id = $1) AS interaction_count,
+        (SELECT COUNT(*) FROM user_google_accounts WHERE tenant_id = $1 AND sync_enabled = true) AS connected_accounts,
+        (SELECT COUNT(*) FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1) AND detected_at > NOW() - INTERVAL '7 days') AS signals_7d
+    `, [req.tenant_id]);
+
+    // Field mapping sessions for this tenant
+    const { rows: mappingSessions } = await db.query(
+      "SELECT id, status, entity_type, auto_applied, review_required, skipped FROM field_mapping_sessions WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 5",
+      [req.tenant_id]
+    );
+
+    res.json({
+      session: {
+        id: session.id,
+        current_phase: session.current_phase,
+        completed_phases: session.completed_phases || [],
+        phase_data: session.phase_data || {},
+        started_at: session.started_at,
+        completed_at: session.completed_at,
+      },
+      tenant: {
+        name: tenant?.name,
+        type: tenantType,
+        is_company: isCompany,
+        vertical: tenant?.vertical,
+        plan: tenant?.plan,
+        onboarding_complete: tenant?.onboarding_complete,
+      },
+      phases: allPhases,
+      network: {
+        people: parseInt(stats.people_count) || 0,
+        companies: parseInt(stats.company_count) || 0,
+        interactions: parseInt(stats.interaction_count) || 0,
+        connected_accounts: parseInt(stats.connected_accounts) || 0,
+        signals_7d: parseInt(stats.signals_7d) || 0,
+      },
+      mapping_sessions: mappingSessions,
+      user: { name: req.user?.name, email: req.user?.email },
+    });
+  } catch (err) {
+    console.error('Onboarding AI status error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch status' });
+  }
+});
+
+// POST /api/onboarding/ai/advance — advance to the next phase
+app.post('/api/onboarding/ai/advance', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { next_phase } = req.body;
+
+    if (!next_phase) return res.status(400).json({ error: 'next_phase required' });
+
     const { rows: [session] } = await db.query(
       'SELECT * FROM onboarding_ai_sessions WHERE tenant_id = $1',
       [req.tenant_id]
     );
-    res.json({ session: session || null });
+    if (!session) return res.status(404).json({ error: 'No onboarding session' });
+
+    const completedPhases = [...new Set([...(session.completed_phases || []), session.current_phase])];
+    const isComplete = next_phase === 'complete';
+
+    await db.query(`
+      UPDATE onboarding_ai_sessions SET
+        current_phase = $2,
+        completed_phases = $3,
+        completed_at = CASE WHEN $4 THEN NOW() ELSE completed_at END,
+        updated_at = NOW()
+      WHERE tenant_id = $1
+    `, [req.tenant_id, next_phase, completedPhases, isComplete]);
+
+    // Mark tenant onboarding complete if finishing
+    if (isComplete) {
+      await platformPool.query(
+        "UPDATE tenants SET onboarding_complete = true, onboarding_status = 'complete', onboarding_completed_at = NOW() WHERE id = $1",
+        [req.tenant_id]
+      );
+    }
+
+    res.json({ phase: next_phase, completed_phases: completedPhases, is_complete: isComplete });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch status' });
+    console.error('Onboarding advance error:', err.message);
+    res.status(500).json({ error: 'Failed to advance phase' });
   }
 });
 

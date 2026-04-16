@@ -98,6 +98,7 @@
     fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + tk } }).catch(function(){});
     localStorage.removeItem('ml_token');
     localStorage.removeItem('ml_user');
+    sessionStorage.clear();
     location.href = '/index.html';
   });
 

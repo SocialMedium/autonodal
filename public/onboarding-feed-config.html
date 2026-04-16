@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signal Feeds — Autonodal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ml-primary: #2563eb; --ml-accent: #10b981; --ml-warning: #f59e0b;
+      --ml-bg: #f8fafc; --ml-surface: #ffffff; --ml-border: #e2e8f0;
+      --ml-text: #1e293b; --ml-text-sec: #64748b; --ml-text-dim: #94a3b8;
+      --ml-primary-soft: #eff6ff; --ml-accent-soft: #ecfdf5;
+      --radius: 12px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--ml-bg); color: var(--ml-text);
+      min-height: 100vh; display: flex; justify-content: center; padding: 40px 20px;
+    }
+    .container { max-width: 680px; width: 100%; }
+    .header { margin-bottom: 28px; }
+    .header .sparkle { font-size: 24px; margin-bottom: 8px; }
+    .header h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+    .header p { font-size: 14px; color: var(--ml-text-sec); line-height: 1.5; }
+
+    .data-quality {
+      display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap;
+    }
+    .dq-badge {
+      font-size: 11px; padding: 4px 10px; border-radius: 16px;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .dq-good { background: var(--ml-accent-soft); color: #059669; }
+    .dq-low { background: #fef3c7; color: #92400e; }
+
+    .section-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--ml-text-dim); margin-bottom: 10px;
+    }
+
+    .bundle-card {
+      background: var(--ml-surface); border: 1px solid var(--ml-border);
+      border-radius: var(--radius); padding: 14px 16px; margin-bottom: 8px;
+      display: flex; align-items: center; gap: 12px;
+      cursor: pointer; transition: all 0.15s; min-height: 52px;
+    }
+    .bundle-card:hover { border-color: var(--ml-primary); }
+    .bundle-card.enabled { border-color: var(--ml-accent); background: var(--ml-accent-soft); }
+
+    .bundle-toggle {
+      width: 36px; height: 20px; border-radius: 10px;
+      background: var(--ml-border); position: relative; flex-shrink: 0;
+      transition: background 0.2s;
+    }
+    .bundle-toggle::after {
+      content: ''; position: absolute; top: 2px; left: 2px;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: white; transition: transform 0.2s;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .bundle-card.enabled .bundle-toggle { background: var(--ml-accent); }
+    .bundle-card.enabled .bundle-toggle::after { transform: translateX(16px); }
+
+    .bundle-info { flex: 1; min-width: 0; }
+    .bundle-name { font-size: 13px; font-weight: 600; }
+    .bundle-reason { font-size: 11px; color: var(--ml-text-sec); margin-top: 2px; }
+    .bundle-badge {
+      font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 8px;
+      white-space: nowrap;
+    }
+    .badge-auto { background: var(--ml-accent-soft); color: #059669; }
+    .badge-suggested { background: var(--ml-primary-soft); color: var(--ml-primary); }
+
+    .actions { margin-top: 28px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn-primary {
+      padding: 14px 28px; border: none; border-radius: var(--radius);
+      font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit;
+      background: var(--ml-primary); color: white; transition: background 0.2s;
+    }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-primary:disabled { background: var(--ml-border); color: var(--ml-text-dim); cursor: not-allowed; }
+    .btn-secondary {
+      padding: 14px 28px; border: 1px solid var(--ml-border); border-radius: var(--radius);
+      font-size: 14px; font-weight: 500; cursor: pointer; font-family: inherit;
+      background: white; color: var(--ml-text-sec); transition: all 0.2s;
+    }
+    .btn-secondary:hover { border-color: var(--ml-primary); color: var(--ml-primary); }
+
+    .harvest-status {
+      margin-top: 24px; padding: 16px 20px; border-radius: var(--radius);
+      background: var(--ml-accent-soft); border: 1px solid #a7f3d0;
+      display: none;
+    }
+    .harvest-status .status-text { font-size: 13px; font-weight: 600; color: #059669; }
+    .harvest-status .status-detail { font-size: 12px; color: #065f46; margin-top: 4px; }
+    .harvest-spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid #a7f3d0; border-top-color: #059669;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+      vertical-align: middle; margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-state { text-align: center; padding: 60px 20px; }
+    .loading-state .spinner {
+      width: 32px; height: 32px; border: 3px solid var(--ml-border);
+      border-top-color: var(--ml-primary); border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin: 0 auto 16px;
+    }
+
+    .show-more {
+      text-align: center; padding: 8px; margin-bottom: 16px;
+    }
+    .show-more button {
+      font-size: 12px; color: var(--ml-primary); background: none;
+      border: 1px solid var(--ml-border); padding: 6px 16px;
+      border-radius: 8px; cursor: pointer; font-family: inherit;
+    }
+    .show-more button:hover { background: var(--ml-primary-soft); }
+    .hidden-bundles { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container" id="app">
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <div style="font-size:14px;color:var(--ml-text-sec)">Analysing your network...</div>
+    </div>
+  </div>
+
+  <script>
+    var TOKEN = localStorage.getItem('ml_token');
+    var selectedBundles = new Set();
+    var allBundles = [];
+
+    async function api(path, opts) {
+      var res = await fetch(path, Object.assign({
+        headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }
+      }, opts || {}));
+      if (!res.ok) throw new Error('API error ' + res.status);
+      return res.json();
+    }
+
+    function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    async function init() {
+      try {
+        var data = await api('/api/onboarding/feed-config/analyse', { method: 'POST' });
+        allBundles = data.recommended_bundles || [];
+        render(data);
+      } catch (e) {
+        document.getElementById('app').innerHTML = '<div style="text-align:center;padding:60px 20px"><h2>Analysis failed</h2><p style="color:var(--ml-text-sec)">' + e.message + '</p><button onclick="init()" style="margin-top:12px;padding:8px 20px;border:1px solid var(--ml-border);border-radius:8px;background:white;cursor:pointer;font-family:inherit">Retry</button></div>';
+      }
+    }
+
+    function render(data) {
+      var ns = data.network_size || {};
+      var dq = data.data_quality || {};
+      var gw = data.geo_weights || [];
+      var auto = allBundles.filter(function(b) { return b.auto_enable; });
+      var suggested = allBundles.filter(function(b) { return !b.auto_enable && b.confidence >= 0.4; });
+      var other = allBundles.filter(function(b) { return !b.auto_enable && b.confidence < 0.4; });
+
+      // Pre-select auto bundles
+      auto.forEach(function(b) { selectedBundles.add(b.bundle_slug); });
+
+      // Build geo summary
+      var geoStr = gw.length > 0
+        ? gw.slice(0, 3).map(function(g) { return g.country; }).join(', ') + (gw.length > 3 ? ' +' + (gw.length - 3) + ' more' : '')
+        : 'multiple regions';
+
+      var html = '';
+      html += '<div class="header">';
+      html += '<div class="sparkle">&#10022;</div>';
+      html += '<h1>Your signal feed — pre-configured</h1>';
+      html += '<p>Based on your network (' + (ns.people || 0).toLocaleString() + ' contacts across ' + geoStr + '), I\'ve activated these signal feeds:</p>';
+      html += '</div>';
+
+      // Data quality badges
+      html += '<div class="data-quality">';
+      html += '<span class="dq-badge ' + (dq.sector_coverage >= 20 ? 'dq-good' : 'dq-low') + '">';
+      html += (dq.sector_coverage >= 20 ? '&#10003; ' : '&#9888; ') + dq.sector_coverage + '% sector coverage</span>';
+      html += '<span class="dq-badge ' + (dq.geo_coverage >= 30 ? 'dq-good' : 'dq-low') + '">';
+      html += (dq.geo_coverage >= 30 ? '&#10003; ' : '&#9888; ') + dq.geo_coverage + '% geo coverage</span>';
+      html += '</div>';
+
+      // Auto-enabled bundles
+      if (auto.length > 0) {
+        html += '<div class="section-label">Activated for you</div>';
+        auto.forEach(function(b) {
+          html += bundleCard(b, true, 'auto');
+        });
+      }
+
+      // Suggested additions
+      if (suggested.length > 0) {
+        html += '<div class="section-label" style="margin-top:20px">Want to add any of these?</div>';
+        suggested.forEach(function(b) {
+          html += bundleCard(b, false, 'suggested');
+        });
+      }
+
+      // Other bundles (hidden by default)
+      if (other.length > 0) {
+        html += '<div class="show-more" id="showMoreWrap"><button onclick="showAllBundles()">Show ' + other.length + ' more feeds</button></div>';
+        html += '<div class="hidden-bundles" id="otherBundles">';
+        html += '<div class="section-label">All available feeds</div>';
+        other.forEach(function(b) {
+          html += bundleCard(b, false, '');
+        });
+        html += '</div>';
+      }
+
+      // Harvest status (hidden initially)
+      html += '<div class="harvest-status" id="harvestStatus">';
+      html += '<div class="status-text"><span class="harvest-spinner"></span> <span id="harvestText">Starting harvest...</span></div>';
+      html += '<div class="status-detail" id="harvestDetail">Your first signals will appear within minutes</div>';
+      html += '</div>';
+
+      // Actions
+      html += '<div class="actions">';
+      html += '<button class="btn-primary" id="applyBtn" onclick="applyFeeds()">Start with these &#8594;</button>';
+      html += '<button class="btn-secondary" onclick="showAllBundles()">Customise feeds</button>';
+      html += '</div>';
+
+      document.getElementById('app').innerHTML = html;
+    }
+
+    function bundleCard(bundle, isEnabled, badgeType) {
+      var cls = isEnabled ? ' enabled' : '';
+      var badge = '';
+      if (badgeType === 'auto') badge = '<span class="bundle-badge badge-auto">auto</span>';
+      else if (badgeType === 'suggested') badge = '<span class="bundle-badge badge-suggested">' + Math.round(bundle.confidence * 100) + '% match</span>';
+
+      return '<div class="bundle-card' + cls + '" id="bc-' + esc(bundle.bundle_slug) + '" onclick="toggleBundle(\'' + esc(bundle.bundle_slug) + '\')">' +
+        '<div class="bundle-toggle"></div>' +
+        '<div class="bundle-info">' +
+          '<div class="bundle-name">' + esc(bundle.bundle_name) + '</div>' +
+          '<div class="bundle-reason">' + esc(bundle.reason) + '</div>' +
+        '</div>' +
+        badge +
+      '</div>';
+    }
+
+    function toggleBundle(slug) {
+      if (selectedBundles.has(slug)) {
+        selectedBundles.delete(slug);
+      } else {
+        selectedBundles.add(slug);
+      }
+      var card = document.getElementById('bc-' + slug);
+      if (card) card.classList.toggle('enabled', selectedBundles.has(slug));
+    }
+
+    function showAllBundles() {
+      var el = document.getElementById('otherBundles');
+      var wrap = document.getElementById('showMoreWrap');
+      if (el) el.style.display = 'block';
+      if (wrap) wrap.style.display = 'none';
+    }
+
+    async function applyFeeds() {
+      var btn = document.getElementById('applyBtn');
+      btn.disabled = true;
+      btn.textContent = 'Activating feeds...';
+
+      try {
+        var slugs = Array.from(selectedBundles);
+        await api('/api/onboarding/feed-config/apply', {
+          method: 'POST',
+          body: JSON.stringify({ bundle_slugs: slugs }),
+        });
+
+        // Show harvest status
+        var harvestEl = document.getElementById('harvestStatus');
+        harvestEl.style.display = 'block';
+        btn.textContent = 'Feeds activated';
+
+        // Poll for harvest progress
+        pollHarvest();
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = 'Retry &#8594;';
+        alert('Failed: ' + e.message);
+      }
+    }
+
+    var pollCount = 0;
+    async function pollHarvest() {
+      try {
+        var status = await api('/api/onboarding/feed-config/harvest-status');
+        var textEl = document.getElementById('harvestText');
+        var detailEl = document.getElementById('harvestDetail');
+        pollCount++;
+
+        if (status.recent_signals > 0) {
+          textEl.innerHTML = '&#10003; ' + status.recent_signals + ' signals arriving';
+          detailEl.textContent = 'From ' + status.active_feeds + ' active feeds. Your intelligence dashboard is ready.';
+          // Show continue button
+          var harvestEl = document.getElementById('harvestStatus');
+          harvestEl.style.borderColor = '#059669';
+          harvestEl.innerHTML += '<a href="/" style="display:inline-block;margin-top:12px;padding:10px 20px;background:#059669;color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px">Go to dashboard &#8594;</a>';
+          return; // Stop polling
+        }
+
+        if (pollCount < 60) {
+          textEl.innerHTML = '<span class="harvest-spinner"></span> Harvesting signals... (' + pollCount * 5 + 's)';
+          detailEl.textContent = status.active_feeds + ' feeds active. Signals will appear shortly.';
+          setTimeout(pollHarvest, 5000);
+        } else {
+          textEl.textContent = 'Harvest running in background';
+          detailEl.innerHTML = 'Signals will appear on your dashboard within a few minutes. <a href="/" style="color:#059669;font-weight:600">Go to dashboard &#8594;</a>';
+        }
+      } catch (e) {
+        setTimeout(pollHarvest, 10000);
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

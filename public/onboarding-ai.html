@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Get Started — Autonodal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ml-primary: #2563eb; --ml-accent: #10b981; --ml-warning: #f59e0b; --ml-danger: #ef4444;
+      --ml-bg: #f8fafc; --ml-surface: #ffffff; --ml-border: #e2e8f0;
+      --ml-text: #1e293b; --ml-text-sec: #64748b; --ml-text-dim: #94a3b8;
+      --ml-primary-soft: #eff6ff; --ml-accent-soft: #ecfdf5;
+      --radius: 12px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--ml-bg); color: var(--ml-text);
+      min-height: 100vh;
+    }
+
+    /* ── Layout: two-column on desktop, stacked on mobile ── */
+    .layout { display: flex; min-height: 100vh; }
+    .main-panel { flex: 1; padding: 40px 32px; max-width: 720px; margin: 0 auto; overflow-y: auto; }
+    .concierge-panel {
+      width: 320px; background: var(--ml-text); color: #e2e8f0;
+      padding: 40px 28px; display: flex; flex-direction: column;
+      position: sticky; top: 0; height: 100vh;
+    }
+    @media (max-width: 900px) {
+      .layout { flex-direction: column; }
+      .concierge-panel {
+        width: 100%; height: auto; position: relative;
+        padding: 24px 20px; order: -1;
+      }
+      .main-panel { padding: 24px 20px; }
+    }
+
+    /* ── Concierge narration ── */
+    .concierge-brand {
+      font-family: 'Playfair Display', serif;
+      font-size: 18px; font-weight: 700; color: white;
+      margin-bottom: 32px; display: flex; align-items: center; gap: 8px;
+    }
+    .concierge-brand .spark { color: var(--ml-accent); }
+    .concierge-message {
+      font-size: 15px; line-height: 1.6; color: #cbd5e1;
+      margin-bottom: 20px; transition: opacity 0.3s;
+    }
+    .concierge-message strong { color: white; font-weight: 600; }
+    .concierge-context {
+      font-size: 12px; color: #64748b; line-height: 1.5;
+      border-top: 1px solid #334155; padding-top: 16px; margin-top: auto;
+    }
+    .concierge-stat {
+      display: flex; justify-content: space-between; padding: 4px 0;
+      font-size: 12px;
+    }
+    .concierge-stat .val { color: #94a3b8; font-variant-numeric: tabular-nums; }
+
+    /* ── Progress steps ── */
+    .progress {
+      display: flex; align-items: center; gap: 0; margin-bottom: 32px;
+      overflow-x: auto; padding-bottom: 4px;
+    }
+    .step {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; font-weight: 600; white-space: nowrap;
+      color: var(--ml-text-dim); padding: 6px 0;
+    }
+    .step.active { color: var(--ml-primary); }
+    .step.done { color: var(--ml-accent); }
+    .step-dot {
+      width: 22px; height: 22px; border-radius: 50%;
+      border: 2px solid var(--ml-border); display: flex;
+      align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700; flex-shrink: 0;
+    }
+    .step.active .step-dot { border-color: var(--ml-primary); background: var(--ml-primary-soft); color: var(--ml-primary); }
+    .step.done .step-dot { border-color: var(--ml-accent); background: var(--ml-accent-soft); color: var(--ml-accent); }
+    .step-line {
+      width: 24px; height: 2px; background: var(--ml-border); margin: 0 6px; flex-shrink: 0;
+    }
+    .step.done + .step-line { background: var(--ml-accent); }
+
+    /* ── Phase content ── */
+    .phase-content { min-height: 400px; }
+    .phase-content iframe {
+      width: 100%; border: none; min-height: 500px; border-radius: var(--radius);
+    }
+
+    /* ── Connect phase ── */
+    .connect-card {
+      background: var(--ml-surface); border: 1px solid var(--ml-border);
+      border-radius: var(--radius); padding: 20px; margin-bottom: 12px;
+      display: flex; align-items: center; gap: 14px;
+    }
+    .connect-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; flex-shrink: 0;
+    }
+    .connect-info { flex: 1; }
+    .connect-name { font-size: 14px; font-weight: 600; }
+    .connect-desc { font-size: 12px; color: var(--ml-text-sec); margin-top: 2px; }
+    .connect-status { font-size: 11px; font-weight: 600; }
+    .status-connected { color: var(--ml-accent); }
+    .status-available { color: var(--ml-primary); }
+    .connect-btn {
+      padding: 8px 16px; border-radius: 8px; border: 1px solid var(--ml-border);
+      font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+      background: white; color: var(--ml-primary); transition: all 0.15s;
+    }
+    .connect-btn:hover { background: var(--ml-primary-soft); border-color: var(--ml-primary); }
+    .connect-btn.connected { background: var(--ml-accent-soft); border-color: var(--ml-accent); color: #059669; cursor: default; }
+
+    /* ── Go-live celebration ── */
+    .go-live {
+      text-align: center; padding: 40px 20px;
+    }
+    .go-live .check-circle {
+      width: 80px; height: 80px; border-radius: 50%;
+      background: var(--ml-accent-soft); border: 3px solid var(--ml-accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 36px; margin: 0 auto 24px; color: var(--ml-accent);
+      animation: scaleIn 0.5s ease;
+    }
+    @keyframes scaleIn { 0% { transform: scale(0); } 60% { transform: scale(1.1); } 100% { transform: scale(1); } }
+    .go-live h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 28px; font-weight: 700; margin-bottom: 8px;
+    }
+    .go-live .subtitle { font-size: 15px; color: var(--ml-text-sec); margin-bottom: 24px; line-height: 1.5; }
+    .go-live .signal-preview {
+      background: var(--ml-surface); border: 1px solid var(--ml-border);
+      border-radius: var(--radius); padding: 16px; margin: 0 auto 24px;
+      max-width: 400px; text-align: left;
+    }
+    .go-live .signal-preview .sp-label { font-size: 10px; font-weight: 600; color: var(--ml-text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+    .go-live .signal-count { font-size: 32px; font-weight: 700; color: var(--ml-accent); }
+    .go-live .signal-note { font-size: 12px; color: var(--ml-text-sec); }
+    .go-live .cta-btn {
+      display: inline-block; padding: 16px 40px; border-radius: var(--radius);
+      background: var(--ml-primary); color: white; font-size: 16px; font-weight: 700;
+      text-decoration: none; font-family: inherit; transition: background 0.2s;
+    }
+    .go-live .cta-btn:hover { background: #1d4ed8; }
+
+    /* ── Utility ── */
+    .phase-btn {
+      padding: 14px 28px; border: none; border-radius: var(--radius);
+      font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit;
+      background: var(--ml-primary); color: white; transition: background 0.2s;
+      margin-top: 24px;
+    }
+    .phase-btn:hover { background: #1d4ed8; }
+    .phase-btn:disabled { background: var(--ml-border); color: var(--ml-text-dim); cursor: not-allowed; }
+    .spinner {
+      display: inline-block; width: 16px; height: 16px;
+      border: 2px solid var(--ml-border); border-top-color: var(--ml-primary);
+      border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-state { text-align: center; padding: 80px 20px; }
+  </style>
+</head>
+<body>
+  <div class="layout" id="app">
+    <div class="loading-state" style="width:100%"><span class="spinner"></span></div>
+  </div>
+
+  <script>
+    'use strict';
+    var TOKEN = localStorage.getItem('ml_token');
+    var STATE = null; // full session state from API
+
+    async function api(path, opts) {
+      var res = await fetch(path, Object.assign({
+        headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }
+      }, opts || {}));
+      if (res.status === 401) { window.location = '/'; return; }
+      if (!res.ok) throw new Error('API error ' + res.status);
+      return res.json();
+    }
+    function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // INIT — fetch session, route to correct phase
+    // ═══════════════════════════════════════════════════════════════════════
+
+    async function init() {
+      try {
+        STATE = await api('/api/onboarding/ai/status');
+        renderApp();
+      } catch (e) {
+        document.getElementById('app').innerHTML = '<div class="loading-state">Failed to load: ' + esc(e.message) + '</div>';
+      }
+    }
+
+    function renderApp() {
+      var s = STATE.session;
+      var phases = STATE.phases;
+      var currentPhase = s.current_phase;
+
+      // If already complete, go to dashboard
+      if (currentPhase === 'complete' || STATE.tenant.onboarding_complete) {
+        window.location = '/';
+        return;
+      }
+
+      var html = '';
+
+      // Concierge panel
+      html += '<div class="concierge-panel">';
+      html += '<div class="concierge-brand"><span class="spark">&#10022;</span> Autonodal</div>';
+      html += '<div id="conciergeMessage">' + getConciergeMessage(currentPhase) + '</div>';
+      html += '<div class="concierge-context" id="conciergeContext">' + getConciergeContext() + '</div>';
+      html += '</div>';
+
+      // Main panel
+      html += '<div class="main-panel">';
+      html += renderProgress(phases, currentPhase, s.completed_phases || []);
+      html += '<div class="phase-content" id="phaseContent"></div>';
+      html += '</div>';
+
+      document.getElementById('app').innerHTML = html;
+
+      // Render the current phase
+      renderPhase(currentPhase);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // CONCIERGE — contextual narration that carries forward
+    // ═══════════════════════════════════════════════════════════════════════
+
+    function getConciergeMessage(phase) {
+      var n = STATE.network;
+      var t = STATE.tenant;
+      var u = STATE.user;
+      var firstName = (u.name || '').split(' ')[0] || 'there';
+      var completed = STATE.session.completed_phases || [];
+
+      switch (phase) {
+        case 'connect':
+          if (n.connected_accounts > 0) {
+            return '<div class="concierge-message">Welcome back, <strong>' + esc(firstName) + '</strong>.</div>' +
+              '<div class="concierge-message">You\'ve connected <strong>' + n.connected_accounts + ' account' + (n.connected_accounts > 1 ? 's' : '') + '</strong>' +
+              (n.people > 0 ? ' with <strong>' + n.people.toLocaleString() + ' contacts</strong>' : '') +
+              '. Connect more sources or continue to configure your intelligence feeds.</div>';
+          }
+          return '<div class="concierge-message">Hi <strong>' + esc(firstName) + '</strong>, let\'s set up your intelligence platform.</div>' +
+            '<div class="concierge-message">Start by connecting your data sources. I\'ll analyse your network and configure everything automatically \u2014 you\'ll only need to make a few decisions.</div>';
+
+        case 'field_mapping':
+          var mapData = STATE.session.phase_data?.field_mapping;
+          var autoCount = mapData ? mapData.mapping_config ? Object.keys(mapData.mapping_config).length : 0 : 0;
+          return '<div class="concierge-message">Your data is connected. ' +
+            (n.people > 0 ? 'I can see <strong>' + n.people.toLocaleString() + ' contacts</strong>.' : '') + '</div>' +
+            '<div class="concierge-message">I\'ve mapped most fields automatically' +
+            (autoCount > 0 ? ' \u2014 <strong>' + autoCount + ' fields resolved</strong>' : '') +
+            '. A few need your input to get right.</div>';
+
+        case 'feed_config':
+          var prevContext = '';
+          if (completed.includes('field_mapping')) {
+            prevContext = 'You\'ve connected your data and mapped your fields. ';
+          } else if (n.connected_accounts > 0) {
+            prevContext = 'Your accounts are connected' + (n.people > 0 ? ' with ' + n.people.toLocaleString() + ' contacts' : '') + '. ';
+          }
+          return '<div class="concierge-message">' + prevContext + 'Now let\'s configure what you want to watch.</div>' +
+            '<div class="concierge-message">I\'ve analysed your network and pre-selected the most relevant signal feeds. You can adjust these anytime.</div>';
+
+        case 'health_check':
+          return '<div class="concierge-message"><strong>Almost there.</strong> Let me run a quick health check to make sure everything is working.</div>' +
+            '<div class="concierge-message">Your signals are already flowing \u2014 ' +
+            (n.signals_7d > 0 ? '<strong>' + n.signals_7d.toLocaleString() + ' signals</strong> detected this week.' : 'the first ones should appear within minutes.') + '</div>';
+
+        default:
+          return '<div class="concierge-message">Setting up your intelligence platform...</div>';
+      }
+    }
+
+    function getConciergeContext() {
+      var n = STATE.network;
+      var html = '';
+      if (n.people > 0) html += '<div class="concierge-stat"><span>Contacts</span><span class="val">' + n.people.toLocaleString() + '</span></div>';
+      if (n.companies > 0) html += '<div class="concierge-stat"><span>Companies</span><span class="val">' + n.companies.toLocaleString() + '</span></div>';
+      if (n.interactions > 0) html += '<div class="concierge-stat"><span>Interactions</span><span class="val">' + n.interactions.toLocaleString() + '</span></div>';
+      if (n.signals_7d > 0) html += '<div class="concierge-stat"><span>Signals (7d)</span><span class="val">' + n.signals_7d.toLocaleString() + '</span></div>';
+      if (n.connected_accounts > 0) html += '<div class="concierge-stat"><span>Connected accounts</span><span class="val">' + n.connected_accounts + '</span></div>';
+      return html || '<div style="font-size:11px;color:#475569">Your network stats will appear here once connected.</div>';
+    }
+
+    function updateConcierge(phase) {
+      var msgEl = document.getElementById('conciergeMessage');
+      var ctxEl = document.getElementById('conciergeContext');
+      if (msgEl) { msgEl.style.opacity = '0'; setTimeout(function() { msgEl.innerHTML = getConciergeMessage(phase); msgEl.style.opacity = '1'; }, 200); }
+      if (ctxEl) ctxEl.innerHTML = getConciergeContext();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PROGRESS BAR
+    // ═══════════════════════════════════════════════════════════════════════
+
+    function renderProgress(phases, current, completed) {
+      var labels = {
+        connect: 'Connect', field_mapping: 'Map Fields',
+        feed_config: 'Signal Feeds', health_check: 'Go Live',
+      };
+      var html = '<div class="progress" id="progressBar">';
+      phases.forEach(function(p, i) {
+        if (p === 'complete') return;
+        var isDone = completed.includes(p);
+        var isActive = p === current;
+        var cls = isDone ? 'done' : (isActive ? 'active' : '');
+        if (i > 0) html += '<div class="step-line"></div>';
+        html += '<div class="step ' + cls + '">';
+        html += '<div class="step-dot">' + (isDone ? '&#10003;' : (i + 1)) + '</div>';
+        html += '<span>' + (labels[p] || p) + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+      return html;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PHASE RENDERING
+    // ═══════════════════════════════════════════════════════════════════════
+
+    function renderPhase(phase) {
+      var el = document.getElementById('phaseContent');
+      if (!el) return;
+      switch (phase) {
+        case 'connect': renderConnectPhase(el); break;
+        case 'field_mapping': renderFieldMappingPhase(el); break;
+        case 'feed_config': renderFeedConfigPhase(el); break;
+        case 'health_check': renderHealthCheckPhase(el); break;
+        default: el.innerHTML = '<div class="loading-state">Unknown phase: ' + esc(phase) + '</div>';
+      }
+    }
+
+    // ─── CONNECT PHASE ───────────────────────────────────────────────────
+
+    function renderConnectPhase(el) {
+      var n = STATE.network;
+      var isCompany = STATE.tenant.is_company;
+
+      var html = '<h2 style="font-size:20px;font-weight:700;margin-bottom:6px">Connect your data</h2>';
+      html += '<p style="font-size:13px;color:var(--ml-text-sec);margin-bottom:20px">Connect your accounts so I can build your network intelligence graph.</p>';
+
+      // Gmail
+      var gmailConnected = n.connected_accounts > 0;
+      html += '<div class="connect-card">';
+      html += '<div class="connect-icon" style="background:#fef2f2">&#9993;</div>';
+      html += '<div class="connect-info"><div class="connect-name">Gmail</div>';
+      html += '<div class="connect-desc">Email interactions, contacts, and newsletters for signal detection</div></div>';
+      if (gmailConnected) {
+        html += '<span class="connect-status status-connected">&#10003; Connected</span>';
+      } else {
+        html += '<button class="connect-btn" onclick="window.location=\'/api/auth/gmail/connect\'">Connect</button>';
+      }
+      html += '</div>';
+
+      // LinkedIn (CSV)
+      var hasContacts = n.people > 100;
+      html += '<div class="connect-card">';
+      html += '<div class="connect-icon" style="background:#eff6ff">&#128100;</div>';
+      html += '<div class="connect-info"><div class="connect-name">LinkedIn Contacts</div>';
+      html += '<div class="connect-desc">Import your connections for network mapping and proximity scoring</div></div>';
+      if (hasContacts) {
+        html += '<span class="connect-status status-connected">&#10003; ' + n.people.toLocaleString() + ' contacts</span>';
+      } else {
+        html += '<button class="connect-btn" onclick="window.location=\'/profile.html#import\'">Import CSV</button>';
+      }
+      html += '</div>';
+
+      // Google Drive (company only)
+      if (isCompany) {
+        html += '<div class="connect-card">';
+        html += '<div class="connect-icon" style="background:#ecfdf5">&#128193;</div>';
+        html += '<div class="connect-info"><div class="connect-name">Google Drive</div>';
+        html += '<div class="connect-desc">Case studies, pitch decks, and documents for intelligence extraction</div></div>';
+        html += '<button class="connect-btn" onclick="window.location=\'/api/auth/google/connect\'">Connect</button>';
+        html += '</div>';
+      }
+
+      // Continue button
+      var canContinue = gmailConnected || hasContacts;
+      var nextPhase = isCompany ? 'field_mapping' : 'feed_config';
+      html += '<button class="phase-btn" ' + (canContinue ? '' : 'disabled') + ' onclick="advancePhase(\'' + nextPhase + '\')">';
+      html += canContinue ? 'Continue &#8594;' : 'Connect at least one source to continue';
+      html += '</button>';
+
+      el.innerHTML = html;
+    }
+
+    // ─── FIELD MAPPING PHASE (company only) ──────────────────────────────
+
+    function renderFieldMappingPhase(el) {
+      var sessions = STATE.mapping_sessions || [];
+      var activeSessions = sessions.filter(function(s) { return s.status === 'reviewing'; });
+      var appliedSessions = sessions.filter(function(s) { return s.status === 'applied'; });
+
+      if (appliedSessions.length > 0 && activeSessions.length === 0) {
+        // Already done
+        var total = appliedSessions.reduce(function(a, s) { return a + (s.auto_applied || 0) + (s.review_required || 0); }, 0);
+        el.innerHTML = '<div style="text-align:center;padding:40px 20px">' +
+          '<div style="font-size:48px;margin-bottom:12px">&#10003;</div>' +
+          '<h2 style="font-size:20px;font-weight:700">Fields mapped</h2>' +
+          '<p style="color:var(--ml-text-sec);font-size:14px">' + total + ' fields mapped across ' + appliedSessions.length + ' import(s).</p>' +
+          '<button class="phase-btn" onclick="advancePhase(\'feed_config\')">Continue to signal feeds &#8594;</button>' +
+          '</div>';
+        return;
+      }
+
+      if (activeSessions.length > 0) {
+        // Show the review iframe
+        el.innerHTML = '<iframe src="/onboarding-field-mapping.html?session=' + activeSessions[0].id + '" id="mappingFrame"></iframe>';
+        // Listen for completion message from iframe
+        window.addEventListener('message', function handler(e) {
+          if (e.data === 'field-mapping-complete') {
+            window.removeEventListener('message', handler);
+            advancePhase('feed_config');
+          }
+        });
+        return;
+      }
+
+      // No sessions yet — offer to start field mapping or skip
+      el.innerHTML = '<h2 style="font-size:20px;font-weight:700;margin-bottom:6px">Map your fields</h2>' +
+        '<p style="font-size:13px;color:var(--ml-text-sec);margin-bottom:20px">If you\'re importing data from a CRM or spreadsheet, I can automatically map your fields to the Autonodal schema.</p>' +
+        '<p style="font-size:13px;color:var(--ml-text-sec);margin-bottom:20px">If your data is already connected via Gmail or LinkedIn, you can skip this step.</p>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+        '<button class="phase-btn" onclick="advancePhase(\'feed_config\')" style="margin-top:0">Skip \u2014 my data is already in &#8594;</button>' +
+        '</div>';
+    }
+
+    // ─── FEED CONFIG PHASE ───────────────────────────────────────────────
+
+    function renderFeedConfigPhase(el) {
+      el.innerHTML = '<iframe src="/onboarding-feed-config.html" style="width:100%;border:none;min-height:600px;border-radius:var(--radius)" id="feedFrame"></iframe>';
+      // Listen for completion
+      window.addEventListener('message', function handler(e) {
+        if (e.data === 'feed-config-complete') {
+          window.removeEventListener('message', handler);
+          advancePhase('health_check');
+        }
+      });
+    }
+
+    // ─── HEALTH CHECK + GO LIVE ──────────────────────────────────────────
+
+    async function renderHealthCheckPhase(el) {
+      el.innerHTML = '<div class="loading-state"><span class="spinner"></span><div style="margin-top:12px;font-size:14px;color:var(--ml-text-sec)">Running final health check...</div></div>';
+
+      try {
+        var health = await api('/api/onboarding/health');
+        var n = STATE.network;
+
+        // Refresh signals count
+        try {
+          var fresh = await api('/api/onboarding/ai/status');
+          STATE.network = fresh.network;
+          n = fresh.network;
+        } catch (e) {}
+
+        if (health.all_clear || health.issues.every(function(i) { return i.severity === 'info'; })) {
+          // GO LIVE — the emotional peak
+          renderGoLive(el, n, health);
+        } else {
+          // Issues found — show them with resolution
+          renderHealthIssues(el, health, n);
+        }
+      } catch (e) {
+        el.innerHTML = '<div style="text-align:center;padding:40px"><p>Health check failed. <button class="phase-btn" onclick="renderPhase(\'health_check\')" style="margin-top:12px">Retry</button></p></div>';
+      }
+    }
+
+    function renderGoLive(el, n, health) {
+      el.innerHTML = '<div class="go-live">' +
+        '<div class="check-circle">&#10003;</div>' +
+        '<h1>You\'re live.</h1>' +
+        '<div class="subtitle">Your intelligence platform is configured and signals are flowing.' +
+          (n.signals_7d > 0 ? '' : ' The first signals will appear within minutes.') + '</div>' +
+        (n.signals_7d > 0 ? '<div class="signal-preview"><div class="sp-label">Signals this week</div><div class="signal-count">' + n.signals_7d.toLocaleString() + '</div><div class="signal-note">across ' + (n.companies > 0 ? n.companies.toLocaleString() + ' companies in your network' : 'your connected sources') + '</div></div>' : '') +
+        '<a href="/" class="cta-btn" onclick="completeOnboarding()">Open your dashboard &#8594;</a>' +
+        '</div>';
+
+      updateConcierge('health_check');
+    }
+
+    function renderHealthIssues(el, health, n) {
+      var html = '<h2 style="font-size:20px;font-weight:700;margin-bottom:6px">Almost ready</h2>';
+      html += '<p style="font-size:13px;color:var(--ml-text-sec);margin-bottom:20px">' + health.issues.length + ' item' + (health.issues.length > 1 ? 's' : '') + ' to review before going live. None are blockers \u2014 you can address them now or later.</p>';
+
+      health.issues.forEach(function(issue, idx) {
+        var sevColor = issue.severity === 'error' ? 'var(--ml-danger)' : issue.severity === 'warning' ? 'var(--ml-warning)' : 'var(--ml-primary)';
+        html += '<div style="background:var(--ml-surface);border:1px solid var(--ml-border);border-left:3px solid ' + sevColor + ';border-radius:var(--radius);padding:14px 16px;margin-bottom:8px" id="hlth-' + idx + '">';
+        html += '<div style="font-size:13px;font-weight:600;margin-bottom:4px">' + esc(issue.title) + '</div>';
+        html += '<div style="font-size:12px;color:var(--ml-text-sec);margin-bottom:8px">' + esc(issue.explanation) + '</div>';
+        var rec = issue.actions.find(function(a) { return a.recommended; });
+        if (rec) {
+          html += '<button style="font-size:11px;font-weight:600;padding:5px 12px;border-radius:6px;border:none;background:var(--ml-primary);color:white;cursor:pointer;font-family:inherit" onclick="this.textContent=\'Done\';this.style.background=\'var(--ml-accent)\'">' + esc(rec.label) + '</button>';
+        }
+        html += '</div>';
+      });
+
+      html += '<button class="phase-btn" onclick="goLiveAnyway()">Go live anyway &#8594;</button>';
+      html += '<button style="margin-top:12px;margin-left:8px;padding:14px 28px;border:1px solid var(--ml-border);border-radius:var(--radius);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;background:white;color:var(--ml-text-sec)" onclick="renderPhase(\'health_check\')">Re-check</button>';
+
+      el.innerHTML = html;
+    }
+
+    async function goLiveAnyway() {
+      await completeOnboarding();
+      var el = document.getElementById('phaseContent');
+      renderGoLive(el, STATE.network, { all_clear: true });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PHASE TRANSITIONS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    async function advancePhase(nextPhase) {
+      try {
+        await api('/api/onboarding/ai/advance', {
+          method: 'POST',
+          body: JSON.stringify({ next_phase: nextPhase }),
+        });
+
+        // Refresh state
+        STATE = await api('/api/onboarding/ai/status');
+
+        // Update UI
+        var phases = STATE.phases;
+        var completed = STATE.session.completed_phases || [];
+        var progressEl = document.getElementById('progressBar');
+        if (progressEl) {
+          progressEl.outerHTML = renderProgress(phases, nextPhase, completed);
+        }
+
+        updateConcierge(nextPhase);
+        renderPhase(nextPhase);
+      } catch (e) {
+        alert('Failed to advance: ' + e.message);
+      }
+    }
+
+    async function completeOnboarding() {
+      try {
+        await api('/api/onboarding/ai/advance', {
+          method: 'POST',
+          body: JSON.stringify({ next_phase: 'complete' }),
+        });
+      } catch (e) { /* non-fatal */ }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // BOOT
+    // ═══════════════════════════════════════════════════════════════════════
+
+    init();
+  </script>
+</body>
+</html>

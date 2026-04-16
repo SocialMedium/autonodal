@@ -111,17 +111,18 @@ function isTeamEmail(email) {
   return teamEmailSet && teamEmailSet.has(email.toLowerCase());
 }
 
-async function findPersonByEmail(email) {
+async function findPersonByEmail(email, tenantId) {
   if (!email) return null;
-  const key = email.toLowerCase();
+  const key = email.toLowerCase() + ':' + (tenantId || '');
   if (emailCache.has(key)) return emailCache.get(key);
 
-  // Check people table (primary match)
+  // Check people table — tenant-scoped first, then cross-tenant fallback
   const { rows } = await pool.query(
     `SELECT id, full_name FROM people
-     WHERE lower(email) = $1 OR lower(email_alt) = $1
+     WHERE (lower(email) = $1 OR lower(email_alt) = $1)
+       AND ($2::uuid IS NULL OR tenant_id = $2)
      LIMIT 1`,
-    [key]
+    [email.toLowerCase(), tenantId]
   );
 
   if (rows[0]) {
@@ -130,16 +131,15 @@ async function findPersonByEmail(email) {
   }
 
   // Check by domain + name fuzzy match (for contacts whose email we don't have exactly)
-  const domain = key.split('@')[1];
+  const domain = email.toLowerCase().split('@')[1];
   if (domain && !domain.includes('gmail.') && !domain.includes('yahoo.') && !domain.includes('hotmail.') && !domain.includes('outlook.')) {
     const { rows: domainRows } = await pool.query(
       `SELECT p.id, p.full_name FROM people p
        LEFT JOIN companies c ON c.id = p.current_company_id
-       WHERE c.domain = $1
+       WHERE c.domain = $1 AND ($2::uuid IS NULL OR p.tenant_id = $2)
        LIMIT 1`,
-      [domain]
+      [domain, tenantId]
     );
-    // Only cache domain matches if found — don't pollute cache with nulls for domains
     if (domainRows[0]) {
       emailCache.set(key, domainRows[0]);
       return domainRows[0];
@@ -170,7 +170,7 @@ function hasSkipLabel(labelIds) {
   return labelIds.some(l => SKIP_LABELS.has(l));
 }
 
-async function processThread(gmail, thread, userEmail, userId, dryRun) {
+async function processThread(gmail, thread, userEmail, userId, tenantId, dryRun) {
   const threadId = thread.id;
 
   // Get full thread data
@@ -311,51 +311,115 @@ async function processThread(gmail, thread, userEmail, userId, dryRun) {
     ? [...toEmails.filter(e => e !== userEmail.toLowerCase()), ...ccEmails.filter(e => e !== userEmail.toLowerCase())]
     : externalEmails;
   for (const email of matchOrder) {
-    const person = await findPersonByEmail(email);
+    const person = await findPersonByEmail(email, tenantId);
     if (person) {
       matchedPerson = { ...person, email };
       break;
     }
   }
 
-  // Track unknown contacts (2+ threads threshold enforced in upsert)
+  // Auto-create person from email if no match found
   if (!matchedPerson && externalEmails.length > 0) {
     const primaryEmail = externalEmails[0];
     const displayName  = fromRaw.replace(/<.*>/, '').replace(/"/g, '').trim() || null;
 
-    if (!dryRun) {
-      await pool.query(
-        `INSERT INTO new_contacts_review (email, name, thread_count, last_thread_date, discovered_by_user_id)
-         VALUES ($1, $2, 1, $3, $4)
-         ON CONFLICT (email) DO UPDATE SET
-           thread_count     = new_contacts_review.thread_count + 1,
-           last_thread_date = GREATEST(new_contacts_review.last_thread_date, EXCLUDED.last_thread_date),
-           name             = COALESCE(new_contacts_review.name, EXCLUDED.name)`,
-        [primaryEmail, displayName, interactionAt, userId]
-      );
+    if (!dryRun && tenantId) {
+      // Extract name — prefer display name from email header, fallback to email local part
+      let fullName = displayName;
+      if (!fullName || fullName.length < 2 || fullName.includes('@')) {
+        const local = primaryEmail.split('@')[0];
+        fullName = local.replace(/[._-]/g, ' ').replace(/\d+$/g, '').trim();
+        fullName = fullName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        if (fullName.length < 2) fullName = primaryEmail;
+      }
 
-      // Still log the interaction with person_id=NULL so gmail_match.js can retroactively link it
-      await pool.query(
-        `INSERT INTO interactions
-           (person_id, user_id, interaction_type, direction, subject,
-            channel, source, external_id, interaction_at, metadata,
-            email_from, email_to)
-         VALUES (NULL, $1, $2, $3, $4, 'email', 'gmail_sync', $5, $6, $7, $8, $9)
-         ON CONFLICT (external_id) WHERE external_id IS NOT NULL DO NOTHING`,
-        [
-          userId,
-          isOutbound ? 'email_sent' : 'email_received',
-          direction,
-          subject,
-          threadId,
-          interactionAt,
-          JSON.stringify({ gmail_url: gmailUrl, message_count: messages.length, has_reply: hasReply, external_emails: externalEmails, unmatched: true }),
-          senderAddr,
-          toEmails,
-        ]
-      );
+      // Extract company from domain
+      const domain = primaryEmail.split('@')[1];
+      const personalDomains = /^(gmail|yahoo|hotmail|outlook|icloud|live|aol|proton|me|msn|btinternet|bigpond|sky|virginmedia|comcast|att|verizon|cox|charter)(\.|$)/i;
+      const isPersonal = personalDomains.test(domain);
+      const companyName = isPersonal ? null : domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1);
+
+      // Find or create company
+      let companyId = null;
+      if (!isPersonal && domain) {
+        try {
+          const { rows: [existingCo] } = await pool.query(
+            'SELECT id FROM companies WHERE domain = $1 AND tenant_id = $2 LIMIT 1',
+            [domain, tenantId]
+          );
+          if (existingCo) {
+            companyId = existingCo.id;
+          } else if (companyName) {
+            const { rows: [newCo] } = await pool.query(
+              `INSERT INTO companies (name, domain, tenant_id) VALUES ($1, $2, $3)
+               ON CONFLICT DO NOTHING RETURNING id`,
+              [companyName, domain, tenantId]
+            );
+            companyId = newCo?.id || null;
+          }
+        } catch (e) { /* non-fatal */ }
+      }
+
+      // Create person
+      try {
+        const { rows: [newPerson] } = await pool.query(
+          `INSERT INTO people (full_name, email, current_company_name, current_company_id, source, tenant_id, created_by)
+           VALUES ($1, $2, $3, $4, 'gmail_discovery', $5, $6)
+           ON CONFLICT DO NOTHING RETURNING id, full_name`,
+          [fullName, primaryEmail, companyName, companyId, tenantId, userId]
+        );
+        if (newPerson) {
+          matchedPerson = { id: newPerson.id, full_name: newPerson.full_name, email: primaryEmail };
+          emailCache.set(primaryEmail.toLowerCase() + ':' + tenantId, newPerson);
+        }
+      } catch (e) { /* dupe — try to find the existing one */
+        const { rows: [existing] } = await pool.query(
+          'SELECT id, full_name FROM people WHERE lower(email) = $1 AND tenant_id = $2 LIMIT 1',
+          [primaryEmail.toLowerCase(), tenantId]
+        );
+        if (existing) matchedPerson = { ...existing, email: primaryEmail };
+      }
+
+      // Also track in review table for audit trail
+      try {
+        await pool.query(
+          `INSERT INTO new_contacts_review (email, name, thread_count, last_thread_date, discovered_by_user_id)
+           VALUES ($1, $2, 1, $3, $4)
+           ON CONFLICT (email) DO UPDATE SET
+             thread_count     = new_contacts_review.thread_count + 1,
+             last_thread_date = GREATEST(new_contacts_review.last_thread_date, EXCLUDED.last_thread_date),
+             name             = COALESCE(new_contacts_review.name, EXCLUDED.name)`,
+          [primaryEmail, displayName, interactionAt, userId]
+        );
+      } catch (e) { /* non-fatal */ }
     }
-    return { personId: null, unmatched: true, interactionAt };
+
+    // If still no match (dry run or creation failed), log unmatched interaction
+    if (!matchedPerson) {
+      if (!dryRun) {
+        await pool.query(
+          `INSERT INTO interactions
+             (person_id, user_id, interaction_type, direction, subject,
+              channel, source, external_id, interaction_at, metadata,
+              email_from, email_to, tenant_id)
+           VALUES (NULL, $1, $2, $3, $4, 'email', 'gmail_sync', $5, $6, $7, $8, $9, $10)
+           ON CONFLICT (external_id) WHERE external_id IS NOT NULL DO NOTHING`,
+          [
+            userId,
+            isOutbound ? 'email_sent' : 'email_received',
+            direction,
+            subject,
+            threadId,
+            interactionAt,
+            JSON.stringify({ gmail_url: gmailUrl, message_count: messages.length, has_reply: hasReply, external_emails: externalEmails, unmatched: true }),
+            senderAddr,
+            toEmails,
+            tenantId,
+          ]
+        );
+      }
+      return { personId: null, unmatched: true, interactionAt };
+    }
   }
 
   if (!matchedPerson) return null;
@@ -377,8 +441,9 @@ async function processThread(gmail, thread, userEmail, userId, dryRun) {
       `INSERT INTO interactions
          (person_id, user_id, interaction_type, direction, subject,
           channel, source, external_id, interaction_at,
-          requires_response, response_received, metadata)
-       VALUES ($1, $2, $3, $4, $5, 'email', 'gmail_sync', $6, $7, $8, $9, $10)
+          requires_response, response_received, metadata,
+          email_from, email_to, tenant_id)
+       VALUES ($1, $2, $3, $4, $5, 'email', 'gmail_sync', $6, $7, $8, $9, $10, $11, $12, $13)
        ON CONFLICT (external_id) WHERE external_id IS NOT NULL DO NOTHING`,
       [
         matchedPerson.id,
@@ -391,6 +456,9 @@ async function processThread(gmail, thread, userEmail, userId, dryRun) {
         isOutbound && !hasReply,  // requires_response
         hasReply,                 // response_received
         JSON.stringify(metadata),
+        senderAddr,
+        toEmails,
+        tenantId,
       ]
     );
   }
@@ -408,7 +476,7 @@ async function processThread(gmail, thread, userEmail, userId, dryRun) {
 // TEAM PROXIMITY UPDATE
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function updateTeamProximity(pool, personId, userId, emailThreadCount, lastDate, dryRun) {
+async function updateTeamProximity(pool, personId, userId, emailThreadCount, lastDate, tenantId, dryRun) {
   let relationshipType, strength;
 
   if (emailThreadCount >= 10) {
@@ -428,14 +496,15 @@ async function updateTeamProximity(pool, personId, userId, emailThreadCount, las
     await pool.query(
       `INSERT INTO team_proximity
          (person_id, team_member_id, relationship_type, relationship_strength,
-          notes, last_interaction_date, source)
-       VALUES ($1, $2, $3, $4, $5, $6, 'gmail_sync')
+          notes, last_interaction_date, source, tenant_id)
+       VALUES ($1, $2, $3, $4, $5, $6, 'gmail_sync', $7)
        ON CONFLICT (person_id, team_member_id, relationship_type) DO UPDATE SET
          relationship_strength = GREATEST(team_proximity.relationship_strength, EXCLUDED.relationship_strength),
          notes                 = COALESCE(EXCLUDED.notes, team_proximity.notes),
          last_interaction_date = GREATEST(team_proximity.last_interaction_date, EXCLUDED.last_interaction_date),
+         tenant_id             = COALESCE(EXCLUDED.tenant_id, team_proximity.tenant_id),
          updated_at            = NOW()`,
-      [personId, userId, relationshipType, strength, context, lastDate]
+      [personId, userId, relationshipType, strength, context, lastDate, tenantId]
     );
   }
 }
@@ -538,7 +607,7 @@ async function syncAccount(account) {
 
     try {
       const result = await withRetry(() =>
-        processThread(gmail, { id: threadIds[i] }, account.google_email, account.user_id, DRY_RUN)
+        processThread(gmail, { id: threadIds[i] }, account.google_email, account.user_id, account.tenant_id, DRY_RUN)
       );
 
       if (result && result.skipped) {
@@ -568,7 +637,7 @@ async function syncAccount(account) {
   // ── Update team proximity ───────────────────────────────────────────────
   console.log(c.yellow(`  ▶ Updating proximity for ${personThreadCounts.size} people...`));
   for (const [personId, stats] of personThreadCounts) {
-    await updateTeamProximity(pool, personId, account.user_id, stats.count, stats.lastDate, DRY_RUN);
+    await updateTeamProximity(pool, personId, account.user_id, stats.count, stats.lastDate, account.tenant_id, DRY_RUN);
   }
 
   // ── Save new historyId + increment emails_synced counter ────────────────

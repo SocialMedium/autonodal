@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Platform Health — Autonodal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ml-primary: #2563eb; --ml-accent: #10b981; --ml-warning: #f59e0b; --ml-danger: #ef4444;
+      --ml-bg: #f8fafc; --ml-surface: #ffffff; --ml-border: #e2e8f0;
+      --ml-text: #1e293b; --ml-text-sec: #64748b; --ml-text-dim: #94a3b8;
+      --radius: 12px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--ml-bg); color: var(--ml-text);
+      min-height: 100vh; padding: 32px 20px;
+    }
+    .page { max-width: 720px; margin: 0 auto; }
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+    .page-header h1 { font-size: 22px; font-weight: 700; }
+    .all-clear {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 13px; font-weight: 600; color: #059669;
+      background: #ecfdf5; padding: 6px 14px; border-radius: 20px;
+    }
+    .has-issues {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 13px; font-weight: 600; color: #b45309;
+      background: #fffbeb; padding: 6px 14px; border-radius: 20px;
+    }
+
+    .section { margin-bottom: 28px; }
+    .section-title {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--ml-text-dim); margin-bottom: 10px;
+    }
+
+    .health-row {
+      background: var(--ml-surface); border: 1px solid var(--ml-border);
+      border-radius: var(--radius); padding: 14px 16px; margin-bottom: 8px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    }
+    .dot-ok { background: var(--ml-accent); }
+    .dot-warning { background: var(--ml-warning); }
+    .dot-error { background: var(--ml-danger); }
+    .dot-info { background: var(--ml-primary); }
+
+    .health-info { flex: 1; min-width: 0; }
+    .health-name { font-size: 13px; font-weight: 600; }
+    .health-detail { font-size: 11px; color: var(--ml-text-sec); margin-top: 2px; }
+
+    .health-action {
+      font-size: 11px; font-weight: 600; padding: 5px 12px;
+      border-radius: 6px; border: none; cursor: pointer; font-family: inherit;
+      white-space: nowrap; transition: all 0.15s;
+    }
+    .action-primary { background: var(--ml-primary); color: white; }
+    .action-primary:hover { background: #1d4ed8; }
+    .action-warning { background: #fef3c7; color: #92400e; }
+    .action-warning:hover { background: #fde68a; }
+
+    .issue-card {
+      background: var(--ml-surface); border-radius: var(--radius);
+      padding: 16px; margin-bottom: 10px;
+    }
+    .issue-card.sev-error { border: 1px solid #fecaca; }
+    .issue-card.sev-warning { border: 1px solid #fde68a; }
+    .issue-card.sev-info { border: 1px solid #bfdbfe; }
+
+    .issue-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .issue-title { font-size: 14px; font-weight: 600; }
+    .issue-explain { font-size: 12px; color: var(--ml-text-sec); line-height: 1.5; margin-bottom: 4px; }
+    .issue-impact { font-size: 11px; color: var(--ml-text-dim); font-style: italic; margin-bottom: 10px; }
+    .issue-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .issue-btn {
+      font-size: 11px; font-weight: 600; padding: 6px 14px;
+      border-radius: 6px; border: 1px solid var(--ml-border);
+      cursor: pointer; font-family: inherit; transition: all 0.15s;
+      background: white;
+    }
+    .issue-btn.recommended {
+      background: var(--ml-primary); color: white; border-color: var(--ml-primary);
+    }
+    .issue-btn:hover { border-color: var(--ml-primary); }
+    .issue-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .spinner {
+      display: inline-block; width: 12px; height: 12px;
+      border: 2px solid var(--ml-border); border-top-color: var(--ml-primary);
+      border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading { text-align: center; padding: 60px 20px; color: var(--ml-text-sec); }
+    .back-link { font-size: 13px; color: var(--ml-primary); text-decoration: none; }
+    .back-link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="page" id="app">
+    <div class="loading"><span class="spinner"></span> Running health checks...</div>
+  </div>
+
+  <script>
+    var TOKEN = localStorage.getItem('ml_token');
+
+    async function api(path, opts) {
+      var res = await fetch(path, Object.assign({
+        headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }
+      }, opts || {}));
+      if (!res.ok) throw new Error('API error ' + res.status);
+      return res.json();
+    }
+    function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    async function init() {
+      try {
+        var data = await api('/api/onboarding/health');
+        render(data);
+      } catch (e) {
+        document.getElementById('app').innerHTML = '<div class="loading">Health check failed: ' + esc(e.message) + '</div>';
+      }
+    }
+
+    function render(data) {
+      var issues = data.issues || [];
+      var integrations = data.integrations || [];
+      var html = '';
+
+      // Header
+      html += '<div class="page-header">';
+      html += '<div><h1>Platform Health</h1><a href="/" class="back-link">&larr; Back to dashboard</a></div>';
+      if (data.all_clear) {
+        html += '<span class="all-clear">&#10003; All systems go</span>';
+      } else {
+        var errCount = issues.filter(function(i) { return i.severity === 'error'; }).length;
+        var warnCount = issues.filter(function(i) { return i.severity === 'warning'; }).length;
+        var parts = [];
+        if (errCount) parts.push(errCount + ' error' + (errCount > 1 ? 's' : ''));
+        if (warnCount) parts.push(warnCount + ' warning' + (warnCount > 1 ? 's' : ''));
+        html += '<span class="has-issues">&#9888; ' + parts.join(', ') + '</span>';
+      }
+      html += '</div>';
+
+      // Active issues
+      if (issues.length > 0) {
+        html += '<div class="section"><div class="section-title">Issues requiring attention</div>';
+        issues.forEach(function(issue, idx) {
+          var sevIcon = issue.severity === 'error' ? '&#10060;' : issue.severity === 'warning' ? '&#9888;&#65039;' : '&#8505;&#65039;';
+          html += '<div class="issue-card sev-' + issue.severity + '" id="issue-' + idx + '">';
+          html += '<div class="issue-header">' + sevIcon + ' <span class="issue-title">' + esc(issue.title) + '</span></div>';
+          html += '<div class="issue-explain">' + esc(issue.explanation) + '</div>';
+          if (issue.impact) html += '<div class="issue-impact">' + esc(issue.impact) + '</div>';
+          html += '<div class="issue-actions">';
+          (issue.actions || []).forEach(function(action) {
+            html += '<button class="issue-btn' + (action.recommended ? ' recommended' : '') + '" onclick="resolveIssue(' + idx + ',\'' + esc(action.id) + '\',this)">' + esc(action.label) + '</button>';
+          });
+          html += '</div></div>';
+        });
+        html += '</div>';
+      }
+
+      // Integrations
+      html += '<div class="section"><div class="section-title">Integrations</div>';
+      if (integrations.length === 0) {
+        html += '<div class="health-row"><div class="health-info"><div class="health-detail">No integrations connected yet</div></div></div>';
+      }
+      integrations.forEach(function(intg) {
+        var dotCls = intg.status === 'ok' ? 'dot-ok' : intg.status === 'warning' ? 'dot-warning' : 'dot-error';
+        html += '<div class="health-row">';
+        html += '<div class="status-dot ' + dotCls + '"></div>';
+        html += '<div class="health-info">';
+        html += '<div class="health-name">' + esc(intg.name) + (intg.account ? ' &middot; ' + esc(intg.account) : '') + '</div>';
+        html += '<div class="health-detail">' + esc(intg.status_label) + '</div>';
+        html += '</div>';
+        if (intg.status !== 'ok') {
+          html += '<button class="health-action action-warning" onclick="window.location=\'/api/auth/google/connect\'">Reconnect</button>';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+
+      // Signal feeds
+      html += '<div class="section"><div class="section-title">Signal Feeds</div>';
+      var feedIssue = issues.find(function(i) { return i.type === 'feed_dry' || i.type === 'feed_low_yield'; });
+      if (feedIssue) {
+        html += '<div class="health-row"><div class="status-dot dot-warning"></div>';
+        html += '<div class="health-info"><div class="health-name">Signal Pipeline</div>';
+        html += '<div class="health-detail">' + esc(feedIssue.explanation) + '</div></div></div>';
+      } else {
+        html += '<div class="health-row"><div class="status-dot dot-ok"></div>';
+        html += '<div class="health-info"><div class="health-name">Signal Pipeline</div>';
+        html += '<div class="health-detail">Signals flowing normally</div></div></div>';
+      }
+      html += '</div>';
+
+      // Network intelligence
+      html += '<div class="section"><div class="section-title">Network Intelligence</div>';
+      var embedIssue = issues.find(function(i) { return i.type === 'embedding_lag'; });
+      var proxIssue = issues.find(function(i) { return i.type === 'proximity_stale'; });
+      var dupeIssue = issues.find(function(i) { return i.type === 'duplicates_detected'; });
+
+      // Embeddings
+      html += '<div class="health-row"><div class="status-dot ' + (embedIssue ? 'dot-warning' : 'dot-ok') + '"></div>';
+      html += '<div class="health-info"><div class="health-name">Embeddings</div>';
+      html += '<div class="health-detail">' + (embedIssue ? esc(embedIssue.explanation) : 'All people embedded for search') + '</div></div></div>';
+
+      // Proximity
+      html += '<div class="health-row"><div class="status-dot ' + (proxIssue ? 'dot-info' : 'dot-ok') + '"></div>';
+      html += '<div class="health-info"><div class="health-name">Proximity Scores</div>';
+      html += '<div class="health-detail">' + (proxIssue ? esc(proxIssue.explanation) : 'Proximity up to date') + '</div></div>';
+      if (proxIssue) html += '<button class="health-action action-primary" onclick="resolveByType(\'proximity_stale\',\'trigger_proximity\',this)">Recompute</button>';
+      html += '</div>';
+
+      // Duplicates
+      if (dupeIssue) {
+        html += '<div class="health-row"><div class="status-dot dot-warning"></div>';
+        html += '<div class="health-info"><div class="health-name">Duplicates</div>';
+        html += '<div class="health-detail">' + esc(dupeIssue.explanation) + '</div></div>';
+        html += '<button class="health-action action-warning">Review</button></div>';
+      }
+      html += '</div>';
+
+      // Last checked
+      html += '<div style="text-align:center;padding:16px;font-size:11px;color:var(--ml-text-dim)">Last checked: ' + new Date(data.last_checked).toLocaleString() + ' &middot; <a href="#" onclick="init();return false" style="color:var(--ml-primary)">Refresh</a></div>';
+
+      document.getElementById('app').innerHTML = html;
+
+      // Store issues for resolution
+      window._healthIssues = issues;
+    }
+
+    async function resolveIssue(idx, actionId, btn) {
+      var issue = window._healthIssues[idx];
+      if (!issue) return;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
+
+      try {
+        // If issue has an id from DB, use it; otherwise use the diagnostic resolve
+        var result = await api('/api/onboarding/diagnostic/resolve', {
+          method: 'POST',
+          body: JSON.stringify({ action_id: actionId, context: issue.context || {} }),
+        });
+
+        if (result.redirect_url) {
+          window.location = result.redirect_url;
+          return;
+        }
+
+        var card = document.getElementById('issue-' + idx);
+        if (card) {
+          card.style.opacity = '0.5';
+          card.innerHTML = '<div style="padding:8px;color:#059669;font-size:13px;font-weight:600">&#10003; ' + esc(result.message || 'Resolved') + '</div>';
+        }
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+      }
+    }
+
+    async function resolveByType(issueType, actionId, btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        await api('/api/onboarding/diagnostic/resolve', {
+          method: 'POST',
+          body: JSON.stringify({ action_id: actionId, context: {} }),
+        });
+        btn.textContent = 'Done';
+        btn.style.background = '#ecfdf5';
+        btn.style.color = '#059669';
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

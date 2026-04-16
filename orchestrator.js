@@ -99,6 +99,20 @@ const PIPELINES = {
   match:       { schedule: '0 2 * * *',    parallel: true,  description: 'Opportunity matching' },
 };
 
+// ── HEALTH CHECK (runs outside tenant loop — checks all tenants) ──────────
+
+async function runHealthCheckJob() {
+  try {
+    const { runHealthCheckAllTenants } = require('./lib/onboarding/healthMonitor');
+    const result = await runHealthCheckAllTenants();
+    console.log(`[Orchestrator] Health check: ${result.tenants} tenants, ${result.issues} issues`);
+    return result;
+  } catch (e) {
+    console.error('[Orchestrator] Health check failed:', e.message);
+    return { error: e.message };
+  }
+}
+
 // ── NIGHTLY JOBS (run outside tenant loop) ────────────────────────────────
 
 async function runNightlyHuddleRecompute() {
@@ -228,6 +242,9 @@ async function main() {
 
   // Nightly: individual influence dashboard (3am UTC)
   cron.schedule('0 3 * * *', runNightlyInfluence);
+
+  // Health check: every 6 hours (0:00, 6:00, 12:00, 18:00 UTC)
+  cron.schedule('0 */6 * * *', runHealthCheckJob);
 }
 
 main().catch(err => {
