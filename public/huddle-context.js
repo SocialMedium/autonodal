@@ -187,8 +187,23 @@
 
   // ─── Edit Huddle Modal ───
   window._openEditHuddle = function() {
-    if (!activeHuddleId) return;
-    var h = huddles.find(function(x) { return x.id === activeHuddleId; }) || {};
+    // Read from sessionStorage in case it was set after script load
+    var hid = activeHuddleId || sessionStorage.getItem('activeHuddleId');
+    if (!hid) { alert('No huddle selected'); return; }
+    activeHuddleId = hid;
+
+    // Fetch fresh huddle data to ensure we have the latest config
+    fetch('/api/huddles/' + hid, { headers: { Authorization: 'Bearer ' + TK } })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (!data) { alert('Could not load huddle'); return; }
+        var h = data.huddle || data;
+        _renderEditModal(h);
+      })
+      .catch(function() { alert('Failed to load huddle data'); });
+  };
+
+  function _renderEditModal(h) {
     var cfg = h.signal_config || {};
 
     var overlay = document.createElement('div');
@@ -228,7 +243,7 @@
       '</div></div>';
 
     document.body.appendChild(overlay);
-  };
+  }
 
   window._saveEditHuddle = function() {
     var btn = document.getElementById('ehSave');

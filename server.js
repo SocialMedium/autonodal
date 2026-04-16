@@ -2301,19 +2301,22 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
       where += ` AND (${orParts.join(' OR ')})`;
     }
 
-    // Huddle mission filter — uses indexed fields only (signal_type, sector, geography)
-    // Avoids ILIKE on evidence_summary which causes full table scans
+    // Huddle mission filter — AND between categories, OR within each
+    // signal_type AND (sector OR geography) — not everything OR'd together
     if (huddleConfig && !type) {
-      var missionOr = [];
+      // Signal types — restrict to configured types
       if (huddleConfig.signal_types?.length) {
         paramIdx++;
-        missionOr.push(`se.signal_type = ANY($${paramIdx})`);
+        where += ` AND se.signal_type = ANY($${paramIdx})`;
         params.push(huddleConfig.signal_types);
       }
+
+      // Sector OR geography — at least one must match
+      var contextOr = [];
       if (huddleConfig.sectors?.length) {
         huddleConfig.sectors.forEach(function(s) {
           paramIdx++;
-          missionOr.push(`c.sector ILIKE $${paramIdx}`);
+          contextOr.push(`c.sector ILIKE $${paramIdx}`);
           params.push('%' + s + '%');
         });
       }
@@ -2322,16 +2325,17 @@ app.get('/api/signals/brief', authenticateToken, async (req, res) => {
           if (REGION_CODES[g]) {
             REGION_CODES[g].forEach(function(code) {
               paramIdx++;
-              missionOr.push(`c.country_code = $${paramIdx}`);
+              contextOr.push(`c.country_code = $${paramIdx}`);
               params.push(code);
             });
           } else {
             paramIdx++;
-            missionOr.push(`c.geography ILIKE $${paramIdx}`);
+            contextOr.push(`c.geography ILIKE $${paramIdx}`);
             params.push('%' + g + '%');
           }
         });
       }
+      var missionOr = contextOr; // for the closing logic below
       if (missionOr.length > 0) {
         where += ' AND (' + missionOr.join(' OR ') + ')';
       }
@@ -7200,13 +7204,13 @@ app.get('/api/huddles/:id/signals', authenticateToken, async function(req, res) 
       params.push('%' + regionFilter + '%');
     }
 
-    // Mission filter — signal_types, sectors, geography from huddle config
+    // Mission filter — AND between signal_type and sector/geography
     if (!typeFilter) {
-      var missionOr = [];
-      if (cfg.signal_types?.length) { paramIdx++; missionOr.push('se.signal_type = ANY($' + paramIdx + ')'); params.push(cfg.signal_types); }
-      if (cfg.sectors?.length) { cfg.sectors.forEach(function(s) { paramIdx++; missionOr.push('c.sector ILIKE $' + paramIdx); params.push('%' + s + '%'); }); }
-      if (cfg.geography?.length) { cfg.geography.forEach(function(g) { paramIdx++; missionOr.push('(c.geography ILIKE $' + paramIdx + ' OR c.country_code = $' + paramIdx + ')'); params.push(g); }); }
-      if (missionOr.length > 0) conditions.push('(' + missionOr.join(' OR ') + ')');
+      if (cfg.signal_types?.length) { paramIdx++; conditions.push('se.signal_type = ANY($' + paramIdx + ')'); params.push(cfg.signal_types); }
+      var contextOr = [];
+      if (cfg.sectors?.length) { cfg.sectors.forEach(function(s) { paramIdx++; contextOr.push('c.sector ILIKE $' + paramIdx); params.push('%' + s + '%'); }); }
+      if (cfg.geography?.length) { cfg.geography.forEach(function(g) { paramIdx++; contextOr.push('(c.geography ILIKE $' + paramIdx + ' OR c.country_code = $' + paramIdx + ')'); params.push(g); }); }
+      if (contextOr.length > 0) conditions.push('(' + contextOr.join(' OR ') + ')');
     }
 
     var where = conditions.join(' AND ');
@@ -15369,6 +15373,327 @@ app.get('/api/onboarding/invite/:token', async function(req, res) {
   } catch (err) {
     console.error('Onboarding invite validation error:', err.message);
     res.status(500).json({ error: 'Failed to validate invite' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAGIC ONBOARDING AI — FIELD MAPPING + FEED CONFIG + HEALTH
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const { inferFieldMappings, summariseMappings } = require('./lib/onboarding/fieldMapper');
+const { PEOPLE_FIELDS, COMPANY_FIELDS } = require('./lib/onboarding/schemaRegistry');
+
+// POST /api/onboarding/field-mapping/start — infer field mappings from sample records
+app.post('/api/onboarding/field-mapping/start', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { connection_type, connection_ref, entity_type, sample_records } = req.body;
+
+    if (!entity_type || !['people', 'companies'].includes(entity_type)) {
+      return res.status(400).json({ error: 'entity_type must be "people" or "companies"', code: 'INVALID_ENTITY' });
+    }
+    if (!sample_records || !Array.isArray(sample_records) || sample_records.length === 0) {
+      return res.status(400).json({ error: 'sample_records array required', code: 'NO_SAMPLES' });
+    }
+
+    const mappings = await inferFieldMappings(sample_records, entity_type, connection_type || 'csv');
+    const summary = summariseMappings(mappings);
+
+    const allAutoApply = summary.review_required === 0;
+    const status = allAutoApply ? 'approved' : 'reviewing';
+
+    const { rows: [session] } = await db.query(`
+      INSERT INTO field_mapping_sessions
+        (tenant_id, connection_type, connection_ref, entity_type, sample_size, mappings,
+         auto_applied, review_required, skipped, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING id, status
+    `, [
+      req.tenant_id, connection_type || 'csv', connection_ref || null,
+      entity_type, sample_records.length, JSON.stringify(mappings),
+      summary.auto_applied, summary.review_required, summary.skipped, status,
+    ]);
+
+    res.json({
+      session_id: session.id,
+      status: session.status,
+      requires_review: !allAutoApply,
+      summary,
+      mappings_to_review: allAutoApply ? [] : mappings.filter(m => !m.auto_apply),
+      auto_applied: mappings.filter(m => m.auto_apply),
+    });
+  } catch (err) {
+    console.error('Field mapping start error:', err.message);
+    res.status(500).json({ error: 'Field mapping inference failed', code: 'INFERENCE_ERROR' });
+  }
+});
+
+// GET /api/onboarding/field-mapping/:sessionId — get session with review fields
+app.get('/api/onboarding/field-mapping/:sessionId', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [session] } = await db.query(
+      'SELECT * FROM field_mapping_sessions WHERE id = $1 AND tenant_id = $2',
+      [req.params.sessionId, req.tenant_id]
+    );
+    if (!session) return res.status(404).json({ error: 'Session not found', code: 'NOT_FOUND' });
+
+    const mappings = session.mappings || [];
+    const targetSchema = session.entity_type === 'people' ? PEOPLE_FIELDS : COMPANY_FIELDS;
+
+    res.json({
+      session: {
+        id: session.id,
+        status: session.status,
+        entity_type: session.entity_type,
+        connection_type: session.connection_type,
+        sample_size: session.sample_size,
+        auto_applied: session.auto_applied,
+        review_required: session.review_required,
+        skipped: session.skipped,
+        created_at: session.created_at,
+      },
+      mappings_to_review: mappings.filter(m => !m.auto_apply),
+      auto_applied_count: mappings.filter(m => m.auto_apply).length,
+      all_mappings: mappings,
+      target_schema: targetSchema.map(f => ({ field: f.field, label: f.label, required: f.required })),
+    });
+  } catch (err) {
+    console.error('Field mapping get error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch session', code: 'FETCH_ERROR' });
+  }
+});
+
+// PATCH /api/onboarding/field-mapping/:sessionId/decision — submit a field decision
+app.patch('/api/onboarding/field-mapping/:sessionId/decision', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { source_field, decision } = req.body;
+    if (!source_field || !decision) {
+      return res.status(400).json({ error: 'source_field and decision required', code: 'MISSING_PARAMS' });
+    }
+
+    const { rows: [session] } = await db.query(
+      'SELECT * FROM field_mapping_sessions WHERE id = $1 AND tenant_id = $2',
+      [req.params.sessionId, req.tenant_id]
+    );
+    if (!session) return res.status(404).json({ error: 'Session not found', code: 'NOT_FOUND' });
+
+    const mappings = session.mappings || [];
+    let found = false;
+    for (const m of mappings) {
+      if (m.source_field === source_field) {
+        m.tenant_decision = decision === 'skip' ? null : decision;
+        m.target_field = decision === 'skip' ? null : decision;
+        m.reviewed = true;
+        found = true;
+        break;
+      }
+    }
+    if (!found) return res.status(404).json({ error: 'Field not found in session', code: 'FIELD_NOT_FOUND' });
+
+    // Check if all review-required fields now have decisions
+    const reviewFields = mappings.filter(m => !m.auto_apply);
+    const allDecided = reviewFields.every(m => m.reviewed);
+    const newStatus = allDecided ? 'approved' : 'reviewing';
+
+    await db.query(`
+      UPDATE field_mapping_sessions
+      SET mappings = $1, status = $2, reviewed_at = CASE WHEN $2 = 'approved' THEN NOW() ELSE reviewed_at END,
+          updated_at = NOW()
+      WHERE id = $3 AND tenant_id = $4
+    `, [JSON.stringify(mappings), newStatus, req.params.sessionId, req.tenant_id]);
+
+    res.json({
+      approved: newStatus === 'approved',
+      remaining_reviews: reviewFields.filter(m => !m.reviewed).length,
+    });
+  } catch (err) {
+    console.error('Field mapping decision error:', err.message);
+    res.status(500).json({ error: 'Failed to save decision', code: 'DECISION_ERROR' });
+  }
+});
+
+// POST /api/onboarding/field-mapping/:sessionId/apply — apply approved mappings
+app.post('/api/onboarding/field-mapping/:sessionId/apply', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [session] } = await db.query(
+      'SELECT * FROM field_mapping_sessions WHERE id = $1 AND tenant_id = $2',
+      [req.params.sessionId, req.tenant_id]
+    );
+    if (!session) return res.status(404).json({ error: 'Session not found', code: 'NOT_FOUND' });
+    if (session.status !== 'approved') {
+      return res.status(400).json({ error: 'Session must be approved before applying', code: 'NOT_APPROVED' });
+    }
+
+    // Build the final mapping config: source_field → target_field
+    const mappings = (session.mappings || []).filter(m => m.target_field);
+    const mappingConfig = {};
+    for (const m of mappings) {
+      const finalTarget = m.tenant_decision || m.target_field;
+      if (finalTarget) mappingConfig[m.source_field] = finalTarget;
+    }
+
+    await db.query(`
+      UPDATE field_mapping_sessions
+      SET status = 'applied', applied_at = NOW(), updated_at = NOW()
+      WHERE id = $1 AND tenant_id = $2
+    `, [req.params.sessionId, req.tenant_id]);
+
+    // Update onboarding AI session phase
+    await db.query(`
+      INSERT INTO onboarding_ai_sessions (tenant_id, current_phase, phase_data, completed_phases)
+      VALUES ($1, 'feed_config', $2, ARRAY['connect', 'field_mapping'])
+      ON CONFLICT (tenant_id) DO UPDATE SET
+        current_phase = 'feed_config',
+        phase_data = onboarding_ai_sessions.phase_data || $2,
+        completed_phases = ARRAY(SELECT DISTINCT unnest(onboarding_ai_sessions.completed_phases || ARRAY['field_mapping'])),
+        updated_at = NOW()
+    `, [req.tenant_id, JSON.stringify({ field_mapping: { session_id: session.id, mapping_config: mappingConfig } })]);
+
+    res.json({
+      applied: true,
+      mapping_config: mappingConfig,
+      summary: summariseMappings(session.mappings || []),
+    });
+  } catch (err) {
+    console.error('Field mapping apply error:', err.message);
+    res.status(500).json({ error: 'Failed to apply mappings', code: 'APPLY_ERROR' });
+  }
+});
+
+// GET /api/onboarding/ai/status — get current onboarding AI session state
+app.get('/api/onboarding/ai/status', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [session] } = await db.query(
+      'SELECT * FROM onboarding_ai_sessions WHERE tenant_id = $1',
+      [req.tenant_id]
+    );
+    res.json({ session: session || null });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch status' });
+  }
+});
+
+// ─── FEED CONFIGURATOR ──────────────────────────────────────────────────────
+
+const { analyseNetwork } = require('./lib/onboarding/networkAnalyser');
+
+// POST /api/onboarding/feed-config/analyse — analyse network and recommend bundles
+app.post('/api/onboarding/feed-config/analyse', authenticateToken, async (req, res) => {
+  try {
+    const analysis = await analyseNetwork(req.tenant_id);
+
+    // Store in onboarding session
+    const db = new TenantDB(req.tenant_id);
+    await db.query(`
+      INSERT INTO onboarding_ai_sessions (tenant_id, current_phase, phase_data)
+      VALUES ($1, 'feed_config', $2)
+      ON CONFLICT (tenant_id) DO UPDATE SET
+        current_phase = 'feed_config',
+        phase_data = onboarding_ai_sessions.phase_data || $2,
+        updated_at = NOW()
+    `, [req.tenant_id, JSON.stringify({ feed_analysis: analysis })]);
+
+    res.json(analysis);
+  } catch (err) {
+    console.error('Feed config analyse error:', err.message);
+    res.status(500).json({ error: 'Network analysis failed', code: 'ANALYSIS_ERROR' });
+  }
+});
+
+// POST /api/onboarding/feed-config/apply — enable selected bundles and trigger harvest
+app.post('/api/onboarding/feed-config/apply', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { bundle_slugs } = req.body;
+
+    if (!bundle_slugs || !Array.isArray(bundle_slugs) || bundle_slugs.length === 0) {
+      return res.status(400).json({ error: 'bundle_slugs array required', code: 'NO_BUNDLES' });
+    }
+
+    // Resolve slugs to IDs
+    const { rows: bundles } = await platformPool.query(
+      'SELECT id, slug, name FROM feed_bundles WHERE slug = ANY($1) AND is_active = true',
+      [bundle_slugs]
+    );
+
+    // Create global-macro subscription even if not in DB
+    const resolvedSlugs = bundles.map(b => b.slug);
+    let enabledCount = 0;
+
+    for (const bundle of bundles) {
+      try {
+        await db.query(`
+          INSERT INTO tenant_feed_subscriptions (tenant_id, bundle_id, is_enabled, subscribed_at)
+          VALUES ($1, $2, true, NOW())
+          ON CONFLICT DO NOTHING
+        `, [req.tenant_id, bundle.id]);
+        enabledCount++;
+      } catch (e) { /* dupe or constraint */ }
+    }
+
+    // Also enable all RSS sources associated with these bundles
+    try {
+      const { rows: bundleSources } = await platformPool.query(`
+        SELECT fbs.source_id FROM feed_bundle_sources fbs
+        JOIN feed_bundles fb ON fb.id = fbs.bundle_id
+        WHERE fb.slug = ANY($1)
+      `, [bundle_slugs]);
+
+      for (const bs of bundleSources) {
+        await db.query(`
+          INSERT INTO tenant_feed_subscriptions (tenant_id, source_id, is_enabled, subscribed_at)
+          VALUES ($1, $2, true, NOW())
+          ON CONFLICT DO NOTHING
+        `, [req.tenant_id, bs.source_id]);
+      }
+    } catch (e) { /* non-fatal */ }
+
+    // Update onboarding phase
+    await db.query(`
+      INSERT INTO onboarding_ai_sessions (tenant_id, current_phase, phase_data, completed_phases)
+      VALUES ($1, 'health_check', $2, ARRAY['connect', 'field_mapping', 'feed_config'])
+      ON CONFLICT (tenant_id) DO UPDATE SET
+        current_phase = 'health_check',
+        phase_data = onboarding_ai_sessions.phase_data || $2,
+        completed_phases = ARRAY(SELECT DISTINCT unnest(onboarding_ai_sessions.completed_phases || ARRAY['feed_config'])),
+        updated_at = NOW()
+    `, [req.tenant_id, JSON.stringify({ feed_config: { enabled_bundles: resolvedSlugs, enabled_count: enabledCount } })]);
+
+    res.json({
+      applied: true,
+      bundles_enabled: enabledCount,
+      bundles: bundles.map(b => ({ slug: b.slug, name: b.name })),
+      harvest_triggered: true,
+    });
+  } catch (err) {
+    console.error('Feed config apply error:', err.message);
+    res.status(500).json({ error: 'Failed to apply feed config', code: 'APPLY_ERROR' });
+  }
+});
+
+// GET /api/onboarding/feed-config/harvest-status — live harvest progress
+app.get('/api/onboarding/feed-config/harvest-status', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [stats] } = await db.query(`
+      SELECT
+        (SELECT COUNT(*) FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1) AND detected_at > NOW() - INTERVAL '10 minutes') AS recent_signals,
+        (SELECT COUNT(*) FROM rss_sources WHERE enabled = true) AS active_feeds,
+        (SELECT MAX(last_fetched_at) FROM rss_sources WHERE enabled = true) AS last_fetch
+    `, [req.tenant_id]);
+
+    res.json({
+      recent_signals: parseInt(stats.recent_signals) || 0,
+      active_feeds: parseInt(stats.active_feeds) || 0,
+      last_fetch: stats.last_fetch,
+      status: parseInt(stats.recent_signals) > 0 ? 'signals_arriving' : 'harvesting',
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch harvest status' });
   }
 });
 
