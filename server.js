@@ -6808,6 +6808,130 @@ app.patch('/api/huddles/:id', authenticateToken, async function(req, res) {
   }
 });
 
+// POST /api/huddles/:id/chat — AI-powered mission builder conversation
+var huddlePlaybook = {};
+try { huddlePlaybook = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, 'lib', 'huddle_playbook.json'), 'utf8')); } catch(e) {}
+
+// In-memory chat histories per huddle (cleared on restart — not persistent)
+var huddleChatHistories = new Map();
+
+app.post('/api/huddles/:id/chat', authenticateToken, async function(req, res) {
+  try {
+    var membership = await verifyHuddleMember(req.params.id, req.tenant_id);
+    if (!membership) return res.status(403).json({ error: 'Not a member' });
+
+    var { message } = req.body;
+    if (!message) return res.status(400).json({ error: 'message required' });
+
+    // Load current huddle state
+    var { rows: [huddle] } = await platformPool.query('SELECT * FROM huddles WHERE id = $1', [req.params.id]);
+    if (!huddle) return res.status(404).json({ error: 'Huddle not found' });
+    var cfg = huddle.signal_config || {};
+
+    // Build system prompt (Nev pattern)
+    var gaps = [];
+    if (!huddle.purpose || huddle.purpose.length < 20) gaps.push('mission purpose — what is this huddle trying to achieve?');
+    if (!cfg.sectors || !cfg.sectors.length) gaps.push('sector focus — which industries/verticals matter?');
+    if (!cfg.geography || !cfg.geography.length) gaps.push('geography — which markets/regions?');
+    if (!cfg.signal_types || !cfg.signal_types.length) gaps.push('signal types — what kind of market activity matters? (funding, hiring, M&A, expansion, etc.)');
+
+    var stateSection = 'CURRENT HUDDLE STATE:\n' +
+      '- Name: ' + (huddle.name || 'not set') + '\n' +
+      '- Purpose: ' + (huddle.purpose || 'not set') + '\n' +
+      '- Sectors: ' + (cfg.sectors?.length ? cfg.sectors.join(', ') : 'not set') + '\n' +
+      '- Geography: ' + (cfg.geography?.length ? cfg.geography.join(', ') : 'not set') + '\n' +
+      '- Signal types: ' + (cfg.signal_types?.length ? cfg.signal_types.map(function(t) { return t.replace(/_/g, ' '); }).join(', ') : 'not set') + '\n' +
+      '- Mission keywords: ' + (cfg.mission_keywords || 'not set');
+
+    var gapSection = gaps.length > 0
+      ? 'GAPS TO FILL — address the highest priority one first, one question per response:\n' + gaps.map(function(g) { return '- ' + g; }).join('\n')
+      : 'CONFIGURATION IS COMPLETE. Confirm the setup with the user and let them know their signal feed is now curated. Keep it to 2-3 sentences.';
+
+    var signalDefs = Object.entries(huddlePlaybook.signal_type_definitions || {}).map(function(e) { return e[0].replace(/_/g, ' ') + ': ' + e[1]; }).join('\n');
+    var sectorList = (huddlePlaybook.sector_taxonomy || []).join(', ');
+    var geoList = Object.keys(huddlePlaybook.geography_codes || {}).join(', ');
+
+    var systemPrompt = huddlePlaybook.global_instructions + '\n\n---\n\n' +
+      stateSection + '\n\n---\n\n' +
+      gapSection + '\n\n---\n\n' +
+      'SIGNAL TYPES AVAILABLE:\n' + signalDefs + '\n\n' +
+      'SECTOR TAXONOMY: ' + sectorList + '\n\n' +
+      'GEOGRAPHY CODES: ' + geoList + '\n\n---\n\n' +
+      'EXTRACTION — CRITICAL:\n\nAfter EVERY response, append a [HUDDLE_CONFIG] block with the cumulative configuration. Include ALL fields, even unchanged ones.\n\n' +
+      'Format:\n[HUDDLE_CONFIG]\n{"purpose":"...","sectors":["ai","fintech"],"geography":["US","UK"],"signal_types":["capital_raising","strategic_hiring"],"mission_keywords":"..."}\n[/HUDDLE_CONFIG]\n\n' +
+      'Rules:\n- sectors MUST use values from: ' + sectorList + '\n' +
+      '- geography MUST use codes from: ' + geoList + '\n' +
+      '- signal_types MUST use: capital_raising, strategic_hiring, geographic_expansion, ma_activity, partnership, product_launch, leadership_change, restructuring, layoffs\n' +
+      '- mission_keywords: 5-15 space-separated keywords extracted from the conversation\n' +
+      '- This block is stripped from the visible reply\n\n---\n\n' +
+      'CONSTRAINTS:\n- One question per response. Three sentences max.\n- Never re-ask something already captured.\n- Confirm when you capture something: "Got it — added [X] to your signal config."\n- Warm, precise tone. Not a form. A conversation.';
+
+    // Get or create chat history
+    var historyKey = req.params.id;
+    if (!huddleChatHistories.has(historyKey)) huddleChatHistories.set(historyKey, []);
+    var history = huddleChatHistories.get(historyKey);
+    history.push({ role: 'user', content: message });
+
+    // Keep last 20 messages
+    if (history.length > 20) history.splice(0, history.length - 20);
+
+    // Call Claude
+    var claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1024, system: systemPrompt, messages: history })
+    });
+
+    if (!claudeRes.ok) {
+      var errText = await claudeRes.text();
+      return res.status(500).json({ error: 'AI error: ' + claudeRes.status });
+    }
+
+    var claudeData = await claudeRes.json();
+    var fullReply = claudeData.content?.[0]?.text || '';
+
+    // Extract [HUDDLE_CONFIG] block
+    var configMatch = fullReply.match(/\[HUDDLE_CONFIG\]([\s\S]*?)\[\/HUDDLE_CONFIG\]/);
+    var configUpdated = false;
+    if (configMatch) {
+      try {
+        var newConfig = JSON.parse(configMatch[1].trim());
+        // Merge into existing config
+        var updated = { ...cfg };
+        if (newConfig.sectors?.length) updated.sectors = newConfig.sectors;
+        if (newConfig.geography?.length) updated.geography = newConfig.geography;
+        if (newConfig.signal_types?.length) updated.signal_types = newConfig.signal_types;
+        if (newConfig.mission_keywords) updated.mission_keywords = newConfig.mission_keywords;
+
+        var newPurpose = newConfig.purpose || huddle.purpose;
+
+        await platformPool.query(
+          'UPDATE huddles SET signal_config = $1, purpose = COALESCE($2, purpose), updated_at = NOW() WHERE id = $3',
+          [JSON.stringify(updated), newPurpose, req.params.id]
+        );
+
+        // Re-embed mission
+        await embedHuddleMission(req.params.id, { name: huddle.name, purpose: newPurpose, signal_config: updated });
+        configUpdated = true;
+      } catch (e) { console.warn('Huddle config parse error:', e.message); }
+    }
+
+    // Strip config block from visible reply
+    var visibleReply = fullReply.replace(/\[HUDDLE_CONFIG\][\s\S]*?\[\/HUDDLE_CONFIG\]/, '').trim();
+
+    history.push({ role: 'assistant', content: fullReply });
+
+    res.json({
+      reply: visibleReply,
+      config_updated: configUpdated,
+      current_config: configUpdated ? JSON.parse((await platformPool.query('SELECT signal_config FROM huddles WHERE id = $1', [req.params.id])).rows[0].signal_config || '{}') : cfg
+    });
+  } catch (err) {
+    console.error('Huddle chat error:', err.message);
+    res.status(500).json({ error: 'Chat failed' });
+  }
+});
+
 // GET /api/huddles — list my huddles
 app.get('/api/huddles', authenticateToken, async function(req, res) {
   try {
@@ -15694,6 +15818,164 @@ app.get('/api/onboarding/feed-config/harvest-status', authenticateToken, async (
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch harvest status' });
+  }
+});
+
+// ─── SYNC DIAGNOSTICS ────────────────────────────────────────────────────────
+
+const { classifyError, resolveAction } = require('./lib/onboarding/syncDiagnostic');
+
+// POST /api/onboarding/diagnostic — classify a sync error
+app.post('/api/onboarding/diagnostic', authenticateToken, async (req, res) => {
+  try {
+    const { error_message, context } = req.body;
+    if (!error_message) {
+      return res.status(400).json({ error: 'error_message required', code: 'MISSING_ERROR' });
+    }
+
+    const diagnosis = classifyError(error_message, context || {});
+
+    // Log to tenant_health_issues for audit trail
+    try {
+      const db = new TenantDB(req.tenant_id);
+      await db.query(`
+        INSERT INTO tenant_health_issues
+          (tenant_id, issue_type, severity, title, explanation, actions, context)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (tenant_id, issue_type) DO UPDATE SET
+          severity = EXCLUDED.severity, title = EXCLUDED.title,
+          explanation = EXCLUDED.explanation, actions = EXCLUDED.actions,
+          context = EXCLUDED.context, last_checked_at = NOW(),
+          resolved = false, resolved_at = NULL
+      `, [
+        req.tenant_id, 'sync_' + diagnosis.error_type, diagnosis.severity,
+        diagnosis.title, diagnosis.explanation, JSON.stringify(diagnosis.actions),
+        JSON.stringify({ ...context, raw_error: error_message }),
+      ]);
+    } catch (e) { /* non-fatal audit logging */ }
+
+    res.json(diagnosis);
+  } catch (err) {
+    console.error('Diagnostic error:', err.message);
+    res.status(500).json({ error: 'Diagnostic failed', code: 'DIAGNOSTIC_ERROR' });
+  }
+});
+
+// POST /api/onboarding/diagnostic/resolve — execute a resolution action
+app.post('/api/onboarding/diagnostic/resolve', authenticateToken, async (req, res) => {
+  try {
+    const { action_id, context } = req.body;
+    if (!action_id) {
+      return res.status(400).json({ error: 'action_id required', code: 'MISSING_ACTION' });
+    }
+
+    const result = await resolveAction(action_id, {
+      tenant_id: req.tenant_id,
+      ...(context || {}),
+    });
+
+    // Mark issue resolved if applicable
+    if (result.resolved) {
+      try {
+        const db = new TenantDB(req.tenant_id);
+        await db.query(`
+          UPDATE tenant_health_issues SET resolved = true, resolved_at = NOW(),
+            resolution_action = $2
+          WHERE tenant_id = $1 AND resolved = false
+            AND issue_type LIKE 'sync_%'
+          `, [req.tenant_id, action_id]);
+      } catch (e) { /* non-fatal */ }
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error('Diagnostic resolve error:', err.message);
+    res.status(500).json({ error: 'Resolution failed', code: 'RESOLVE_ERROR' });
+  }
+});
+
+// ─── HEALTH MONITOR ──────────────────────────────────────────────────────────
+
+const { runHealthCheck, getIntegrationStatus } = require('./lib/onboarding/healthMonitor');
+
+// GET /api/onboarding/health — run health check on demand
+app.get('/api/onboarding/health', authenticateToken, async (req, res) => {
+  try {
+    const issues = await runHealthCheck(req.tenant_id);
+    const integrations = await getIntegrationStatus(req.tenant_id);
+
+    res.json({
+      issues,
+      integrations,
+      last_checked: new Date().toISOString(),
+      all_clear: issues.length === 0,
+    });
+  } catch (err) {
+    console.error('Health check error:', err.message);
+    res.status(500).json({ error: 'Health check failed' });
+  }
+});
+
+// GET /api/onboarding/health/summary — lightweight badge counts
+app.get('/api/onboarding/health/summary', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { rows } = await db.query(`
+      SELECT severity, COUNT(*) AS cnt
+      FROM tenant_health_issues
+      WHERE tenant_id = $1 AND resolved = false
+      GROUP BY severity
+    `, [req.tenant_id]);
+
+    const counts = { error: 0, warning: 0, info: 0 };
+    rows.forEach(r => { counts[r.severity] = parseInt(r.cnt) || 0; });
+
+    res.json({
+      ...counts,
+      total: counts.error + counts.warning + counts.info,
+      all_clear: counts.error + counts.warning + counts.info === 0,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Summary failed' });
+  }
+});
+
+// POST /api/onboarding/health/resolve — resolve a health issue
+app.post('/api/onboarding/health/resolve', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { issue_id, action_id } = req.body;
+
+    if (!issue_id || !action_id) {
+      return res.status(400).json({ error: 'issue_id and action_id required' });
+    }
+
+    // Get the issue
+    const { rows: [issue] } = await db.query(
+      'SELECT * FROM tenant_health_issues WHERE id = $1 AND tenant_id = $2',
+      [issue_id, req.tenant_id]
+    );
+    if (!issue) return res.status(404).json({ error: 'Issue not found' });
+
+    // Resolve via the diagnostic resolver
+    const result = await resolveAction(action_id, {
+      tenant_id: req.tenant_id,
+      ...(issue.context || {}),
+    });
+
+    // Mark issue resolved
+    if (result.resolved) {
+      await db.query(`
+        UPDATE tenant_health_issues SET resolved = true, resolved_at = NOW(),
+          resolution_action = $2
+        WHERE id = $1 AND tenant_id = $3
+      `, [issue_id, action_id, req.tenant_id]);
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error('Health resolve error:', err.message);
+    res.status(500).json({ error: 'Resolution failed' });
   }
 });
 

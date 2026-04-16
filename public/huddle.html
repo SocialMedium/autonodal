@@ -227,9 +227,26 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 
   <div class="tab-bar" id="tabBar">
     <button class="tab active" data-tab="members" onclick="switchTab('members')">Members</button>
+    <button class="tab" data-tab="configure" onclick="switchTab('configure')">Configure</button>
     <button class="tab" data-tab="network" onclick="switchTab('network')">Network</button>
     <button class="tab" data-tab="signals" onclick="switchTab('signals')">Signals</button>
     <button class="tab" data-tab="companies" onclick="switchTab('companies')">Companies</button>
+  </div>
+
+  <!-- Configure tab — AI mission builder -->
+  <div id="tab-configure" class="tab-content" style="display:none">
+    <div style="max-width:680px;margin:0 auto">
+      <div style="font-size:13px;color:var(--ink-3);margin-bottom:16px">Describe what this huddle is working toward. The AI will translate your intent into signal filters that curate your feed.</div>
+      <div id="chatMessages" style="min-height:200px;max-height:500px;overflow-y:auto;margin-bottom:16px;padding:8px 0"></div>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="chatInput" placeholder="What is this huddle trying to achieve?"
+               style="flex:1;padding:10px 14px;border:1px solid var(--rule);border-radius:8px;font-size:14px"
+               onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendHuddleChat()}">
+        <button onclick="sendHuddleChat()" id="chatSendBtn"
+                style="padding:10px 20px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap">Send</button>
+      </div>
+      <div id="chatConfig" style="margin-top:16px;display:none"></div>
+    </div>
   </div>
 
   <!-- Members tab -->
@@ -388,6 +405,92 @@ function switchTab(tab) {
 /* ═══════════════════════════════════════
    LOAD HUDDLE
    ═══════════════════════════════════════ */
+/* ═══════════════════════════════════════
+   HUDDLE CHAT — AI Mission Builder
+   ═══════════════════════════════════════ */
+function sendHuddleChat() {
+  var input = document.getElementById('chatInput');
+  var msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+
+  // Show user message
+  appendChatMessage('user', msg);
+
+  // Show typing indicator
+  var typingId = 'typing-' + Date.now();
+  appendChatMessage('assistant', '<span style="color:var(--ink-4);font-style:italic">Thinking...</span>', typingId);
+
+  var btn = document.getElementById('chatSendBtn');
+  btn.disabled = true;
+
+  api('/api/huddles/' + HUDDLE_ID + '/chat', {
+    method: 'POST',
+    body: JSON.stringify({ message: msg })
+  }).then(function(data) {
+    btn.disabled = false;
+    // Remove typing indicator
+    var typingEl = document.getElementById(typingId);
+    if (typingEl) typingEl.remove();
+
+    if (data.reply) {
+      appendChatMessage('assistant', data.reply);
+    }
+
+    // Show updated config
+    if (data.config_updated && data.current_config) {
+      renderChatConfig(data.current_config);
+      // Refresh mission panel on the page
+      loadHuddle();
+    }
+
+    // Scroll to bottom
+    var container = document.getElementById('chatMessages');
+    container.scrollTop = container.scrollHeight;
+  }).catch(function(e) {
+    btn.disabled = false;
+    var typingEl = document.getElementById(typingId);
+    if (typingEl) typingEl.remove();
+    appendChatMessage('assistant', '<span style="color:var(--rose)">Something went wrong. Try again.</span>');
+  });
+}
+
+function appendChatMessage(role, content, id) {
+  var container = document.getElementById('chatMessages');
+  var div = document.createElement('div');
+  if (id) div.id = id;
+  div.style.cssText = 'display:flex;gap:10px;margin-bottom:12px;' + (role === 'user' ? 'flex-direction:row-reverse' : '');
+
+  var bubble = document.createElement('div');
+  bubble.style.cssText = 'max-width:85%;padding:10px 14px;border-radius:12px;font-size:14px;line-height:1.5;' +
+    (role === 'user'
+      ? 'background:var(--blue);color:#fff;border-bottom-right-radius:4px'
+      : 'background:var(--surface-cool);color:var(--ink);border-bottom-left-radius:4px');
+  bubble.innerHTML = content;
+
+  div.appendChild(bubble);
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function renderChatConfig(cfg) {
+  var panel = document.getElementById('chatConfig');
+  if (!cfg || (!cfg.sectors?.length && !cfg.geography?.length && !cfg.signal_types?.length)) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  var html = '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:8px">Current Configuration</div>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+  (cfg.geography || []).forEach(function(g) { html += '<span style="padding:3px 10px;border-radius:12px;font-size:11px;font-weight:500;background:var(--blue-soft);color:var(--blue)">' + esc(g) + '</span>'; });
+  (cfg.sectors || []).forEach(function(s) { html += '<span style="padding:3px 10px;border-radius:12px;font-size:11px;font-weight:500;background:var(--violet-soft);color:var(--violet)">' + esc(s) + '</span>'; });
+  (cfg.signal_types || []).forEach(function(t) { html += '<span style="padding:3px 10px;border-radius:12px;font-size:11px;font-weight:500;background:var(--emerald-soft);color:var(--emerald)">' + esc(t.replace(/_/g,' ')) + '</span>'; });
+  html += '</div>';
+
+  panel.innerHTML = html;
+  panel.style.display = '';
+}
+
 function activateHuddleContext() {
   var h = window._currentHuddle;
   if (!h) return;

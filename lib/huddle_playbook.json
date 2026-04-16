@@ -1,0 +1,96 @@
+{
+  "_description": "Huddle Playbook — Drives the AI conversation that builds a huddle's signal configuration. Adapted from EventMedium Nev pattern.",
+  "intent_handlers": [
+    {
+      "trigger": "fundraising_mission",
+      "signals": ["raise", "raising", "funding", "investors", "capital", "seed", "series", "venture"],
+      "capture_fields": ["signal_types", "sectors", "geography", "stage", "ticket_size"],
+      "always_do": ["confirm_signal_types_include_capital_raising", "capture_investor_geography", "capture_sector_focus"]
+    },
+    {
+      "trigger": "hiring_mission",
+      "signals": ["hire", "hiring", "recruit", "talent", "team", "executive", "leadership", "CTO", "CFO", "VP"],
+      "capture_fields": ["signal_types", "sectors", "geography", "seniority_focus", "function_focus"],
+      "always_do": ["confirm_signal_types_include_strategic_hiring", "capture_role_level", "capture_geography"]
+    },
+    {
+      "trigger": "expansion_mission",
+      "signals": ["expand", "expansion", "new market", "enter", "launch", "international", "APAC", "EMEA", "US", "UK"],
+      "capture_fields": ["signal_types", "geography", "sectors"],
+      "always_do": ["confirm_signal_types_include_geographic_expansion", "capture_target_markets"]
+    },
+    {
+      "trigger": "deal_flow_mission",
+      "signals": ["M&A", "acquisition", "acquire", "merge", "deal", "pipeline", "targets", "buy-side", "sell-side"],
+      "capture_fields": ["signal_types", "sectors", "geography", "deal_criteria"],
+      "always_do": ["confirm_signal_types_include_ma_activity", "capture_sector_focus", "capture_deal_size"]
+    },
+    {
+      "trigger": "market_intelligence",
+      "signals": ["track", "monitor", "watch", "intelligence", "landscape", "competitive", "sector", "industry"],
+      "capture_fields": ["sectors", "geography", "signal_types"],
+      "always_do": ["capture_which_sectors", "capture_which_geographies", "capture_what_signals_matter"]
+    },
+    {
+      "trigger": "geography_update",
+      "signals": ["focus on", "based in", "targeting", "looking at", "interested in"],
+      "capture_fields": ["geography"],
+      "always_do": ["confirm_update", "map_to_region_codes"]
+    },
+    {
+      "trigger": "sector_update",
+      "signals": ["web3", "fintech", "AI", "health", "climate", "SaaS", "enterprise", "consumer", "deep tech", "biotech"],
+      "capture_fields": ["sectors"],
+      "always_do": ["confirm_sector_captured", "ask_if_adjacent_sectors_matter"]
+    }
+  ],
+  "global_instructions": "You are the Huddle configuration assistant for Autonodal. Your job is to understand what this huddle is trying to achieve and translate that into a precise signal configuration. You extract: mission purpose, target geography, sector focus, and which signal types matter most. You ask sharp, specific questions. One question per response. Three sentences max. When you have enough, confirm the configuration and stop.",
+  "signal_type_definitions": {
+    "capital_raising": "Funding rounds, IPOs, debt raises, SAFE notes — companies accessing capital",
+    "strategic_hiring": "Senior hires, team builds, executive appointments — companies scaling",
+    "geographic_expansion": "New offices, market entry, regional leadership hires — companies expanding geographically",
+    "ma_activity": "Acquisitions, mergers, divestitures, PE buyouts — corporate transactions",
+    "partnership": "Strategic alliances, joint ventures, platform integrations — companies partnering",
+    "product_launch": "New products, platform releases, feature launches — companies shipping",
+    "leadership_change": "CEO/CFO/CTO appointments, departures, board changes — leadership transitions",
+    "restructuring": "Layoffs, reorganisations, cost cutting, pivots — companies restructuring",
+    "layoffs": "Workforce reductions, hiring freezes — market contraction signals"
+  },
+  "geography_codes": {
+    "US": ["US"],
+    "UK": ["UK", "GB"],
+    "EU": ["DE", "FR", "NL", "ES", "IT", "IE", "SE", "DK", "FI", "NO", "PL", "AT", "BE", "PT"],
+    "AU": ["AU"],
+    "SG": ["SG"],
+    "SEA": ["SG", "MY", "ID", "TH", "VN", "PH"],
+    "APAC": ["AU", "NZ", "SG", "MY", "ID", "TH", "VN", "PH", "JP", "KR", "IN", "HK", "TW"],
+    "MENA": ["AE", "SA", "QA", "BH", "KW", "OM", "EG", "IL"],
+    "LATAM": ["BR", "MX", "AR", "CO", "CL", "PE"],
+    "GLOBAL": []
+  },
+  "sector_taxonomy": [
+    "web3", "fintech", "ai", "saas", "enterprise", "consumer",
+    "health", "climate", "deep_tech", "biotech", "edtech",
+    "logistics", "proptech", "media", "gaming", "cybersecurity",
+    "energy", "agriculture", "defence", "space"
+  ],
+  "follow_up_patterns": {
+    "vague_mission": [
+      "What specific outcome would make this huddle successful in the next 90 days?",
+      "If the right signal appeared tomorrow, what would it look like?",
+      "What's the one thing you're trying to find or track that you can't today?"
+    ],
+    "missing_geography": [
+      "Which markets matter most for this mission — where should signals come from?",
+      "Is this global or are there specific regions you're focused on?"
+    ],
+    "missing_sectors": [
+      "Which industries or verticals are relevant here?",
+      "Are there adjacent sectors that might surface relevant signals?"
+    ],
+    "missing_signal_types": [
+      "What kind of market activity matters most — funding rounds, leadership changes, expansions, M&A?",
+      "Which of these would trigger action from your team: a company raising capital, a key hire, a new market entry, or an acquisition?"
+    ]
+  }
+}
