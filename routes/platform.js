@@ -18,6 +18,7 @@ module.exports = function(deps) {
     REGION_MAP, REGION_CODES, NICKNAMES, RESEARCH_SEARCH_ENABLED,
     searchPublications, computeResearchMomentum,
     getGoogleToken, sendEmail,
+    verifyHuddleMember,
     rootDir,
   } = deps;
 

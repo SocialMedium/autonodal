@@ -393,6 +393,7 @@ app.use(require('./routes/platform')({
   REGION_MAP, REGION_CODES, NICKNAMES, RESEARCH_SEARCH_ENABLED,
   searchPublications, computeResearchMomentum,
   getGoogleToken, sendEmail,
+  verifyHuddleMember,
   rootDir: __dirname,
 }));
 
