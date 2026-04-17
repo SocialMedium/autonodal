@@ -194,14 +194,13 @@ async function loadCompanies() {
   const params = new URLSearchParams({ limit: 30, offset });
   if (q) params.set('q', q);
   if (activeFilters.has('clients')) params.set('is_client', 'true');
+  if (activeFilters.has('with_people')) params.set('with_people', 'true');
+  if (activeFilters.has('with_signals')) params.set('with_signals', 'true');
 
   const data = await api(`/api/companies?${params}`);
   if (!data) return;
 
-  // Client-side filters — applied concurrently (AND logic)
   let companies = data.companies;
-  if (activeFilters.has('with_people')) companies = companies.filter(c => parseInt(c.people_count) > 0);
-  if (activeFilters.has('with_signals')) companies = companies.filter(c => parseInt(c.signal_count) > 0);
 
   document.getElementById('pageCount').textContent = data.total.toLocaleString() + ' COMPANIES';
 

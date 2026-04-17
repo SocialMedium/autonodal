@@ -526,6 +526,15 @@ router.get('/api/companies', authenticateToken, async (req, res) => {
       where += ` AND c.geography ILIKE $${paramIdx}`;
       params.push(`%${req.query.geography}%`);
     }
+    if (req.query.is_client === 'true') {
+      where += ` AND c.is_client = true`;
+    }
+    if (req.query.with_signals === 'true') {
+      where += ` AND EXISTS (SELECT 1 FROM signal_events se WHERE se.company_id = c.id AND (se.tenant_id IS NULL OR se.tenant_id = $1))`;
+    }
+    if (req.query.with_people === 'true') {
+      where += ` AND EXISTS (SELECT 1 FROM people p WHERE p.current_company_id = c.id AND p.tenant_id = $1)`;
+    }
 
     paramIdx++;
     params.push(limit);
