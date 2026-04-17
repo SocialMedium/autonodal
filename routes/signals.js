@@ -1029,18 +1029,29 @@ router.get('/api/signals/brief', authenticateToken, async (req, res) => {
         SELECT
           COUNT(*) FILTER (WHERE c.country_code IN ('AU','NZ','FJ','PG')
             OR c.geography ILIKE '%Australia%' OR c.geography ILIKE '%New Zealand%' OR c.geography ILIKE '%Oceania%'
+            OR se.evidence_summary ILIKE '%Australia%' OR se.evidence_summary ILIKE '%Sydney%' OR se.evidence_summary ILIKE '%Melbourne%'
+            OR se.company_name ILIKE '%Australian%'
+            OR ed.title ILIKE '%Australia%' OR ed.title ILIKE '%Australian%'
           ) AS oce,
           COUNT(*) FILTER (WHERE c.country_code IN ('US','CA','BR','MX','AR','CL','CO','PE')
             OR c.geography ILIKE '%United States%' OR c.geography ILIKE '%America%' OR c.geography ILIKE '%Canada%' OR c.geography ILIKE '%Brazil%'
+            OR se.evidence_summary ILIKE '%United States%' OR se.evidence_summary ILIKE '%Silicon Valley%' OR se.evidence_summary ILIKE '%New York%'
+            OR ed.title ILIKE '%America%' OR ed.title ILIKE '%US %' OR ed.title ILIKE '%Wall Street%'
           ) AS amer,
           COUNT(*) FILTER (WHERE c.country_code IN ('GB','UK','IE','DE','FR','NL','SE','DK','NO','FI','ES','IT','PT','AT','CH','BE','PL','CZ')
             OR c.geography ILIKE '%United Kingdom%' OR c.geography ILIKE '%Europe%' OR c.geography ILIKE '%London%' OR c.geography ILIKE '%Germany%' OR c.geography ILIKE '%France%'
+            OR se.evidence_summary ILIKE '%United Kingdom%' OR se.evidence_summary ILIKE '%London%' OR se.evidence_summary ILIKE '%Europe%'
+            OR ed.title ILIKE '%UK %' OR ed.title ILIKE '%London%' OR ed.title ILIKE '%Europe%'
           ) AS eur,
           COUNT(*) FILTER (WHERE c.country_code IN ('AE','SA','QA','BH','KW','OM','IL','TR','EG','MA')
             OR c.geography ILIKE '%Dubai%' OR c.geography ILIKE '%Middle East%' OR c.geography ILIKE '%Saudi%' OR c.geography ILIKE '%Israel%'
+            OR se.evidence_summary ILIKE '%Middle East%' OR se.evidence_summary ILIKE '%Dubai%' OR se.evidence_summary ILIKE '%Saudi%'
+            OR ed.title ILIKE '%Middle East%' OR ed.title ILIKE '%Gulf%'
           ) AS mena,
           COUNT(*) FILTER (WHERE c.country_code IN ('SG','MY','ID','TH','VN','PH','JP','KR','IN','HK','CN','TW','BD','PK')
             OR c.geography ILIKE '%Singapore%' OR c.geography ILIKE '%Asia%' OR c.geography ILIKE '%India%' OR c.geography ILIKE '%Japan%' OR c.geography ILIKE '%China%' OR c.geography ILIKE '%Hong Kong%'
+            OR se.evidence_summary ILIKE '%Singapore%' OR se.evidence_summary ILIKE '%Asia%' OR se.evidence_summary ILIKE '%India%'
+            OR ed.title ILIKE '%Singapore%' OR ed.title ILIKE '%Asia%' OR ed.title ILIKE '%India%'
           ) AS asia,
           COUNT(*) FILTER (WHERE c.is_client = true) AS client_signals,
           COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM people p WHERE p.current_company_id = se.company_id AND p.tenant_id = $1)) AS network_signals,
