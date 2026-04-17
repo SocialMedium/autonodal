@@ -382,7 +382,7 @@ app.use(require('./routes/public')({ platformPool }));
 // auth.js uses generateQueryEmbedding (hoisted) — safe to mount here
 app.use(require('./routes/auth')({ platformPool, TenantDB, authenticateToken, auditLog, generateQueryEmbedding }));
 app.use(require('./routes/admin')({ platformPool, TenantDB, authenticateToken, requireAdmin, auditLog, rootDir: __dirname }));
-app.use(require('./routes/people')({ platformPool, TenantDB, authenticateToken, verifyHuddleMember, generateQueryEmbedding }));
+app.use(require('./routes/people')({ platformPool, TenantDB, authenticateToken, verifyHuddleMember, generateQueryEmbedding, searchPublications }));
 app.use(require('./routes/companies')({ platformPool, TenantDB, authenticateToken, generateQueryEmbedding, getGoogleToken }));
 app.use(require('./routes/signals')({ platformPool, TenantDB, authenticateToken, cachedResponse, setCachedResponse, generateQueryEmbedding, qdrantSearch, REGION_MAP, REGION_CODES, verifyHuddleMember }));
 app.use(require('./routes/onboarding')({ platformPool, TenantDB, authenticateToken, generateQueryEmbedding }));
@@ -391,6 +391,7 @@ app.use(require('./routes/platform')({
   auditLog, generateQueryEmbedding, qdrantSearch,
   cachedResponse, setCachedResponse, endpointLimit, safeError,
   REGION_MAP, REGION_CODES, NICKNAMES, RESEARCH_SEARCH_ENABLED,
+  searchPublications, computeResearchMomentum,
   getGoogleToken, sendEmail,
   rootDir: __dirname,
 }));

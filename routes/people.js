@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 
-module.exports = function({ platformPool, TenantDB, authenticateToken, verifyHuddleMember, generateQueryEmbedding }) {
+module.exports = function({ platformPool, TenantDB, authenticateToken, verifyHuddleMember, generateQueryEmbedding, searchPublications }) {
 
 router.get('/api/people', authenticateToken, async (req, res) => {
   try {
@@ -1416,6 +1416,58 @@ router.get('/api/people/:id/activities', authenticateToken, async (req, res) => 
     res.json({ activities: rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/people/:id/publications — check if a person has academic publications
+// PLATFORM-CONTEXT: publications collection is global, not tenant-isolated
+router.get('/api/people/:id/publications', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { rows: [person] } = await db.query(
+      'SELECT full_name, linkedin_url, email FROM people WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, req.tenant_id]
+    );
+    if (!person) return res.status(404).json({ error: 'Person not found' });
+
+    if (!searchPublications || !generateQueryEmbedding) {
+      return res.json({ person_id: req.params.id, person_name: person.full_name, has_publications: false, papers: [] });
+    }
+
+    // Search publications by person name
+    const embedding = await generateQueryEmbedding('author researcher: ' + person.full_name);
+    const results = await searchPublications(embedding, { limit: 20, scoreThreshold: 0.40 });
+
+    // Filter results where the person's last name appears in the author field
+    const lastName = person.full_name.split(' ').pop().toLowerCase();
+    const papers = results.filter(r => {
+      const authorStr = (r.authors_full || r.authors || '').toLowerCase();
+      return authorStr.includes(lastName);
+    }).map(r => ({
+      id: r.id,
+      title: r.title,
+      year: r.year,
+      source: r.source,
+      abstract: r.abstract,
+      keywords: r.subjects || [],
+      score: r.match_score,
+      doi_url: r.doi_url,
+      url: r.url,
+      co_authors: (r.authors_full || r.authors || '').split(/[,;]\s*/).filter(a =>
+        !a.toLowerCase().includes(lastName)
+      ).slice(0, 5),
+    }));
+
+    res.json({
+      person_id: req.params.id,
+      person_name: person.full_name,
+      publication_count: papers.length,
+      has_publications: papers.length > 0,
+      papers,
+    });
+  } catch (err) {
+    console.error('Person publications error:', err.message);
+    res.json({ person_id: req.params.id, has_publications: false, papers: [] });
   }
 });
 

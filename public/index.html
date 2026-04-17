@@ -1578,6 +1578,7 @@ a.stats-card-row:hover { background: var(--surface-warm); }
           placeholder="Search — try 'VP engineering fintech APAC' or 'candidates at restructuring companies'..."
           onkeydown="if(event.key==='Enter')doSearch()">
         <div class="command-actions">
+          <button class="cmd-btn research-toggle" id="researchToggle" title="Toggle research mode" onclick="toggleResearchMode()" style="font-size:10px;font-weight:600;padding:3px 8px;border-radius:12px;transition:all .15s;opacity:0.5">Research</button>
           <button class="cmd-btn" title="Search" onclick="doSearch()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></button>
           <button class="cmd-btn" title="Keyboard shortcut">⌘K</button>
         </div>
@@ -3072,7 +3073,8 @@ async function doSearch() {
   body.innerHTML = '<div class="search-loading"><div class="spinner"></div><div>' + loadingMsg + '</div></div>';
 
   try {
-    const data = await api(`/api/search?q=${encodeURIComponent(q)}&collection=${activeCollection}&min_score=0.25`);
+    var researchFlag = sessionStorage.getItem('researchMode') === 'true' ? '&include_publications=true' : '';
+    const data = await api(`/api/search?q=${encodeURIComponent(q)}&collection=${activeCollection}&min_score=0.25${researchFlag}`);
     const r = data.results;
     title.textContent = `"${q}" — ${data.total} results`;
 
@@ -3281,6 +3283,24 @@ function closeSearch() {
   document.getElementById('searchOverlay').classList.remove('active');
   document.getElementById('commandBar').classList.remove('searching');
 }
+
+// Research mode toggle — persisted in sessionStorage
+function toggleResearchMode() {
+  var active = sessionStorage.getItem('researchMode') === 'true';
+  sessionStorage.setItem('researchMode', active ? 'false' : 'true');
+  updateResearchToggle();
+}
+function updateResearchToggle() {
+  var btn = document.getElementById('researchToggle');
+  if (!btn) return;
+  var active = sessionStorage.getItem('researchMode') === 'true';
+  btn.style.opacity = active ? '1' : '0.5';
+  btn.style.background = active ? 'var(--blue-soft, #eff6ff)' : 'transparent';
+  btn.style.color = active ? 'var(--blue, #2563eb)' : 'var(--ink-4)';
+  btn.title = active ? 'Research mode ON — academic papers included in search' : 'Toggle research mode';
+}
+// Init on load
+if (typeof sessionStorage !== 'undefined') updateResearchToggle();
 
 function searchPrompt(text) {
   document.getElementById('searchInput').value = text;

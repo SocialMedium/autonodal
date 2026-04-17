@@ -245,6 +245,22 @@ async function main() {
 
   // Health check: every 6 hours (0:00, 6:00, 12:00, 18:00 UTC)
   cron.schedule('0 */6 * * *', runHealthCheckJob);
+
+  // Co-author proximity: daily at 3:30am (after network topology at 2:28am)
+  cron.schedule('30 3 * * *', async () => {
+    console.log('[Orchestrator] Running co-author proximity pipeline');
+    try {
+      require('./scripts/compute_coauthor_proximity');
+    } catch (e) { console.error('[Orchestrator] Co-author proximity failed:', e.message); }
+  });
+
+  // Publication trends: weekly Sunday at 5:00am
+  cron.schedule('0 5 * * 0', async () => {
+    console.log('[Orchestrator] Running publication trends pipeline');
+    try {
+      require('./scripts/compute_publication_trends');
+    } catch (e) { console.error('[Orchestrator] Publication trends failed:', e.message); }
+  });
 }
 
 main().catch(err => {

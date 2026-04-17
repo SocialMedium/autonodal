@@ -16,6 +16,7 @@ module.exports = function(deps) {
     auditLog, generateQueryEmbedding, qdrantSearch,
     cachedResponse, setCachedResponse, endpointLimit, safeError,
     REGION_MAP, REGION_CODES, NICKNAMES, RESEARCH_SEARCH_ENABLED,
+    searchPublications, computeResearchMomentum,
     getGoogleToken, sendEmail,
     rootDir,
   } = deps;
@@ -3252,7 +3253,8 @@ router.get('/api/search', authenticateToken, endpointLimit(30), async (req, res)
     if (collection === 'signals' || collection === 'all') collectionsToSearch.push('signal_events');
     if (collection === 'case_studies' || collection === 'all') collectionsToSearch.push('case_studies');
     if (collection === 'interactions' || collection === 'all') collectionsToSearch.push('interactions');
-    const searchPublicationsEnabled = RESEARCH_SEARCH_ENABLED && (collection === 'publications' || collection === 'all');
+    // Publications only searched when explicitly requested — never in default fan-out
+    const searchPublicationsEnabled = RESEARCH_SEARCH_ENABLED && (collection === 'publications' || req.query.include_publications === 'true');
 
     const qdrantStartTime = Date.now();
     const qdrantResultsMap = {};
@@ -8799,6 +8801,73 @@ router.post('/api/email/test', authenticateToken, async (req, res) => {
   var target = req.body.email || req.user.email;
   var result = await sendEmail(target, 'Autonodal test email', '<p>Email delivery is working.</p>');
   res.json({ sent: !!result, to: target, resend_enabled: resendEnabled });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RESEARCH — Publications Search (isolated from default search)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/research/publications — dedicated publications search
+// PLATFORM-CONTEXT: publications collection is global, not tenant-isolated
+router.get('/api/research/publications', authenticateToken, async (req, res) => {
+  try {
+    const { q, limit = 20, min_score = 0.35 } = req.query;
+
+    if (!q || q.trim().length < 3) {
+      return res.status(400).json({ error: 'Query must be at least 3 characters' });
+    }
+
+    const cap = Math.min(parseInt(limit) || 20, 100);
+    const embedding = await generateQueryEmbedding(q);
+
+    // Use the research_search module (handles Qdrant directly for publications)
+    const papers = await searchPublications(embedding, {
+      limit: cap,
+      scoreThreshold: parseFloat(min_score) || 0.35,
+    });
+
+    // Check if any authors match people in the tenant's sandbox
+    if (papers.length > 0) {
+      const allAuthors = papers.map(p => p.authors_full || p.authors).filter(Boolean);
+      if (allAuthors.length > 0) {
+        try {
+          const db = new TenantDB(req.tenant_id);
+          // Use last names for matching — more reliable than full name
+          const lastNames = allAuthors.map(a => {
+            const parts = a.split(/[,;]\s*/)[0].split(' ');
+            return parts[parts.length - 1];
+          }).filter(n => n && n.length > 2);
+
+          if (lastNames.length > 0) {
+            const { rows: matches } = await db.query(
+              `SELECT full_name FROM people WHERE tenant_id = $1
+               AND LOWER(SPLIT_PART(full_name, ' ', -1)) = ANY($2)
+               LIMIT 50`,
+              [req.tenant_id, lastNames.map(n => n.toLowerCase())]
+            );
+            if (matches.length > 0) {
+              const matchedNames = new Set(matches.map(m => m.full_name.toLowerCase().split(' ').pop()));
+              papers.forEach(paper => {
+                const authorLast = (paper.authors_full || paper.authors || '').toLowerCase().split(/[,;]\s*/)[0].split(' ').pop();
+                paper.has_network_match = matchedNames.has(authorLast);
+              });
+            }
+          }
+        } catch (e) { /* non-fatal — network matching is a bonus */ }
+      }
+    }
+
+    res.json({
+      query: q,
+      total: papers.length,
+      papers,
+      network_matches: papers.filter(p => p.has_network_match).length,
+      momentum: computeResearchMomentum(papers),
+    });
+  } catch (err) {
+    console.error('Research search error:', err.message);
+    res.status(500).json({ error: 'Research search failed' });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
