@@ -2967,60 +2967,152 @@ function renderDealCard(s) {
     </div>`;
 }
 
-function shareSignal(id, company, type, btn) {
-  // Find the signal data from the rendered feed
+// ── Share menu: team members cache ──
+var _shareTeamCache = null;
+async function _loadShareTeam() {
+  if (_shareTeamCache) return _shareTeamCache;
+  try {
+    var data = await api('/api/admin/users');
+    _shareTeamCache = (data.users || []).filter(function(u) { return u.email; });
+  } catch(e) {
+    // Non-admin fallback — just show the current user
+    _shareTeamCache = [];
+  }
+  return _shareTeamCache;
+}
+
+function _getSignalShareData(btn) {
   var card = btn.closest('.deal-card');
-  var geo = '';
-  var prox = '';
-  var evidence = '';
-  var companyId = '';
+  var geo = '', prox = '', evidence = '', companyId = '', company = '', type = '';
   if (card) {
-    // Extract geo from badges
     var geoBadge = card.querySelector('.badge.time');
     if (geoBadge) geo = geoBadge.textContent.trim();
-    // Extract proximity
     var proxBadge = card.querySelector('.prox-trigger');
     if (proxBadge) prox = proxBadge.textContent.trim();
-    // Extract evidence from headline
     var hl = card.querySelector('.deal-headline');
     if (hl) evidence = hl.textContent.trim().slice(0, 150);
-    // Extract company link for company page URL
     var compLink = card.querySelector('.deal-company');
-    if (compLink && compLink.href) {
-      var m = compLink.href.match(/id=([a-f0-9-]+)/);
+    if (compLink) {
+      company = compLink.textContent.trim();
+      var m = compLink.href && compLink.href.match(/id=([a-f0-9-]+)/);
       if (m) companyId = m[1];
     }
+    var typeBadge = card.querySelector('.deal-badges .badge');
+    if (typeBadge) type = typeBadge.textContent.trim();
   }
+  return { geo, prox, evidence, companyId, company, type };
+}
 
-  // Link to company page with signal anchor (not dashboard)
-  var url = companyId
-    ? window.location.origin + '/company.html?id=' + companyId + '&signal=' + id
+function _buildShareText(d, url) {
+  var parts = [d.company || 'Signal'];
+  if (d.type) parts[0] += ' — ' + d.type;
+  if (d.geo) parts.push(d.geo);
+  if (d.prox) parts.push(d.prox);
+  if (d.evidence) parts.push(d.evidence);
+  parts.push(url);
+  return parts.join('\n');
+}
+
+function shareSignal(id, company, type, btn) {
+  // Close any existing share menu
+  var existing = document.getElementById('shareMenu');
+  if (existing) { existing.remove(); return; }
+
+  var d = _getSignalShareData(btn);
+  var url = d.companyId
+    ? window.location.origin + '/company.html?id=' + d.companyId + '&signal=' + id
     : window.location.origin + '/index.html?signal=' + id;
+  var shareText = _buildShareText(d, url);
+  var subject = encodeURIComponent((d.company || 'Signal') + ' — ' + (d.type || 'market signal'));
+  var body = encodeURIComponent(shareText);
+  var waBody = encodeURIComponent(shareText);
 
-  // Rich share text with context
-  var parts = [company || 'Signal'];
-  if (type) parts[0] += ' — ' + type;
-  if (geo) parts.push(geo);
-  if (prox) parts.push(prox);
-  if (evidence) parts.push(evidence);
-  var text = parts.join('\n');
+  // Build popover menu
+  var menu = document.createElement('div');
+  menu.id = 'shareMenu';
+  menu.style.cssText = 'position:absolute;z-index:999;background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:6px 0;min-width:220px;box-shadow:0 8px 24px rgba(0,0,0,0.12);font-family:var(--sans);font-size:12px;';
 
-  // Try native share first (mobile)
-  if (navigator.share) {
-    navigator.share({ title: (company || 'Signal') + ' — ' + (type || 'market signal'), text: text, url: url }).catch(function() {});
-    return;
-  }
+  var items = '';
 
-  // Fallback: copy rich text + link
-  var copyText = text + '\n' + url;
-  navigator.clipboard.writeText(copyText).then(function() {
-    var orig = btn.innerHTML;
-    btn.innerHTML = icon('check') + ' Copied';
-    btn.style.color = 'var(--emerald)';
-    setTimeout(function() { btn.innerHTML = orig; btn.style.color = 'var(--ink-3)'; }, 2000);
-  }).catch(function() {
-    prompt('Copy this link:', copyText);
+  // Copy link
+  items += '<div class="share-item" onclick="event.stopPropagation();_shareCopyLink(\'' + id + '\')" style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--ink-2)">' +
+    icon('link') + ' Copy link</div>';
+
+  // WhatsApp
+  items += '<a href="https://wa.me/?text=' + waBody + '" target="_blank" onclick="event.stopPropagation();document.getElementById(\'shareMenu\')?.remove()" class="share-item" style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--ink-2);text-decoration:none">' +
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492a.5.5 0 00.611.611l4.458-1.495A11.952 11.952 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-2.387 0-4.592-.826-6.336-2.21l-.144-.115-3.095 1.037 1.037-3.095-.115-.144A9.96 9.96 0 012 12C2 6.486 6.486 2 12 2s10 4.486 10 10-4.486 10-10 10z"/></svg>' +
+    ' WhatsApp</a>';
+
+  // Email (generic)
+  items += '<a href="mailto:?subject=' + subject + '&body=' + body + '" onclick="event.stopPropagation();document.getElementById(\'shareMenu\')?.remove()" class="share-item" style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--ink-2);text-decoration:none">' +
+    icon('mail') + ' Email</a>';
+
+  // Divider + team members
+  items += '<div style="border-top:1px solid var(--rule);margin:4px 0"></div>';
+  items += '<div style="padding:4px 14px;font-size:10px;color:var(--ink-4);font-weight:600;text-transform:uppercase;letter-spacing:.5px">Send to team</div>';
+  items += '<div id="shareTeamList" style="max-height:160px;overflow-y:auto"><div style="padding:6px 14px;color:var(--ink-4)">Loading...</div></div>';
+
+  menu.innerHTML = items;
+
+  // Position below the button
+  var rect = btn.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.top = (rect.bottom + 4) + 'px';
+  menu.style.left = Math.min(rect.left, window.innerWidth - 240) + 'px';
+  document.body.appendChild(menu);
+
+  // Add hover styles
+  menu.querySelectorAll('.share-item').forEach(function(el) {
+    el.addEventListener('mouseenter', function() { this.style.background = 'var(--bg)'; });
+    el.addEventListener('mouseleave', function() { this.style.background = ''; });
   });
+
+  // Close on click outside
+  setTimeout(function() {
+    document.addEventListener('click', function closeShareMenu(e) {
+      if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeShareMenu); }
+    });
+  }, 10);
+
+  // Load team members async
+  _loadShareTeam().then(function(team) {
+    var list = document.getElementById('shareTeamList');
+    if (!list) return;
+    if (!team.length) { list.innerHTML = '<div style="padding:6px 14px;color:var(--ink-4);font-size:11px">No team members found</div>'; return; }
+    var me = window._currentUser?.email;
+    var html = '';
+    team.filter(function(u) { return u.email !== me; }).forEach(function(u) {
+      var firstName = (u.name || u.email).split(' ')[0];
+      var initial = (u.name || u.email)[0].toUpperCase();
+      var mailHref = 'mailto:' + encodeURIComponent(u.email) + '?subject=' + subject + '&body=' + body;
+      html += '<a href="' + mailHref + '" onclick="event.stopPropagation();document.getElementById(\'shareMenu\')?.remove()" class="share-item" style="padding:6px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--ink);text-decoration:none">' +
+        '<span style="width:22px;height:22px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0">' + initial + '</span>' +
+        '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(firstName) + '</span>' +
+        '<span style="font-size:10px;color:var(--ink-4)">' + icon('mail') + '</span>' +
+      '</a>';
+    });
+    list.innerHTML = html;
+    // Add hover styles to new items
+    list.querySelectorAll('.share-item').forEach(function(el) {
+      el.addEventListener('mouseenter', function() { this.style.background = 'var(--bg)'; });
+      el.addEventListener('mouseleave', function() { this.style.background = ''; });
+    });
+  });
+}
+
+function _shareCopyLink(id) {
+  var menu = document.getElementById('shareMenu');
+  var btn = menu?._triggerBtn;
+  var d = _getSignalShareData(document.getElementById('signal-' + id) || document.querySelector('.deal-card'));
+  var url = d.companyId
+    ? window.location.origin + '/company.html?id=' + d.companyId + '&signal=' + id
+    : window.location.origin + '/index.html?signal=' + id;
+  var shareText = _buildShareText(d, url);
+  navigator.clipboard.writeText(shareText).then(function() {
+    var copyItem = menu?.querySelector('.share-item');
+    if (copyItem) { copyItem.innerHTML = icon('check') + ' Copied!'; copyItem.style.color = 'var(--emerald)'; }
+    setTimeout(function() { menu?.remove(); }, 1000);
+  }).catch(function() { prompt('Copy:', shareText); });
 }
 
 async function triageSignal(id, status) {
