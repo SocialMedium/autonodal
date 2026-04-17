@@ -1686,34 +1686,34 @@ a.stats-card-row:hover { background: var(--surface-warm); }
 
       <!-- Today's Insight + Market Health -->
       <div id="insightHealthRow" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
-        <!-- Insight -->
+        <!-- Insight (light editorial) -->
         <div id="insightCard" style="display:none">
-          <div style="background:linear-gradient(135deg,#111827 0%,#1e293b 100%);border:1px solid #1e2d3d;border-radius:var(--radius);padding:18px 20px;color:#e2e8f0;height:100%">
+          <div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:18px 20px;height:100%">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-              <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#f59e0b">Today's Insight</span>
-              <span id="insightDate" style="font-size:10px;color:#a0aec0"></span>
+              <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--amber)">Today's Insight</span>
+              <span id="insightDate" style="font-size:10px;color:var(--ink-4)"></span>
             </div>
-            <div id="insightHeadline" style="font-family:var(--serif);font-size:16px;font-weight:600;margin-bottom:6px;color:#ffffff"></div>
-            <div id="insightBody" style="font-size:13px;line-height:1.55;color:#cbd5e1"></div>
+            <div id="insightHeadline" style="font-family:var(--serif);font-size:16px;font-weight:600;margin-bottom:6px;color:var(--ink)"></div>
+            <div id="insightBody" style="font-size:13px;line-height:1.55;color:var(--ink-2)"></div>
           </div>
         </div>
-        <!-- Market Health -->
+        <!-- Market Health (dark) -->
         <div id="marketHealthCard" style="display:none">
-          <div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:18px 20px;height:100%">
+          <div style="background:linear-gradient(135deg,#111827 0%,#1e293b 100%);border:1px solid #1e2d3d;border-radius:var(--radius);padding:18px 20px;height:100%">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-              <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-4)">Market Health Index</span>
-              <span id="mhHorizon" style="font-size:10px;color:var(--ink-4)">7 day</span>
+              <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8">Market Health Index</span>
+              <span id="mhHorizon" style="font-size:10px;color:#64748b">7 day</span>
             </div>
             <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:14px">
-              <span id="mhScore" style="font-family:var(--serif);font-size:32px;font-weight:700;color:var(--ink)">—</span>
-              <span style="font-size:11px;color:var(--ink-4)">/100</span>
+              <span id="mhScore" style="font-family:var(--serif);font-size:32px;font-weight:700;color:#f1f5f9">—</span>
+              <span style="font-size:11px;color:#64748b">/100</span>
               <span id="mhDelta" style="font-size:13px;font-weight:600;margin-left:auto"></span>
             </div>
-            <div id="mhDirection" style="font-size:12px;color:var(--ink-3);margin-bottom:12px"></div>
-            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-4);margin-bottom:8px">Signal volume by region</div>
+            <div id="mhDirection" style="font-size:12px;color:#94a3b8;margin-bottom:12px"></div>
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:8px">Signal volume by region</div>
             <div id="mhRegions" style="display:flex;flex-direction:column;gap:5px"></div>
             <div id="mhChart" style="margin-top:14px;display:none">
-              <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-4);margin-bottom:6px">90-day trend · deviation from mean</div>
+              <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:6px">90-day trend · deviation from mean</div>
               <svg id="mhSparkline" width="100%" height="100" viewBox="0 0 280 100" preserveAspectRatio="none" style="display:block"></svg>
             </div>
           </div>
@@ -2389,30 +2389,38 @@ async function loadMarketHealthCard(horizon) {
     var sigPeriod = hz === '7d' ? 'this week' : hz === '30d' ? 'this month' : 'past ' + hz;
     dirEl.textContent = sentiment + ' — ' + totalSigs.toLocaleString() + ' signals ' + sigPeriod;
 
-    // Geographic breakdown with bar chart
+    // Geographic breakdown with bar chart — 5 regions, delta arrows
     try {
       var regionData = await api('/api/signals/brief?limit=1&region=all');
       var rs = regionData.region_stats || {};
-      var totalRegional = (parseInt(rs.au)||0) + (parseInt(rs.us)||0) + (parseInt(rs.uk)||0) + (parseInt(rs.sg)||0);
-      var totalAll = parseInt(rs.total) || totalRegional || 1;
-      var otherCount = Math.max(0, totalAll - totalRegional);
       var geos = [
-        { label: 'Oceania', count: parseInt(rs.au) || 0, color: '#0D7A50' },
-        { label: 'Americas', count: parseInt(rs.us) || 0, color: '#B45309' },
-        { label: 'Europe', count: parseInt(rs.uk) || 0, color: '#2563EB' },
-        { label: 'Asia', count: parseInt(rs.sg) || 0, color: '#6D28D9' },
+        { label: 'Oceania', key: 'oce', count: parseInt(rs.oce) || 0, color: '#0D7A50' },
+        { label: 'Americas', key: 'amer', count: parseInt(rs.amer) || 0, color: '#B45309' },
+        { label: 'Europe', key: 'eur', count: parseInt(rs.eur) || 0, color: '#2563EB' },
+        { label: 'MENA', key: 'mena', count: parseInt(rs.mena) || 0, color: '#D4537E' },
+        { label: 'Asia', key: 'asia', count: parseInt(rs.asia) || 0, color: '#6D28D9' },
       ];
-      if (otherCount > 0) geos.push({ label: 'Other', count: otherCount, color: '#94A3B8' });
+      // Compare with prior period for delta arrows
+      var priorRs = window._priorRegionStats || {};
+      window._priorRegionStats = {};
+      geos.forEach(function(g) { window._priorRegionStats[g.key] = g.count; });
       var maxCount = Math.max.apply(null, geos.map(function(g) { return g.count; })) || 1;
       var geoHtml = '';
       geos.forEach(function(g) {
         var pct = Math.round((g.count / maxCount) * 100);
+        var prior = parseInt(priorRs[g.key]) || 0;
+        var arrow = '';
+        if (prior > 0) {
+          var delta = g.count - prior;
+          if (delta > 0) arrow = '<span style="color:#10b981;font-size:9px;font-weight:700">&#x25B2;</span>';
+          else if (delta < 0) arrow = '<span style="color:#ef4444;font-size:9px;font-weight:700">&#x25BC;</span>';
+        }
         geoHtml += '<div style="display:flex;align-items:center;gap:8px;font-size:11px">' +
-          '<span style="width:58px;color:var(--ink-2);font-weight:500">' + g.label + '</span>' +
-          '<div style="flex:1;height:6px;background:var(--rule);border-radius:3px;overflow:hidden">' +
+          '<span style="width:58px;color:#cbd5e1;font-weight:500">' + g.label + '</span>' +
+          '<div style="flex:1;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden">' +
             '<div style="height:100%;width:' + pct + '%;background:' + g.color + ';border-radius:3px"></div>' +
           '</div>' +
-          '<span style="width:38px;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-3);font-size:10px">' + g.count.toLocaleString() + '</span>' +
+          '<span style="width:46px;text-align:right;font-variant-numeric:tabular-nums;color:#94a3b8;font-size:10px">' + g.count.toLocaleString() + ' ' + arrow + '</span>' +
         '</div>';
       });
       document.getElementById('mhRegions').innerHTML = geoHtml;
@@ -2476,14 +2484,14 @@ async function loadMarketHealthCard(horizon) {
         var svg = document.getElementById('mhSparkline');
         svg.setAttribute('viewBox', '0 0 ' + w + ' ' + (h + labelH));
 
-        // Mean line
-        var meanLine = '<line x1="' + pad + '" y1="' + midY + '" x2="' + (w - pad) + '" y2="' + midY + '" stroke="#cbd5e1" stroke-width="0.7" stroke-dasharray="4,3"/>';
+        // Mean line (adapted for dark bg)
+        var meanLine = '<line x1="' + pad + '" y1="' + midY + '" x2="' + (w - pad) + '" y2="' + midY + '" stroke="rgba(255,255,255,0.2)" stroke-width="0.7" stroke-dasharray="4,3"/>';
         // Mean label
-        meanLine += '<text x="' + (w - pad + 2) + '" y="' + (midY + 3) + '" fill="#94a3b8" font-size="6" font-family="var(--mono,monospace)">' + Math.round(mean) + '</text>';
+        meanLine += '<text x="' + (w - pad + 2) + '" y="' + (midY + 3) + '" fill="#64748b" font-size="6" font-family="var(--mono,monospace)">' + Math.round(mean) + '</text>';
 
-        // Subtle zone bands: above mean = green tint, below = red tint
-        var zoneBands = '<rect x="' + pad + '" y="0" width="' + chartW + '" height="' + midY + '" fill="#10b981" opacity="0.03"/>' +
-          '<rect x="' + pad + '" y="' + midY + '" width="' + chartW + '" height="' + midY + '" fill="#ef4444" opacity="0.03"/>';
+        // Subtle zone bands: above mean = green tint, below = red tint (on dark)
+        var zoneBands = '<rect x="' + pad + '" y="0" width="' + chartW + '" height="' + midY + '" fill="#10b981" opacity="0.06"/>' +
+          '<rect x="' + pad + '" y="' + midY + '" width="' + chartW + '" height="' + midY + '" fill="#ef4444" opacity="0.06"/>';
 
         // Weekly vertical gridlines
         var weekLines = '';
@@ -2491,7 +2499,7 @@ async function loadMarketHealthCard(horizon) {
           var dt = new Date(d);
           if (dt.getUTCDay() === 1) { // Monday
             var x = pad + (i / (dates.length - 1)) * chartW;
-            weekLines += '<line x1="' + x + '" y1="0" x2="' + x + '" y2="' + h + '" stroke="#e2e8f0" stroke-width="0.4"/>';
+            weekLines += '<line x1="' + x + '" y1="0" x2="' + x + '" y2="' + h + '" stroke="rgba(255,255,255,0.08)" stroke-width="0.4"/>';
           }
         });
 
@@ -2505,7 +2513,7 @@ async function loadMarketHealthCard(horizon) {
           var dt = new Date(dates[idx]);
           var lbl = monthNames[dt.getUTCMonth()] + ' ' + dt.getUTCDate();
           var anchor = idx === 0 ? 'start' : idx >= dates.length - 3 ? 'end' : 'middle';
-          dateLabels += '<text x="' + x + '" y="' + (h + 12) + '" fill="#94a3b8" font-size="6.5" font-family="var(--mono,monospace)" text-anchor="' + anchor + '">' + lbl + '</text>';
+          dateLabels += '<text x="' + x + '" y="' + (h + 12) + '" fill="#4a5568" font-size="6.5" font-family="var(--mono,monospace)" text-anchor="' + anchor + '">' + lbl + '</text>';
         });
 
         // Smooth bezier path
