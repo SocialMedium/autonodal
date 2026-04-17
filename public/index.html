@@ -3926,14 +3926,14 @@ function showOnboarding(user) {
   window.onboardNext = async function() {
     if (step === 1) {
       var regions = [...window._onboardRegions].join(',') || 'GLOBAL';
-      await api('/api/auth/me', { method: 'PATCH', body: { region: regions } });
+      try { await api('/api/auth/me', { method: 'PATCH', body: { region: regions } }); } catch(e) { console.warn('Region save failed:', e.message); }
     }
     step++;
     renderStep();
   };
   window.onboardBack = function() { step--; renderStep(); };
   window.finishOnboarding = async function() {
-    await api('/api/auth/me', { method: 'PATCH', body: { onboarded: true } });
+    try { await api('/api/auth/me', { method: 'PATCH', body: { onboarded: true } }); } catch(e) { console.warn('Onboard save failed:', e.message); }
     overlay.style.display = 'none';
     loadPersonalBrief(); // Refresh brief with new region
   };
