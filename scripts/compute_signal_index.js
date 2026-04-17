@@ -169,7 +169,10 @@ async function computeSignalIndex() {
     } catch (e) { /* document_sentiment table may not exist yet */ }
 
     // 2. Compute composite Market Health Index
-    // Two components: (a) weighted stock scores, (b) bullish/bearish volume ratio
+    // Three components:
+    //   (a) Delta-based trend scores (is each signal type rising or falling?)
+    //   (b) Absolute sentiment balance (how many bullish vs bearish signals exist right now?)
+    //   (c) Volume-weighted sentiment ratio
     let weightedSum = 0, totalWeight = 0, bullishCount = 0, bearishCount = 0;
     let bullishVolume = 0, bearishVolume = 0;
     let dominantStock = null, dominantContrib = 0;
@@ -192,11 +195,31 @@ async function computeSignalIndex() {
       if (cfg.sentiment === 'bearish' && data.direction === 'up') bearishCount++;
     }
 
-    // Blend: 60% from delta-based scores, 40% from bullish/bearish volume ratio
-    const deltaScore = totalWeight > 0 ? weightedSum / totalWeight : 50;
+    // (a) Trend score — are signal types accelerating or decelerating?
+    const trendScore = totalWeight > 0 ? weightedSum / totalWeight : 50;
+
+    // (b) Absolute balance — right now, what's the ratio of bullish to bearish?
+    //     100 expansion + 10 layoffs = 91% bullish → score ~82
+    //     50 expansion + 50 layoffs = 50% bullish → score 50
     const totalVolume = bullishVolume + bearishVolume;
-    const volumeRatio = totalVolume > 0 ? (bullishVolume / totalVolume) * 100 : 50; // 0-100, 50 = balanced
-    const compositeScore = Math.round((deltaScore * 0.6 + volumeRatio * 0.4) * 10) / 10;
+    const balanceScore = totalVolume > 0 ? (bullishVolume / totalVolume) * 100 : 50;
+
+    // (c) Volume ratio (same as balance but unweighted by signal weight)
+    const rawBullish = Object.entries(stockResults).reduce((s, [n, d]) => {
+      const cfg = SIGNAL_STOCKS[n] || (n === 'media_sentiment' ? MEDIA_SENTIMENT_CFG : null);
+      return s + (cfg?.sentiment === 'bullish' ? (d.current_count || 0) : 0);
+    }, 0);
+    const rawBearish = Object.entries(stockResults).reduce((s, [n, d]) => {
+      const cfg = SIGNAL_STOCKS[n] || (n === 'media_sentiment' ? MEDIA_SENTIMENT_CFG : null);
+      return s + (cfg?.sentiment === 'bearish' ? (d.current_count || 0) : 0);
+    }, 0);
+    const rawTotal = rawBullish + rawBearish;
+    const rawRatio = rawTotal > 0 ? (rawBullish / rawTotal) * 100 : 50;
+
+    // Blend: 30% trend (rate of change) + 40% weighted balance + 30% raw ratio
+    // This ensures a consistently healthy market (many expansions, few layoffs)
+    // scores high even when volumes are stable week-over-week
+    const compositeScore = Math.round((trendScore * 0.3 + balanceScore * 0.4 + rawRatio * 0.3) * 10) / 10;
 
     // Prior composite for delta
     const { rows: priorRows } = await pool.query(`
