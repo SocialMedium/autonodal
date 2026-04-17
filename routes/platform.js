@@ -8796,6 +8796,36 @@ router.post('/api/email/invite', authenticateToken, async (req, res) => {
   }
 });
 
+// POST /api/email/share-signal — send signal intelligence to a team member
+router.post('/api/email/share-signal', authenticateToken, async (req, res) => {
+  try {
+    var { to_email, company_name, signal_type, geography, proximity, evidence, url } = req.body;
+    if (!to_email) return res.status(400).json({ error: 'to_email required' });
+    var senderName = req.user.name || req.user.email;
+    var typePretty = (signal_type || 'market signal').replace(/_/g, ' ');
+    var subject = senderName + ' shared a signal: ' + (company_name || 'Company') + ' — ' + typePretty;
+
+    var detailRows = '';
+    if (signal_type) detailRows += '<tr><td style="color:#888;padding:4px 12px 4px 0;font-size:13px">Signal</td><td style="font-size:13px;font-weight:500">' + typePretty + '</td></tr>';
+    if (geography) detailRows += '<tr><td style="color:#888;padding:4px 12px 4px 0;font-size:13px">Region</td><td style="font-size:13px">' + geography + '</td></tr>';
+    if (proximity) detailRows += '<tr><td style="color:#888;padding:4px 12px 4px 0;font-size:13px">Proximity</td><td style="font-size:13px">' + proximity + '</td></tr>';
+
+    var html = '<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:28px">' +
+      '<div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:16px">Signal Intelligence</div>' +
+      '<h2 style="font-size:22px;margin:0 0 6px;font-weight:700">' + (company_name || 'Company') + '</h2>' +
+      (evidence ? '<p style="color:#4a4a4a;font-size:14px;line-height:1.55;margin:0 0 16px">' + evidence + '</p>' : '') +
+      (detailRows ? '<table style="border-collapse:collapse;margin-bottom:16px">' + detailRows + '</table>' : '') +
+      '<a href="' + (url || 'https://www.autonodal.com') + '" style="display:inline-block;background:#1a1a1a;color:#fff;padding:10px 24px;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600">View on Autonodal →</a>' +
+      '<p style="color:#aaa;font-size:11px;margin-top:20px">Shared by ' + senderName + ' via Autonodal Signal Intelligence</p>' +
+    '</div>';
+
+    await sendEmail(to_email, subject, html);
+    res.json({ sent: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to send: ' + err.message });
+  }
+});
+
 // POST /api/email/test — send test email (admin only)
 router.post('/api/email/test', authenticateToken, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });

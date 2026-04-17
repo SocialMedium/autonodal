@@ -3059,6 +3059,8 @@ function shareSignal(id, company, type, btn) {
   menu.style.position = 'fixed';
   menu.style.top = (rect.bottom + 4) + 'px';
   menu.style.left = Math.min(rect.left, window.innerWidth - 240) + 'px';
+  // Stash share data on menu for team send
+  menu._shareData = { company: d.company, type: d.type, geo: d.geo, prox: d.prox, evidence: d.evidence, url: url };
   document.body.appendChild(menu);
 
   // Add hover styles
@@ -3084,12 +3086,11 @@ function shareSignal(id, company, type, btn) {
     team.filter(function(u) { return u.email !== me; }).forEach(function(u) {
       var firstName = (u.name || u.email).split(' ')[0];
       var initial = (u.name || u.email)[0].toUpperCase();
-      var mailHref = 'mailto:' + encodeURIComponent(u.email) + '?subject=' + subject + '&body=' + body;
-      html += '<a href="' + mailHref + '" onclick="event.stopPropagation();document.getElementById(\'shareMenu\')?.remove()" class="share-item" style="padding:6px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--ink);text-decoration:none">' +
+      html += '<div class="share-item" data-email="' + esc(u.email) + '" onclick="event.stopPropagation();_shareSendToTeam(this)" style="padding:6px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--ink)">' +
         '<span style="width:22px;height:22px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0">' + initial + '</span>' +
         '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(firstName) + '</span>' +
-        '<span style="font-size:10px;color:var(--ink-4)">' + icon('mail') + '</span>' +
-      '</a>';
+        '<span class="share-send-icon" style="font-size:10px;color:var(--ink-4)">' + icon('send') + '</span>' +
+      '</div>';
     });
     list.innerHTML = html;
     // Add hover styles to new items
@@ -3098,6 +3099,39 @@ function shareSignal(id, company, type, btn) {
       el.addEventListener('mouseleave', function() { this.style.background = ''; });
     });
   });
+}
+
+async function _shareSendToTeam(el) {
+  var email = el.dataset.email;
+  var menu = document.getElementById('shareMenu');
+  if (!menu || !menu._shareData) return;
+  var d = menu._shareData;
+
+  // Immediate UI feedback
+  var iconSpan = el.querySelector('.share-send-icon');
+  var nameSpan = el.querySelector('span:nth-child(2)');
+  el.style.pointerEvents = 'none';
+  if (iconSpan) iconSpan.innerHTML = '<span style="color:var(--ink-4)">...</span>';
+
+  try {
+    await api('/api/email/share-signal', {
+      method: 'POST',
+      body: {
+        to_email: email,
+        company_name: d.company,
+        signal_type: d.type,
+        geography: d.geo,
+        proximity: d.prox,
+        evidence: d.evidence,
+        url: d.url,
+      }
+    });
+    if (iconSpan) iconSpan.innerHTML = '<span style="color:var(--emerald)">' + icon('check') + '</span>';
+    if (nameSpan) nameSpan.style.color = 'var(--emerald)';
+    el.style.background = 'var(--emerald-soft)';
+  } catch(e) {
+    if (iconSpan) iconSpan.innerHTML = '<span style="color:var(--rose)">✕</span>';
+  }
 }
 
 function _shareCopyLink(id) {
