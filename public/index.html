@@ -2991,10 +2991,11 @@ function _getSignalShareData(btn) {
     if (proxBadge) prox = proxBadge.textContent.trim();
     var hl = card.querySelector('.deal-headline');
     if (hl) evidence = hl.textContent.trim().slice(0, 150);
-    var compLink = card.querySelector('.deal-company');
-    if (compLink) {
-      company = compLink.textContent.trim();
-      var m = compLink.href && compLink.href.match(/id=([a-f0-9-]+)/);
+    var compName = card.querySelector('.deal-company');
+    if (compName) company = compName.textContent.trim();
+    var compLink = card.querySelector('.deal-name');
+    if (compLink && compLink.href) {
+      var m = compLink.href.match(/id=([a-f0-9-]+)/);
       if (m) companyId = m[1];
     }
     var typeBadge = card.querySelector('.deal-badges .badge');
