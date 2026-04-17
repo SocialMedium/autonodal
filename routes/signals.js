@@ -85,7 +85,17 @@ router.get('/api/signals/hero', authenticateToken, async (req, res) => {
     let typeClause = '';
     if (typeFilter) { params.push(typeFilter); typeClause = ` AND se.signal_type = $${params.length}`; }
     // Signal brief — personalised hero ranking
-    // Score: client (100) + user's own proximity (80) + team proximity (40 scaled) + contacts (25 scaled) + confidence (30) + image (20)
+    // Score weights:
+    //   client (100) — billing relationship, highest priority
+    //   warmth (60)  — recent interaction depth: 10+ interactions in 90d = max
+    //   user proximity (80) — user's own strongest connection at the company
+    //   team proximity (40) — team's connections scaled by count
+    //   contacts (25) — raw headcount at company (diminishing)
+    //   confidence (30) — signal quality
+    //   image (20) — visual weight for hero display
+    //
+    // This means Mark having 10 interactions with a founder at a company
+    // scores higher than Sophie having 15 sourced candidates with no interactions.
     const { rows } = await db.query(`
       SELECT * FROM (
         SELECT DISTINCT ON (LOWER(se.company_name))
@@ -98,7 +108,10 @@ router.get('/api/signals/hero', authenticateToken, async (req, res) => {
           COALESCE(pc.cnt, 0) AS contact_count,
           COALESCE(px.cnt, 0) AS prox_count,
           COALESCE(my_px.strength, 0) AS my_proximity,
+          COALESCE(warmth.interaction_count, 0) AS warmth_interactions,
+          COALESCE(warmth.recency_days, 999) AS warmth_recency_days,
           CASE WHEN c.is_client = true THEN 100 ELSE 0 END +
+          LEAST(COALESCE(warmth.warmth_score, 0), 60) +
           LEAST(COALESCE(my_px.strength, 0) * 100, 80) +
           LEAST(COALESCE(px.cnt, 0) * 10, 40) +
           LEAST(COALESCE(pc.cnt, 0) * 5, 25) +
@@ -122,6 +135,22 @@ router.get('/api/signals/hero', authenticateToken, async (req, res) => {
           WHERE tp3.team_member_id = $2 AND tp3.tenant_id = $1
             AND tp3.relationship_strength >= 0.2 AND p3.current_company_id = se.company_id
         ) my_px ON true
+        LEFT JOIN LATERAL (
+          SELECT
+            COUNT(*) AS interaction_count,
+            EXTRACT(DAY FROM NOW() - MAX(i.interaction_at)) AS recency_days,
+            LEAST(COUNT(*) * 6, 40) +
+            CASE
+              WHEN MAX(i.interaction_at) > NOW() - INTERVAL '7 days' THEN 20
+              WHEN MAX(i.interaction_at) > NOW() - INTERVAL '30 days' THEN 12
+              WHEN MAX(i.interaction_at) > NOW() - INTERVAL '90 days' THEN 5
+              ELSE 0
+            END AS warmth_score
+          FROM interactions i
+          JOIN people p4 ON p4.id = i.person_id AND p4.current_company_id = se.company_id
+          WHERE i.user_id = $2 AND i.tenant_id = $1
+            AND i.interaction_at > NOW() - INTERVAL '180 days'
+        ) warmth ON true
         WHERE (se.tenant_id IS NULL OR se.tenant_id = $1)
           AND se.detected_at > NOW() - INTERVAL '7 days'
           AND se.signal_date IS NOT NULL AND se.signal_date > NOW() - INTERVAL '30 days'
