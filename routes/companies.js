@@ -7,7 +7,7 @@ const express = require('express');
 const https = require('https');
 const router = express.Router();
 
-module.exports = function({ platformPool, TenantDB, authenticateToken, generateQueryEmbedding }) {
+module.exports = function({ platformPool, TenantDB, authenticateToken, generateQueryEmbedding, getGoogleToken }) {
 
 router.post('/api/companies/:id/search-enrich', authenticateToken, async (req, res) => {
   try {

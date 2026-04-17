@@ -383,8 +383,8 @@ app.use(require('./routes/public')({ platformPool }));
 app.use(require('./routes/auth')({ platformPool, TenantDB, authenticateToken, auditLog, generateQueryEmbedding }));
 app.use(require('./routes/admin')({ platformPool, TenantDB, authenticateToken, requireAdmin, auditLog, rootDir: __dirname }));
 app.use(require('./routes/people')({ platformPool, TenantDB, authenticateToken, verifyHuddleMember, generateQueryEmbedding }));
-app.use(require('./routes/companies')({ platformPool, TenantDB, authenticateToken, generateQueryEmbedding }));
-app.use(require('./routes/signals')({ platformPool, TenantDB, authenticateToken, cachedResponse, setCachedResponse, generateQueryEmbedding }));
+app.use(require('./routes/companies')({ platformPool, TenantDB, authenticateToken, generateQueryEmbedding, getGoogleToken }));
+app.use(require('./routes/signals')({ platformPool, TenantDB, authenticateToken, cachedResponse, setCachedResponse, generateQueryEmbedding, qdrantSearch, REGION_MAP, REGION_CODES, verifyHuddleMember }));
 app.use(require('./routes/onboarding')({ platformPool, TenantDB, authenticateToken, generateQueryEmbedding }));
 app.use(require('./routes/platform')({
   platformPool, TenantDB, authenticateToken, requireAdmin, optionalAuth,

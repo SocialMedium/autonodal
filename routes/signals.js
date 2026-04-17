@@ -9,7 +9,7 @@ const express = require('express');
 const https = require('https');
 const router = express.Router();
 
-module.exports = function({ platformPool, TenantDB, authenticateToken, cachedResponse, setCachedResponse, generateQueryEmbedding }) {
+module.exports = function({ platformPool, TenantDB, authenticateToken, cachedResponse, setCachedResponse, generateQueryEmbedding, qdrantSearch, REGION_MAP, REGION_CODES, verifyHuddleMember }) {
 
 router.get('/api/signals/gdelt', authenticateToken, async (req, res) => {
   try {
