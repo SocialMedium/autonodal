@@ -80,10 +80,12 @@ router.get('/api/signals/hero', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
     const typeFilter = req.query.type && req.query.type !== 'all' ? req.query.type : null;
-    const params = [req.tenant_id];
+    const userId = req.user.user_id;
+    const params = [req.tenant_id, userId];
     let typeClause = '';
     if (typeFilter) { params.push(typeFilter); typeClause = ` AND se.signal_type = $${params.length}`; }
-    // Signal brief — uses direct company_id join instead of name-matching CTE
+    // Signal brief — personalised hero ranking
+    // Score: client (100) + user's own proximity (80) + team proximity (40 scaled) + contacts (25 scaled) + confidence (30) + image (20)
     const { rows } = await db.query(`
       SELECT * FROM (
         SELECT DISTINCT ON (LOWER(se.company_name))
@@ -95,8 +97,11 @@ router.get('/api/signals/hero', authenticateToken, async (req, res) => {
           ed.title AS doc_title, ed.source_name, ed.image_url AS doc_image_url, ed.audio_url AS doc_audio_url, ed.source_type AS doc_source_type,
           COALESCE(pc.cnt, 0) AS contact_count,
           COALESCE(px.cnt, 0) AS prox_count,
+          COALESCE(my_px.strength, 0) AS my_proximity,
           CASE WHEN c.is_client = true THEN 100 ELSE 0 END +
-          CASE WHEN COALESCE(pc.cnt, 0) > 0 THEN 50 ELSE 0 END +
+          LEAST(COALESCE(my_px.strength, 0) * 100, 80) +
+          LEAST(COALESCE(px.cnt, 0) * 10, 40) +
+          LEAST(COALESCE(pc.cnt, 0) * 5, 25) +
           (se.confidence_score * 30) +
           CASE WHEN se.image_url IS NOT NULL OR ed.image_url IS NOT NULL THEN 20 ELSE 0 END
           AS hero_score
@@ -111,6 +116,12 @@ router.get('/api/signals/hero', authenticateToken, async (req, res) => {
           JOIN people p2 ON p2.id = tp2.person_id AND p2.tenant_id = $1
           WHERE tp2.tenant_id = $1 AND tp2.relationship_strength >= 0.25 AND p2.current_company_id = se.company_id
         ) px ON true
+        LEFT JOIN LATERAL (
+          SELECT MAX(tp3.relationship_strength) AS strength FROM team_proximity tp3
+          JOIN people p3 ON p3.id = tp3.person_id AND p3.tenant_id = $1
+          WHERE tp3.team_member_id = $2 AND tp3.tenant_id = $1
+            AND tp3.relationship_strength >= 0.2 AND p3.current_company_id = se.company_id
+        ) my_px ON true
         WHERE (se.tenant_id IS NULL OR se.tenant_id = $1)
           AND se.detected_at > NOW() - INTERVAL '7 days'
           AND se.signal_date IS NOT NULL AND se.signal_date > NOW() - INTERVAL '30 days'
