@@ -1717,7 +1717,7 @@ a.stats-card-row:hover { background: var(--surface-warm); }
               <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:rgba(148,163,184,0.6);margin-bottom:8px">Signal volume by region</div>
               <div id="mhRegions" style="display:flex;flex-direction:column;gap:5px"></div>
               <div id="mhChart" style="margin-top:14px;display:none">
-                <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:rgba(148,163,184,0.6);margin-bottom:6px">90-day trend · deviation from mean</div>
+                <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:rgba(148,163,184,0.6);margin-bottom:6px">90-day health score</div>
                 <svg id="mhSparkline" width="100%" height="100" viewBox="0 0 280 100" preserveAspectRatio="none" style="display:block"></svg>
               </div>
             </div>
@@ -2431,7 +2431,7 @@ async function loadMarketHealthCard(horizon) {
       document.getElementById('mhRegions').innerHTML = geoHtml;
     } catch(e2) {}
 
-    // 90-day sparkline — log-deviation from mean, weekly ticks
+    // 90-day sparkline — raw score with mean reference line
     try {
       var hist = await api('/api/signal-index/history?horizon=' + hz + '&limit=365');
       var points = (hist.history || hist || []).reverse();
@@ -2466,52 +2466,54 @@ async function loadMarketHealthCard(horizon) {
         var scores = daily.map(function(p) { return p.score; });
         var dates = daily.map(function(p) { return p.date; });
 
-        // Compute mean and log-deviation
         var mean = scores.reduce(function(a, b) { return a + b; }, 0) / scores.length;
-        var devs = scores.map(function(s) {
-          var diff = s - mean;
-          // Signed log: preserves direction, compresses extremes
-          return diff >= 0 ? Math.log(1 + diff) : -Math.log(1 - diff);
-        });
-        var maxDev = Math.max.apply(null, devs.map(Math.abs)) || 1;
+
+        // Raw score chart (0-100 scale) with dynamic Y range for detail
+        var minScore = Math.min.apply(null, scores);
+        var maxScore = Math.max.apply(null, scores);
+        var yPad = Math.max((maxScore - minScore) * 0.15, 3); // 15% padding or min 3pts
+        var yMin = Math.max(0, Math.floor(minScore - yPad));
+        var yMax = Math.min(100, Math.ceil(maxScore + yPad));
+        var yRange = yMax - yMin || 1;
 
         var pad = 14, w = 280, h = 68, labelH = 16;
         var chartW = w - pad * 2;
-        var midY = h / 2;
 
-        // Map deviations to Y coordinates (center = mean)
-        var pts = devs.map(function(d, i) {
+        // Map scores to Y coordinates (top = yMax, bottom = yMin)
+        var pts = scores.map(function(s, i) {
           var x = pad + (i / (scores.length - 1)) * chartW;
-          var y = midY - (d / maxDev) * (midY - 4); // 4px padding top/bottom
+          var y = h - ((s - yMin) / yRange) * (h - 8) - 4; // 4px padding
           return [x, y];
         });
+
+        // Mean line Y position
+        var meanY = h - ((mean - yMin) / yRange) * (h - 8) - 4;
 
         var svg = document.getElementById('mhSparkline');
         svg.setAttribute('viewBox', '0 0 ' + w + ' ' + (h + labelH));
 
-        // Mean line (adapted for dark bg)
-        var meanLine = '<line x1="' + pad + '" y1="' + midY + '" x2="' + (w - pad) + '" y2="' + midY + '" stroke="rgba(255,255,255,0.2)" stroke-width="0.7" stroke-dasharray="4,3"/>';
-        // Mean label
-        meanLine += '<text x="' + (w - pad + 2) + '" y="' + (midY + 3) + '" fill="#94a3b8" font-size="7" font-family="Inter,system-ui,sans-serif" font-weight="500">' + Math.round(mean) + '</text>';
+        // Mean line (dashed, separate from score line)
+        var meanLine = '<line x1="' + pad + '" y1="' + meanY + '" x2="' + (w - pad) + '" y2="' + meanY + '" stroke="rgba(255,255,255,0.25)" stroke-width="0.7" stroke-dasharray="4,3"/>';
+        meanLine += '<text x="' + (w - pad + 2) + '" y="' + (meanY + 3) + '" fill="#94a3b8" font-size="7" font-family="Inter,system-ui,sans-serif" font-weight="500">' + Math.round(mean) + '</text>';
 
-        // Subtle zone bands: above mean = green tint, below = red tint (on dark)
-        var zoneBands = '<rect x="' + pad + '" y="0" width="' + chartW + '" height="' + midY + '" fill="#10b981" opacity="0.06"/>' +
-          '<rect x="' + pad + '" y="' + midY + '" width="' + chartW + '" height="' + midY + '" fill="#ef4444" opacity="0.06"/>';
+        // Y-axis scale labels
+        var yLabels = '<text x="' + (pad - 2) + '" y="8" fill="#64748b" font-size="6" font-family="Inter,system-ui,sans-serif" text-anchor="end">' + yMax + '</text>' +
+          '<text x="' + (pad - 2) + '" y="' + (h - 2) + '" fill="#64748b" font-size="6" font-family="Inter,system-ui,sans-serif" text-anchor="end">' + yMin + '</text>';
 
         // Weekly vertical gridlines
         var weekLines = '';
         dates.forEach(function(d, i) {
           var dt = new Date(d);
-          if (dt.getUTCDay() === 1) { // Monday
+          if (dt.getUTCDay() === 1) {
             var x = pad + (i / (dates.length - 1)) * chartW;
-            weekLines += '<line x1="' + x + '" y1="0" x2="' + x + '" y2="' + h + '" stroke="rgba(255,255,255,0.08)" stroke-width="0.4"/>';
+            weekLines += '<line x1="' + x + '" y1="0" x2="' + x + '" y2="' + h + '" stroke="rgba(255,255,255,0.06)" stroke-width="0.4"/>';
           }
         });
 
-        // Weekly date labels (~6 ticks)
+        // Date labels
         var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         var dateLabels = '';
-        var labelWeeks = [0, 2, 4, 6, 9, 12]; // approximate week indices
+        var labelWeeks = [0, 2, 4, 6, 9, 12];
         labelWeeks.forEach(function(wk) {
           var idx = Math.min(wk * 7, dates.length - 1);
           var x = pad + (idx / (dates.length - 1)) * chartW;
@@ -2528,34 +2530,27 @@ async function loadMarketHealthCard(horizon) {
           pathD += ' C' + cpx + ' ' + pts[pi - 1][1] + ',' + cpx + ' ' + pts[pi][1] + ',' + pts[pi][0] + ' ' + pts[pi][1];
         }
 
-        // Area fill: from line to mean (not to bottom)
-        var areaAbove = '', areaBelow = '';
-        // Simple: fill from line to mean line
-        var areaD = pathD + ' L' + pts[pts.length - 1][0] + ' ' + midY + ' L' + pts[0][0] + ' ' + midY + ' Z';
+        // Area fill: from line to bottom
+        var areaD = pathD + ' L' + pts[pts.length - 1][0] + ' ' + h + ' L' + pts[0][0] + ' ' + h + ' Z';
 
-        // Current value colour
-        var lastScore = scores[scores.length - 1];
-        var lineColor = lastScore >= mean + 5 ? '#10b981' : lastScore <= mean - 5 ? '#ef4444' : '#6b7280';
+        // Line colour based on trend (last vs first half)
+        var firstHalf = scores.slice(0, Math.floor(scores.length / 2));
+        var secondHalf = scores.slice(Math.floor(scores.length / 2));
+        var firstAvg = firstHalf.reduce(function(a,b){return a+b;},0) / firstHalf.length;
+        var secondAvg = secondHalf.reduce(function(a,b){return a+b;},0) / secondHalf.length;
+        var lineColor = secondAvg > firstAvg + 2 ? '#10b981' : secondAvg < firstAvg - 2 ? '#ef4444' : '#6b7280';
 
-        // Gradient for area fill (green above mean, red below)
         var gradDef = '<defs>' +
-          '<linearGradient id="mhGradUp" x1="0" y1="0" x2="0" y2="1">' +
-            '<stop offset="0%" stop-color="#10b981" stop-opacity="0.20"/>' +
-            '<stop offset="100%" stop-color="#10b981" stop-opacity="0.02"/>' +
+          '<linearGradient id="mhGrad" x1="0" y1="0" x2="0" y2="1">' +
+            '<stop offset="0%" stop-color="' + lineColor + '" stop-opacity="0.20"/>' +
+            '<stop offset="100%" stop-color="' + lineColor + '" stop-opacity="0.02"/>' +
           '</linearGradient>' +
-          '<linearGradient id="mhGradDn" x1="0" y1="0" x2="0" y2="1">' +
-            '<stop offset="0%" stop-color="#ef4444" stop-opacity="0.02"/>' +
-            '<stop offset="100%" stop-color="#ef4444" stop-opacity="0.15"/>' +
-          '</linearGradient>' +
-          '<clipPath id="mhClipAbove"><rect x="' + pad + '" y="0" width="' + chartW + '" height="' + midY + '"/></clipPath>' +
-          '<clipPath id="mhClipBelow"><rect x="' + pad + '" y="' + midY + '" width="' + chartW + '" height="' + midY + '"/></clipPath>' +
         '</defs>';
 
         var lastPt = pts[pts.length - 1];
 
-        svg.innerHTML = gradDef + zoneBands + weekLines + meanLine +
-          '<path d="' + areaD + '" fill="url(#mhGradUp)" clip-path="url(#mhClipAbove)"/>' +
-          '<path d="' + areaD + '" fill="url(#mhGradDn)" clip-path="url(#mhClipBelow)"/>' +
+        svg.innerHTML = gradDef + weekLines + meanLine + yLabels +
+          '<path d="' + areaD + '" fill="url(#mhGrad)"/>' +
           '<path d="' + pathD + '" fill="none" stroke="' + lineColor + '" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>' +
           '<circle cx="' + lastPt[0] + '" cy="' + lastPt[1] + '" r="2.5" fill="' + lineColor + '"/>' +
           '<circle cx="' + lastPt[0] + '" cy="' + lastPt[1] + '" r="5" fill="' + lineColor + '" opacity="0.2"/>' +
