@@ -2968,24 +2968,58 @@ function renderDealCard(s) {
 }
 
 function shareSignal(id, company, type, btn) {
-  var url = window.location.origin + '/index.html?signal=' + id;
-  var text = (company || 'Signal') + ' — ' + (type || 'market signal');
+  // Find the signal data from the rendered feed
+  var card = btn.closest('.deal-card');
+  var geo = '';
+  var prox = '';
+  var evidence = '';
+  var companyId = '';
+  if (card) {
+    // Extract geo from badges
+    var geoBadge = card.querySelector('.badge.time');
+    if (geoBadge) geo = geoBadge.textContent.trim();
+    // Extract proximity
+    var proxBadge = card.querySelector('.prox-trigger');
+    if (proxBadge) prox = proxBadge.textContent.trim();
+    // Extract evidence from headline
+    var hl = card.querySelector('.deal-headline');
+    if (hl) evidence = hl.textContent.trim().slice(0, 150);
+    // Extract company link for company page URL
+    var compLink = card.querySelector('.deal-company');
+    if (compLink && compLink.href) {
+      var m = compLink.href.match(/id=([a-f0-9-]+)/);
+      if (m) companyId = m[1];
+    }
+  }
+
+  // Link to company page with signal anchor (not dashboard)
+  var url = companyId
+    ? window.location.origin + '/company.html?id=' + companyId + '&signal=' + id
+    : window.location.origin + '/index.html?signal=' + id;
+
+  // Rich share text with context
+  var parts = [company || 'Signal'];
+  if (type) parts[0] += ' — ' + type;
+  if (geo) parts.push(geo);
+  if (prox) parts.push(prox);
+  if (evidence) parts.push(evidence);
+  var text = parts.join('\n');
 
   // Try native share first (mobile)
   if (navigator.share) {
-    navigator.share({ title: text, url: url }).catch(function() {});
+    navigator.share({ title: (company || 'Signal') + ' — ' + (type || 'market signal'), text: text, url: url }).catch(function() {});
     return;
   }
 
-  // Fallback: copy link
-  navigator.clipboard.writeText(url).then(function() {
+  // Fallback: copy rich text + link
+  var copyText = text + '\n' + url;
+  navigator.clipboard.writeText(copyText).then(function() {
     var orig = btn.innerHTML;
     btn.innerHTML = icon('check') + ' Copied';
     btn.style.color = 'var(--emerald)';
     setTimeout(function() { btn.innerHTML = orig; btn.style.color = 'var(--ink-3)'; }, 2000);
   }).catch(function() {
-    // Double fallback
-    prompt('Copy this link:', url);
+    prompt('Copy this link:', copyText);
   });
 }
 
