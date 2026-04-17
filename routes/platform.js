@@ -7594,8 +7594,7 @@ router.post('/api/xero/sync', authenticateToken, async (req, res) => {
 // Pipeline status API still available via scheduler routes
 try {
   const scheduler = require('../scripts/scheduler.js');
-  scheduler.registerRoutes(app, authenticateToken);
-  // Do NOT start the scheduler — worker process handles this
+  scheduler.registerRoutes(router, authenticateToken);
   console.log('  ✅ Pipeline routes registered (scheduler runs in worker process)');
 } catch(e) {
   console.log('  ⚠️  Pipeline routes skipped:', e.message);
@@ -7605,14 +7604,14 @@ try {
 try {
   const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
   const { createMcpServer } = require('../scripts/mcp_server.js');
-  app.post('/mcp', async (req, res) => {
+  router.post('/mcp', async (req, res) => {
     const mcpServer = createMcpServer();
     const t = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     res.on('close', () => t.close());
     await mcpServer.connect(t);
     await t.handleRequest(req, res, req.body);
   });
-  app.get('/mcp', (_req, res) => res.json({ service: 'mitchellake-mcp', tools: 11, status: 'ok' }));
+  router.get('/mcp', (_req, res) => res.json({ service: 'mitchellake-mcp', tools: 11, status: 'ok' }));
 } catch(e) {
   console.log('  ⚠️  MCP endpoint skipped:', e.message);
 }
