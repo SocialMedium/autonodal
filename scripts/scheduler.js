@@ -1295,7 +1295,7 @@ async function pipelineDailyBrief() {
       SELECT se.*, c.name as company_name FROM signal_events se
       JOIN companies c ON se.company_id = c.id
       WHERE se.detected_at > NOW() - INTERVAL '24 hours'
-      ORDER BY se.confidence_score_score DESC LIMIT 30
+      ORDER BY se.confidence_score DESC LIMIT 30
     `).catch(() => ({ rows: [] })),
 
     pool.query(`
@@ -1488,16 +1488,26 @@ async function pipelineNetworkInsights() {
         GROUP BY c.sector ORDER BY cnt DESC LIMIT 5
       `, [user.tenant_id, user.id]);
 
-      // Get signals in user's focus areas
+      // Get signals in user's focus areas (include platform-wide signals)
       const userRegion = user.region || '';
       const { rows: focusSignals } = await pool.query(`
         SELECT se.signal_type, se.company_name, c.geography
         FROM signal_events se
         LEFT JOIN companies c ON c.id = se.company_id
-        WHERE se.tenant_id = $1 AND se.detected_at > NOW() - INTERVAL '24 hours'
-          AND se.confidence_score >= 0.6
+        WHERE (se.tenant_id IS NULL OR se.tenant_id = $1) AND se.detected_at > NOW() - INTERVAL '24 hours'
+          AND se.confidence_score >= 0.5
         ORDER BY se.confidence_score DESC LIMIT 20
       `, [user.tenant_id]);
+
+      // Get recent billing/revenue activity for this tenant
+      const { rows: recentRevenue } = await pool.query(`
+        SELECT conv.client_name_raw, conv.role_title, conv.placement_fee, conv.currency,
+               conv.start_date, conv.payment_status, conv.consultant_name
+        FROM conversions conv
+        WHERE conv.tenant_id = $1
+          AND (conv.created_at > NOW() - INTERVAL '7 days' OR conv.start_date > NOW() - INTERVAL '7 days')
+        ORDER BY conv.created_at DESC LIMIT 10
+      `, [user.tenant_id]).catch(() => ({ rows: [] }));
 
       // Get signals in network-strong but NON-focus areas (the crossover)
       const networkRegions = geoDist.filter(g => g.region !== 'OTHER').map(g => g.region);
@@ -1523,6 +1533,10 @@ async function pipelineNetworkInsights() {
         ? `Network is strong in ${crossoverRegions.join(', ')} but user focus is ${focusRegions.join(', ') || 'not set'}.`
         : '';
 
+      const revenueSummary = recentRevenue.length > 0
+        ? recentRevenue.map(r => `${r.client_name_raw}: ${r.role_title || 'placement'} (${r.currency || 'AUD'} ${r.placement_fee ? Math.round(r.placement_fee).toLocaleString() : '?'}, ${r.payment_status || 'pending'}${r.consultant_name ? ', ' + r.consultant_name : ''})`).join('; ')
+        : '';
+
       const prompt = `Generate a 3-4 sentence daily network intelligence insight for a professional.
 
 User: ${user.name || user.email}
@@ -1536,11 +1550,13 @@ Sector presence: ${sectorSummary}
 ${crossoverNote}
 
 Today's signals (last 24h): ${signalSummary || 'No signals detected'}
+${revenueSummary ? `\nRecent revenue activity (last 7 days): ${revenueSummary}` : ''}
 
 Write a concise, actionable insight. Highlight:
 1. Any geographic arbitrage (network strength vs focus gap)
 2. Cross-sector signals that affect their intents
-3. One specific action they could take today
+3. Revenue/billing patterns — client relationships signalling, repeat business, or new market entry
+4. One specific action they could take today
 
 No greetings. No filler. Start with the insight. 3-4 sentences max.`;
 
