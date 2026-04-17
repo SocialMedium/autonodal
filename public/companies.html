@@ -140,10 +140,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
   </div>
 
   <div class="filter-chips">
-    <div class="chip active" onclick="setChip(this, '')">All</div>
-    <div class="chip" onclick="setChip(this, 'clients')">Clients</div>
-    <div class="chip" onclick="setChip(this, 'with_people')">With People</div>
-    <div class="chip" onclick="setChip(this, 'with_signals')">With Signals</div>
+    <div class="chip" data-filter="clients" onclick="toggleChip(this)">Clients</div>
+    <div class="chip" data-filter="with_people" onclick="toggleChip(this)">With People</div>
+    <div class="chip" data-filter="with_signals" onclick="toggleChip(this)">With Signals</div>
+    <div id="activeFilterLabel" style="font-size:11px;color:var(--ink-4);margin-left:8px;align-self:center"></div>
   </div>
 
   <div class="company-grid" id="companyGrid"></div>
@@ -173,10 +173,19 @@ function resetAndLoad() {
   loadCompanies();
 }
 
-function setChip(el, filter) {
-  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  currentFilter = filter;
+var activeFilters = new Set();
+
+function toggleChip(el) {
+  var filter = el.dataset.filter;
+  if (activeFilters.has(filter)) {
+    activeFilters.delete(filter);
+    el.classList.remove('active');
+  } else {
+    activeFilters.add(filter);
+    el.classList.add('active');
+  }
+  var label = document.getElementById('activeFilterLabel');
+  label.textContent = activeFilters.size > 0 ? activeFilters.size + ' filter' + (activeFilters.size > 1 ? 's' : '') + ' active' : '';
   resetAndLoad();
 }
 
@@ -184,15 +193,15 @@ async function loadCompanies() {
   const q = document.getElementById('searchInput').value.trim();
   const params = new URLSearchParams({ limit: 30, offset });
   if (q) params.set('q', q);
-  if (currentFilter === 'clients') params.set('is_client', 'true');
+  if (activeFilters.has('clients')) params.set('is_client', 'true');
 
   const data = await api(`/api/companies?${params}`);
   if (!data) return;
 
-  // Client-side filter for with_people / with_signals
+  // Client-side filters — applied concurrently (AND logic)
   let companies = data.companies;
-  if (currentFilter === 'with_people') companies = companies.filter(c => parseInt(c.people_count) > 0);
-  if (currentFilter === 'with_signals') companies = companies.filter(c => parseInt(c.signal_count) > 0);
+  if (activeFilters.has('with_people')) companies = companies.filter(c => parseInt(c.people_count) > 0);
+  if (activeFilters.has('with_signals')) companies = companies.filter(c => parseInt(c.signal_count) > 0);
 
   document.getElementById('pageCount').textContent = data.total.toLocaleString() + ' COMPANIES';
 
