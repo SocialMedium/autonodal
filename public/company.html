@@ -236,10 +236,20 @@ else {
     var cc=conf>=80?'hi':conf>=50?'md':'lo';
     var type=s.signal_type.replace(/_/g,' ');
     var linkUrl = s.source_url || 'https://www.google.com/search?q=' + encodeURIComponent((c.name || '') + ' ' + (s.evidence_summary || type).slice(0, 80));
-    return '<div class="sigcard" id="signal-'+s.id+'" style="cursor:pointer" onclick="window.open(\''+esc(linkUrl).replace(/'/g,"\\'")+'\',\'_blank\')"'+
+    var hiringHtml = '';
+    if (s.hiring_implications) {
+      var hi = typeof s.hiring_implications === 'string' ? s.hiring_implications : JSON.stringify(s.hiring_implications);
+      if (hi && hi.length > 2 && hi !== '{}' && hi !== '[]') hiringHtml = '<div style="font-size:11px;color:var(--ink-2);margin-top:6px;padding:6px 8px;background:var(--bg);border-radius:4px;line-height:1.4"><strong style="color:var(--ink-3);font-size:10px">HIRING IMPLICATIONS</strong><br>'+esc(hi.slice(0,200))+'</div>';
+    }
+    return '<div class="sigcard" id="signal-'+s.id+'"'+
       '><div class="sigcard-top"><div class="sigcard-hl">'+icon+' '+esc((s.evidence_summary||s.doc_title||type).slice(0,120))+'</div><div class="sigcard-conf '+cc+'">'+conf+'%</div></div>'+
       '<div class="sigcard-badges"><span class="sbadge">'+type.toUpperCase()+'</span><span class="sbadge">'+ago(s.detected_at)+'</span>'+(s.geography?'<span class="sbadge">'+esc(s.geography)+'</span>':'')+'</div>'+
-      '<div class="sigcard-src"><a href="'+esc(linkUrl)+'" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:var(--blue);text-decoration:none">'+(s.source_url?'↗ Source':'↗ Search')+'</a></div>'+
+      hiringHtml+
+      '<div style="display:flex;align-items:center;gap:8px;margin-top:6px">'+
+        '<a href="'+esc(linkUrl)+'" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:var(--blue);text-decoration:none">'+(s.source_url?'↗ Source':'↗ Search')+'</a>'+
+        '<a href="/dispatches.html" style="font-size:10px;color:var(--emerald);text-decoration:none;font-weight:500">'+icon('target')+' Dispatch</a>'+
+        '<button onclick="event.stopPropagation();_companyShareSignal(\''+s.id+'\',\''+esc(c.name||'').replace(/'/g,"\\'")+'\',\''+type+'\',\''+esc(s.geography||'').replace(/'/g,"\\'")+'\',this)" style="font-size:10px;color:var(--ink-3);background:none;border:none;cursor:pointer;font-family:var(--sans);padding:0">'+icon('share-2')+' Share</button>'+
+      '</div>'+
     '</div>';
   });
 }
@@ -404,6 +414,21 @@ if (sharedSig) {
   }, 300);
 }
 })();
+
+function _companyShareSignal(signalId, company, type, geo, btn) {
+  var companyId = new URLSearchParams(location.search).get('id');
+  var url = window.location.origin + '/company.html?id=' + companyId + '&signal=' + signalId;
+  var text = company + ' — ' + type + (geo ? '\n' + geo : '') + '\n' + url;
+
+  navigator.clipboard.writeText(text).then(function() {
+    var orig = btn.innerHTML;
+    btn.innerHTML = icon('check') + ' Copied';
+    btn.style.color = 'var(--emerald)';
+    setTimeout(function() { btn.innerHTML = orig; btn.style.color = 'var(--ink-3)'; }, 2000);
+  }).catch(function() {
+    prompt('Copy:', text);
+  });
+}
 
 async function enrichCompany() {
   const btn = document.getElementById('enrichBtn');
