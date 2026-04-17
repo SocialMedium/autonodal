@@ -945,7 +945,24 @@ app.listen(PORT, async () => {
         AND LOWER(TRIM(accounts.name)) = LOWER(TRIM(co.name))
         AND accounts.tenant_id = co.tenant_id
     `);
-    if (linked > 0) console.log(`  ✅ Linked ${linked} clients to companies by name`);
+    if (linked > 0) console.log(`  ✅ Linked ${linked} clients to companies by exact name`);
+
+    // Fuzzy link: match accounts to companies where company name starts with account name or vice versa
+    const { rowCount: fuzzyLinked } = await platformPool.query(`
+      UPDATE accounts SET company_id = co.id
+      FROM (
+        SELECT DISTINCT ON (a2.id) a2.id AS account_id, co2.id AS company_id
+        FROM accounts a2
+        JOIN companies co2 ON co2.tenant_id = a2.tenant_id
+          AND (LOWER(co2.name) LIKE LOWER(TRIM(a2.name)) || '%'
+               OR LOWER(TRIM(a2.name)) LIKE LOWER(co2.name) || '%')
+          AND LENGTH(TRIM(a2.name)) >= 4
+        WHERE a2.company_id IS NULL
+        ORDER BY a2.id, LENGTH(co2.name)
+      ) co
+      WHERE accounts.id = co.account_id
+    `);
+    if (fuzzyLinked > 0) console.log(`  ✅ Linked ${fuzzyLinked} clients to companies by fuzzy name`);
 
     // Flag companies with revenue as is_client (same tenant only — don't leak across tenants)
     const { rowCount } = await platformPool.query(`
@@ -957,6 +974,19 @@ app.listen(PORT, async () => {
       )
     `);
     if (rowCount > 0) console.log(`  ✅ ${rowCount} companies marked as clients (invoiced via Xero)`);
+
+    // Direct fallback: flag companies matching conversion client_name_raw
+    const { rowCount: directFlagged } = await platformPool.query(`
+      UPDATE companies c SET is_client = true
+      WHERE c.is_client = false AND c.tenant_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM conversions conv
+          WHERE conv.tenant_id = c.tenant_id
+            AND conv.placement_fee > 0
+            AND LOWER(TRIM(conv.client_name_raw)) = LOWER(TRIM(c.name))
+        )
+    `);
+    if (directFlagged > 0) console.log(`  ✅ ${directFlagged} companies marked as clients (direct name match from conversions)`);
   } catch (e) {
     console.log('  ⚠️ Client backfill skipped:', e.message);
   }

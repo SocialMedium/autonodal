@@ -2711,11 +2711,11 @@ async function loadHeroSignals() {
 
     const SIC = { capital_raising:'#EF9F27', ma_activity:'#AFA9EC', product_launch:'#97C459', partnership:'#85B7EB', geographic_expansion:'#378ADD', restructuring:'#E24B4A', leadership_change:'#D4537E', layoffs:'#E24B4A', strategic_hiring:'#5DCAA5' };
 
-    // Prefer heroes with images — sort image-bearing ones first
-    var heroes = data.heroes.sort(function(a, b) {
+    // Prefer heroes with images for lead slot, but preserve API ranking as tiebreaker
+    var heroes = data.heroes.map(function(h, i) { h._apiRank = i; return h; }).sort(function(a, b) {
       var aImg = (a.image_url || a.doc_image_url) ? 0 : 1;
       var bImg = (b.image_url || b.doc_image_url) ? 0 : 1;
-      return aImg - bImg;
+      return (aImg - bImg) || (a._apiRank - b._apiRank);
     });
     var lead = heroes[0];
     var rest = heroes.slice(1, 5);
