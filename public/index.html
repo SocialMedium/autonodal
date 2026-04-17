@@ -2492,7 +2492,7 @@ async function loadMarketHealthCard(horizon) {
         // Mean line (adapted for dark bg)
         var meanLine = '<line x1="' + pad + '" y1="' + midY + '" x2="' + (w - pad) + '" y2="' + midY + '" stroke="rgba(255,255,255,0.2)" stroke-width="0.7" stroke-dasharray="4,3"/>';
         // Mean label
-        meanLine += '<text x="' + (w - pad + 2) + '" y="' + (midY + 3) + '" fill="#64748b" font-size="6" font-family="var(--mono,monospace)">' + Math.round(mean) + '</text>';
+        meanLine += '<text x="' + (w - pad + 2) + '" y="' + (midY + 3) + '" fill="#94a3b8" font-size="7" font-family="Inter,system-ui,sans-serif" font-weight="500">' + Math.round(mean) + '</text>';
 
         // Subtle zone bands: above mean = green tint, below = red tint (on dark)
         var zoneBands = '<rect x="' + pad + '" y="0" width="' + chartW + '" height="' + midY + '" fill="#10b981" opacity="0.06"/>' +
@@ -2518,7 +2518,7 @@ async function loadMarketHealthCard(horizon) {
           var dt = new Date(dates[idx]);
           var lbl = monthNames[dt.getUTCMonth()] + ' ' + dt.getUTCDate();
           var anchor = idx === 0 ? 'start' : idx >= dates.length - 3 ? 'end' : 'middle';
-          dateLabels += '<text x="' + x + '" y="' + (h + 12) + '" fill="#4a5568" font-size="6.5" font-family="var(--mono,monospace)" text-anchor="' + anchor + '">' + lbl + '</text>';
+          dateLabels += '<text x="' + x + '" y="' + (h + 12) + '" fill="#94a3b8" font-size="7" font-family="Inter,system-ui,sans-serif" font-weight="500" text-anchor="' + anchor + '">' + lbl + '</text>';
         });
 
         // Smooth bezier path
