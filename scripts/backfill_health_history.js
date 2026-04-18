@@ -55,6 +55,7 @@ async function computeScoreAtDate(asOfDate, horizon) {
 
   let weightedSum = 0, totalWeight = 0;
   let bullishVolume = 0, bearishVolume = 0;
+  let rawBullish = 0, rawBearish = 0;
 
   for (const [signalType, cfg] of Object.entries(SIGNAL_STOCKS)) {
     const { rows: [counts] } = await pool.query(`
@@ -73,14 +74,17 @@ async function computeScoreAtDate(asOfDate, horizon) {
     weightedSum += score * cfg.weight;
     totalWeight += cfg.weight;
 
-    if (cfg.sentiment === 'bullish') bullishVolume += current;
-    if (cfg.sentiment === 'bearish') bearishVolume += current;
+    if (cfg.sentiment === 'bullish') { bullishVolume += current * cfg.weight; rawBullish += current; }
+    if (cfg.sentiment === 'bearish') { bearishVolume += current * cfg.weight; rawBearish += current; }
   }
 
-  const deltaScore = totalWeight > 0 ? weightedSum / totalWeight : 50;
+  // Match live pipeline: 30% trend + 40% weighted balance + 30% raw ratio
+  const trendScore = totalWeight > 0 ? weightedSum / totalWeight : 50;
   const totalVolume = bullishVolume + bearishVolume;
-  const volumeRatio = totalVolume > 0 ? (bullishVolume / totalVolume) * 100 : 50;
-  const compositeScore = Math.round((deltaScore * 0.6 + volumeRatio * 0.4) * 10) / 10;
+  const balanceScore = totalVolume > 0 ? (bullishVolume / totalVolume) * 100 : 50;
+  const rawTotal = rawBullish + rawBearish;
+  const rawRatio = rawTotal > 0 ? (rawBullish / rawTotal) * 100 : 50;
+  const compositeScore = Math.round((trendScore * 0.3 + balanceScore * 0.4 + rawRatio * 0.3) * 10) / 10;
 
   return compositeScore;
 }
@@ -100,12 +104,12 @@ async function backfill() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Find existing history dates to avoid duplicates
-  const { rows: existing } = await pool.query(
-    `SELECT DISTINCT snapshot_at::date AS d FROM market_health_history WHERE tenant_id = $1`,
+  // Delete existing history so we can recompute with new formula
+  const { rowCount: deleted } = await pool.query(
+    `DELETE FROM market_health_history WHERE tenant_id = $1`,
     [TENANT_ID]
   );
-  const existingDates = new Set(existing.map(r => r.d?.toISOString()?.substring(0, 10)));
+  if (deleted) console.log(`  Cleared ${deleted} existing rows`);
 
   let inserted = 0;
   const cursor = new Date(startDate);
@@ -113,36 +117,34 @@ async function backfill() {
   while (cursor <= today) {
     const dateStr = cursor.toISOString().substring(0, 10);
 
-    if (!existingDates.has(dateStr)) {
-      for (const horizon of HORIZONS) {
-        // Only backfill if we have enough history for this horizon
-        const daysSinceStart = Math.round((cursor - startDate) / 86400000);
-        if (daysSinceStart < horizon.days) continue;
+    for (const horizon of HORIZONS) {
+      // Only backfill if we have enough history for this horizon
+      const daysSinceStart = Math.round((cursor - startDate) / 86400000);
+      if (daysSinceStart < horizon.days) continue;
 
-        const score = await computeScoreAtDate(cursor, horizon);
+      const score = await computeScoreAtDate(cursor, horizon);
 
-        // Compute delta vs previous day
-        const prevDate = new Date(cursor);
-        prevDate.setDate(prevDate.getDate() - 1);
-        const { rows: [prev] } = await pool.query(
-          `SELECT score FROM market_health_history WHERE tenant_id = $1 AND horizon = $2 AND snapshot_at::date = $3`,
-          [TENANT_ID, horizon.key, prevDate.toISOString().substring(0, 10)]
-        );
-        const delta = prev ? Math.round(computeDelta(score, prev.score) * 10) / 10 : 0;
+      // Compute delta vs previous day
+      const prevDate = new Date(cursor);
+      prevDate.setDate(prevDate.getDate() - 1);
+      const { rows: [prev] } = await pool.query(
+        `SELECT score FROM market_health_history WHERE tenant_id = $1 AND horizon = $2 AND snapshot_at::date = $3`,
+        [TENANT_ID, horizon.key, prevDate.toISOString().substring(0, 10)]
+      );
+      const delta = prev ? Math.round(computeDelta(score, prev.score) * 10) / 10 : 0;
 
-        await pool.query(
-          `INSERT INTO market_health_history (tenant_id, horizon, score, delta, snapshot_at) VALUES ($1, $2, $3, $4, $5)`,
-          [TENANT_ID, horizon.key, score, delta, cursor.toISOString()]
-        );
-        inserted++;
-      }
+      await pool.query(
+        `INSERT INTO market_health_history (tenant_id, horizon, score, delta, snapshot_at) VALUES ($1, $2, $3, $4, $5)`,
+        [TENANT_ID, horizon.key, score, delta, cursor.toISOString()]
+      );
+      inserted++;
     }
 
     cursor.setDate(cursor.getDate() + 1);
     if (inserted % 30 === 0 && inserted > 0) process.stdout.write(`  ${dateStr} (${inserted} rows)...\r`);
   }
 
-  console.log(`\nDone. Inserted ${inserted} history rows from ${startDate.toISOString().substring(0, 10)} to ${today.toISOString().substring(0, 10)}`);
+  console.log(`\nDone. Recomputed ${inserted} history rows from ${startDate.toISOString().substring(0, 10)} to ${today.toISOString().substring(0, 10)}`);
   await pool.end();
 }
 
