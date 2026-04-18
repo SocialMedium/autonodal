@@ -101,6 +101,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .sigcard-src { font-size: 11px; color: var(--ink-4); margin-top: 6px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .sigcard-src a { color: var(--blue); text-decoration: none; font-weight: 500; }
 .sigcard-src a:hover { text-decoration: underline; }
+.sigcard-action { font-size:10px; padding:3px 8px; border-radius:4px; border:1px solid var(--rule); background:var(--surface); cursor:pointer; font-family:var(--sans); color:var(--ink-2); transition:all 0.1s; }
+.sigcard-action:hover { background:var(--bg); }
+.sigcard-action.qualify { color:var(--emerald); border-color:var(--emerald); }
+.sigcard-action.qualify:hover { background:var(--emerald-soft); }
+.sigcard-action.ignore { color:var(--ink-4); }
+.sigcard-action.ignore:hover { background:var(--bg); }
 .sigcard-hire { margin-top: 8px; padding: 8px 12px; background: var(--blue-soft); border-radius: 6px; border-left: 3px solid var(--blue); font-size: 12px; color: var(--ink-2); line-height: 1.45; overflow-wrap: break-word; }
 .sigcard-hire b { font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--blue); display: block; margin-bottom: 2px; }
 
@@ -241,13 +247,27 @@ else {
       var hi = typeof s.hiring_implications === 'string' ? s.hiring_implications : JSON.stringify(s.hiring_implications);
       if (hi && hi.length > 2 && hi !== '{}' && hi !== '[]') hiringHtml = '<div style="font-size:11px;color:var(--ink-2);margin-top:6px;padding:6px 8px;background:var(--bg);border-radius:4px;line-height:1.4"><strong style="color:var(--ink-3);font-size:10px">HIRING IMPLICATIONS</strong><br>'+esc(hi.slice(0,200))+'</div>';
     }
+    var triaged = s.triage_status && s.triage_status !== 'new';
+    var triageHtml = !triaged
+      ? '<button class="sigcard-action qualify" onclick="event.stopPropagation();_companyTriageSignal(\''+s.id+'\',\'qualified\',this)">✓ Qualify</button>'+
+        '<button class="sigcard-action ignore" onclick="event.stopPropagation();_companyTriageSignal(\''+s.id+'\',\'irrelevant\',this)">✕ Ignore</button>'
+      : '<span class="sigcard-action" style="opacity:0.5;cursor:default">'+esc(s.triage_status)+'</span>';
+
+    var dispatchHtml = '';
+    if (s.dispatch_id) {
+      dispatchHtml = s.claimed_by
+        ? '<span class="sigcard-action" style="color:var(--violet);cursor:default">'+icon('lock')+' '+esc(s.claimed_by_name||'Claimed')+'</span>'
+        : '<button class="sigcard-action" onclick="event.stopPropagation();_companyClaimDispatch(\''+s.dispatch_id+'\',this)" style="color:var(--violet);font-weight:600">'+icon('user')+' Claim</button>';
+    }
+
     return '<div class="sigcard" id="signal-'+s.id+'"'+
       '><div class="sigcard-top"><div class="sigcard-hl">'+sigIco+' '+esc((s.evidence_summary||s.doc_title||type).slice(0,120))+'</div><div class="sigcard-conf '+cc+'">'+conf+'%</div></div>'+
       '<div class="sigcard-badges"><span class="sbadge">'+type.toUpperCase()+'</span><span class="sbadge">'+ago(s.detected_at)+'</span>'+(s.geography?'<span class="sbadge">'+esc(s.geography)+'</span>':'')+'</div>'+
       hiringHtml+
-      '<div style="display:flex;align-items:center;gap:8px;margin-top:6px">'+
+      '<div style="display:flex;align-items:center;gap:6px;margin-top:8px;padding-top:6px;border-top:1px solid var(--rule);flex-wrap:wrap">'+
+        triageHtml+
+        dispatchHtml+
         '<a href="'+esc(linkUrl)+'" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:var(--blue);text-decoration:none">'+(s.source_url?'↗ Source':'↗ Search')+'</a>'+
-        '<a href="/dispatches.html" style="font-size:10px;color:var(--emerald);text-decoration:none;font-weight:500">'+icon('target')+' Dispatch</a>'+
         '<button onclick="event.stopPropagation();_companyShareSignal(\''+s.id+'\',\''+esc(c.name||'').replace(/'/g,"\\'")+'\',\''+type+'\',\''+esc(s.geography||'').replace(/'/g,"\\'")+'\',this)" style="font-size:10px;color:var(--ink-3);background:none;border:none;cursor:pointer;font-family:var(--sans);padding:0">'+icon('share-2')+' Share</button>'+
       '</div>'+
     '</div>';
@@ -414,6 +434,29 @@ if (sharedSig) {
   }, 300);
 }
 })();
+
+async function _companyTriageSignal(id, status, btn) {
+  try {
+    await fetch('/api/signals/' + id + '/triage', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('ml_token') },
+      body: JSON.stringify({ status: status })
+    });
+    btn.parentElement.innerHTML = '<span class="sigcard-action" style="opacity:0.5;cursor:default">' + status + '</span>';
+  } catch(e) { console.warn('Triage failed:', e.message); }
+}
+
+async function _companyClaimDispatch(dispatchId, btn) {
+  try {
+    await fetch('/api/dispatches/' + dispatchId + '/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('ml_token') }
+    });
+    btn.innerHTML = icon('check') + ' Claimed';
+    btn.style.color = 'var(--emerald)';
+    btn.disabled = true;
+  } catch(e) { console.warn('Claim failed:', e.message); }
+}
 
 function _companyShareSignal(signalId, company, type, geo, btn) {
   var companyId = new URLSearchParams(location.search).get('id');

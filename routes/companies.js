@@ -603,14 +603,24 @@ router.get('/api/companies/:id', authenticateToken, async (req, res) => {
       financials = cf || null;
     } catch (e) {}
 
-    // Signals
+    // Signals — include dispatch status for claim/share actions
     const { rows: signals } = await db.query(`
       SELECT se.id, se.signal_type, se.confidence_score, se.evidence_summary,
              se.evidence_snippet, se.detected_at, se.triage_status, se.signal_category,
-             se.hiring_implications, se.source_url,
-             ed.title AS doc_title, ed.source_name AS doc_source
+             se.hiring_implications, se.source_url, se.image_url,
+             c.geography,
+             ed.title AS doc_title, ed.source_name AS doc_source,
+             sd.id AS dispatch_id, sd.status AS dispatch_status,
+             sd.claimed_by, u_claim.name AS claimed_by_name
       FROM signal_events se
+      LEFT JOIN companies c ON c.id = se.company_id
       LEFT JOIN external_documents ed ON se.source_document_id = ed.id
+      LEFT JOIN LATERAL (
+        SELECT sd2.id, sd2.status, sd2.claimed_by
+        FROM signal_dispatches sd2 WHERE sd2.signal_event_id = se.id
+        ORDER BY sd2.generated_at DESC LIMIT 1
+      ) sd ON true
+      LEFT JOIN users u_claim ON u_claim.id = sd.claimed_by
       WHERE se.company_id = $1 AND (se.tenant_id IS NULL OR se.tenant_id = $2)
       ORDER BY se.detected_at DESC LIMIT 30
     `, [companyId, req.tenant_id]);
