@@ -447,48 +447,6 @@ router.get('/api/companies', authenticateToken, async (req, res) => {
     const offset = parseInt(req.query.offset) || 0;
     const q = req.query.q;
 
-    // ── CLIENTS filter: query the accounts table directly ──
-    if (req.query.is_client === 'true') {
-      let clWhere = 'WHERE cl.tenant_id = $1';
-      const clParams = [req.tenant_id];
-      let clIdx = 1;
-      if (q) {
-        clIdx++;
-        clWhere += ` AND cl.name ILIKE $${clIdx}`;
-        clParams.push(`%${q}%`);
-      }
-      clIdx++; clParams.push(limit);
-      const clLimitIdx = clIdx;
-      clIdx++; clParams.push(offset);
-      const clOffsetIdx = clIdx;
-
-      const [clientsResult, clientCountResult] = await Promise.all([
-        db.query(`
-          SELECT cl.id, cl.name, cl.company_id,
-                 cl.relationship_status, cl.relationship_tier,
-                 co.sector, co.geography, co.domain, co.employee_count_band, co.description,
-                 TRUE AS is_client,
-                 COALESCE(cf.total_placements, 0) AS placement_count,
-                 COALESCE(cf.total_invoiced, 0) AS total_revenue,
-                 (SELECT COUNT(*) FROM people p WHERE p.current_company_id = cl.company_id AND p.tenant_id = $1) AS people_count,
-                 (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = cl.company_id AND (se.tenant_id IS NULL OR se.tenant_id = $1)) AS signal_count
-          FROM accounts cl
-          LEFT JOIN companies co ON cl.company_id = co.id
-          LEFT JOIN account_financials cf ON cf.client_id = cl.id
-          ${clWhere}
-          ORDER BY COALESCE(cf.total_invoiced, 0) DESC, cl.name
-          LIMIT $${clLimitIdx} OFFSET $${clOffsetIdx}
-        `, clParams),
-        db.query(`SELECT COUNT(*) AS cnt FROM accounts cl ${clWhere}`, clParams.slice(0, -2)),
-      ]);
-
-      return res.json({
-        companies: clientsResult.rows,
-        total: parseInt(clientCountResult.rows[0].cnt),
-        limit, offset,
-      });
-    }
-
     // ── ALL / filtered companies ──
     let where = 'WHERE c.tenant_id = $1';
     const params = [req.tenant_id];
