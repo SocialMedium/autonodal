@@ -3053,11 +3053,22 @@ function shareSignal(id, company, type, btn) {
 
   menu.innerHTML = items;
 
-  // Position below the button
+  // Position: pop up if near bottom, pop down if near top, clamp left
   var rect = btn.getBoundingClientRect();
   menu.style.position = 'fixed';
-  menu.style.top = (rect.bottom + 4) + 'px';
+  var menuHeight = 280; // approximate max height
+  var spaceBelow = window.innerHeight - rect.bottom;
+  var spaceAbove = rect.top;
+  if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
+    // Pop upward
+    menu.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+    menu.style.top = 'auto';
+  } else {
+    menu.style.top = (rect.bottom + 4) + 'px';
+  }
   menu.style.left = Math.min(rect.left, window.innerWidth - 240) + 'px';
+  menu.style.maxHeight = Math.min(menuHeight, Math.max(spaceBelow, spaceAbove) - 8) + 'px';
+  menu.style.overflowY = 'auto';
   // Stash share data on menu for team send
   menu._shareData = { company: d.company, type: d.type, geo: d.geo, prox: d.prox, evidence: d.evidence, url: url };
   document.body.appendChild(menu);
