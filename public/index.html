@@ -2218,10 +2218,11 @@ async function loadNetworkSignals() {
       const dispatchBadge = s.dispatch_id
         ? '<a href="/dispatches.html" onclick="event.stopPropagation();localStorage.setItem(\'open_dispatch\',\'' + s.dispatch_id + '\')" class="badge" style="background:var(--blue-soft);color:var(--blue);text-decoration:none;font-weight:600">' + icon('target') + 'Dispatch' + (s.dispatch_status === 'claimed' && s.claimed_by_name ? ' (' + esc(s.claimed_by_name) + ')' : '') + '</a>'
         : '';
-      const actionBtns = '<div style="display:flex;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid var(--rule)" onclick="event.stopPropagation()">' +
+      const actionBtns = '<div style="display:flex;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid var(--rule);align-items:center" onclick="event.stopPropagation()">' +
         (s.dispatch_id
           ? (!s.claimed_by ? '<button class="badge" style="background:var(--violet-soft);color:var(--violet);border:1px solid var(--violet);cursor:pointer" onclick="claimSignalDispatch(\'' + s.dispatch_id + '\',this)">' + icon('user') + ' Claim</button>' : '<span class="badge" style="background:var(--violet-soft);color:var(--violet)">' + icon('lock') + ' ' + esc(s.claimed_by_name || 'Claimed') + '</span>')
           : '<button class="badge" style="background:var(--emerald-soft);color:var(--emerald);border:1px solid var(--emerald);cursor:pointer" onclick="generateDispatchForSignal(\'' + s.best_id + '\',this)">Generate Dispatch</button>') +
+        '<button class="deal-action-btn" onclick="shareSignal(\'' + s.best_id + '\',\'' + esc(s.company_name || '').replace(/'/g, "\\'") + '\',\'' + esc([...s.signal_types][0] || '').replace(/'/g, "\\'") + '\',this)" style="margin-left:auto;color:var(--ink-3);font-size:11px">' + icon('share-2') + ' Share</button>' +
         '</div>';
 
       // Signal type badges
@@ -2745,11 +2746,12 @@ async function loadHeroSignals() {
             (s.is_client ? ' <span style="font-size:9px;padding:2px 8px;border-radius:10px;background:var(--amber);color:#fff;font-weight:600">CLIENT</span>' : '') +
             '<div style="font-family:var(--serif);font-size:26px;font-weight:700;line-height:1.2;margin-top:8px;letter-spacing:-0.3px">' + esc(s.company_name) + '</div>' +
             '<div style="font-size:14px;opacity:0.85;margin-top:6px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">' + esc((s.evidence_summary || '').slice(0, 200)) + '</div>' +
-            '<div style="display:flex;gap:8px;margin-top:8px;font-size:10px;opacity:0.7">' +
+            '<div style="display:flex;gap:8px;margin-top:8px;font-size:10px;opacity:0.7;align-items:center">' +
               (contacts ? '<span>' + icon('users') + ' ' + contacts + ' contacts</span>' : '') +
               (prox ? '<span>' + icon('link') + ' ' + prox + ' proximity</span>' : '') +
               '<span>' + ago(s.detected_at) + '</span>' +
               '<span>' + Math.round((s.confidence_score||0)*100) + '%</span>' +
+              '<button onclick="event.stopPropagation();shareSignal(\'' + s.id + '\',\'' + esc(s.company_name || '').replace(/'/g, "\\'") + '\',\'' + esc(label).replace(/'/g, "\\'") + '\',this)" style="margin-left:auto;background:none;border:none;cursor:pointer;color:rgba(255,255,255,0.7);font-size:10px;font-family:var(--sans);padding:2px 6px;border-radius:4px" onmouseenter="this.style.background=\'rgba(255,255,255,0.15)\'" onmouseleave="this.style.background=\'none\'">' + icon('share-2') + '</button>' +
             '</div>' +
           '</div>' +
         '</div>';
@@ -2767,9 +2769,10 @@ async function loadHeroSignals() {
             '</div>' +
             '<div style="font-family:var(--serif);font-size:14px;font-weight:600;line-height:1.25;margin-top:4px">' + esc(s.company_name) + '</div>' +
             '<div style="font-size:11px;color:var(--ink-3);margin-top:3px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;flex:1">' + esc((s.evidence_summary || '').slice(0, 120)) + '</div>' +
-            '<div style="display:flex;gap:6px;margin-top:6px;font-size:9px;color:var(--ink-4)">' +
+            '<div style="display:flex;gap:6px;margin-top:6px;font-size:9px;color:var(--ink-4);align-items:center">' +
               (contacts ? '<span>' + icon('users') + ' ' + contacts + '</span>' : '') +
               '<span>' + ago(s.detected_at) + '</span>' +
+              '<button onclick="event.stopPropagation();shareSignal(\'' + s.id + '\',\'' + esc(s.company_name || '').replace(/'/g, "\\'") + '\',\'' + esc(label).replace(/'/g, "\\'") + '\',this)" style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--ink-4);font-size:9px;font-family:var(--sans);padding:1px 4px;border-radius:3px" onmouseenter="this.style.color=\'var(--blue)\'" onmouseleave="this.style.color=\'var(--ink-4)\'">' + icon('share-2') + '</button>' +
             '</div>' +
           '</div>' +
         '</div>';
