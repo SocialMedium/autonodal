@@ -231,7 +231,7 @@ if(sigSummary)h+='<div style="font-size:11px;color:var(--ink-3);margin-bottom:8p
 if(!sigs.length)h+='<div style="font-size:12px;color:var(--ink-4);padding:8px 0">No signals detected</div>';
 else {
   h+=cappedList(sigs, 6, function(s){
-    var icon=SI[s.signal_type]||''+icon('radio')+'';
+    var sigIco=SI[s.signal_type]||icon('radio');
     var conf=Math.round((s.confidence_score||0)*100);
     var cc=conf>=80?'hi':conf>=50?'md':'lo';
     var type=s.signal_type.replace(/_/g,' ');
@@ -242,7 +242,7 @@ else {
       if (hi && hi.length > 2 && hi !== '{}' && hi !== '[]') hiringHtml = '<div style="font-size:11px;color:var(--ink-2);margin-top:6px;padding:6px 8px;background:var(--bg);border-radius:4px;line-height:1.4"><strong style="color:var(--ink-3);font-size:10px">HIRING IMPLICATIONS</strong><br>'+esc(hi.slice(0,200))+'</div>';
     }
     return '<div class="sigcard" id="signal-'+s.id+'"'+
-      '><div class="sigcard-top"><div class="sigcard-hl">'+icon+' '+esc((s.evidence_summary||s.doc_title||type).slice(0,120))+'</div><div class="sigcard-conf '+cc+'">'+conf+'%</div></div>'+
+      '><div class="sigcard-top"><div class="sigcard-hl">'+sigIco+' '+esc((s.evidence_summary||s.doc_title||type).slice(0,120))+'</div><div class="sigcard-conf '+cc+'">'+conf+'%</div></div>'+
       '<div class="sigcard-badges"><span class="sbadge">'+type.toUpperCase()+'</span><span class="sbadge">'+ago(s.detected_at)+'</span>'+(s.geography?'<span class="sbadge">'+esc(s.geography)+'</span>':'')+'</div>'+
       hiringHtml+
       '<div style="display:flex;align-items:center;gap:8px;margin-top:6px">'+
