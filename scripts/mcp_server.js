@@ -551,7 +551,7 @@ Args:
       const sigR = await dbQuery(`
         SELECT signal_type, confidence_score, evidence_summary, hiring_implications, detected_at
         FROM signal_events
-        WHERE company_id = $1 AND tenant_id = $2
+        WHERE company_id = $1 AND (tenant_id IS NULL OR tenant_id = $2)
         ORDER BY detected_at DESC LIMIT 8
       `, [co.id, ML_TENANT_ID]);
       if (sigR.rows.length > 0) {
@@ -589,33 +589,45 @@ Args:
   - limit (number): Max results (default: 20)`,
     inputSchema: z.object({
       signal_type: z.string().optional(),
-      min_confidence: z.number().min(0).max(1).default(0.6),
+      company_id: z.string().uuid().optional().describe('Filter signals for a specific company'),
+      min_confidence: z.number().min(0).max(1).default(0.3),
       days: z.number().int().min(1).max(90).default(7),
       limit: z.number().int().min(1).max(50).default(20)
     }).strict(),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false }
   },
-  async ({ signal_type, min_confidence, days, limit }) => {
+  async ({ signal_type, company_id, min_confidence, days, limit }) => {
     try {
       const conditions = [
         `se.confidence_score >= $1`,
         `se.detected_at > NOW() - INTERVAL '${days} days'`,
-        `se.tenant_id = $2`
+        `(se.tenant_id IS NULL OR se.tenant_id = $2)`
       ];
       const params = [min_confidence, ML_TENANT_ID];
       let pi = 3;
 
       if (signal_type) {
-        conditions.push(`se.signal_type = $${pi++}`);
+        conditions.push(`se.signal_type = $${pi++}::signal_type`);
         params.push(signal_type);
       }
+      if (company_id) {
+        conditions.push(`se.company_id = $${pi++}`);
+        params.push(company_id);
+      }
+
+      // Exclude megacaps and tenant's own company from feed
+      conditions.push(`COALESCE(se.is_megacap, false) = false`);
 
       const result = await dbQuery(`
-        SELECT se.*, c.name as company_name_resolved
+        SELECT se.id, se.signal_type, se.company_name, se.company_id,
+               se.confidence_score, se.evidence_summary, se.hiring_implications,
+               se.detected_at, se.signal_date, se.source_url, se.triage_status,
+               c.name AS company_name_resolved, c.sector, c.geography,
+               COALESCE(c.is_client, false) AS is_client
         FROM signal_events se
         LEFT JOIN companies c ON se.company_id = c.id
         WHERE ${conditions.join(' AND ')}
-        ORDER BY se.detected_at DESC
+        ORDER BY se.confidence_score DESC, se.detected_at DESC
         LIMIT $${pi}
       `, [...params, limit]);
 
@@ -625,10 +637,12 @@ Args:
       for (const sig of result.rows) {
         const date = new Date(sig.detected_at).toLocaleDateString();
         const co = sig.company_name_resolved || sig.company_name || 'Unknown';
-        lines.push(`### ${co} — ${sig.signal_type} (${formatScore(sig.confidence_score)})`);
-        lines.push(`📅 ${date}`);
+        const client = sig.is_client ? ' [CLIENT]' : '';
+        lines.push(`### ${co}${client} — ${sig.signal_type.replace(/_/g, ' ')} (${formatScore(sig.confidence_score)})`);
+        lines.push(`📅 ${date}${sig.sector ? ' | ' + sig.sector : ''}${sig.geography ? ' | ' + sig.geography : ''}`);
         if (sig.evidence_summary) lines.push(`> ${sig.evidence_summary}`);
-        if (sig.hiring_implications) lines.push(`_Hiring: ${sig.hiring_implications}_`);
+        if (sig.hiring_implications) lines.push(`_Hiring implications: ${sig.hiring_implications}_`);
+        lines.push(`ID: ${sig.id} | Company ID: ${sig.company_id || 'unlinked'}`);
         lines.push('');
       }
 
@@ -1020,7 +1034,7 @@ server.registerTool(
         dbQuery('SELECT COUNT(*) FROM people WHERE tenant_id = $1', [ML_TENANT_ID]),
         dbQuery('SELECT COUNT(*) FROM companies WHERE tenant_id = $1', [ML_TENANT_ID]),
         dbQuery(`SELECT status, COUNT(*) FROM opportunities WHERE tenant_id = $1 GROUP BY status ORDER BY count DESC`, [ML_TENANT_ID]),
-        dbQuery(`SELECT COUNT(*) FROM signal_events WHERE tenant_id = $1 AND detected_at > NOW() - INTERVAL '7 days'`, [ML_TENANT_ID]),
+        dbQuery(`SELECT COUNT(*) FROM signal_events WHERE (tenant_id IS NULL OR tenant_id = $1) AND detected_at > NOW() - INTERVAL '7 days'`, [ML_TENANT_ID]),
         dbQuery(`SELECT COUNT(*) FROM interactions WHERE tenant_id = $1 AND interaction_at > NOW() - INTERVAL '30 days'`, [ML_TENANT_ID]),
         dbQuery('SELECT COUNT(*) FROM person_scores WHERE tenant_id = $1', [ML_TENANT_ID])
       ]);
