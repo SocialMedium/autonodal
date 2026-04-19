@@ -377,6 +377,20 @@ router.get('/api/people/:id', authenticateToken, async (req, res) => {
       } catch (e) {}
     }
 
+    // Work artifacts linked to this person
+    let artifacts = [];
+    try {
+      const { rows } = await db.query(`
+        SELECT wa.id, wa.artifact_type, wa.title, wa.summary, wa.key_findings,
+               wa.status, wa.created_by_name, wa.created_at, ael.link_type
+        FROM work_artifacts wa
+        JOIN artifact_entity_links ael ON ael.artifact_id = wa.id AND ael.person_id = $1
+        WHERE wa.tenant_id = $2 AND wa.status != 'archived'
+        ORDER BY wa.created_at DESC LIMIT 10
+      `, [req.params.id, req.tenant_id]);
+      artifacts = rows;
+    } catch (e) { /* table may not exist yet */ }
+
     res.json({
       ...person,
       research_notes: notes,
@@ -388,6 +402,7 @@ router.get('/api/people/:id', authenticateToken, async (req, res) => {
       colleagues,
       proximity,
       huddle_proximity,
+      artifacts,
     });
   } catch (err) {
     console.error('Person detail error:', err.message);

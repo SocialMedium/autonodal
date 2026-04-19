@@ -15,6 +15,17 @@ server.js retains only initialisation, middleware, shared helpers, static page r
 | `routes/signals.js` | 17 | Signal intelligence: `/api/signals/*`, `/api/signal-index/*`, `/api/market-temperature`, `/api/talent-in-motion`, `/api/converging-themes`, `/api/top-podcasts`, `/api/reengage-windows` |
 | `routes/onboarding.js` | 29 | 4-phase onboarding: `/api/onboarding/*` (wizard, field-mapping, AI, feed-config, diagnostic, health) |
 | `routes/platform.js` | 168 | Everything else: feeds, searches/opportunities, huddles, dispatches, placements, network, documents, grabs, chat/AI, case studies, profile, messaging, billing, xero, CRM, events, pipeline, delivery, activities, audit, jobs, enrichment, ecosystem |
+| `routes/artifacts.js` | 10 | Work artifacts: CRUD, entity linking, semantic search — `/api/artifacts/*`, `/api/*/artifacts` |
+
+## Work Artifacts — DATA SOVEREIGNTY
+
+Artifacts (debriefs, assessments, interview guides) are tenant IP. Hard constraints:
+- Embed ONLY into `work_artifacts` Qdrant collection (never `people`/`companies`/`searches`)
+- Query ONLY with mandatory `tenant_id` filter — no exception, no fallback
+- NEVER feed into platform signals, cross-tenant matching, composite embeddings, or huddle intelligence
+- Tables: `work_artifacts`, `artifact_entity_links` (both RLS-enforced)
+- MCP tools: `ml_save_artifact`, `ml_get_artifacts`, `ml_search_artifacts`
+- Entity extraction: deterministic string matching via `lib/entity_extraction.js`
 
 ## Shared Helpers (server.js)
 

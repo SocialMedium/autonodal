@@ -802,7 +802,21 @@ router.get('/api/companies/:id', authenticateToken, async (req, res) => {
       proximity_map = rows;
     } catch (e) {}
 
-    res.json({ ...company, signals, people, placements, documents, financials, opportunities, pipeline_total: pipelineTotal, case_studies, interaction_summary, proximity_map });
+    // Work artifacts linked to this company
+    let artifacts = [];
+    try {
+      const { rows } = await db.query(`
+        SELECT wa.id, wa.artifact_type, wa.title, wa.summary, wa.key_findings,
+               wa.status, wa.created_by_name, wa.created_at, ael.link_type
+        FROM work_artifacts wa
+        JOIN artifact_entity_links ael ON ael.artifact_id = wa.id AND ael.company_id = $1
+        WHERE wa.tenant_id = $2 AND wa.status != 'archived'
+        ORDER BY wa.created_at DESC LIMIT 10
+      `, [companyId, req.tenant_id]);
+      artifacts = rows;
+    } catch (e) { /* table may not exist yet */ }
+
+    res.json({ ...company, signals, people, placements, documents, financials, opportunities, pipeline_total: pipelineTotal, case_studies, interaction_summary, proximity_map, artifacts });
   } catch (err) {
     console.error('Company detail error:', err.message);
     res.status(500).json({ error: 'Failed to fetch company' });

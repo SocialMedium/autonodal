@@ -1048,11 +1048,299 @@ server.registerTool(
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TRANSPORT — stdio (local) or HTTP (Railway/remote)
+// TOOL: ml_save_artifact
 // ─────────────────────────────────────────────────────────────────────────────
 
+server.registerTool(
+  'ml_save_artifact',
+  {
+    title: 'Save Work Artifact',
+    description: `Save a work artifact (debrief, assessment, interview guide, executive summary, calibration note, search update, reference check, or general note) to the Autonodal platform.
+
+The artifact is persisted, embedded for semantic search, and linked to the relevant people, companies, and searches. It will appear in dossier views for linked entities.
+
+Use this after completing a significant piece of analytical work — a finalised debrief, a completed assessment, a polished interview guide. Do NOT use for quick notes or partial work-in-progress.
+
+Args:
+  - artifact_type (string, required): One of: debrief_360, executive_summary, interview_guide, assessment_framework, calibration_note, search_update, candidate_note, company_note, market_analysis, reference_check, offer_brief
+  - title (string, required): Descriptive title e.g. "360 Debrief — Sarah Chen, Head of Finance, Immutable"
+  - content_markdown (string, required): Full content in markdown format
+  - summary (string, optional): Brief summary (1-3 sentences, max 500 chars). If omitted, first 500 chars of content used.
+  - key_findings (array, optional): Structured findings. Each: {finding: string, sentiment: "positive"|"neutral"|"negative", category: "strength"|"gap"|"commercial"|"cultural"|"risk"|"opportunity"}
+  - structured_data (object, optional): Type-specific data (comp, notice period, rating, criteria, etc.)
+  - person_ids (array of UUID strings, optional): People this artifact is about
+  - company_ids (array of UUID strings, optional): Companies linked
+  - search_ids (array of UUID strings, optional): Searches linked
+  - status (string, optional): "draft" or "final". Default: "final"`,
+    inputSchema: z.object({
+      artifact_type: z.enum(['debrief_360', 'executive_summary', 'interview_guide', 'assessment_framework', 'calibration_note', 'search_update', 'candidate_note', 'company_note', 'market_analysis', 'reference_check', 'offer_brief']),
+      title: z.string().min(3).max(500),
+      content_markdown: z.string().min(10),
+      summary: z.string().max(500).optional(),
+      key_findings: z.array(z.object({
+        finding: z.string(),
+        sentiment: z.enum(['positive', 'neutral', 'negative']).optional(),
+        category: z.enum(['strength', 'gap', 'commercial', 'cultural', 'risk', 'opportunity']).optional(),
+      })).optional(),
+      structured_data: z.record(z.any()).optional(),
+      person_ids: z.array(z.string().uuid()).optional(),
+      company_ids: z.array(z.string().uuid()).optional(),
+      search_ids: z.array(z.string().uuid()).optional(),
+      status: z.enum(['draft', 'final']).optional(),
+    }).strict(),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const summary = args.summary || args.content_markdown.slice(0, 500);
+
+      // Insert artifact
+      const result = await dbQuery(`
+        INSERT INTO work_artifacts
+        (tenant_id, artifact_type, title, status, content_markdown, summary, key_findings, structured_data,
+         created_by_name, source_context)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'claude_mcp')
+        RETURNING id, title, artifact_type, created_at
+      `, [
+        ML_TENANT_ID, args.artifact_type, args.title, args.status || 'final',
+        args.content_markdown, summary,
+        JSON.stringify(args.key_findings || []),
+        JSON.stringify(args.structured_data || {}),
+        'Claude MCP',
+      ]);
+
+      const artifact = result.rows[0];
+      if (!artifact) return okText('Error: Failed to insert artifact');
+
+      // Insert entity links
+      const links = [];
+      if (args.person_ids) {
+        for (const pid of args.person_ids) {
+          await dbQuery(
+            `INSERT INTO artifact_entity_links (tenant_id, artifact_id, entity_type, person_id, link_type) VALUES ($1,$2,'person',$3,'subject') ON CONFLICT DO NOTHING`,
+            [ML_TENANT_ID, artifact.id, pid]
+          );
+          links.push(pid);
+        }
+      }
+      if (args.company_ids) {
+        for (const cid of args.company_ids) {
+          await dbQuery(
+            `INSERT INTO artifact_entity_links (tenant_id, artifact_id, entity_type, company_id, link_type) VALUES ($1,$2,'company',$3,'related') ON CONFLICT DO NOTHING`,
+            [ML_TENANT_ID, artifact.id, cid]
+          );
+        }
+      }
+      if (args.search_ids) {
+        for (const sid of args.search_ids) {
+          await dbQuery(
+            `INSERT INTO artifact_entity_links (tenant_id, artifact_id, entity_type, search_id, link_type) VALUES ($1,$2,'search',$3,'related') ON CONFLICT DO NOTHING`,
+            [ML_TENANT_ID, artifact.id, sid]
+          );
+        }
+      }
+
+      // Auto-extract entities from content
+      try {
+        const { extractEntities } = require('../lib/entity_extraction');
+        const extracted = await extractEntities(args.content_markdown, ML_TENANT_ID, { query: (sql, params) => dbQuery(sql, params) });
+        const existingPids = new Set(args.person_ids || []);
+        const existingCids = new Set(args.company_ids || []);
+        for (const p of extracted.people) {
+          if (!existingPids.has(p.person_id)) {
+            await dbQuery(
+              `INSERT INTO artifact_entity_links (tenant_id, artifact_id, entity_type, person_id, link_type, confidence, auto_detected) VALUES ($1,$2,'person',$3,'mentioned',$4,true) ON CONFLICT DO NOTHING`,
+              [ML_TENANT_ID, artifact.id, p.person_id, p.confidence]
+            );
+          }
+        }
+        for (const c of extracted.companies) {
+          if (!existingCids.has(c.company_id)) {
+            await dbQuery(
+              `INSERT INTO artifact_entity_links (tenant_id, artifact_id, entity_type, company_id, link_type, confidence, auto_detected) VALUES ($1,$2,'company',$3,'mentioned',$4,true) ON CONFLICT DO NOTHING`,
+              [ML_TENANT_ID, artifact.id, c.company_id, c.confidence]
+            );
+          }
+        }
+      } catch (e) { /* extraction failure should not block save */ }
+
+      // Embed into work_artifacts Qdrant collection (async, don't block response)
+      try {
+        const vector = await embedText(args.title + '\n\n' + summary + '\n\n' + args.content_markdown.slice(0, 6000));
+        await qdrant.upsert('work_artifacts', { wait: true, points: [{
+          id: artifact.id,
+          vector,
+          payload: {
+            tenant_id: ML_TENANT_ID,
+            artifact_id: artifact.id,
+            artifact_type: args.artifact_type,
+            title: args.title,
+            status: args.status || 'final',
+            created_by_name: 'Claude MCP',
+            created_at: artifact.created_at,
+            person_ids: args.person_ids || [],
+            company_ids: args.company_ids || [],
+            search_ids: args.search_ids || [],
+          }
+        }]});
+        await dbQuery('UPDATE work_artifacts SET qdrant_point_id = $1, embedded_at = NOW() WHERE id = $2', [artifact.id, artifact.id]);
+      } catch (e) { /* embed failure should not block save */ }
+
+      return okText(`✅ Artifact saved: **${args.title}**\n- Type: ${args.artifact_type}\n- ID: ${artifact.id}\n- ${links.length} people linked, auto-extraction complete\n- Embedded for semantic search`);
+    } catch (err) {
+      return okText(`Error saving artifact: ${err.message}`);
+    }
+  }
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
-// TRANSPORT — only runs when executed directly (not when require()'d)
+// TOOL: ml_get_artifacts
+// ─────────────────────────────────────────────────────────────────────────────
+
+server.registerTool(
+  'ml_get_artifacts',
+  {
+    title: 'Get Work Artifacts',
+    description: `Retrieve work artifacts (debriefs, assessments, notes, guides) linked to a person, company, or search.
+
+Use this to check what intelligence already exists before starting new work — e.g. "has anyone debriefed this candidate before?" or "what assessment framework did we use for the last CFO search?"
+
+Args:
+  - person_id (string, optional): Get artifacts linked to this person
+  - company_id (string, optional): Get artifacts linked to this company
+  - search_id (string, optional): Get artifacts linked to this search
+  - artifact_type (string, optional): Filter by type
+  - include_content (boolean, optional): Include full markdown content. Default: false.
+  - limit (number, optional): Max results. Default: 10.`,
+    inputSchema: z.object({
+      person_id: z.string().uuid().optional(),
+      company_id: z.string().uuid().optional(),
+      search_id: z.string().uuid().optional(),
+      artifact_type: z.string().optional(),
+      include_content: z.boolean().optional(),
+      limit: z.number().int().min(1).max(50).optional(),
+    }).strict(),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const limit = args.limit || 10;
+      let where = 'WHERE wa.tenant_id = $1 AND wa.status != \'archived\'';
+      const params = [ML_TENANT_ID];
+      let idx = 1;
+
+      if (args.artifact_type) { idx++; where += ` AND wa.artifact_type = $${idx}::artifact_type`; params.push(args.artifact_type); }
+
+      let joinClause = '';
+      if (args.person_id) { idx++; joinClause = `JOIN artifact_entity_links ael ON ael.artifact_id = wa.id AND ael.person_id = $${idx}`; params.push(args.person_id); }
+      else if (args.company_id) { idx++; joinClause = `JOIN artifact_entity_links ael ON ael.artifact_id = wa.id AND ael.company_id = $${idx}`; params.push(args.company_id); }
+      else if (args.search_id) { idx++; joinClause = `JOIN artifact_entity_links ael ON ael.artifact_id = wa.id AND ael.search_id = $${idx}`; params.push(args.search_id); }
+
+      idx++; params.push(limit);
+
+      const contentCol = args.include_content ? ', wa.content_markdown' : '';
+      const result = await dbQuery(`
+        SELECT wa.id, wa.artifact_type, wa.title, wa.summary, wa.key_findings,
+               wa.structured_data, wa.status, wa.created_by_name, wa.source_context,
+               wa.created_at, wa.updated_at${contentCol}
+               ${joinClause ? ', ael.link_type' : ''}
+        FROM work_artifacts wa
+        ${joinClause}
+        ${where}
+        ORDER BY wa.created_at DESC
+        LIMIT $${idx}
+      `, params);
+
+      if (result.rows.length === 0) return okText('No artifacts found matching the criteria.');
+
+      let text = `Found **${result.rows.length}** artifact(s):\n\n`;
+      result.rows.forEach((a, i) => {
+        text += `### ${i + 1}. ${a.title}\n`;
+        text += `- Type: ${a.artifact_type} | Status: ${a.status}\n`;
+        text += `- By: ${a.created_by_name || 'Unknown'} | ${new Date(a.created_at).toLocaleDateString()}\n`;
+        if (a.link_type) text += `- Link: ${a.link_type}\n`;
+        if (a.summary) text += `- Summary: ${a.summary}\n`;
+        if (a.key_findings && a.key_findings.length > 0) {
+          const findings = typeof a.key_findings === 'string' ? JSON.parse(a.key_findings) : a.key_findings;
+          findings.forEach(f => text += `  - ${f.sentiment === 'positive' ? '✅' : f.sentiment === 'negative' ? '⚠️' : '•'} ${f.finding}\n`);
+        }
+        if (args.include_content && a.content_markdown) {
+          text += `\n---\n${a.content_markdown}\n---\n`;
+        }
+        text += `- ID: ${a.id}\n\n`;
+      });
+
+      return okText(text);
+    } catch (err) {
+      return okText(`Error fetching artifacts: ${err.message}`);
+    }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TOOL: ml_search_artifacts
+// ─────────────────────────────────────────────────────────────────────────────
+
+server.registerTool(
+  'ml_search_artifacts',
+  {
+    title: 'Search Work Artifacts',
+    description: `Semantic search across all work artifacts. Uses vector similarity to find debriefs, assessments, guides, and notes matching a natural language query.
+
+Examples:
+  - "candidates who expressed interest in Web3 gaming"
+  - "CFO assessment frameworks for Series B companies"
+  - "reference checks mentioning treasury experience"
+  - "debriefs where compensation exceeded $400K"
+
+Args:
+  - query (string, required): Natural language search query
+  - artifact_type (string, optional): Filter by type
+  - limit (number, optional): Max results. Default: 10.`,
+    inputSchema: z.object({
+      query: z.string().min(3),
+      artifact_type: z.string().optional(),
+      limit: z.number().int().min(1).max(30).optional(),
+    }).strict(),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const vector = await embedText(args.query);
+      const limit = args.limit || 10;
+
+      // MANDATORY tenant_id filter — artifacts NEVER surface cross-tenant
+      const filter = {
+        must: [{ key: 'tenant_id', match: { value: ML_TENANT_ID } }],
+      };
+      if (args.artifact_type) {
+        filter.must.push({ key: 'artifact_type', match: { value: args.artifact_type } });
+      }
+
+      const results = await vectorSearch('work_artifacts', vector, limit, filter);
+
+      if (!results || results.length === 0) return okText('No artifacts found matching: "' + args.query + '"');
+
+      let text = `Found **${results.length}** artifact(s) matching: "${args.query}"\n\n`;
+      results.forEach((r, i) => {
+        const p = r.payload || {};
+        text += `### ${i + 1}. ${p.title || 'Untitled'}\n`;
+        text += `- Type: ${p.artifact_type || '?'} | Score: ${(r.score * 100).toFixed(0)}%\n`;
+        text += `- By: ${p.created_by_name || 'Unknown'} | ${p.created_at ? new Date(p.created_at).toLocaleDateString() : '?'}\n`;
+        if (p.person_ids?.length) text += `- People: ${p.person_ids.length} linked\n`;
+        if (p.company_ids?.length) text += `- Companies: ${p.company_ids.length} linked\n`;
+        text += `- ID: ${p.artifact_id || r.id}\n\n`;
+      });
+
+      return okText(text);
+    } catch (err) {
+      return okText(`Error searching artifacts: ${err.message}`);
+    }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRANSPORT
 // ─────────────────────────────────────────────────────────────────────────────
 
   return server;

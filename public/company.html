@@ -400,6 +400,34 @@ if(csLib.length){
   h+='</div>';
 }
 
+// ── Work Artifacts ──
+var arts = c.artifacts || [];
+if (arts.length > 0) {
+  var artTypeLabels = { debrief_360: 'Debrief', executive_summary: 'Exec Summary', interview_guide: 'Interview Guide', assessment_framework: 'Assessment', calibration_note: 'Calibration', search_update: 'Search Update', candidate_note: 'Note', company_note: 'Note', market_analysis: 'Analysis', reference_check: 'Reference', offer_brief: 'Offer Brief', custom: 'Custom' };
+  h+='<div class="card"><div class="card-head"><div class="card-title">Intelligence Artifacts</div><div class="card-count">'+arts.length+'</div></div>';
+  h+=cappedList(arts, 6, function(a){
+    var typeLabel = artTypeLabels[a.artifact_type] || a.artifact_type;
+    var findings = '';
+    try {
+      var kf = typeof a.key_findings === 'string' ? JSON.parse(a.key_findings) : (a.key_findings || []);
+      if (kf.length) findings = '<div style="margin-top:4px">'+kf.slice(0,3).map(function(f){
+        var ico = f.sentiment === 'positive' ? '✅' : f.sentiment === 'negative' ? '⚠️' : '•';
+        return '<div style="font-size:10px;color:var(--ink-3)">'+ico+' '+esc(f.finding)+'</div>';
+      }).join('')+'</div>';
+    } catch(e){}
+    return '<div style="padding:6px 0;border-bottom:1px solid var(--rule)">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center">'+
+        '<div style="font-size:12px;font-weight:500">'+esc(a.title)+'</div>'+
+        '<span class="sbadge">'+typeLabel+'</span>'+
+      '</div>'+
+      (a.summary?'<div style="font-size:11px;color:var(--ink-3);margin-top:2px;line-height:1.4">'+esc(a.summary.slice(0,200))+'</div>':'')+
+      findings+
+      '<div style="font-size:9px;color:var(--ink-4);margin-top:3px">'+esc(a.created_by_name||'')+ ' · '+ago(a.created_at)+(a.link_type?' · '+a.link_type:'')+'</div>'+
+    '</div>';
+  });
+  h+='</div>';
+}
+
   h+='<div class="card"><div class="card-head"><div class="card-title">Revenue</div><div class="card-count">'+pls.length+' placements</div></div>';
   if(totalFees)h+='<div style="font-family:var(--mono);font-size:16px;font-weight:600;color:var(--emerald);margin-bottom:8px">'+money(totalFees)+' total revenue</div>';
   if(!pls.length)h+='<div style="font-size:12px;color:var(--ink-4)">No placements recorded</div>';

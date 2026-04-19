@@ -386,6 +386,7 @@ app.use(require('./routes/people')({ platformPool, TenantDB, authenticateToken, 
 app.use(require('./routes/companies')({ platformPool, TenantDB, authenticateToken, generateQueryEmbedding, getGoogleToken }));
 app.use(require('./routes/signals')({ platformPool, TenantDB, authenticateToken, cachedResponse, setCachedResponse, generateQueryEmbedding, qdrantSearch, REGION_MAP, REGION_CODES, verifyHuddleMember }));
 app.use(require('./routes/onboarding')({ platformPool, TenantDB, authenticateToken, generateQueryEmbedding }));
+app.use(require('./routes/artifacts')({ platformPool, TenantDB, authenticateToken, generateQueryEmbedding, auditLog }));
 app.use(require('./routes/platform')({
   platformPool, TenantDB, authenticateToken, requireAdmin, optionalAuth,
   auditLog, generateQueryEmbedding, qdrantSearch,
@@ -1013,6 +1014,16 @@ app.listen(PORT, async () => {
   // Interaction backfills + session purge moved to worker pipeline — not run on web startup
 
   // WIP ingestion moved to admin pipeline — not run on web startup
+
+  // Work artifacts schema
+  try {
+    const artifactSql = require('fs').readFileSync(require('path').join(__dirname, 'sql/migration_work_artifacts.sql'), 'utf8');
+    await db.query(artifactSql);
+    console.log('  ✅ Work artifacts schema ready');
+  } catch (e) {
+    if (!e.message.includes('already exists')) console.error('  Work artifacts migration:', e.message);
+  }
+
   } catch (e) { console.error('Startup migration error:', e.message); }
   }, 5000); // 5s delay — let healthcheck pass first
 });
