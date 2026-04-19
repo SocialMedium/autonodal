@@ -1723,6 +1723,24 @@ const PIPELINES = {
     schedule: '30 6 * * *',
     description: 'Daily crossover intelligence — network vs focus gap analysis per user'
   },
+  daily_sales_brief: {
+    name: 'Daily Sales Brief',
+    icon: '📊',
+    fn: async () => {
+      const { exec } = require('child_process');
+      const path = require('path');
+      return new Promise((resolve, reject) => {
+        exec(`node ${path.join(__dirname, 'daily_sales_brief.js')}`, { timeout: 120000 }, (err, stdout, stderr) => {
+          if (stdout) console.log(stdout);
+          if (stderr) console.error(stderr);
+          if (err) reject(err);
+          else resolve({ ok: true });
+        });
+      });
+    },
+    schedule: '0 21 * * 0-4',
+    description: 'Scored signal brief with proximity ranking — emailed to team (7am AEST weekdays)'
+  },
   company_relationships: {
     name: 'Company Relationships',
     icon: '🏢',
