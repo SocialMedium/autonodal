@@ -11,6 +11,9 @@ const router = express.Router();
 
 module.exports = function({ platformPool, TenantDB, authenticateToken, cachedResponse, setCachedResponse, generateQueryEmbedding, qdrantSearch, REGION_MAP, REGION_CODES, verifyHuddleMember }) {
 
+// Cached transition matrix from signal_pattern_weights (loaded once, refreshed on null)
+var _transitionCache = null;
+
 router.get('/api/signals/gdelt', authenticateToken, async (req, res) => {
   try {
     var db = new TenantDB(req.tenant_id);
@@ -991,10 +994,16 @@ router.get('/api/signals/brief', authenticateToken, async (req, res) => {
             ELSE 3 END,
           -- 3. GEOGRAPHIC RELEVANCE (user's focus countries)
           CASE WHEN c.country_code = ANY($${geoBoostParam}) THEN 0 ELSE 1 END,
-          -- 4. SIGNAL TYPE HIERARCHY (hiring-intent ranked highest)
+          -- 4. SIGNAL TYPE HIERARCHY (data-driven: closing signals = nearest to mandate)
+          -- Source: signal_pattern_weights — closing_signal analysis of 229 clients
+          -- restructuring/layoffs/leadership_change = conversion indicators
+          -- strategic_hiring/capital_raising = early indicators (opening signals)
           CASE se.signal_type
-            WHEN 'strategic_hiring' THEN 0 WHEN 'geographic_expansion' THEN 1 WHEN 'capital_raising' THEN 1
-            WHEN 'product_launch' THEN 2 WHEN 'partnership' THEN 3
+            WHEN 'restructuring' THEN 0 WHEN 'layoffs' THEN 0
+            WHEN 'leadership_change' THEN 1
+            WHEN 'strategic_hiring' THEN 2 WHEN 'capital_raising' THEN 2
+            WHEN 'geographic_expansion' THEN 2 WHEN 'partnership' THEN 3
+            WHEN 'product_launch' THEN 3
             ELSE 4 END,
           -- 5. RECENCY & CONFIDENCE (tiebreaker)
           se.confidence_score DESC NULLS LAST,
@@ -1070,6 +1079,31 @@ router.get('/api/signals/brief', authenticateToken, async (req, res) => {
         }));
       }
     }
+
+    // Annotate signals with transition predictions from pattern analysis
+    // Loaded once from signal_pattern_weights, cached in module scope
+    if (!_transitionCache) {
+      try {
+        var { rows: tw } = await platformPool.query(
+          "SELECT key, value FROM signal_pattern_weights WHERE pattern_type = 'transition'"
+        );
+        _transitionCache = {};
+        tw.forEach(function(r) {
+          var parts = r.key.split(':');
+          if (!_transitionCache[parts[0]]) _transitionCache[parts[0]] = [];
+          _transitionCache[parts[0]].push(r.value);
+        });
+      } catch (e) { _transitionCache = {}; }
+    }
+
+    signals = signals.map(function(s) {
+      var predictions = (_transitionCache[s.signal_type] || [])
+        .sort(function(a, b) { return (b.probability || 0) - (a.probability || 0); })
+        .slice(0, 2)
+        .filter(function(p) { return p.probability >= 0.15; })
+        .map(function(p) { return { type: p.to, probability: p.probability }; });
+      return { ...s, predicted_next: predictions.length > 0 ? predictions : null };
+    });
 
     res.json({
       signals,
