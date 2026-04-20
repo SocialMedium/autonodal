@@ -3883,12 +3883,22 @@ async function loadTopPodcasts() {
       html += data.latest.map(renderPodcastItem).join('');
     }
 
-    // Deep dives (semantic match from archive)
+    // Deep dives — articles and blogs (not podcasts)
     if (data.deep_dives && data.deep_dives.length > 0) {
       const themes = data.themes || [];
       const themeTag = themes.length > 0 ? themes.slice(0, 2).join(' · ') : '';
       html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:700;color:var(--blue);margin-top:18px;padding-top:14px;border-top:1px solid var(--rule);margin-bottom:6px">Deep Dives' + (themeTag ? ' <span style="font-weight:400;color:var(--ink-4);text-transform:none;letter-spacing:0">· ' + esc(themeTag) + '</span>' : '') + '</div>';
-      html += data.deep_dives.map(renderPodcastItem).join('');
+      html += data.deep_dives.map(function(d) {
+        var url = d.source_url && d.source_url.startsWith('http') ? d.source_url : null;
+        var linkBtn = url ? '<a href="' + esc(url) + '" target="_blank" onclick="event.stopPropagation()" style="flex-shrink:0;width:30px;height:30px;border-radius:50%;border:1px solid var(--rule);background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:11px;text-decoration:none;color:var(--blue)" title="Read article">&#8599;</a>' : '';
+        var srcIcon = typeof icon === 'function' ? '<span style="display:inline-flex;vertical-align:middle;color:var(--ink-3)">' + icon('file-text', 14) + '</span>' : '📄';
+        return '<div class="podcast-item" style="cursor:' + (url ? 'pointer' : 'default') + '"' + (url ? ' onclick="window.open(\'' + esc(url) + '\',\'_blank\')"' : '') + '>' +
+          (d.image_url ? '<img src="' + esc(d.image_url) + '" style="width:36px;height:36px;border-radius:6px;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" loading="lazy">' : '<div class="podcast-rank">' + srcIcon + '</div>') +
+          '<div class="podcast-info">' +
+            (url ? '<a href="' + esc(url) + '" target="_blank" class="podcast-title" style="text-decoration:none;color:inherit" onclick="event.stopPropagation()">' + esc(d.title || 'Untitled') + '</a>' : '<div class="podcast-title">' + esc(d.title || 'Untitled') + '</div>') +
+            '<div class="podcast-meta">' + srcIcon + ' ' + esc(d.source_name || '') + (d.published_at ? ' · ' + ago(d.published_at) : '') + '</div>' +
+          '</div>' + linkBtn + '</div>';
+      }).join('');
     }
 
     if (!html) html = '<div style="padding:16px;font-size:13px;color:var(--ink-3)">No podcast recommendations available yet.</div>';
