@@ -40,12 +40,12 @@ async function run() {
   // People at those companies, with proximity
   const { rows: people } = await pool.query(`
     SELECT p.id AS person_id, p.seniority_level, p.current_company_id,
-           tp.user_id, tp.proximity_strength
+           tp.team_member_id AS user_id, tp.relationship_strength
     FROM people p
     JOIN team_proximity tp ON tp.person_id = p.id AND tp.tenant_id = $1
     WHERE p.current_company_id = ANY($2::uuid[])
       AND p.tenant_id = $1
-      AND tp.proximity_strength >= 0.15
+      AND tp.relationship_strength >= 0.15
   `, [ML_TENANT_ID, companyIds]);
 
   console.log(`  ${people.length} person-consultant proximity edges`);
@@ -67,7 +67,7 @@ async function run() {
     const score = talentRefreshScore(
       { seniority_level: edge.seniority_level },
       best,
-      parseFloat(edge.proximity_strength)
+      parseFloat(edge.relationship_strength)
     );
     if (score === null || score <= 0) continue;
 

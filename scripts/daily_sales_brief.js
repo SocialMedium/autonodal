@@ -98,15 +98,15 @@ async function loadProximityForCompanies(tenantId, companyIds) {
   if (!companyIds.length) return new Map();
   const { rows } = await pool.query(`
     SELECT p.current_company_id AS company_id,
-           tp.user_id,
-           MAX(tp.proximity_strength) AS strength,
-           (ARRAY_AGG(p.full_name ORDER BY tp.proximity_strength DESC))[1] AS best_contact_name,
-           (ARRAY_AGG(p.current_title ORDER BY tp.proximity_strength DESC))[1] AS best_contact_title,
-           MAX(tp.last_contact_date) AS last_contact
+           tp.team_member_id AS user_id,
+           MAX(tp.relationship_strength) AS strength,
+           (ARRAY_AGG(p.full_name ORDER BY tp.relationship_strength DESC))[1] AS best_contact_name,
+           (ARRAY_AGG(p.current_title ORDER BY tp.relationship_strength DESC))[1] AS best_contact_title,
+           MAX(tp.last_interaction_date) AS last_contact
     FROM team_proximity tp
     JOIN people p ON p.id = tp.person_id AND p.current_company_id = ANY($1::uuid[])
-    WHERE tp.tenant_id = $2 AND tp.proximity_strength > 0
-    GROUP BY p.current_company_id, tp.user_id
+    WHERE tp.tenant_id = $2 AND tp.relationship_strength > 0
+    GROUP BY p.current_company_id, tp.team_member_id
   `, [companyIds, tenantId]);
 
   const map = new Map(); // companyId → [{user_id, strength, ...}]
