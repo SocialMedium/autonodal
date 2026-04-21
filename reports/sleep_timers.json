@@ -1,0 +1,137 @@
+{
+  "capital_raising": {
+    "sample_size": 0,
+    "source": "spec_default",
+    "avg_lead_days": 300,
+    "median_lead_days": 300,
+    "peak_window": "9-12mo",
+    "timer": {
+      "dormant_until_days": 30,
+      "rising_from_days": 90,
+      "peak_start_days": 180,
+      "peak_end_days": 365,
+      "declining_until_days": 540,
+      "dormant_after_days": 730
+    }
+  },
+  "ma_activity": {
+    "sample_size": 0,
+    "source": "spec_default",
+    "avg_lead_days": 240,
+    "median_lead_days": 240,
+    "peak_window": "6-9mo",
+    "timer": {
+      "dormant_until_days": 14,
+      "rising_from_days": 90,
+      "peak_start_days": 180,
+      "peak_end_days": 365,
+      "declining_until_days": 450,
+      "dormant_after_days": 540
+    }
+  },
+  "geographic_expansion": {
+    "sample_size": 0,
+    "source": "spec_default",
+    "avg_lead_days": 420,
+    "median_lead_days": 420,
+    "peak_window": "12-18mo",
+    "timer": {
+      "dormant_until_days": 60,
+      "rising_from_days": 180,
+      "peak_start_days": 365,
+      "peak_end_days": 540,
+      "declining_until_days": 630,
+      "dormant_after_days": 730
+    }
+  },
+  "leadership_change": {
+    "sample_size": 0,
+    "source": "spec_default",
+    "avg_lead_days": 90,
+    "median_lead_days": 75,
+    "peak_window": "0-3mo",
+    "timer": {
+      "dormant_until_days": 7,
+      "rising_from_days": 14,
+      "peak_start_days": 30,
+      "peak_end_days": 120,
+      "declining_until_days": 180,
+      "dormant_after_days": 270
+    }
+  },
+  "restructuring": {
+    "sample_size": 0,
+    "source": "spec_default",
+    "avg_lead_days": 270,
+    "median_lead_days": 270,
+    "peak_window": "6-12mo",
+    "timer": {
+      "dormant_until_days": 30,
+      "rising_from_days": 90,
+      "peak_start_days": 180,
+      "peak_end_days": 365,
+      "declining_until_days": 450,
+      "dormant_after_days": 540
+    }
+  },
+  "layoffs": {
+    "sample_size": 0,
+    "source": "spec_default",
+    "avg_lead_days": 270,
+    "median_lead_days": 270,
+    "peak_window": "6-12mo",
+    "timer": {
+      "dormant_until_days": 30,
+      "rising_from_days": 90,
+      "peak_start_days": 180,
+      "peak_end_days": 365,
+      "declining_until_days": 450,
+      "dormant_after_days": 540
+    }
+  },
+  "strategic_hiring": {
+    "sample_size": 0,
+    "source": "spec_default",
+    "avg_lead_days": 150,
+    "median_lead_days": 150,
+    "peak_window": "3-6mo",
+    "timer": {
+      "dormant_until_days": 14,
+      "rising_from_days": 60,
+      "peak_start_days": 90,
+      "peak_end_days": 210,
+      "declining_until_days": 270,
+      "dormant_after_days": 365
+    }
+  },
+  "product_launch": {
+    "sample_size": 0,
+    "source": "spec_default",
+    "avg_lead_days": 180,
+    "median_lead_days": 180,
+    "peak_window": "3-9mo",
+    "timer": {
+      "dormant_until_days": 14,
+      "rising_from_days": 60,
+      "peak_start_days": 90,
+      "peak_end_days": 270,
+      "declining_until_days": 365,
+      "dormant_after_days": 450
+    }
+  },
+  "partnership": {
+    "sample_size": 0,
+    "source": "spec_default",
+    "avg_lead_days": 210,
+    "median_lead_days": 210,
+    "peak_window": "6-9mo",
+    "timer": {
+      "dormant_until_days": 30,
+      "rising_from_days": 90,
+      "peak_start_days": 180,
+      "peak_end_days": 270,
+      "declining_until_days": 365,
+      "dormant_after_days": 450
+    }
+  }
+}

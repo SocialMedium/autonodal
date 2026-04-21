@@ -1739,7 +1739,79 @@ const PIPELINES = {
       });
     },
     schedule: '0 21 * * 0-4',
-    description: 'Scored signal brief with proximity ranking — emailed to team (7am AEST weekdays)'
+    description: 'Matrix-ranked commercial lead brief — polarity-filtered, perishability-ordered (7am AEST weekdays)'
+  },
+  advance_signal_phases: {
+    name: 'Advance Signal Phases',
+    icon: '⏱️',
+    fn: async () => {
+      const { exec } = require('child_process');
+      const path = require('path');
+      return new Promise((resolve, reject) => {
+        exec(`node ${path.join(__dirname, 'advance_signal_phases.js')}`, { timeout: 300000 }, (err, stdout, stderr) => {
+          if (stdout) console.log(stdout);
+          if (stderr) console.error(stderr);
+          if (err) reject(err);
+          else resolve({ ok: true });
+        });
+      });
+    },
+    schedule: '0 3 * * *',
+    description: 'Recompute phase for non-closed signals, log transitions'
+  },
+  compute_relationship_state: {
+    name: 'Relationship State',
+    icon: '🏷️',
+    fn: async () => {
+      const { exec } = require('child_process');
+      const path = require('path');
+      return new Promise((resolve, reject) => {
+        exec(`node ${path.join(__dirname, 'compute_relationship_state.js')}`, { timeout: 600000 }, (err, stdout, stderr) => {
+          if (stdout) console.log(stdout);
+          if (stderr) console.error(stderr);
+          if (err) reject(err);
+          else resolve({ ok: true });
+        });
+      });
+    },
+    schedule: '20 3 * * *',
+    description: 'Classify companies by commercial relationship state'
+  },
+  score_talent_refresh: {
+    name: 'Talent Refresh Scoring',
+    icon: '🔄',
+    fn: async () => {
+      const { exec } = require('child_process');
+      const path = require('path');
+      return new Promise((resolve, reject) => {
+        exec(`node ${path.join(__dirname, 'score_talent_refresh.js')}`, { timeout: 300000 }, (err, stdout, stderr) => {
+          if (stdout) console.log(stdout);
+          if (stderr) console.error(stderr);
+          if (err) reject(err);
+          else resolve({ ok: true });
+        });
+      });
+    },
+    schedule: '40 3 * * *',
+    description: 'Score people exposed to negative signals for talent refresh outreach'
+  },
+  aggregate_forward_calibration: {
+    name: 'Forward Calibration',
+    icon: '📈',
+    fn: async () => {
+      const { exec } = require('child_process');
+      const path = require('path');
+      return new Promise((resolve, reject) => {
+        exec(`node ${path.join(__dirname, 'aggregate_forward_calibration.js')}`, { timeout: 120000 }, (err, stdout, stderr) => {
+          if (stdout) console.log(stdout);
+          if (stderr) console.error(stderr);
+          if (err) reject(err);
+          else resolve({ ok: true });
+        });
+      });
+    },
+    schedule: '5 1 1 * *',
+    description: 'Monthly: aggregate prospective outcomes into calibration file'
   },
   company_relationships: {
     name: 'Company Relationships',

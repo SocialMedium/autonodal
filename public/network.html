@@ -76,16 +76,24 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); overf
   <button class="filt-btn" data-region="MENA" onclick="setRegion(this)" style="border-color:rgba(212,83,126,.4);color:#D4537E">MENA</button>
   <button class="filt-btn" data-region="ASIA" onclick="setRegion(this)" style="border-color:rgba(175,169,236,.4);color:#AFA9EC">ASIA</button>
   <button class="filt-btn" data-region="OCE" onclick="setRegion(this)" style="border-color:rgba(93,202,165,.4);color:#5DCAA5">OCE</button>
+  <span style="width:1px;height:16px;background:var(--rule);margin:0 4px"></span>
+  <span style="font-size:9px;color:var(--ink4);margin-right:2px;white-space:nowrap">SECTOR:</span>
+  <select id="sectorFilter" onchange="setSector(this.value)" style="font-size:10px;padding:2px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--surface);color:var(--ink2);cursor:pointer">
+    <option value="all">All Sectors</option>
+  </select>
 </div>
 
 <svg id="graph-canvas"></svg>
 
 <div class="legend" id="legend">
-  <div class="legend-item"><div class="legend-dot" style="background:var(--emerald)"></div>Team member</div>
-  <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>Client company</div>
-  <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div>Contact</div>
-  <div class="legend-item"><div class="legend-dot" style="background:var(--purple);opacity:.5"></div>Sector cluster</div>
-  <div class="legend-item"><div class="legend-dot" style="background:var(--rose);border-radius:2px"></div>Signal pulse</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#5DCAA5"></div>Team</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#EF9F27"></div>Client &lt;90d</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#F5C16C"></div>Client &lt;2yr</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#555"></div>Client cold</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#00D4AA"></div>Contact &lt;90d</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#378ADD"></div>Contact &lt;2yr</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#444"></div>Contact cold</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#AFA9EC;opacity:.5"></div>Sector</div>
 </div>
 
 <div class="stats-panel" id="statsPanel"></div>
@@ -105,6 +113,7 @@ let W, H;
 
 let activeFilters = new Set(['team', 'client', 'contact', 'sector']);
 let activeRegion = 'all';
+let activeSector = 'all';
 let fullGraphData = null;
 
 // Geographic region layout — positions as fraction of canvas width
@@ -143,6 +152,11 @@ function toggleFilter(btn) {
   if (fullGraphData) applyFilters();
 }
 
+function setSector(val) {
+  activeSector = val;
+  if (fullGraphData) applyFilters();
+}
+
 function applyFilters() {
   if (!fullGraphData) return;
   const data = fullGraphData;
@@ -159,12 +173,20 @@ function applyFilters() {
 
     // High proximity filter
     if (activeFilters.has('high_prox') && n.type === 'contact' && (n.bestStrength || 0) < 0.5) show = false;
-    // Companies with signals filter
-    if (activeFilters.has('with_signals') && n.type === 'client' && !(n.signalCount > 0)) show = false;
+    // Companies with signals filter (also enforced when Signal Pulses active)
+    if ((activeFilters.has('with_signals') || activeFilters.has('signals')) && n.type === 'client' && !(n.signalCount > 0)) show = false;
     // Region filter (team nodes always visible; filter clients/contacts/sectors by region)
+    var REGION_MAP = { AU: 'OCE', NZ: 'OCE', SG: 'ASIA', HK: 'ASIA', JP: 'ASIA', IN: 'ASIA', CN: 'ASIA', KR: 'ASIA', TW: 'ASIA', TH: 'ASIA', VN: 'ASIA', ID: 'ASIA', MY: 'ASIA', PH: 'ASIA', GB: 'EUR', UK: 'EUR', IE: 'EUR', DE: 'EUR', FR: 'EUR', NL: 'EUR', ES: 'EUR', IT: 'EUR', SE: 'EUR', CH: 'EUR', US: 'AMER', CA: 'AMER', AE: 'MENA', SA: 'MENA', QA: 'MENA', ZA: 'MENA', NG: 'MENA', KE: 'MENA', IL: 'MENA', EG: 'MENA' };
     if (activeRegion !== 'all' && n.type !== 'team' && n.type !== 'company') {
-      if (n.region && n.region !== activeRegion) show = false;
+      var nodeRegion = REGION_MAP[n.region] || n.region;
+      if (n.region && nodeRegion !== activeRegion) show = false;
       // Keep untagged nodes visible (no region = global)
+    }
+
+    // Sector filter (clients and contacts at client companies)
+    if (activeSector !== 'all' && n.type !== 'team' && n.type !== 'company') {
+      if (n.type === 'client' && n.sector && n.sector !== activeSector) show = false;
+      if (n.type === 'sector' && n.label && n.label.toLowerCase().replace(/[^a-z_]/g, '') !== activeSector) show = false;
     }
 
     if (show) { filtered.nodes.push(n); visibleIds.add(n.id); }
@@ -230,6 +252,17 @@ async function loadGraph(mode) {
   const data = await api('/api/network/graph?mode=firm');
   fullGraphData = data;
   renderGraph(data, data);
+
+  // Populate sector filter dropdown from graph data
+  const sectorSet = new Set();
+  data.nodes.forEach(n => { if (n.sector) sectorSet.add(n.sector); });
+  const sectorSel = document.getElementById('sectorFilter');
+  [...sectorSet].sort().forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    sectorSel.appendChild(opt);
+  });
   document.getElementById('graphSubtitle').textContent =
     data.stats.teamMembers + ' team · ' + data.stats.contacts + ' contacts · ' + data.stats.clients + ' clients';
   document.getElementById('statsPanel').innerHTML =
@@ -266,12 +299,37 @@ function renderGraph(data, fullData) {
     if (d.type === 'company') return 16;
     return 5 + (d.bestStrength || 0) * 8;
   }
+  // Recency helper: days since a date
+  function daysSince(dateStr) {
+    if (!dateStr) return Infinity;
+    return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+  }
+
+  // Heat colors: hot (< 90d) → warm (< 24mo) → cold (> 24mo)
+  var HEAT = {
+    client_hot:  '#EF9F27',   // bright amber — placement in last 90 days
+    client_warm: '#F5C16C',   // light amber — placement in last 24 months
+    client_cold: '#555555',   // dark grey — no placement in 24+ months
+    contact_hot:  '#00D4AA',  // bright teal — interacted in last 90 days
+    contact_warm: '#378ADD',  // blue — interacted in last 24 months
+    contact_cold: '#444444',  // dark grey — no interaction in 24+ months
+  };
+
   function nodeColor(d) {
     if (d.type === 'team') return TC[d.colorIndex % TC.length];
-    if (d.type === 'client') return '#EF9F27';
+    if (d.type === 'client') {
+      var days = daysSince(d.lastPlacementDate);
+      if (days < 90) return HEAT.client_hot;
+      if (days < 730) return HEAT.client_warm;
+      return HEAT.client_cold;
+    }
     if (d.type === 'sector') return '#AFA9EC';
     if (d.type === 'company') return d.isClient ? '#EF9F27' : 'rgba(255,255,255,0.55)';
-    return '#378ADD';
+    // Contact — use lastInteractionAt (from interactions table or proximity date)
+    var cdays = daysSince(d.lastInteractionAt);
+    if (cdays < 90) return HEAT.contact_hot;
+    if (cdays < 730) return HEAT.contact_warm;
+    return HEAT.contact_cold;
   }
 
   // Initial positions — geographic clustering
@@ -353,6 +411,33 @@ function renderGraph(data, fullData) {
       else if (d.type === 'company' && d.companyId) location.href = '/company.html?id=' + d.companyId;
     })
     .on('mouseenter', (evt, d) => {
+      // Highlight connected nodes and edges
+      const connectedIds = new Set([d.id]);
+      links.forEach(l => {
+        const src = typeof l.source === 'object' ? l.source.id : l.source;
+        const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+        if (src === d.id) connectedIds.add(tgt);
+        if (tgt === d.id) connectedIds.add(src);
+      });
+
+      nodeEls
+        .attr('fill-opacity', n => connectedIds.has(n.id) ? 1.0 : 0.08)
+        .attr('stroke-opacity', n => connectedIds.has(n.id) ? 0.8 : 0.05)
+        .attr('stroke-width', n => connectedIds.has(n.id) ? (n.type === 'team' ? 3 : 2) : 0.3);
+      linkEls
+        .attr('stroke-opacity', l => {
+          const src = typeof l.source === 'object' ? l.source.id : l.source;
+          const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+          return (src === d.id || tgt === d.id) ? 0.6 : 0.02;
+        })
+        .attr('stroke-width', l => {
+          const src = typeof l.source === 'object' ? l.source.id : l.source;
+          const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+          return (src === d.id || tgt === d.id) ? 1.5 : 0.3;
+        });
+      labels.attr('fill-opacity', n => connectedIds.has(n.id) ? 1.0 : 0.1);
+
+      // Tooltip
       let html = '<div class="tooltip-name">' + (d.fullName || d.label) + '</div>';
       if (d.role) html += '<div class="tooltip-role">' + d.role + '</div>';
       if (d.company) html += '<div class="tooltip-role">' + d.company + '</div>';
@@ -364,7 +449,18 @@ function renderGraph(data, fullData) {
       if (d.type === 'contact') html += '<div class="tooltip-meta">Strength: ' + ((d.bestStrength || 0) * 100).toFixed(0) + '%' + (d.timingScore ? ' · Timing: ' + (d.timingScore * 100).toFixed(0) + '%' : '') + '</div>';
       showTooltip(evt, html);
     })
-    .on('mouseleave', hideTooltip)
+    .on('mouseleave', (evt, d) => {
+      // Restore all nodes
+      nodeEls
+        .attr('fill-opacity', n => n.type === 'team' ? 0.9 : n.type === 'sector' ? 0.15 : n.type === 'client' ? 0.7 : 0.5)
+        .attr('stroke-opacity', n => n.type === 'sector' ? 0.3 : 0.2)
+        .attr('stroke-width', n => n.type === 'team' ? 2 : n.type === 'sector' ? 1.5 : 0.8);
+      linkEls
+        .attr('stroke-opacity', l => l.type === 'works_at' ? 0.06 : 0.12)
+        .attr('stroke-width', l => 0.3 + (l.strength || 0.3) * 1.2);
+      labels.attr('fill-opacity', 1);
+      hideTooltip();
+    })
     .call(d3.drag()
       .on('start', (evt, d) => { if (!evt.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
       .on('drag', (evt, d) => { d.fx = evt.x; d.fy = evt.y; })
@@ -396,7 +492,8 @@ function renderGraph(data, fullData) {
       return W / 2;
     }).strength(d => d.region ? 0.08 : 0.02))
     .force('y', d3.forceY(H / 2).strength(0.02))
-    .alphaDecay(0.015);
+    .alphaDecay(0.03)
+    .alpha(0.3);
 
   sim.on('tick', () => {
     nodes.forEach(n => {

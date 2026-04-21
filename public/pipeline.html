@@ -114,7 +114,6 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);font-size:14p
 <script>
 var SIG_COLORS={capital_raising:'#EF9F27',strategic_hiring:'#5DCAA5',geographic_expansion:'#378ADD',leadership_change:'#D4537E',ma_activity:'#AFA9EC',product_launch:'#97C459',layoffs:'#E24B4A',restructuring:'#E24B4A',partnership:'#85B7EB'};
 var COLUMNS=[
-  {key:'new',label:'New Signals',cls:'col-new'},
   {key:'claimed',label:'Claimed',cls:'col-claimed'},
   {key:'actioned',label:'Actioned',cls:'col-actioned'},
   {key:'converted',label:'Converted',cls:'col-converted'},
@@ -221,7 +220,7 @@ async function loadBoard(){
       html+='<div class="column '+col.cls+'">';
       html+='<div class="col-header"><div class="col-label"><h3>'+col.label+'</h3><div class="col-total">'+(total>0?fmtCurrency(total):'')+'</div></div><span class="col-count">'+items.length+'</span></div>';
       html+='<div class="col-body" data-stage="'+col.key+'">';
-      if(!items.length)html+='<div class="empty-col">No signals</div>';
+      if(!items.length)html+='<div class="empty-col">No claimed signals</div>';
       items.forEach(function(d){
         var val=parseFloat(d.pipeline_value)||0;
         var isClient=d.is_client;
@@ -229,8 +228,9 @@ async function loadBoard(){
         var proxCount=parseInt(d.prox_count)||0;
         var signalTypes=d.signal_types||[];
         var signalCount=parseInt(d.signal_count)||1;
-        html+='<div class="card" data-id="'+d.id+'" data-stage="'+(d.pipeline_stage||'new')+'" onclick="window.location=\'/company.html?id='+d.company_id+'\'" style="cursor:pointer'+(isClient?';border-left:3px solid var(--amber)':'')+ '">';
+        html+='<div class="card" data-id="'+d.id+'" data-stage="'+(d.pipeline_stage||'claimed')+'" onclick="window.location=\'/company.html?id='+d.company_id+'\'" style="cursor:pointer'+(isClient?';border-left:3px solid var(--amber)':'')+ '">';
         html+='<div class="card-company">'+esc(d.company_name)+(isClient?' <span style="font-size:8px;font-weight:700;color:var(--amber);vertical-align:middle">CLIENT</span>':'')+'</div>';
+        if(d.owner_name)html+='<div style="font-size:10px;color:var(--blue);font-weight:500;margin-bottom:3px">'+esc(d.owner_name)+'</div>';
         // Signal type badges (multiple per company)
         html+='<div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px">';
         signalTypes.forEach(function(st){
@@ -260,7 +260,7 @@ async function loadBoard(){
         if(d.geography)html+='<span class="pill" style="background:var(--surface-cool);color:var(--ink-3)">'+esc(d.geography)+'</span>';
         html+='</div>';
         html+='<div class="card-value" onclick="event.stopPropagation()"><span style="font-size:10px;color:var(--ink-4)">Value:</span><input class="val-input" type="text" value="'+fmtCurrency(val)+'" onfocus="this.select()" onblur="updateValue(\''+d.id+'\',this)" onkeydown="if(event.key===\'Enter\'){this.blur()}"></div>';
-        if(d.owner_name)html+='<div class="card-owner">'+esc(d.owner_name)+'</div>';
+        // Owner shown at top of card
         var dateLabel=d.won_at?'Won '+ago(d.won_at):d.converted_at?'Converted '+ago(d.converted_at):d.actioned_at?'Actioned '+ago(d.actioned_at):d.claimed_at?'Claimed '+ago(d.claimed_at):'Created '+ago(d.created_at);
         html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px"><div class="card-date">'+dateLabel+'</div>';
         html+='<div style="display:flex;gap:4px" onclick="event.stopPropagation()">';

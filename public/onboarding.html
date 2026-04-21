@@ -361,11 +361,11 @@ let currentStep = 1;
 const TOTAL_STEPS = 7;
 
 const INTENT_VERTICALS = {
-  raising_capital: 'mandate',
-  building_team: 'talent',
+  raising_capital: 'capital',
+  building_team: 'people',
   growing_pipeline: 'revenue',
   tracking_market: 'all',
-  managing_portfolio: 'mandate',
+  managing_portfolio: 'portfolio',
 };
 
 const HORIZON_PLACEHOLDERS = {
@@ -395,7 +395,7 @@ const BUNDLE_DEFS = [
   { id: 'leadership_moves', name: 'Leadership moves', desc: 'C-suite appointments, departures, board changes', intents: ['building_team','tracking_market','managing_portfolio'] },
   { id: 'funding_rounds', name: 'Funding rounds', desc: 'New raises, valuations, investor activity', intents: ['raising_capital','tracking_market','managing_portfolio'] },
   { id: 'market_signals', name: 'Market signals', desc: 'Sector trends, regulatory changes, M&A activity', intents: ['tracking_market','managing_portfolio','growing_pipeline'] },
-  { id: 'talent_flow', name: 'Talent flow', desc: 'Key hires, departures, team growth patterns', intents: ['building_team','tracking_market'] },
+  { id: 'talent_flow', name: 'People movement', desc: 'Key hires, departures, team changes', intents: ['building_team','tracking_market'] },
   { id: 'deal_activity', name: 'Deal activity', desc: 'Pipeline movement, partnership announcements', intents: ['growing_pipeline','raising_capital'] },
   { id: 'portfolio_alerts', name: 'Portfolio alerts', desc: 'News, press, risk signals on tracked companies', intents: ['managing_portfolio','tracking_market'] },
   { id: 'competitive_intel', name: 'Competitive intel', desc: 'Competitor product launches, pricing, positioning', intents: ['tracking_market','growing_pipeline'] },

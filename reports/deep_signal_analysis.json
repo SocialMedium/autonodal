@@ -1,0 +1,967 @@
+{
+  "metadata": {
+    "run_date": "2026-04-19T19:32:28.561Z",
+    "filter": "2018+ clients with signals only",
+    "original_clients": 456,
+    "filtered_clients": 282,
+    "analysis_set": 187,
+    "excluded": 95,
+    "clean_correlation_rate": "66.3%",
+    "clean_revenue_rate": "68.9%"
+  },
+  "revenue_tier_segments": {
+    "Under $20K": {
+      "count": 32,
+      "median_lead_days": 486,
+      "avg_lead_days": 410,
+      "avg_signals": 147,
+      "avg_revenue": 9576,
+      "p25_lead": 249,
+      "p75_lead": 659
+    },
+    "$20K-$50K": {
+      "count": 45,
+      "median_lead_days": 341,
+      "avg_lead_days": 361,
+      "avg_signals": 186,
+      "avg_revenue": 33714,
+      "p25_lead": 123,
+      "p75_lead": 637
+    },
+    "$50K-$100K": {
+      "count": 50,
+      "median_lead_days": 401,
+      "avg_lead_days": 389,
+      "avg_signals": 195,
+      "avg_revenue": 68079,
+      "p25_lead": 117,
+      "p75_lead": 680
+    },
+    "$100K-$200K": {
+      "count": 33,
+      "median_lead_days": 661,
+      "avg_lead_days": 531,
+      "avg_signals": 188,
+      "avg_revenue": 138422,
+      "p25_lead": 314,
+      "p75_lead": 707
+    },
+    "$200K-$500K": {
+      "count": 22,
+      "median_lead_days": 493,
+      "avg_lead_days": 379,
+      "avg_signals": 167,
+      "avg_revenue": 311608,
+      "p25_lead": 61,
+      "p75_lead": 650
+    },
+    "$500K+": {
+      "count": 5,
+      "median_lead_days": 486,
+      "avg_lead_days": 382,
+      "avg_signals": 153,
+      "avg_revenue": 784884,
+      "p25_lead": 52,
+      "p75_lead": 603
+    }
+  },
+  "size_segments": {
+    "1-10 (micro)": {
+      "count": 5,
+      "median_lead": 611,
+      "avg_signals": 201,
+      "top_signal_types": [
+        [
+          "geographic_expansion",
+          5
+        ],
+        [
+          "leadership_change",
+          5
+        ],
+        [
+          "ma_activity",
+          5
+        ],
+        [
+          "capital_raising",
+          4
+        ],
+        [
+          "layoffs",
+          4
+        ]
+      ]
+    },
+    "1001-5000 (large)": {
+      "count": 3,
+      "median_lead": 700,
+      "avg_signals": 83,
+      "top_signal_types": [
+        [
+          "capital_raising",
+          3
+        ],
+        [
+          "geographic_expansion",
+          3
+        ],
+        [
+          "ma_activity",
+          3
+        ],
+        [
+          "partnership",
+          3
+        ],
+        [
+          "product_launch",
+          3
+        ]
+      ]
+    },
+    "11-50 (small)": {
+      "count": 3,
+      "median_lead": 560,
+      "avg_signals": 31,
+      "top_signal_types": [
+        [
+          "capital_raising",
+          3
+        ],
+        [
+          "geographic_expansion",
+          3
+        ],
+        [
+          "layoffs",
+          2
+        ],
+        [
+          "partnership",
+          2
+        ],
+        [
+          "product_launch",
+          2
+        ]
+      ]
+    },
+    "51-200 (growth)": {
+      "count": 2,
+      "median_lead": 719,
+      "avg_signals": 338,
+      "top_signal_types": [
+        [
+          "capital_raising",
+          2
+        ],
+        [
+          "geographic_expansion",
+          2
+        ],
+        [
+          "layoffs",
+          2
+        ],
+        [
+          "leadership_change",
+          2
+        ],
+        [
+          "ma_activity",
+          2
+        ]
+      ]
+    },
+    "201-500 (scaleup)": {
+      "count": 1,
+      "median_lead": 722,
+      "avg_signals": 231,
+      "top_signal_types": [
+        [
+          "capital_raising",
+          1
+        ],
+        [
+          "geographic_expansion",
+          1
+        ],
+        [
+          "layoffs",
+          1
+        ],
+        [
+          "leadership_change",
+          1
+        ],
+        [
+          "ma_activity",
+          1
+        ]
+      ]
+    },
+    "5001+ (enterprise)": {
+      "count": 1,
+      "median_lead": 21,
+      "avg_signals": 341,
+      "top_signal_types": [
+        [
+          "capital_raising",
+          1
+        ],
+        [
+          "geographic_expansion",
+          1
+        ],
+        [
+          "layoffs",
+          1
+        ],
+        [
+          "leadership_change",
+          1
+        ],
+        [
+          "ma_activity",
+          1
+        ]
+      ]
+    }
+  },
+  "maturity_speed": [
+    {
+      "label": "$20K-$50K",
+      "tier_order": 2,
+      "median_lead": 341,
+      "avg_lead": 361,
+      "count": 45,
+      "avg_revenue": 33714
+    },
+    {
+      "label": "$50K-$100K",
+      "tier_order": 3,
+      "median_lead": 401,
+      "avg_lead": 389,
+      "count": 50,
+      "avg_revenue": 68079
+    },
+    {
+      "label": "Under $20K",
+      "tier_order": 1,
+      "median_lead": 486,
+      "avg_lead": 410,
+      "count": 32,
+      "avg_revenue": 9576
+    },
+    {
+      "label": "$500K+",
+      "tier_order": 6,
+      "median_lead": 486,
+      "avg_lead": 382,
+      "count": 5,
+      "avg_revenue": 784884
+    },
+    {
+      "label": "$200K-$500K",
+      "tier_order": 5,
+      "median_lead": 493,
+      "avg_lead": 379,
+      "count": 22,
+      "avg_revenue": 311608
+    },
+    {
+      "label": "$100K-$200K",
+      "tier_order": 4,
+      "median_lead": 661,
+      "avg_lead": 531,
+      "count": 33,
+      "avg_revenue": 138422
+    }
+  ],
+  "density_analysis": {
+    "1-5 signals": {
+      "count": 11,
+      "avg_revenue": 120597,
+      "avg_signals": 3
+    },
+    "6-20 signals": {
+      "count": 18,
+      "avg_revenue": 79786,
+      "avg_signals": 11
+    },
+    "21-50 signals": {
+      "count": 26,
+      "avg_revenue": 135674,
+      "avg_signals": 36
+    },
+    "51-100 signals": {
+      "count": 23,
+      "avg_revenue": 120806,
+      "avg_signals": 75
+    },
+    "100+ signals": {
+      "count": 109,
+      "avg_revenue": 105564,
+      "avg_signals": 280
+    }
+  },
+  "year_over_year": {
+    "2018": {
+      "total": 55,
+      "with_signals": 41,
+      "total_revenue": 5471064.17,
+      "signal_revenue": 4232528.07,
+      "avg_signals": [
+        107,
+        143,
+        143,
+        10,
+        120,
+        25,
+        304,
+        305,
+        190,
+        315,
+        41,
+        6,
+        291,
+        224,
+        304,
+        56,
+        78,
+        473,
+        334,
+        182,
+        350,
+        203,
+        60,
+        374,
+        142,
+        40,
+        38,
+        53,
+        3,
+        121,
+        232,
+        271,
+        341,
+        71,
+        268,
+        7,
+        319,
+        376,
+        349,
+        252,
+        255
+      ],
+      "lead_times": [
+        2,
+        2,
+        3,
+        4,
+        4,
+        8,
+        13,
+        21,
+        23,
+        28,
+        52,
+        61,
+        73,
+        117,
+        156,
+        202,
+        232,
+        251,
+        275,
+        281,
+        443,
+        499,
+        537,
+        635,
+        635,
+        644,
+        661,
+        674,
+        679,
+        679,
+        680,
+        689,
+        694,
+        702,
+        704,
+        706,
+        713,
+        715,
+        719,
+        729,
+        729
+      ]
+    },
+    "2019": {
+      "total": 48,
+      "with_signals": 37,
+      "total_revenue": 6110966.100000001,
+      "signal_revenue": 4409867.180000001,
+      "avg_signals": [
+        286,
+        3,
+        647,
+        362,
+        2,
+        21,
+        1,
+        32,
+        15,
+        19,
+        103,
+        48,
+        467,
+        119,
+        390,
+        317,
+        152,
+        343,
+        260,
+        7,
+        244,
+        176,
+        413,
+        20,
+        37,
+        255,
+        441,
+        87,
+        4,
+        282,
+        338,
+        40,
+        248,
+        2,
+        387,
+        4,
+        257
+      ],
+      "lead_times": [
+        0,
+        0,
+        3,
+        10,
+        11,
+        15,
+        24,
+        39,
+        48,
+        49,
+        61,
+        97,
+        136,
+        177,
+        187,
+        190,
+        202,
+        215,
+        220,
+        263,
+        354,
+        548,
+        560,
+        568,
+        637,
+        641,
+        645,
+        650,
+        673,
+        674,
+        674,
+        700,
+        702,
+        709,
+        712,
+        719,
+        728
+      ]
+    },
+    "2020": {
+      "total": 40,
+      "with_signals": 19,
+      "total_revenue": 6076011.249999999,
+      "signal_revenue": 3292791.0500000003,
+      "avg_signals": [
+        21,
+        296,
+        329,
+        403,
+        75,
+        81,
+        449,
+        278,
+        229,
+        451,
+        9,
+        260,
+        46,
+        237,
+        206,
+        4,
+        139,
+        220,
+        240
+      ],
+      "lead_times": [
+        2,
+        3,
+        13,
+        57,
+        111,
+        117,
+        122,
+        152,
+        153,
+        469,
+        486,
+        493,
+        610,
+        659,
+        682,
+        686,
+        708,
+        726,
+        728
+      ]
+    },
+    "2021": {
+      "total": 42,
+      "with_signals": 28,
+      "total_revenue": 5320057.529999999,
+      "signal_revenue": 3605997.66,
+      "avg_signals": [
+        247,
+        8,
+        231,
+        560,
+        40,
+        71,
+        28,
+        124,
+        389,
+        351,
+        253,
+        177,
+        104,
+        59,
+        30,
+        242,
+        179,
+        276,
+        39,
+        375,
+        74,
+        32,
+        17,
+        38,
+        327,
+        180,
+        269,
+        287
+      ],
+      "lead_times": [
+        4,
+        39,
+        174,
+        200,
+        236,
+        246,
+        291,
+        293,
+        314,
+        341,
+        460,
+        471,
+        484,
+        486,
+        509,
+        544,
+        547,
+        562,
+        605,
+        644,
+        651,
+        698,
+        701,
+        707,
+        714,
+        719,
+        722,
+        729
+      ]
+    },
+    "2022": {
+      "total": 47,
+      "with_signals": 26,
+      "total_revenue": 3854625.51,
+      "signal_revenue": 2746203.12,
+      "avg_signals": [
+        84,
+        169,
+        45,
+        141,
+        75,
+        12,
+        174,
+        15,
+        43,
+        191,
+        128,
+        411,
+        88,
+        63,
+        265,
+        86,
+        2,
+        497,
+        10,
+        331,
+        162,
+        393,
+        362,
+        24,
+        391,
+        250
+      ],
+      "lead_times": [
+        0,
+        0,
+        2,
+        11,
+        23,
+        152,
+        174,
+        249,
+        303,
+        318,
+        401,
+        439,
+        501,
+        515,
+        603,
+        616,
+        650,
+        683,
+        684,
+        685,
+        694,
+        707,
+        719,
+        722,
+        722,
+        725
+      ]
+    },
+    "2023": {
+      "total": 29,
+      "with_signals": 20,
+      "total_revenue": 1777447.6500000001,
+      "signal_revenue": 1271587.9700000002,
+      "avg_signals": [
+        50,
+        306,
+        309,
+        46,
+        72,
+        209,
+        375,
+        462,
+        154,
+        94,
+        192,
+        77,
+        77,
+        39,
+        95,
+        117,
+        26,
+        30,
+        5,
+        92
+      ],
+      "lead_times": [
+        0,
+        124,
+        250,
+        321,
+        338,
+        345,
+        376,
+        498,
+        555,
+        614,
+        619,
+        657,
+        676,
+        679,
+        680,
+        682,
+        707,
+        707,
+        719,
+        728
+      ]
+    },
+    "2024": {
+      "total": 14,
+      "with_signals": 9,
+      "total_revenue": 782178.45,
+      "signal_revenue": 559414.94,
+      "avg_signals": [
+        450,
+        425,
+        375,
+        63,
+        3,
+        18,
+        365,
+        6,
+        10
+      ],
+      "lead_times": [
+        122,
+        123,
+        155,
+        249,
+        345,
+        390,
+        581,
+        611,
+        645
+      ]
+    },
+    "2025": {
+      "total": 6,
+      "with_signals": 6,
+      "total_revenue": 448205.02,
+      "signal_revenue": 448205.02,
+      "avg_signals": [
+        27,
+        8,
+        155,
+        9,
+        102,
+        362
+      ],
+      "lead_times": [
+        367,
+        421,
+        523,
+        534,
+        650,
+        700
+      ]
+    },
+    "2026": {
+      "total": 1,
+      "with_signals": 1,
+      "total_revenue": 8621.88,
+      "signal_revenue": 8621.88,
+      "avg_signals": [
+        224
+      ],
+      "lead_times": [
+        0
+      ]
+    }
+  },
+  "clean_sleep_timers": {
+    "geographic_expansion": {
+      "sample_size": 6420,
+      "source": "newsapi_clean_2019plus",
+      "median": 80,
+      "p10": 1,
+      "p25": 11,
+      "p75": 236,
+      "p90": 484,
+      "avg": 155,
+      "min": 0,
+      "max": 729,
+      "timer": {
+        "dormant_until_days": 1,
+        "rising_from_days": 11,
+        "peak_start_days": 43,
+        "peak_end_days": 175,
+        "declining_until_days": 484,
+        "dormant_after_days": 729
+      }
+    },
+    "capital_raising": {
+      "sample_size": 6112,
+      "source": "newsapi_clean_2019plus",
+      "median": 81,
+      "p10": 1,
+      "p25": 12,
+      "p75": 231,
+      "p90": 483,
+      "avg": 155,
+      "min": 0,
+      "max": 728,
+      "timer": {
+        "dormant_until_days": 1,
+        "rising_from_days": 12,
+        "peak_start_days": 45,
+        "peak_end_days": 174,
+        "declining_until_days": 483,
+        "dormant_after_days": 728
+      }
+    },
+    "product_launch": {
+      "sample_size": 5372,
+      "source": "newsapi_clean_2019plus",
+      "median": 81,
+      "p10": 1,
+      "p25": 12,
+      "p75": 238,
+      "p90": 492,
+      "avg": 159,
+      "min": 0,
+      "max": 729,
+      "timer": {
+        "dormant_until_days": 1,
+        "rising_from_days": 12,
+        "peak_start_days": 45,
+        "peak_end_days": 187,
+        "declining_until_days": 492,
+        "dormant_after_days": 729
+      }
+    },
+    "partnership": {
+      "sample_size": 3542,
+      "source": "newsapi_clean_2019plus",
+      "median": 97,
+      "p10": 2,
+      "p25": 22,
+      "p75": 278,
+      "p90": 515,
+      "avg": 177,
+      "min": 0,
+      "max": 729,
+      "timer": {
+        "dormant_until_days": 2,
+        "rising_from_days": 22,
+        "peak_start_days": 62,
+        "peak_end_days": 225,
+        "declining_until_days": 515,
+        "dormant_after_days": 729
+      }
+    },
+    "ma_activity": {
+      "sample_size": 3512,
+      "source": "newsapi_clean_2019plus",
+      "median": 79,
+      "p10": 1,
+      "p25": 13,
+      "p75": 241,
+      "p90": 481,
+      "avg": 157,
+      "min": 0,
+      "max": 728,
+      "timer": {
+        "dormant_until_days": 1,
+        "rising_from_days": 13,
+        "peak_start_days": 43,
+        "peak_end_days": 195,
+        "declining_until_days": 481,
+        "dormant_after_days": 728
+      }
+    },
+    "strategic_hiring": {
+      "sample_size": 2955,
+      "source": "newsapi_clean_2019plus",
+      "median": 74,
+      "p10": 1,
+      "p25": 9,
+      "p75": 257,
+      "p90": 469,
+      "avg": 157,
+      "min": 0,
+      "max": 729,
+      "timer": {
+        "dormant_until_days": 1,
+        "rising_from_days": 9,
+        "peak_start_days": 41,
+        "peak_end_days": 195,
+        "declining_until_days": 469,
+        "dormant_after_days": 729
+      }
+    },
+    "leadership_change": {
+      "sample_size": 2724,
+      "source": "newsapi_clean_2019plus",
+      "median": 67,
+      "p10": 1,
+      "p25": 6,
+      "p75": 229,
+      "p90": 475,
+      "avg": 148,
+      "min": 0,
+      "max": 729,
+      "timer": {
+        "dormant_until_days": 1,
+        "rising_from_days": 6,
+        "peak_start_days": 28,
+        "peak_end_days": 173,
+        "declining_until_days": 475,
+        "dormant_after_days": 729
+      }
+    },
+    "layoffs": {
+      "sample_size": 1744,
+      "source": "newsapi_clean_2019plus",
+      "median": 81,
+      "p10": 1,
+      "p25": 13,
+      "p75": 193,
+      "p90": 482,
+      "avg": 145,
+      "min": 0,
+      "max": 728,
+      "timer": {
+        "dormant_until_days": 1,
+        "rising_from_days": 13,
+        "peak_start_days": 48,
+        "peak_end_days": 150,
+        "declining_until_days": 482,
+        "dormant_after_days": 728
+      }
+    },
+    "restructuring": {
+      "sample_size": 1045,
+      "source": "newsapi_clean_2019plus",
+      "median": 68,
+      "p10": 2,
+      "p25": 13,
+      "p75": 196,
+      "p90": 474,
+      "avg": 143,
+      "min": 0,
+      "max": 728,
+      "timer": {
+        "dormant_until_days": 2,
+        "rising_from_days": 13,
+        "peak_start_days": 34,
+        "peak_end_days": 154,
+        "declining_until_days": 474,
+        "dormant_after_days": 728
+      }
+    }
+  },
+  "compound_effectiveness": {
+    "single_type": {
+      "count": 2,
+      "avg_revenue": 226993
+    },
+    "multi_type": {
+      "count": 185,
+      "avg_revenue": 108763
+    }
+  }
+}

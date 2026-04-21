@@ -42,7 +42,8 @@ class AufonodaTour {
     this.tooltip.innerHTML =
       '<div id="tour-header"><span id="tour-step-label"></span><button id="tour-skip">Skip tour</button></div>' +
       '<div id="tour-icon"></div><h3 id="tour-title"></h3><p id="tour-body"></p>' +
-      '<div id="tour-footer"><div id="tour-dots"></div><div id="tour-actions"><button id="tour-back">\u2190</button><button id="tour-next">Next \u2192</button></div></div>';
+      '<div id="tour-action-wrap"></div>' +
+      '<div id="tour-footer"><div id="tour-dots"></div><div id="tour-actions"><button id="tour-back">←</button><button id="tour-next">Next →</button></div></div>';
     document.body.appendChild(this.tooltip);
 
     var self = this;
@@ -58,14 +59,27 @@ class AufonodaTour {
     var isFirst = index === 0;
     var isLast = index === this.steps.length - 1;
 
-    document.getElementById('tour-icon').textContent = step.icon || '\u2726';
+    document.getElementById('tour-icon').textContent = step.icon || '✦';
     document.getElementById('tour-title').textContent = step.title;
     document.getElementById('tour-body').innerHTML = step.body;
     document.getElementById('tour-step-label').textContent = (index + 1) + ' of ' + this.steps.length;
 
+    // Inline action button (e.g. "Open My Profile")
+    var actionWrap = document.getElementById('tour-action-wrap');
+    if (actionWrap) {
+      actionWrap.innerHTML = '';
+      if (step.action && step.action.href) {
+        var a = document.createElement('a');
+        a.href = step.action.href;
+        a.textContent = step.action.label || 'Open';
+        a.style.cssText = 'display:inline-block;margin-top:10px;padding:8px 14px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:500';
+        actionWrap.appendChild(a);
+      }
+    }
+
     document.getElementById('tour-back').style.display = isFirst ? 'none' : 'inline-flex';
     var nextBtn = document.getElementById('tour-next');
-    nextBtn.textContent = isLast ? 'Got it \u2713' : 'Next \u2192';
+    nextBtn.textContent = isLast ? 'Got it ✓' : 'Next →';
     nextBtn.className = isLast ? 'btn-got-it' : '';
 
     var dots = '';
@@ -145,10 +159,12 @@ class AufonodaTour {
 
 // Tour steps for the main dashboard
 var DASHBOARD_TOUR_STEPS = [
-  { target: null, icon: '\u2726', title: 'Welcome to Autonodal', body: 'Your personal signal intelligence platform. We\'ll walk you through the key features in about 90 seconds.<br><br>Press <code>\u2192</code> to advance or <code>Esc</code> to skip.' },
-  { target: '.command-section', icon: '\u26a1', title: 'Semantic search', body: 'Search across people, companies, signals, and case studies using natural language. Try "VP engineering fintech APAC" or "companies raising capital".' },
-  { target: '#regionGrid', icon: '\ud83c\udf0d', title: 'Regional deal intelligence', body: 'Signals grouped by geography, ranked by client relationships, network density, and strategic priority. Click a region to filter.' },
-  { target: '#insightCard, #eventsDashboard', icon: '\ud83e\udded', title: 'Insights & events', body: 'Daily intelligence insights compare your network against your mission. Events show forward-looking signals \u2014 what\'s about to happen.' },
-  { target: '#networkFeed', icon: '\ud83d\udd17', title: 'Network signals', body: 'Signals at companies where you have contacts, placements, or client relationships. The proximity popup shows who has the warmest path.' },
-  { target: null, icon: '\ud83d\ude80', title: 'You\'re set up', body: 'Your feed is live. Signals appear as sources are harvested.<br><br>Hover any <span style="color:#f59e0b">\u24d8</span> icon to learn more about any feature.' },
+  { target: null, icon: '✦', title: 'Welcome to Autonodal', body: 'Your personal signal intelligence platform. We\'ll walk you through the key features in about 90 seconds.<br><br>Press <code>→</code> to advance or <code>Esc</code> to skip.' },
+  { target: '.command-section', icon: '⚡', title: 'Semantic search', body: 'Search across people, companies, signals, and case studies using natural language. Try "VP engineering fintech APAC" or "companies raising capital".' },
+  { target: '#regionGrid', icon: '🌍', title: 'Regional deal intelligence', body: 'Signals grouped by geography, ranked by client relationships, network density, and strategic priority. Click a region to filter.' },
+  { target: '#insightCard, #eventsDashboard', icon: '🧭', title: 'Insights & events', body: 'Daily intelligence insights compare your network against your mission. Events show forward-looking signals — what\'s about to happen.' },
+  { target: '#networkFeed', icon: '🔗', title: 'Network signals', body: 'Hover over proximity to see who has the warmest relationship in a huddle or company instance, share or claim the signal, or generate dispatch content from the card.' },
+  { target: '.masthead-user', icon: '🔌', title: 'Wire up your network', body: 'Next, head to <strong>My Profile &amp; Data</strong> to connect the data that powers your intelligence:<br><br>• <strong>LinkedIn</strong> — import connections, map your 1st-degree network<br>• <strong>Gmail / Calendar</strong> — auto-detect warm intros and interaction recency<br>• <strong>CRM</strong> (HubSpot, Ezekia) — sync contacts, accounts, and pipeline<br>• <strong>Sales CSV / Xero</strong> — revenue history and client relationships<br><br>Each connection unlocks a layer: the platform triangulates relationship overlaps, market activity, and timing to surface where your network is active right now.', action: { label: 'Open My Profile →', href: '/profile.html' } },
+  { target: null, icon: '🎯', title: 'Deploy your mission', body: 'From your profile, set your <strong>mission context</strong> — what signals are you seeking and why?<br><br>• <strong>Investment</strong> — capital raises, M&amp;A, founder activity<br>• <strong>Sales &amp; BD</strong> — expansion, buying signals, partnerships<br>• <strong>Talent &amp; People</strong> — leadership moves, team changes, capital raises<br>• <strong>Advisory &amp; Partnerships</strong> — strategic moves, restructuring<br><br>Your mission tunes the feed, ranks opportunities, and shapes the daily brief. You can adjust anytime.' },
+  { target: null, icon: '🚀', title: 'You\'re set up', body: 'Your feed is live. Signals appear as sources are harvested.<br><br>Hover any <span style="color:#f59e0b">ⓘ</span> icon to learn more about any feature.' },
 ];

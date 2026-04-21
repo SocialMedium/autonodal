@@ -44,6 +44,30 @@
     }
   }
 
+  // ── Inject consistent nav across all pages ──
+  var nav = document.querySelector('.masthead-nav');
+  if (!nav) {
+    // Some pages use Tailwind nav — find it
+    nav = document.querySelector('header nav');
+  }
+  if (nav && nav.classList.contains('masthead-nav')) {
+    var NAV_ITEMS = [
+      { href: '/index.html', label: 'Signals' },
+      { href: '/people.html', label: 'People' },
+      { href: '/companies.html', label: 'Companies' },
+      { href: '/dispatches.html', label: 'Dispatch' },
+      { href: '/pipeline.html', label: 'Pipeline' },
+      { href: '/network.html', label: 'Network' },
+      { href: '/case-studies.html', label: 'Case Studies' },
+      { href: '/huddles.html', label: 'Huddles' },
+    ];
+    var currentPath = location.pathname;
+    nav.innerHTML = NAV_ITEMS.map(function(item) {
+      var isActive = currentPath === item.href || (item.href === '/index.html' && (currentPath === '/' || currentPath === '/index.html'));
+      return '<a href="' + item.href + '"' + (isActive ? ' class="active"' : '') + '>' + item.label + '</a>';
+    }).join('');
+  }
+
   // Fetch fresh tenant name (updates cache, fixes stale brand)
   var token = localStorage.getItem('ml_token');
   if (!token) return;

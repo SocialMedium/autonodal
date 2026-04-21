@@ -1,0 +1,182 @@
+{
+  "geographic_expansion": {
+    "sample_size": 6420,
+    "source": "newsapi_clean_2019plus",
+    "median": 80,
+    "p10": 1,
+    "p25": 11,
+    "p75": 236,
+    "p90": 484,
+    "avg": 155,
+    "min": 0,
+    "max": 729,
+    "timer": {
+      "dormant_until_days": 1,
+      "rising_from_days": 11,
+      "peak_start_days": 43,
+      "peak_end_days": 175,
+      "declining_until_days": 484,
+      "dormant_after_days": 729
+    }
+  },
+  "capital_raising": {
+    "sample_size": 6112,
+    "source": "newsapi_clean_2019plus",
+    "median": 81,
+    "p10": 1,
+    "p25": 12,
+    "p75": 231,
+    "p90": 483,
+    "avg": 155,
+    "min": 0,
+    "max": 728,
+    "timer": {
+      "dormant_until_days": 1,
+      "rising_from_days": 12,
+      "peak_start_days": 45,
+      "peak_end_days": 174,
+      "declining_until_days": 483,
+      "dormant_after_days": 728
+    }
+  },
+  "product_launch": {
+    "sample_size": 5372,
+    "source": "newsapi_clean_2019plus",
+    "median": 81,
+    "p10": 1,
+    "p25": 12,
+    "p75": 238,
+    "p90": 492,
+    "avg": 159,
+    "min": 0,
+    "max": 729,
+    "timer": {
+      "dormant_until_days": 1,
+      "rising_from_days": 12,
+      "peak_start_days": 45,
+      "peak_end_days": 187,
+      "declining_until_days": 492,
+      "dormant_after_days": 729
+    }
+  },
+  "partnership": {
+    "sample_size": 3542,
+    "source": "newsapi_clean_2019plus",
+    "median": 97,
+    "p10": 2,
+    "p25": 22,
+    "p75": 278,
+    "p90": 515,
+    "avg": 177,
+    "min": 0,
+    "max": 729,
+    "timer": {
+      "dormant_until_days": 2,
+      "rising_from_days": 22,
+      "peak_start_days": 62,
+      "peak_end_days": 225,
+      "declining_until_days": 515,
+      "dormant_after_days": 729
+    }
+  },
+  "ma_activity": {
+    "sample_size": 3512,
+    "source": "newsapi_clean_2019plus",
+    "median": 79,
+    "p10": 1,
+    "p25": 13,
+    "p75": 241,
+    "p90": 481,
+    "avg": 157,
+    "min": 0,
+    "max": 728,
+    "timer": {
+      "dormant_until_days": 1,
+      "rising_from_days": 13,
+      "peak_start_days": 43,
+      "peak_end_days": 195,
+      "declining_until_days": 481,
+      "dormant_after_days": 728
+    }
+  },
+  "strategic_hiring": {
+    "sample_size": 2955,
+    "source": "newsapi_clean_2019plus",
+    "median": 74,
+    "p10": 1,
+    "p25": 9,
+    "p75": 257,
+    "p90": 469,
+    "avg": 157,
+    "min": 0,
+    "max": 729,
+    "timer": {
+      "dormant_until_days": 1,
+      "rising_from_days": 9,
+      "peak_start_days": 41,
+      "peak_end_days": 195,
+      "declining_until_days": 469,
+      "dormant_after_days": 729
+    }
+  },
+  "leadership_change": {
+    "sample_size": 2724,
+    "source": "newsapi_clean_2019plus",
+    "median": 67,
+    "p10": 1,
+    "p25": 6,
+    "p75": 229,
+    "p90": 475,
+    "avg": 148,
+    "min": 0,
+    "max": 729,
+    "timer": {
+      "dormant_until_days": 1,
+      "rising_from_days": 6,
+      "peak_start_days": 28,
+      "peak_end_days": 173,
+      "declining_until_days": 475,
+      "dormant_after_days": 729
+    }
+  },
+  "layoffs": {
+    "sample_size": 1744,
+    "source": "newsapi_clean_2019plus",
+    "median": 81,
+    "p10": 1,
+    "p25": 13,
+    "p75": 193,
+    "p90": 482,
+    "avg": 145,
+    "min": 0,
+    "max": 728,
+    "timer": {
+      "dormant_until_days": 1,
+      "rising_from_days": 13,
+      "peak_start_days": 48,
+      "peak_end_days": 150,
+      "declining_until_days": 482,
+      "dormant_after_days": 728
+    }
+  },
+  "restructuring": {
+    "sample_size": 1045,
+    "source": "newsapi_clean_2019plus",
+    "median": 68,
+    "p10": 2,
+    "p25": 13,
+    "p75": 196,
+    "p90": 474,
+    "avg": 143,
+    "min": 0,
+    "max": 728,
+    "timer": {
+      "dormant_until_days": 2,
+      "rising_from_days": 13,
+      "peak_start_days": 34,
+      "peak_end_days": 154,
+      "declining_until_days": 474,
+      "dormant_after_days": 728
+    }
+  }
+}

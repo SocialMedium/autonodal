@@ -1024,6 +1024,22 @@ app.listen(PORT, async () => {
     if (!e.message.includes('already exists')) console.error('  Work artifacts migration:', e.message);
   }
 
+  // Lead engine schema (polarity, lifecycle, claims, outcomes, relationship_state)
+  const leadEngineMigrations = [
+    'sql/migration_signal_polarity.sql',
+    'sql/migration_companies_relationship_state.sql',
+    'sql/migration_lead_claims.sql',
+  ];
+  for (const migPath of leadEngineMigrations) {
+    try {
+      const sql = require('fs').readFileSync(require('path').join(__dirname, migPath), 'utf8');
+      await db.query(sql);
+      console.log(`  ✅ ${migPath.split('/').pop()} applied`);
+    } catch (e) {
+      if (!e.message.includes('already exists')) console.error(`  ${migPath}:`, e.message);
+    }
+  }
+
   } catch (e) { console.error('Startup migration error:', e.message); }
   }, 5000); // 5s delay — let healthcheck pass first
 });

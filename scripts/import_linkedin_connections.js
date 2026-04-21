@@ -135,14 +135,25 @@ async function importConnections(csvPath, userId) {
     }
   }
 
-  // ─── Load existing people for matching ───
+  // ─── Resolve tenant from user ───
+  let tenantId = '00000000-0000-0000-0000-000000000001'; // default
+  if (importUserId) {
+    const tenantResult = await pool.query('SELECT tenant_id FROM users WHERE id = $1', [importUserId]);
+    if (tenantResult.rows.length > 0 && tenantResult.rows[0].tenant_id) {
+      tenantId = tenantResult.rows[0].tenant_id;
+    }
+  }
+  console.log(`  Tenant: ${tenantId}`);
+
+  // ─── Load existing people for matching (tenant-scoped) ───
   console.log('Loading existing people from database...');
   const peopleResult = await pool.query(`
-    SELECT id, full_name, first_name, last_name, linkedin_url, 
+    SELECT id, full_name, first_name, last_name, linkedin_url,
            current_company_name, email, source_id
-    FROM people 
+    FROM people
     WHERE full_name IS NOT NULL AND full_name != ''
-  `);
+      AND tenant_id = $1
+  `, [tenantId]);
   const dbPeople = peopleResult.rows;
   console.log(`  Loaded ${dbPeople.length} people`);
 
@@ -354,9 +365,9 @@ async function importConnections(csvPath, userId) {
           strength = Math.min(1.0, strength + (matchConfidence - 0.5) * 0.2);
 
           const result = await pool.query(`
-            INSERT INTO team_proximity 
-              (person_id, team_member_id, proximity_type, source, strength, context, connected_at, metadata)
-            VALUES ($1, $2, 'linkedin_connection', 'linkedin_import', $3, $4, $5, $6)
+            INSERT INTO team_proximity
+              (person_id, team_member_id, proximity_type, source, strength, context, connected_at, metadata, tenant_id)
+            VALUES ($1, $2, 'linkedin_connection', 'linkedin_import', $3, $4, $5, $6, $7)
             ON CONFLICT (person_id, team_member_id, proximity_type, source) DO UPDATE SET
               strength = GREATEST(team_proximity.strength, EXCLUDED.strength),
               context = EXCLUDED.context,
@@ -374,7 +385,8 @@ async function importConnections(csvPath, userId) {
               match_method: matchMethod,
               match_confidence: matchConfidence,
               connected_on: conn['Connected On']
-            })
+            }),
+            tenantId
           ]);
           
           if (result.rows[0]?.is_insert) {

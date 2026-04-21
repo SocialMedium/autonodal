@@ -15,7 +15,7 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
   const SIGNIN_SCOPES = 'openid email profile';
   const GMAIL_CONNECT_SCOPES = 'openid email profile https://www.googleapis.com/auth/gmail.readonly';
   const DRIVE_CONNECT_SCOPES = 'openid email profile https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents.readonly https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/presentations.readonly';
-  const GOOGLE_CONNECT_SCOPES = 'openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/calendar.readonly';
+  const GOOGLE_CONNECT_SCOPES = 'openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents.readonly https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/presentations.readonly';
 
   // ═══════════════════════════════════════════════════════════════════════════════
   // 1. GET /api/auth/google — initiate Google OAuth
@@ -25,12 +25,19 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
     if (!process.env.GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' });
     const redirectUri = process.env.GOOGLE_REDIRECT_URL || process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
     const returnTo = req.query.return_to || '/index.html';
+    // Allow scope override via ?scope=drive to request Drive in addition to default scopes
+    let scope = GOOGLE_CONNECT_SCOPES;
+    if (req.query.scope === 'drive' || req.query.include_drive === 'true') {
+      scope = GOOGLE_CONNECT_SCOPES + ' https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents.readonly https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/presentations.readonly';
+    }
     const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
       client_id: process.env.GOOGLE_CLIENT_ID,
       redirect_uri: redirectUri,
       response_type: 'code',
-      scope: GOOGLE_CONNECT_SCOPES,
+      scope: scope,
       access_type: 'offline',
+      prompt: 'consent',
+      include_granted_scopes: 'true',
       state: returnTo
     });
     res.redirect(authUrl);
@@ -180,8 +187,10 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
       // Clean up expired sessions
       await platformPool.query('DELETE FROM sessions WHERE expires_at < NOW()');
 
-      // Auto-connect Google account on every sign-in (full scopes requested at login)
+      // Auto-connect Google account on every sign-in
+      // Store the ACTUAL granted scopes from Google (tokenData.scope) — preserves prior Drive grants
       if (tokenData.access_token) {
+        const grantedScopes = (tokenData.scope || GOOGLE_CONNECT_SCOPES).split(' ').filter(Boolean);
         await platformPool.query(`
           INSERT INTO user_google_accounts (user_id, google_email, access_token, refresh_token, token_expires_at, scopes, sync_enabled, created_at, updated_at)
           VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW())
@@ -189,7 +198,10 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
             access_token = EXCLUDED.access_token,
             refresh_token = COALESCE(EXCLUDED.refresh_token, user_google_accounts.refresh_token),
             token_expires_at = EXCLUDED.token_expires_at,
-            scopes = EXCLUDED.scopes,
+            -- Merge granted scopes with any previously-stored scopes (union)
+            scopes = (
+              SELECT ARRAY(SELECT DISTINCT unnest(COALESCE(user_google_accounts.scopes, ARRAY[]::text[]) || EXCLUDED.scopes))
+            ),
             sync_enabled = true,
             updated_at = NOW()
         `, [
@@ -198,7 +210,7 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
           tokenData.access_token,
           tokenData.refresh_token || null,
           tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
-          GOOGLE_CONNECT_SCOPES.split(' ')
+          grantedScopes
         ]).catch((e) => console.error('Google account upsert:', e.message));
       }
 
@@ -366,7 +378,8 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
       });
       const userInfo = await userInfoRes.json();
 
-      // Store in user_google_accounts
+      // Store in user_google_accounts — use actual granted scopes from Google, merge with any existing
+      const grantedScopes = (tokens.scope || GOOGLE_CONNECT_SCOPES).split(' ').filter(Boolean);
       await platformPool.query(`
         INSERT INTO user_google_accounts (user_id, google_email, access_token, refresh_token, token_expires_at, scopes, sync_enabled, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW())
@@ -374,7 +387,9 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
           access_token = EXCLUDED.access_token,
           refresh_token = COALESCE(EXCLUDED.refresh_token, user_google_accounts.refresh_token),
           token_expires_at = EXCLUDED.token_expires_at,
-          scopes = EXCLUDED.scopes,
+          scopes = (
+            SELECT ARRAY(SELECT DISTINCT unnest(COALESCE(user_google_accounts.scopes, ARRAY[]::text[]) || EXCLUDED.scopes))
+          ),
           sync_enabled = true,
           updated_at = NOW()
       `, [
@@ -383,7 +398,7 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
         tokens.access_token,
         tokens.refresh_token || null,
         tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000) : null,
-        GOOGLE_CONNECT_SCOPES.split(' ')
+        grantedScopes
       ]);
 
       console.log(`✅ Google connected (Gmail + Contacts + Calendar): ${userInfo.email} for user ${stateData.userId}`);

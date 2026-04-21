@@ -13,8 +13,7 @@ const pool = new Pool({
 });
 
 const feeds = [
-  // ── Wire Services (highest signal yield) ──
-  ['Business Wire', 'https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeEFpRXx4=', 'wire_service'],
+  // Business Wire already in catalog (10 sector feeds)
 
   // ── Major Business Press ──
   ['Forbes Business', 'https://www.forbes.com/business/feed/', 'news'],

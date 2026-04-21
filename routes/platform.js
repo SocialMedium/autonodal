@@ -2275,34 +2275,67 @@ router.get('/api/network/graph', authenticateToken, async (req, res) => {
       // Team members
       db.query(`SELECT id, name, email, role FROM users WHERE tenant_id = $1 ORDER BY name`, [tenantId]),
 
-      // Top contacts by proximity strength (limit to strongest connections)
+      // Top contacts — balanced mix of hot/warm/cold by proximity strength
       db.query(`
-        SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.current_company_id,
-               p.seniority_level, p.location,
-               tp.team_member_id, tp.relationship_strength, tp.relationship_type,
-               u.name as connector_name,
-               ps.timing_score, ps.receptivity_score, ps.flight_risk_score
-        FROM team_proximity tp
-        JOIN people p ON p.id = tp.person_id AND p.tenant_id = $1
-        JOIN users u ON u.id = tp.team_member_id
-        LEFT JOIN person_scores ps ON ps.person_id = p.id AND ps.tenant_id = $1
-        WHERE tp.tenant_id = $1 AND tp.relationship_strength >= 0.3
-        ORDER BY tp.relationship_strength DESC
-        LIMIT 150
+        WITH ranked AS (
+          SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.current_company_id,
+                 p.seniority_level, p.location, p.country_code,
+                 tp.team_member_id, tp.relationship_strength, tp.relationship_type,
+                 u.name as connector_name,
+                 ps.timing_score, ps.receptivity_score, ps.flight_risk_score,
+                 tp.last_interaction_date,
+                 GREATEST(tp.last_interaction_date, (SELECT MAX(i.interaction_at) FROM interactions i WHERE i.person_id = p.id AND i.tenant_id = $1)) AS last_interaction_at,
+                 CASE
+                   WHEN GREATEST(tp.last_interaction_date, (SELECT MAX(i.interaction_at) FROM interactions i WHERE i.person_id = p.id AND i.tenant_id = $1)) > NOW() - INTERVAL '90 days' THEN 'hot'
+                   WHEN GREATEST(tp.last_interaction_date, (SELECT MAX(i.interaction_at) FROM interactions i WHERE i.person_id = p.id AND i.tenant_id = $1)) > NOW() - INTERVAL '730 days' THEN 'warm'
+                   ELSE 'cold'
+                 END AS heat_tier,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY CASE
+                     WHEN GREATEST(tp.last_interaction_date, (SELECT MAX(i.interaction_at) FROM interactions i WHERE i.person_id = p.id AND i.tenant_id = $1)) > NOW() - INTERVAL '90 days' THEN 'hot'
+                     WHEN GREATEST(tp.last_interaction_date, (SELECT MAX(i.interaction_at) FROM interactions i WHERE i.person_id = p.id AND i.tenant_id = $1)) > NOW() - INTERVAL '730 days' THEN 'warm'
+                     ELSE 'cold'
+                   END
+                   ORDER BY tp.relationship_strength DESC
+                 ) AS tier_rank
+          FROM team_proximity tp
+          JOIN people p ON p.id = tp.person_id AND p.tenant_id = $1
+          JOIN users u ON u.id = tp.team_member_id
+          LEFT JOIN person_scores ps ON ps.person_id = p.id AND ps.tenant_id = $1
+          WHERE tp.tenant_id = $1 AND tp.relationship_strength >= 0.2
+        )
+        SELECT * FROM ranked
+        WHERE (heat_tier = 'hot' AND tier_rank <= 200)
+           OR (heat_tier = 'warm' AND tier_rank <= 150)
+           OR (heat_tier = 'cold' AND tier_rank <= 150)
+        ORDER BY
+          CASE heat_tier WHEN 'hot' THEN 0 WHEN 'warm' THEN 1 ELSE 2 END,
+          relationship_strength DESC
       `, [tenantId]),
 
-      // Client companies with signal + people counts
+      // Client companies — hot/warm first, then cold
       db.query(`
-        SELECT a.id as account_id, a.name, a.relationship_tier, a.company_id,
-               c.sector, c.geography,
-               (SELECT COUNT(*) FROM people p WHERE p.current_company_id = a.company_id AND p.tenant_id = $1) as people_count,
-               (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = a.company_id AND (se.tenant_id IS NULL OR se.tenant_id = $1) AND se.detected_at > NOW() - INTERVAL '30 days') as signal_count,
-               (SELECT COALESCE(SUM(cv.placement_fee), 0) FROM conversions cv WHERE cv.client_id = a.id AND cv.tenant_id = $1) as total_revenue
-        FROM accounts a
-        LEFT JOIN companies c ON c.id = a.company_id
-        WHERE a.tenant_id = $1 AND a.relationship_status = 'active'
-        ORDER BY a.relationship_tier DESC NULLS LAST, a.name
-        LIMIT 50
+        WITH client_activity AS (
+          SELECT a.id as account_id, a.name, a.relationship_tier, a.company_id,
+                 c.sector, c.geography,
+                 (SELECT COUNT(*) FROM people p WHERE p.current_company_id = a.company_id AND p.tenant_id = $1) as people_count,
+                 (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = a.company_id AND (se.tenant_id IS NULL OR se.tenant_id = $1) AND se.detected_at > NOW() - INTERVAL '30 days') as signal_count,
+                 (SELECT COALESCE(SUM(cv.placement_fee), 0) FROM conversions cv WHERE cv.client_id = a.id) as total_revenue,
+                 (SELECT MAX(cv.start_date) FROM conversions cv WHERE cv.client_id = a.id) as last_placement_date
+          FROM accounts a
+          LEFT JOIN companies c ON c.id = a.company_id
+          WHERE a.tenant_id = $1
+        )
+        SELECT *,
+          CASE
+            WHEN last_placement_date >= CURRENT_DATE - 90 THEN 0
+            WHEN last_placement_date >= CURRENT_DATE - 730 THEN 1
+            WHEN signal_count > 0 THEN 1
+            ELSE 2
+          END AS heat_tier
+        FROM client_activity
+        ORDER BY heat_tier, relationship_tier DESC NULLS LAST, total_revenue DESC
+        LIMIT 200
       `, [tenantId]),
 
       // Sector clusters (from network density)
@@ -2351,19 +2384,34 @@ router.get('/api/network/graph', authenticateToken, async (req, res) => {
         // Normalize geography to region code
         let region = null;
         const geo = (cl.geography || '').toLowerCase();
-        if (/australia|oceania|nz|new zealand/i.test(geo)) region = 'AU';
-        else if (/singapore|sea|asia|asean|hong kong|japan|india/i.test(geo)) region = 'SG';
-        else if (/uk|united kingdom|europe|london|eu|ireland/i.test(geo)) region = 'UK';
-        else if (/us|usa|america|canada|north america/i.test(geo)) region = 'US';
+        if (/australia|oceania|nz|new zealand|oce|queensland|victoria|brisbane/i.test(geo)) region = 'AU';
+        else if (/singapore|sea|asia|asean|hong kong|japan|india|apac/i.test(geo)) region = 'SG';
+        else if (/uk|united kingdom|europe|london|eu|ireland|eur|italy|hungary|emea/i.test(geo)) region = 'UK';
+        else if (/us|usa|america|canada|north america|amer|new york|texas|washington/i.test(geo)) region = 'US';
+        else if (/mena|middle east|africa|dubai|uae|tanzania|russia/i.test(geo)) region = 'MENA';
+
+        // Infer billing entity from account name when geography is missing
+        if (!region) {
+          const name = (cl.name || '').toLowerCase();
+          if (/\bpty\b/.test(name)) region = 'AU';
+          else if (/\bpte\b/.test(name)) region = 'SG';
+          else if (/\b(plc|uk|emeia)\b/.test(name)) region = 'UK';
+          else if (/\b(inc|llc|usa|americas)\b/.test(name)) region = 'US';
+        }
+
+        // Normalize sector for clustering
+        const sectorNorm = (cl.sector || '').toLowerCase().replace(/[^a-z_]/g, '') || null;
 
         nodes.push({
           id: nid, type: 'client', label: cl.name,
-          tier: cl.relationship_tier, sector: cl.sector, geography: cl.geography,
+          sector: sectorNorm,
+          tier: cl.relationship_tier, geography: cl.geography,
           region: region,
           peopleCount: parseInt(cl.people_count) || 0,
           signalCount: parseInt(cl.signal_count) || 0,
           totalRevenue: parseFloat(cl.total_revenue) || 0,
-          companyId: cl.company_id, accountId: cl.account_id
+          companyId: cl.company_id, accountId: cl.account_id,
+          lastPlacementDate: cl.last_placement_date
         });
         addedNodes.add(nid);
       }
@@ -2372,7 +2420,20 @@ router.get('/api/network/graph', authenticateToken, async (req, res) => {
     // Contact nodes + links to team + links to companies
     const contactsByPerson = new Map();
     contacts.forEach(c => {
-      if (!contactsByPerson.has(c.id)) contactsByPerson.set(c.id, { ...c, teamLinks: [] });
+      if (!contactsByPerson.has(c.id)) {
+        contactsByPerson.set(c.id, { ...c, teamLinks: [] });
+      } else {
+        // Merge: keep the most recent interaction date across all rows
+        const existing = contactsByPerson.get(c.id);
+        const newDate = c.last_interaction_at || c.last_interaction_date;
+        const oldDate = existing.last_interaction_at || existing.last_interaction_date;
+        if (newDate && (!oldDate || new Date(newDate) > new Date(oldDate))) {
+          existing.last_interaction_at = newDate;
+        }
+        // Keep best location/country data
+        if (!existing.location && c.location) existing.location = c.location;
+        if (!existing.country_code && c.country_code) existing.country_code = c.country_code;
+      }
       contactsByPerson.get(c.id).teamLinks.push({
         userId: c.team_member_id, strength: c.relationship_strength, type: c.relationship_type
       });
@@ -2384,14 +2445,24 @@ router.get('/api/network/graph', authenticateToken, async (req, res) => {
 
     contactsByPerson.forEach((c, personId) => {
       const nid = 'contact-' + personId;
-      // Derive region from company geography or person location
-      let region = companyGeoMap.get(c.current_company_id) || null;
+      // Derive region from country_code, company geography, or person location
+      let region = null;
+      const cc = (c.country_code || '').toUpperCase();
+      if (cc) {
+        if (['AU', 'NZ'].includes(cc)) region = 'AU';
+        else if (['SG', 'HK', 'JP', 'IN', 'CN', 'KR', 'TW', 'TH', 'VN', 'ID', 'MY', 'PH'].includes(cc)) region = 'SG';
+        else if (['GB', 'IE', 'DE', 'FR', 'NL', 'ES', 'IT', 'SE', 'CH', 'AT', 'BE', 'DK', 'NO', 'FI', 'PT', 'PL'].includes(cc)) region = 'UK';
+        else if (['US', 'CA'].includes(cc)) region = 'US';
+        else if (['AE', 'SA', 'QA', 'BH', 'KW', 'OM', 'IL', 'EG', 'ZA', 'NG', 'KE'].includes(cc)) region = 'MENA';
+      }
+      if (!region) region = companyGeoMap.get(c.current_company_id) || null;
       if (!region && c.location) {
         const loc = c.location.toLowerCase();
-        if (/australia|sydney|melbourne|brisbane|perth|auckland|nz/i.test(loc)) region = 'AU';
-        else if (/singapore|jakarta|bangkok|kuala lumpur|manila|vietnam|sea/i.test(loc)) region = 'SG';
-        else if (/london|uk|united kingdom|dublin|amsterdam|paris|berlin|europe/i.test(loc)) region = 'UK';
-        else if (/us|usa|new york|san francisco|chicago|boston|los angeles|america|canada|toronto/i.test(loc)) region = 'US';
+        if (/australia|sydney|melbourne|brisbane|perth|adelaide|auckland|new zealand/i.test(loc)) region = 'AU';
+        else if (/singapore|hong kong|tokyo|mumbai|delhi|shanghai|seoul|bangkok|jakarta|kuala lumpur|manila|vietnam|taipei|asia|sea|apac/i.test(loc)) region = 'SG';
+        else if (/london|manchester|dublin|amsterdam|paris|berlin|munich|zurich|stockholm|europe|united kingdom/i.test(loc)) region = 'UK';
+        else if (/new york|san francisco|los angeles|chicago|boston|seattle|austin|toronto|vancouver|america|canada/i.test(loc)) region = 'US';
+        else if (/dubai|abu dhabi|riyadh|doha|johannesburg|cape town|nairobi|cairo|tel aviv|lagos/i.test(loc)) region = 'MENA';
       }
       if (!addedNodes.has(nid)) {
         nodes.push({
@@ -2401,6 +2472,7 @@ router.get('/api/network/graph', authenticateToken, async (req, res) => {
           seniority: c.seniority_level,
           bestStrength: Math.max(...c.teamLinks.map(l => l.strength)),
           timingScore: c.timing_score, receptivityScore: c.receptivity_score,
+          lastInteractionAt: c.last_interaction_at || c.last_interaction_date,
           region: region
         });
         addedNodes.add(nid);
@@ -3332,7 +3404,7 @@ router.get('/api/search', authenticateToken, endpointLimit(30), async (req, res)
       }
 
       // SQL fallback: exact name match (catches people that Qdrant missed or ranked low)
-      const existingIds = new Set(results.people.map(p => p.id));
+      // Exact matches get the highest score and sort to the top
       const { rows: nameFallback } = await db.query(`
         SELECT p.id, p.full_name, p.current_title, p.current_company_name, p.headline,
                p.location, p.seniority_level, p.source, p.email, p.linkedin_url, p.current_company_id,
@@ -3341,15 +3413,31 @@ router.get('/api/search', authenticateToken, endpointLimit(30), async (req, res)
         LEFT JOIN companies c ON c.id = p.current_company_id
         WHERE p.tenant_id = $1 AND p.full_name ILIKE $2
           AND (p.current_title IS NOT NULL OR p.headline IS NOT NULL OR p.source = 'ezekia')
-        LIMIT 10
-      `, [req.tenant_id, `%${q}%`]).catch(() => ({ rows: [] }));
+        ORDER BY CASE WHEN LOWER(p.full_name) = LOWER($3) THEN 0 ELSE 1 END, p.full_name
+        LIMIT 20
+      `, [req.tenant_id, `%${q}%`, q]).catch(() => ({ rows: [] }));
+
+      // Build a map of existing people by id so we can upgrade their scores
+      const existingById = new Map(results.people.map(p => [p.id, p]));
 
       for (const p of nameFallback) {
-        if (!existingIds.has(p.id)) {
-          results.people.push({ ...p, match_score: 95, match_type: 'name' });
-          existingIds.add(p.id);
+        const isExactMatch = (p.full_name || '').toLowerCase() === q.toLowerCase();
+        const score = isExactMatch ? 99 : 90;
+        const existing = existingById.get(p.id);
+        if (existing) {
+          // Upgrade score for name-matched results already returned by Qdrant
+          if (score > (existing.match_score || 0)) {
+            existing.match_score = score;
+            existing.match_type = isExactMatch ? 'exact_name' : 'name';
+          }
+        } else {
+          results.people.push({ ...p, match_score: score, match_type: isExactMatch ? 'exact_name' : 'name' });
+          existingById.set(p.id, results.people[results.people.length - 1]);
         }
       }
+
+      // Re-sort by match_score so exact/name matches float to the top
+      results.people.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
     }
 
     // Search companies
@@ -3378,7 +3466,7 @@ router.get('/api/search', authenticateToken, endpointLimit(30), async (req, res)
                  cas.adjacency_score, cas.warmest_contact_name
           FROM companies c
           LEFT JOIN company_adjacency_scores cas ON LOWER(TRIM(cas.company_name)) = LOWER(TRIM(c.name))
-          WHERE c.id = ANY($1::uuid[]) AND c.tenant_id = $2
+          WHERE c.id = ANY($1::uuid[]) AND (c.tenant_id = $2 OR c.tenant_id IS NULL)
         `, [compIds, req.tenant_id]);
 
         const compMap = new Map(companies.map(c => [c.id, c]));
@@ -3395,6 +3483,44 @@ router.get('/api/search', authenticateToken, endpointLimit(30), async (req, res)
           .filter(Boolean);
         }
       }
+
+      // SQL fallback: exact name match (catches companies that Qdrant missed or ranked low)
+      const existingCompIds = new Set(results.companies.map(c => c.id));
+      const { rows: compNameFallback } = await db.query(`
+        SELECT c.id, c.name, c.sector, c.geography, c.domain, c.is_client,
+               c.employee_count_band, c.description,
+               (SELECT COUNT(*) FROM signal_events se WHERE se.company_id = c.id AND (se.tenant_id IS NULL OR se.tenant_id = $1)) AS signal_count,
+               (SELECT COUNT(*) FROM people p WHERE p.current_company_id = c.id AND p.tenant_id = $1) AS people_count,
+               (SELECT COUNT(DISTINCT tp.person_id) FROM team_proximity tp
+                 JOIN people p2 ON p2.id = tp.person_id AND p2.current_company_id = c.id AND p2.tenant_id = $1
+                 WHERE tp.tenant_id = $1 AND tp.relationship_strength >= 0.3) AS network_connections,
+               (SELECT a.relationship_tier FROM accounts a WHERE (a.company_id = c.id OR LOWER(a.name) = LOWER(c.name)) AND a.tenant_id = $1 LIMIT 1) AS client_tier
+        FROM companies c
+        WHERE (c.tenant_id = $1 OR c.tenant_id IS NULL) AND c.name ILIKE $2
+        ORDER BY CASE WHEN LOWER(c.name) = LOWER($3) THEN 0 ELSE 1 END, c.name
+        LIMIT 10
+      `, [req.tenant_id, `%${q}%`, q]).catch(() => ({ rows: [] }));
+
+      // Build map for in-place score upgrades
+      const existingCompById = new Map(results.companies.map(c => [c.id, c]));
+
+      for (const c of compNameFallback) {
+        const isExactMatch = (c.name || '').toLowerCase() === q.toLowerCase();
+        const score = isExactMatch ? 99 : 90;
+        const existing = existingCompById.get(c.id);
+        if (existing) {
+          if (score > (existing.match_score || 0)) {
+            existing.match_score = score;
+            existing.match_type = isExactMatch ? 'exact_name' : 'name';
+          }
+        } else {
+          results.companies.push({ ...c, match_score: score, match_type: isExactMatch ? 'exact_name' : 'name' });
+          existingCompById.set(c.id, results.companies[results.companies.length - 1]);
+        }
+      }
+
+      // Re-sort by match_score so exact/name matches float to the top
+      results.companies.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
     }
 
     // Search documents
@@ -6073,6 +6199,36 @@ router.get('/api/profile/stats', authenticateToken, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Mission — load user's signal intents and statement
+router.get('/api/profile/mission', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await platformPool.query(
+      `SELECT preferences FROM users WHERE id = $1`,
+      [req.user.user_id]
+    );
+    const prefs = rows[0]?.preferences || {};
+    const mission = prefs.mission || { intents: [], statement: '' };
+    res.json(mission);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Mission — save user's signal intents and statement
+router.post('/api/profile/mission', authenticateToken, async (req, res) => {
+  try {
+    const { intents = [], statement = '' } = req.body;
+    const validIntents = ['sales', 'talent', 'investment', 'advisory', 'portfolio', 'market_intel'];
+    const cleanIntents = intents.filter(i => validIntents.includes(i));
+    const cleanStatement = String(statement).substring(0, 500);
+
+    await platformPool.query(
+      `UPDATE users SET preferences = jsonb_set(COALESCE(preferences, '{}'::jsonb), '{mission}', $1::jsonb), updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify({ intents: cleanIntents, statement: cleanStatement, updated_at: new Date().toISOString() }), req.user.user_id]
+    );
+
+    res.json({ success: true, intents: cleanIntents, statement: cleanStatement });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // User feeds — list
 router.get('/api/profile/feeds', authenticateToken, async (req, res) => {
   try {
@@ -7627,7 +7783,8 @@ router.get('/api/pipeline/board', authenticateToken, async (req, res) => {
   try {
     const db = new TenantDB(req.tenant_id);
     const { owner, region, signal_type, sector } = req.query;
-    let where = "d.tenant_id = $1 AND COALESCE(d.pipeline_stage, 'new') != 'archived'";
+    // Pipeline only shows claimed signals — unclaimed stay in the signal feed
+    let where = "d.tenant_id = $1 AND d.claimed_by IS NOT NULL AND COALESCE(d.pipeline_stage, 'new') != 'archived'";
     const params = [req.tenant_id];
     let idx = 2;
     if (owner) { where += ` AND d.claimed_by = $${idx++}`; params.push(owner); }
@@ -7696,7 +7853,7 @@ router.get('/api/pipeline/board', authenticateToken, async (req, res) => {
         MAX(COALESCE(se.confidence_score, 0.5)) * 30
         AS lead_score
       FROM signal_dispatches d
-      LEFT JOIN signal_events se ON se.id = d.signal_event_id
+      LEFT JOIN signal_events se ON se.id = d.signal_event_id AND (se.tenant_id IS NULL OR se.tenant_id = d.tenant_id)
       LEFT JOIN companies c ON c.id = d.company_id
       WHERE ${where}
       GROUP BY d.company_id, d.company_name, c.sector, c.geography, c.is_client, d.tenant_id
@@ -7719,7 +7876,8 @@ router.get('/api/pipeline/board', authenticateToken, async (req, res) => {
     const columns = {};
     const totals = {};
     for (const row of rows) {
-      const stage = row.pipeline_stage || 'new';
+      // Claimed dispatches with no explicit stage default to 'claimed'
+      const stage = row.pipeline_stage || (row.claimed_by ? 'claimed' : 'new');
       if (!columns[stage]) { columns[stage] = []; totals[stage] = 0; }
       columns[stage].push(row);
       totals[stage] += parseFloat(row.pipeline_value) || 0;
@@ -7727,9 +7885,9 @@ router.get('/api/pipeline/board', authenticateToken, async (req, res) => {
 
     // Facets for filters (always unfiltered to show all options)
     const [facetRegions, facetTypes, facetSectors] = await Promise.all([
-      db.query(`SELECT DISTINCT c.geography FROM signal_dispatches d JOIN companies c ON c.id = d.company_id WHERE d.tenant_id = $1 AND c.geography IS NOT NULL AND COALESCE(d.pipeline_stage,'new') != 'archived' ORDER BY c.geography`, [req.tenant_id]),
-      db.query(`SELECT DISTINCT d.signal_type FROM signal_dispatches d WHERE d.tenant_id = $1 AND d.signal_type IS NOT NULL AND COALESCE(d.pipeline_stage,'new') != 'archived' ORDER BY d.signal_type`, [req.tenant_id]),
-      db.query(`SELECT DISTINCT c.sector FROM signal_dispatches d JOIN companies c ON c.id = d.company_id WHERE d.tenant_id = $1 AND c.sector IS NOT NULL AND COALESCE(d.pipeline_stage,'new') != 'archived' ORDER BY c.sector`, [req.tenant_id]),
+      db.query(`SELECT DISTINCT c.geography FROM signal_dispatches d JOIN companies c ON c.id = d.company_id WHERE d.tenant_id = $1 AND d.claimed_by IS NOT NULL AND c.geography IS NOT NULL AND COALESCE(d.pipeline_stage,'new') != 'archived' ORDER BY c.geography`, [req.tenant_id]),
+      db.query(`SELECT DISTINCT d.signal_type FROM signal_dispatches d WHERE d.tenant_id = $1 AND d.claimed_by IS NOT NULL AND d.signal_type IS NOT NULL AND COALESCE(d.pipeline_stage,'new') != 'archived' ORDER BY d.signal_type`, [req.tenant_id]),
+      db.query(`SELECT DISTINCT c.sector FROM signal_dispatches d JOIN companies c ON c.id = d.company_id WHERE d.tenant_id = $1 AND d.claimed_by IS NOT NULL AND c.sector IS NOT NULL AND COALESCE(d.pipeline_stage,'new') != 'archived' ORDER BY c.sector`, [req.tenant_id]),
     ]);
 
     res.json({

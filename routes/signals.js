@@ -1383,6 +1383,127 @@ router.patch('/api/signals/:id/visibility', authenticateToken, async (req, res) 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// LEAD CLAIM LIFECYCLE — claim / release / pipeline / outcome
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// POST /api/signals/:id/claim — claim signal for current user
+router.post('/api/signals/:id/claim', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    // Verify signal is visible to tenant
+    const { rows: [sig] } = await db.query(
+      `SELECT id, polarity FROM signal_events WHERE id = $1 AND (tenant_id IS NULL OR tenant_id = $2)`,
+      [req.params.id, req.tenant_id]
+    );
+    if (!sig) return res.status(404).json({ error: 'Signal not found' });
+
+    const { rows: [claim] } = await db.query(
+      `INSERT INTO lead_claims (tenant_id, signal_id, user_id, pipeline_stage)
+       VALUES ($1, $2, $3, 'claimed')
+       ON CONFLICT (signal_id) DO UPDATE SET
+         user_id = EXCLUDED.user_id,
+         claimed_at = NOW(),
+         released_at = NULL,
+         released_reason = NULL,
+         pipeline_stage = 'claimed',
+         stage_changed_at = NOW()
+       RETURNING id, signal_id, user_id, pipeline_stage, claimed_at`,
+      [req.tenant_id, req.params.id, req.user.user_id]
+    );
+    res.status(201).json(claim);
+  } catch (err) {
+    console.error('Claim error:', err.message);
+    res.status(500).json({ error: 'Claim failed: ' + err.message });
+  }
+});
+
+// POST /api/signals/:id/release — release claim
+router.post('/api/signals/:id/release', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const reason = req.body?.reason || null;
+    const { rows: [released] } = await db.query(
+      `UPDATE lead_claims SET released_at = NOW(), released_reason = $1
+       WHERE signal_id = $2 AND tenant_id = $3 AND user_id = $4 AND released_at IS NULL
+       RETURNING id, signal_id, released_at, released_reason`,
+      [reason, req.params.id, req.tenant_id, req.user.user_id]
+    );
+    if (!released) return res.status(404).json({ error: 'No active claim to release' });
+    res.json(released);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/signals/:id/pipeline — advance pipeline stage
+router.patch('/api/signals/:id/pipeline', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { stage, notes } = req.body || {};
+    const valid = ['claimed', 'contacted', 'meeting', 'proposal', 'mandate', 'lost'];
+    if (!valid.includes(stage)) return res.status(400).json({ error: 'Invalid stage' });
+
+    const { rows: [updated] } = await db.query(
+      `UPDATE lead_claims SET pipeline_stage = $1, stage_changed_at = NOW(), notes = COALESCE($2, notes)
+       WHERE signal_id = $3 AND tenant_id = $4 AND released_at IS NULL
+       RETURNING id, signal_id, pipeline_stage, stage_changed_at`,
+      [stage, notes || null, req.params.id, req.tenant_id]
+    );
+    if (!updated) return res.status(404).json({ error: 'No active claim for this signal' });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/signals/:id/outcome — log final outcome (feeds forward calibration)
+router.post('/api/signals/:id/outcome', authenticateToken, async (req, res) => {
+  try {
+    const db = new TenantDB(req.tenant_id);
+    const { outcome, converted_at, lead_time_days, mandate_id, revenue_local, revenue_currency, notes } = req.body || {};
+    const valid = ['converted_mandate', 'contact_only', 'no_response', 'wrong_moment', 'window_expired', 'declined'];
+    if (!valid.includes(outcome)) return res.status(400).json({ error: 'Invalid outcome' });
+
+    // Get claim context if available
+    const { rows: [claim] } = await db.query(
+      `SELECT claimed_at FROM lead_claims WHERE signal_id = $1 AND tenant_id = $2 ORDER BY claimed_at DESC LIMIT 1`,
+      [req.params.id, req.tenant_id]
+    );
+
+    const { rows: [row] } = await db.query(
+      `INSERT INTO signal_outcomes
+        (tenant_id, signal_id, outcome, claimed_at, converted_at, lead_time_days,
+         mandate_id, revenue_local, revenue_currency, resolved_by, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING id, signal_id, outcome, resolved_at`,
+      [
+        req.tenant_id, req.params.id, outcome,
+        claim?.claimed_at || null,
+        converted_at || null,
+        lead_time_days || null,
+        mandate_id || null,
+        revenue_local || null,
+        revenue_currency || null,
+        req.user.user_id,
+        notes || null,
+      ]
+    );
+
+    // Mark signal as closed if converted or window expired
+    if (outcome === 'converted_mandate' || outcome === 'window_expired') {
+      await db.query(
+        `UPDATE signal_events SET phase = 'closed' WHERE id = $1`,
+        [req.params.id]
+      );
+    }
+
+    res.status(201).json(row);
+  } catch (err) {
+    console.error('Outcome error:', err.message);
+    res.status(500).json({ error: 'Outcome failed: ' + err.message });
+  }
+});
 
   return router;
 };

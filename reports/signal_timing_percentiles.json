@@ -1,0 +1,110 @@
+{
+  "metadata": {
+    "source": "newsapi_signal_calibration.json",
+    "computed_at": "2026-04-21T19:45:48.862Z",
+    "total_observations": 40519,
+    "total_clients": 424,
+    "method": "percentile from raw days_before observations"
+  },
+  "percentiles": {
+    "layoffs": {
+      "p10": 1,
+      "p25": 10,
+      "p50": 72,
+      "p75": 177,
+      "p90": 444,
+      "min": 0,
+      "max": 728,
+      "mean": 138,
+      "n": 2031
+    },
+    "capital_raising": {
+      "p10": 1,
+      "p25": 10,
+      "p50": 66,
+      "p75": 220,
+      "p90": 466,
+      "min": 0,
+      "max": 728,
+      "mean": 148,
+      "n": 7387
+    },
+    "ma_activity": {
+      "p10": 1,
+      "p25": 12,
+      "p50": 66,
+      "p75": 230,
+      "p90": 473,
+      "min": 0,
+      "max": 728,
+      "mean": 150,
+      "n": 4111
+    },
+    "strategic_hiring": {
+      "p10": 1,
+      "p25": 8,
+      "p50": 61,
+      "p75": 229,
+      "p90": 455,
+      "min": 0,
+      "max": 730,
+      "mean": 146,
+      "n": 3674
+    },
+    "partnership": {
+      "p10": 2,
+      "p25": 17,
+      "p50": 82,
+      "p75": 254,
+      "p90": 494,
+      "min": 0,
+      "max": 729,
+      "mean": 163,
+      "n": 4291
+    },
+    "geographic_expansion": {
+      "p10": 1,
+      "p25": 10,
+      "p50": 68,
+      "p75": 211,
+      "p90": 460,
+      "min": 0,
+      "max": 729,
+      "mean": 146,
+      "n": 7884
+    },
+    "product_launch": {
+      "p10": 1,
+      "p25": 11,
+      "p50": 71,
+      "p75": 225,
+      "p90": 471,
+      "min": 0,
+      "max": 730,
+      "mean": 150,
+      "n": 6632
+    },
+    "restructuring": {
+      "p10": 2,
+      "p25": 10,
+      "p50": 57,
+      "p75": 171,
+      "p90": 445,
+      "min": 0,
+      "max": 728,
+      "mean": 136,
+      "n": 1224
+    },
+    "leadership_change": {
+      "p10": 0,
+      "p25": 4,
+      "p50": 54,
+      "p75": 201,
+      "p90": 452,
+      "min": 0,
+      "max": 730,
+      "mean": 139,
+      "n": 3285
+    }
+  }
+}

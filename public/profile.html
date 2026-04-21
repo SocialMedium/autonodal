@@ -176,9 +176,48 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
     </div>
   </div>
 
+  <!-- Mission -->
+  <div class="section" id="missionSection">
+    <div class="section-title">Your Mission <span class="badge">What signals matter</span></div>
+    <div class="card" style="padding:16px">
+      <div style="font-size:13px;color:var(--ink-2);line-height:1.6;margin-bottom:14px">
+        Tell the platform what you're seeking. Your mission context tunes the feed, ranks opportunities, and shapes the daily brief. You can change this anytime.
+      </div>
+
+      <div class="card-label" style="margin-bottom:8px">I'm seeking signals for:</div>
+      <div id="missionIntents" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+        <label class="pill-choice" data-intent="sales"><input type="checkbox" value="sales" style="display:none"><span>💼 Sales &amp; BD</span><small>Expansion, buying signals, partnerships, product launches</small></label>
+        <label class="pill-choice" data-intent="talent"><input type="checkbox" value="talent" style="display:none"><span>🎯 Talent &amp; People</span><small>Leadership moves, team changes, capital raises</small></label>
+        <label class="pill-choice" data-intent="investment"><input type="checkbox" value="investment" style="display:none"><span>💰 Investment</span><small>Capital raises, M&amp;A, founder activity</small></label>
+        <label class="pill-choice" data-intent="advisory"><input type="checkbox" value="advisory" style="display:none"><span>🧭 Advisory &amp; Partnerships</span><small>Strategic moves, restructuring, transformations</small></label>
+        <label class="pill-choice" data-intent="portfolio"><input type="checkbox" value="portfolio" style="display:none"><span>📊 Portfolio Monitoring</span><small>Health signals across tracked companies</small></label>
+        <label class="pill-choice" data-intent="market_intel"><input type="checkbox" value="market_intel" style="display:none"><span>🌐 Market Intel</span><small>Sector patterns, competitor moves, trends</small></label>
+      </div>
+
+      <div class="card-label" style="margin-bottom:6px">Mission statement <small style="color:var(--ink-3);font-weight:400">(optional — one line on what success looks like)</small></div>
+      <textarea id="missionStatement" rows="2" placeholder="e.g. Surface Series B+ fintech companies in APAC actively expanding, so I can open conversations within 30 days" style="width:100%;padding:10px;border:1px solid var(--rule);border-radius:6px;font-family:var(--sans);font-size:13px;resize:vertical;margin-bottom:12px"></textarea>
+
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-primary btn-sm" onclick="saveMission()">Save Mission</button>
+        <span id="missionSaveStatus" style="font-size:12px;color:var(--ink-3)"></span>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .pill-choice { display:flex;flex-direction:column;gap:2px;padding:10px 14px;border:1px solid var(--rule);border-radius:8px;cursor:pointer;min-width:200px;flex:1;transition:all 0.15s; }
+    .pill-choice:hover { border-color:var(--blue); background:var(--blue-soft); }
+    .pill-choice.selected { border-color:var(--blue); background:var(--blue-soft); }
+    .pill-choice span { font-size:13px;font-weight:600;color:var(--ink); }
+    .pill-choice small { font-size:11px;color:var(--ink-3);font-weight:400; }
+  </style>
+
   <!-- Connections -->
   <div class="section">
-    <div class="section-title">Connections</div>
+    <div class="section-title">Connect Your Data <span class="badge">Powers your intelligence</span></div>
+    <div style="font-size:12px;color:var(--ink-3);line-height:1.5;margin-bottom:14px">
+      Each connection unlocks a layer of signal. LinkedIn maps your network. Gmail adds interaction warmth. CRM connects pipeline. Sales data ties it to revenue. The platform triangulates these to surface where your relationships are active right now.
+    </div>
 
     <!-- Google -->
     <div class="card" id="googleCard">
@@ -413,6 +452,7 @@ var USER = null;
   loadProfile();
   loadNetworkAnalysis();
   checkMessagingStatus();
+  loadMission();
 })();
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
@@ -954,6 +994,46 @@ function setRegionCheckboxes(regionStr) {
 }
 
 // Invite teammates
+// ─── Mission ───
+async function loadMission() {
+  try {
+    var data = await api('/api/profile/mission').catch(function() { return null; });
+    if (!data) return;
+    var intents = data.intents || [];
+    document.querySelectorAll('.pill-choice').forEach(function(el) {
+      var v = el.dataset.intent;
+      var checked = intents.indexOf(v) >= 0;
+      el.classList.toggle('selected', checked);
+      var input = el.querySelector('input');
+      if (input) input.checked = checked;
+    });
+    if (data.statement) document.getElementById('missionStatement').value = data.statement;
+  } catch (e) {}
+}
+
+// Wire up pill clicks
+document.addEventListener('click', function(e) {
+  var pill = e.target.closest('.pill-choice');
+  if (!pill) return;
+  pill.classList.toggle('selected');
+  var input = pill.querySelector('input');
+  if (input) input.checked = !input.checked;
+});
+
+async function saveMission() {
+  var intents = Array.from(document.querySelectorAll('.pill-choice.selected')).map(function(el) { return el.dataset.intent; });
+  var statement = document.getElementById('missionStatement').value.trim();
+  var status = document.getElementById('missionSaveStatus');
+  status.textContent = 'Saving...';
+  try {
+    await api('/api/profile/mission', { method: 'POST', body: { intents: intents, statement: statement } });
+    status.textContent = '✓ Saved';
+    setTimeout(function() { status.textContent = ''; }, 2500);
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+  }
+}
+
 function inviteTeammate() {
   var email = document.getElementById('inviteEmail').value.trim();
   if (!email) return;

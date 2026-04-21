@@ -1,0 +1,394 @@
+{
+  "capital_raising": {
+    "sample_size": 94,
+    "source": "gdelt_retroactive",
+    "avg_lead_days": 41,
+    "median_lead_days": 43,
+    "p25_lead_days": 19,
+    "p75_lead_days": 61,
+    "min_lead_days": 1,
+    "max_lead_days": 90,
+    "peak_window": "0-3mo",
+    "distribution": {
+      "0-3mo": {
+        "count": 94,
+        "pct": "100.0%"
+      },
+      "3-6mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "6-9mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "9-12mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "12-15mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "15-18mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "18-24mo": {
+        "count": 0,
+        "pct": "0.0%"
+      }
+    },
+    "timer": {
+      "dormant_until_days": 6,
+      "rising_from_days": 19,
+      "peak_start_days": 29,
+      "peak_end_days": 57,
+      "declining_until_days": 77,
+      "dormant_after_days": 90
+    }
+  },
+  "strategic_hiring": {
+    "sample_size": 58,
+    "source": "gdelt_retroactive",
+    "avg_lead_days": 58,
+    "median_lead_days": 56,
+    "p25_lead_days": 48,
+    "p75_lead_days": 75,
+    "min_lead_days": 2,
+    "max_lead_days": 90,
+    "peak_window": "0-3mo",
+    "distribution": {
+      "0-3mo": {
+        "count": 58,
+        "pct": "100.0%"
+      },
+      "3-6mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "6-9mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "9-12mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "12-15mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "15-18mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "18-24mo": {
+        "count": 0,
+        "pct": "0.0%"
+      }
+    },
+    "timer": {
+      "dormant_until_days": 34,
+      "rising_from_days": 48,
+      "peak_start_days": 49,
+      "peak_end_days": 69,
+      "declining_until_days": 89,
+      "dormant_after_days": 90
+    }
+  },
+  "leadership_change": {
+    "sample_size": 13,
+    "source": "gdelt_retroactive",
+    "avg_lead_days": 50,
+    "median_lead_days": 61,
+    "p25_lead_days": 49,
+    "p75_lead_days": 62,
+    "min_lead_days": 10,
+    "max_lead_days": 62,
+    "peak_window": "0-3mo",
+    "distribution": {
+      "0-3mo": {
+        "count": 13,
+        "pct": "100.0%"
+      },
+      "3-6mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "6-9mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "9-12mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "12-15mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "15-18mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "18-24mo": {
+        "count": 0,
+        "pct": "0.0%"
+      }
+    },
+    "timer": {
+      "dormant_until_days": 31,
+      "rising_from_days": 49,
+      "peak_start_days": 49,
+      "peak_end_days": 62,
+      "declining_until_days": 62,
+      "dormant_after_days": 62
+    }
+  },
+  "product_launch": {
+    "sample_size": 108,
+    "source": "gdelt_retroactive",
+    "avg_lead_days": 41,
+    "median_lead_days": 34,
+    "p25_lead_days": 17,
+    "p75_lead_days": 69,
+    "min_lead_days": 1,
+    "max_lead_days": 88,
+    "peak_window": "0-3mo",
+    "distribution": {
+      "0-3mo": {
+        "count": 108,
+        "pct": "100.0%"
+      },
+      "3-6mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "6-9mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "9-12mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "12-15mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "15-18mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "18-24mo": {
+        "count": 0,
+        "pct": "0.0%"
+      }
+    },
+    "timer": {
+      "dormant_until_days": 6,
+      "rising_from_days": 17,
+      "peak_start_days": 32,
+      "peak_end_days": 65,
+      "declining_until_days": 81,
+      "dormant_after_days": 88
+    }
+  },
+  "geographic_expansion": {
+    "sample_size": 131,
+    "source": "gdelt_retroactive",
+    "avg_lead_days": 50,
+    "median_lead_days": 57,
+    "p25_lead_days": 32,
+    "p75_lead_days": 69,
+    "min_lead_days": 1,
+    "max_lead_days": 91,
+    "peak_window": "0-3mo",
+    "distribution": {
+      "0-3mo": {
+        "count": 128,
+        "pct": "97.7%"
+      },
+      "3-6mo": {
+        "count": 3,
+        "pct": "2.3%"
+      },
+      "6-9mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "9-12mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "12-15mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "15-18mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "18-24mo": {
+        "count": 0,
+        "pct": "0.0%"
+      }
+    },
+    "timer": {
+      "dormant_until_days": 2,
+      "rising_from_days": 32,
+      "peak_start_days": 43,
+      "peak_end_days": 69,
+      "declining_until_days": 86,
+      "dormant_after_days": 91
+    }
+  },
+  "ma_activity": {
+    "sample_size": 30,
+    "source": "gdelt_retroactive",
+    "avg_lead_days": 41,
+    "median_lead_days": 45,
+    "p25_lead_days": 2,
+    "p75_lead_days": 77,
+    "min_lead_days": 2,
+    "max_lead_days": 91,
+    "peak_window": "0-3mo",
+    "distribution": {
+      "0-3mo": {
+        "count": 29,
+        "pct": "96.7%"
+      },
+      "3-6mo": {
+        "count": 1,
+        "pct": "3.3%"
+      },
+      "6-9mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "9-12mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "12-15mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "15-18mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "18-24mo": {
+        "count": 0,
+        "pct": "0.0%"
+      }
+    },
+    "timer": {
+      "dormant_until_days": 2,
+      "rising_from_days": 2,
+      "peak_start_days": 31,
+      "peak_end_days": 77,
+      "declining_until_days": 80,
+      "dormant_after_days": 91
+    }
+  },
+  "partnership": {
+    "sample_size": 27,
+    "source": "gdelt_retroactive",
+    "avg_lead_days": 41,
+    "median_lead_days": 41,
+    "p25_lead_days": 19,
+    "p75_lead_days": 64,
+    "min_lead_days": 3,
+    "max_lead_days": 90,
+    "peak_window": "0-3mo",
+    "distribution": {
+      "0-3mo": {
+        "count": 27,
+        "pct": "100.0%"
+      },
+      "3-6mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "6-9mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "9-12mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "12-15mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "15-18mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "18-24mo": {
+        "count": 0,
+        "pct": "0.0%"
+      }
+    },
+    "timer": {
+      "dormant_until_days": 10,
+      "rising_from_days": 19,
+      "peak_start_days": 29,
+      "peak_end_days": 51,
+      "declining_until_days": 78,
+      "dormant_after_days": 90
+    }
+  },
+  "restructuring": {
+    "sample_size": 4,
+    "source": "gdelt_retroactive",
+    "avg_lead_days": 75,
+    "median_lead_days": 85,
+    "p25_lead_days": 81,
+    "p75_lead_days": 86,
+    "min_lead_days": 47,
+    "max_lead_days": 86,
+    "peak_window": "0-3mo",
+    "distribution": {
+      "0-3mo": {
+        "count": 4,
+        "pct": "100.0%"
+      },
+      "3-6mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "6-9mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "9-12mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "12-15mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "15-18mo": {
+        "count": 0,
+        "pct": "0.0%"
+      },
+      "18-24mo": {
+        "count": 0,
+        "pct": "0.0%"
+      }
+    },
+    "timer": {
+      "dormant_until_days": 47,
+      "rising_from_days": 81,
+      "peak_start_days": 81,
+      "peak_end_days": 85,
+      "declining_until_days": 86,
+      "dormant_after_days": 86
+    }
+  }
+}
