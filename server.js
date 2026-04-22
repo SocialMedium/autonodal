@@ -1029,6 +1029,7 @@ app.listen(PORT, async () => {
     'sql/migration_signal_polarity.sql',
     'sql/migration_companies_relationship_state.sql',
     'sql/migration_lead_claims.sql',
+    'sql/migration_proximity_score_factors.sql',
   ];
   for (const migPath of leadEngineMigrations) {
     try {

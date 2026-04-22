@@ -1898,6 +1898,16 @@ const PIPELINES = {
     schedule: '28 2 * * *',
     description: 'Compute network density, company adjacency scores, and geo mapping'
   },
+  compute_proximity: {
+    name: 'Compute Proximity (4-factor)',
+    icon: '🤝',
+    fn: async () => {
+      const { execSync } = require('child_process');
+      execSync('node ' + require('path').join(__dirname, 'compute_proximity.js'), { timeout: 900000, stdio: 'inherit' });
+    },
+    schedule: '45 2 * * *',
+    description: 'Recompute 4-factor team_proximity composite (currency · history · weight · reciprocity) per tenant'
+  },
   compute_triangulation: {
     name: 'Compute Triangulation',
     icon: '🔺',
