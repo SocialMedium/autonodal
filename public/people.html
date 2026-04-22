@@ -228,6 +228,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
   </div>
 </div>
 
+<script src="/components/proximity-badge.js"></script>
 <script>
 const TK = localStorage.getItem('ml_token');
 if (!TK) location.href = '/index.html';
@@ -330,7 +331,8 @@ function personCard(p, opts = {}) {
   }
 
   const personId = p.id || p.person_id;
-  return '<div class="person-card' + (hasNotes ? ' has-notes' : '') + '" onclick="location.href=\'/person.html?id=' + personId + '\'">' +
+  const proxBadge = (window.ProximityBadge && p.proximity) ? window.ProximityBadge.render(p.proximity, 'compact') : '';
+  return '<div class="person-card' + (hasNotes ? ' has-notes' : '') + '" data-person-id="' + personId + '" onclick="location.href=\'/person.html?id=' + personId + '\'">' +
     '<div class="person-top">' +
       '<div class="person-avatar' + (hasNotes ? ' noted' : '') + '">' + ini + '</div>' +
       '<div class="person-info">' +
@@ -338,6 +340,7 @@ function personCard(p, opts = {}) {
         (p.current_title ? '<div class="person-title">' + esc(p.current_title) + '</div>' : '') +
         (p.current_company_name ? '<div class="person-company">' + esc(p.current_company_name) + (p.location ? ' \u00b7 ' + esc(p.location) : '') + '</div>' : (p.location ? '<div class="person-company">' + esc(p.location) + '</div>' : '')) +
       '</div>' +
+      (proxBadge ? '<div style="margin-left:auto;flex-shrink:0;align-self:flex-start">' + proxBadge + '</div>' : '') +
     '</div>' +
     (badges ? '<div class="person-badges">' + badges + '</div>' : '') +
     skillChips +

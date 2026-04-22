@@ -191,6 +191,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 </div>
 
 <script src="/icons.js"></script>
+<script src="/components/proximity-badge.js"></script>
 <script>
 const TK=localStorage.getItem('ml_token');if(!TK)location.href='/index.html';
 async function api(u){try{const r=await fetch(u,{headers:{Authorization:'Bearer '+TK}});if(r.status===401){location.href='/index.html';return null}if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error||r.statusText)}return r.json()}catch(e){document.getElementById('app').innerHTML='<div style="padding:40px;text-align:center;color:var(--ink-3)"><h3>Could not load dossier</h3><p>'+e.message+'</p><a href="/people.html" style="color:var(--blue)">Back to people</a></div>';throw e}}
@@ -213,7 +214,7 @@ const _from=_params.get('from'),_fromId=_params.get('from_id'),_fromName=decodeU
 const p=await api('/api/people/'+id);if(!p)return;
 document.title=(p.full_name||'Person')+' — Signals';
 const ini=(p.full_name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-const notes=p.research_notes||[];const ixs=p.interactions||[];const csig=p.company_signals||[];const psig=p.person_signals||[];const colls=p.colleagues||[];const s=p.interaction_stats||{};const prox=p.proximity||[];const cjobs=p.company_jobs||[];const hProx=p.huddle_proximity||null;
+const notes=p.research_notes||[];const ixs=p.interactions||[];const csig=p.company_signals||[];const psig=p.person_signals||[];const colls=p.colleagues||[];const s=p.interaction_stats||{};const prox=p.proximity||[];const cjobs=p.company_jobs||[];const hProx=p.huddle_proximity||null;const proxHint=p.proximity_hint||null;
 window.proxData=prox;
 
 const coId=p.company_id_linked||p.current_company_id||'';
@@ -270,7 +271,11 @@ const totalIx=parseInt(s.total||0);
 const nNotes=parseInt(s.notes||0),nEmails=parseInt(s.emails||0),nLinkedin=parseInt(s.linkedin||0),nCalls=parseInt(s.calls||0)+parseInt(s.meetings||0),nOther=parseInt(s.other||0);
 
 // Proximity — team connections to this person (TOP POSITION)
-if(prox.length>0){
+// Prefer the new ProximityHint contract with 4-factor breakdown; fall back to legacy prox[]
+if(window.ProximityBadge && proxHint && proxHint.paths && proxHint.paths.length>0){
+  h+='<div style="margin-bottom:12px">' + window.ProximityBadge.renderExpanded(proxHint, { showFactors: true, showActions: true }) + '</div>';
+} else if(prox.length>0){
+  // Legacy render (pre-migration, no score_factors yet)
   h+='<div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px">';
   h+='<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px"><div style="font-size:13px;font-weight:600;color:var(--ink)">'+icon('link')+' Team Proximity</div><span style="font-family:var(--mono);font-size:10px;color:var(--ink-4)">'+prox.length+' team member'+(prox.length>1?'s':'')+'</span></div>';
   prox.forEach(function(pr){

@@ -6,6 +6,7 @@
   <title>Searches — Signals</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="/components/proximity-badge.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>* { font-family: 'Inter', system-ui, sans-serif; }</style>
 </head>
@@ -413,18 +414,21 @@
           return;
         }
 
-        container.innerHTML = matches.slice(0, 5).map(m => `
-          <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+        container.innerHTML = matches.slice(0, 5).map(m => {
+          const proxBadge = window.ProximityBadge ? window.ProximityBadge.render(m.proximity, 'inline') : '';
+          return `
+          <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg" data-person-id="${m.person_id || ''}">
             <div>
               <p class="font-medium text-slate-900">${m.person_name}</p>
               <p class="text-sm text-slate-500">${m.person_title || ''}</p>
+              ${proxBadge ? '<div style="margin-top:6px">' + proxBadge + '</div>' : ''}
             </div>
             <div class="text-right">
               <span class="text-sm font-medium text-blue-600">${Math.round(m.match_score * 100)}% match</span>
               <button class="ml-2 text-xs text-emerald-600 hover:underline">Add</button>
             </div>
-          </div>
-        `).join('');
+          </div>`;
+        }).join('');
       } catch (err) {
         console.error('Failed to load matches:', err);
       }
