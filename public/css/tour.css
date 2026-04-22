@@ -11,7 +11,7 @@
 #tour-skip { background:none; border:none; color:#64748b; font-size:12px; cursor:pointer; padding:0; font-family:inherit; }
 #tour-skip:hover { color:#e2e8f0; }
 
-#tour-icon { font-size:28px; margin-bottom:10px; }
+#tour-icon { margin-bottom:10px; color:#f59e0b; display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:10px; background:rgba(245,158,11,0.12); }
 #tour-title { font-size:20px; font-weight:600; color:#e2e8f0; margin:0 0 10px; line-height:1.3; }
 #tour-body { font-size:15px; color:#94a3b8; line-height:1.65; margin:0 0 20px; }
 #tour-body strong { color:#e2e8f0; }
