@@ -5,8 +5,49 @@
 
 const express = require('express');
 const router = express.Router();
+const { rowToHint } = require('../lib/proximity_hint');
+const { band } = require('../lib/scoring/proximity');
 
 module.exports = function({ platformPool, TenantDB, authenticateToken, verifyHuddleMember, generateQueryEmbedding, searchPublications }) {
+
+// ─── Shared helper: attach ProximityHint to a list of person rows ──────────────
+// Mutates rows in place, adding `proximity` field. Returns rows.
+// Uses a single query keyed by person_ids for bulk efficiency.
+async function attachProximityHints(db, rows, { personIdKey = 'id', tenantIds = null, callerTenantId = null } = {}) {
+  if (!rows || !rows.length) return rows;
+  const ids = [...new Set(rows.map(r => r[personIdKey]).filter(Boolean))];
+  if (!ids.length) return rows;
+  const params = tenantIds ? [ids, tenantIds] : [ids];
+  const tenantClause = tenantIds ? 'tp.tenant_id = ANY($2::uuid[])' : '';
+  const sql = `
+    WITH ranked AS (
+      SELECT tp.person_id, tp.team_member_id AS member_user_id, u.name AS member_name,
+             tp.relationship_strength AS score, tp.last_interaction_at,
+             tp.last_interaction_channel, tp.score_factors,
+             tp.tenant_id AS edge_tenant_id,
+             ROW_NUMBER() OVER (PARTITION BY tp.person_id ORDER BY tp.relationship_strength DESC) AS rn,
+             COUNT(*) OVER (PARTITION BY tp.person_id) AS total_paths
+      FROM team_proximity tp
+      JOIN users u ON u.id = tp.team_member_id
+      WHERE tp.person_id = ANY($1::uuid[])
+        AND tp.relationship_type = 'composite'
+        AND tp.relationship_strength >= 0.2
+        ${tenantClause ? 'AND ' + tenantClause : ''}
+    )
+    SELECT person_id, member_user_id, member_name, score, last_interaction_at,
+           last_interaction_channel, score_factors, edge_tenant_id,
+           GREATEST(total_paths - 1, 0) AS backup_count
+    FROM ranked WHERE rn = 1
+  `;
+  const { rows: hintRows } = await db.query(sql, params);
+  const byPerson = new Map(hintRows.map(r => [r.person_id, r]));
+  for (const row of rows) {
+    const hintRow = byPerson.get(row[personIdKey]);
+    row.proximity = rowToHint(hintRow, { callerTenantId });
+  }
+  return rows;
+}
+
 
 router.get('/api/people', authenticateToken, async (req, res) => {
   try {
@@ -95,6 +136,21 @@ router.get('/api/people', authenticateToken, async (req, res) => {
       `, params),
       db.query(`SELECT COUNT(*) AS cnt FROM people p ${where}`, params.slice(0, -2)),
     ]);
+
+    // Attach ProximityHint to every person row
+    let tenantIds = null;
+    const huddleId = req.query.huddle_id;
+    if (huddleId) {
+      const member = await verifyHuddleMember(huddleId, req.tenant_id);
+      if (member) {
+        const { rows: memberRows } = await platformPool.query(
+          `SELECT tenant_id FROM huddle_members WHERE huddle_id = $1 AND status = 'active'`,
+          [huddleId]
+        );
+        tenantIds = memberRows.map(r => r.tenant_id);
+      }
+    }
+    await attachProximityHints(db, peopleResult.rows, { tenantIds, callerTenantId: req.tenant_id });
 
     res.json({
       people: peopleResult.rows,
@@ -191,6 +247,47 @@ router.get('/api/people/facets', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('People facets error:', err.message);
     res.status(500).json({ error: 'Failed to fetch facets' });
+  }
+});
+
+// Dedicated proximity endpoint — returns full paths + 4-factor breakdown.
+// Used by expanded dossier sidebar and /people/:id/proximity (when no dossier fetched).
+router.get('/api/people/:id/proximity', authenticateToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      return res.status(400).json({ error: 'Invalid person ID' });
+    }
+    const { loadAllPaths } = require('../lib/proximity_hint');
+
+    // Resolve huddle context — if huddle_id supplied and caller is a validated member,
+    // pool proximity across all active member tenants via platformPool (bypasses RLS on
+    // the edge-level; person visibility is handled by the caller verifying membership).
+    let tenantIds = null;
+    const huddleId = req.query.huddle_id;
+    if (huddleId) {
+      const member = await verifyHuddleMember(huddleId, req.tenant_id);
+      if (member) {
+        const { rows: memberRows } = await platformPool.query(
+          `SELECT tenant_id FROM huddle_members WHERE huddle_id = $1 AND status = 'active'`,
+          [huddleId]
+        );
+        tenantIds = memberRows.map(r => r.tenant_id);
+      }
+    }
+
+    const poolClient = tenantIds ? platformPool : new TenantDB(req.tenant_id);
+    const paths = await loadAllPaths(poolClient, id, tenantIds ? { tenantIds } : { tenantId: req.tenant_id });
+    res.json({
+      person_id: id,
+      paths,
+      backup_paths_count: Math.max(0, paths.length - 1),
+      pooled: !!tenantIds,
+      best_path: paths[0] || null,
+    });
+  } catch (err) {
+    console.error('Person proximity error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch proximity' });
   }
 });
 
@@ -391,6 +488,24 @@ router.get('/api/people/:id', authenticateToken, async (req, res) => {
       artifacts = rows;
     } catch (e) { /* table may not exist yet */ }
 
+    // Canonical ProximityHint (new contract) — sits alongside the legacy
+    // `proximity` + `huddle_proximity` blocks until UI migrates off them.
+    let proximityHint = { best_path: null, backup_paths_count: 0, pooled: false };
+    try {
+      const { loadAllPaths } = require('../lib/proximity_hint');
+      const poolClient = huddleId && huddle_proximity ? platformPool : db;
+      const tenantArg = huddleId && huddle_proximity
+        ? { tenantIds: huddle_proximity.members.map(m => m.tenant_id) }
+        : { tenantId: req.tenant_id };
+      const allPaths = await loadAllPaths(poolClient, req.params.id, tenantArg);
+      proximityHint = {
+        best_path: allPaths[0] || null,
+        backup_paths_count: Math.max(0, allPaths.length - 1),
+        pooled: !!(huddleId && huddle_proximity),
+        paths: allPaths,
+      };
+    } catch (e) { /* leave null */ }
+
     res.json({
       ...person,
       research_notes: notes,
@@ -402,6 +517,7 @@ router.get('/api/people/:id', authenticateToken, async (req, res) => {
       colleagues,
       proximity,
       huddle_proximity,
+      proximity_hint: proximityHint,
       artifacts,
     });
   } catch (err) {

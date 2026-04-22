@@ -444,6 +444,31 @@ async function _handleListMatches(req, res) {
       ORDER BY sm.overall_match_score DESC
       LIMIT $${params.length + 1}
     `, [...params, Math.min(parseInt(limit) || 20, 100)]);
+
+    // Attach ProximityHint to every match row
+    const personIds = [...new Set(rows.map(r => r.person_id).filter(Boolean))];
+    if (personIds.length) {
+      const { rowToHint } = require('../lib/proximity_hint');
+      const { rows: hintRows } = await db.query(`
+        WITH ranked AS (
+          SELECT tp.person_id, tp.team_member_id AS member_user_id, u.name AS member_name,
+                 tp.relationship_strength AS score, tp.last_interaction_at,
+                 tp.last_interaction_channel, tp.score_factors, tp.tenant_id AS edge_tenant_id,
+                 ROW_NUMBER() OVER (PARTITION BY tp.person_id ORDER BY tp.relationship_strength DESC) AS rn,
+                 COUNT(*) OVER (PARTITION BY tp.person_id) AS total_paths
+          FROM team_proximity tp JOIN users u ON u.id = tp.team_member_id
+          WHERE tp.person_id = ANY($1::uuid[]) AND tp.relationship_type = 'composite' AND tp.relationship_strength >= 0.2
+        )
+        SELECT person_id, member_user_id, member_name, score, last_interaction_at,
+               last_interaction_channel, score_factors, edge_tenant_id,
+               GREATEST(total_paths - 1, 0) AS backup_count
+        FROM ranked WHERE rn = 1
+      `, [personIds]);
+      const byPerson = new Map(hintRows.map(r => [r.person_id, r]));
+      rows.forEach(r => { r.proximity = rowToHint(byPerson.get(r.person_id), { callerTenantId: req.tenant_id }); });
+    } else {
+      rows.forEach(r => { r.proximity = { best_path: null, backup_paths_count: 0, pooled: false }; });
+    }
     res.json(rows);
   } catch (err) {
     console.error('Matches error:', err.message);

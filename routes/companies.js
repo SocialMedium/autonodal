@@ -7,7 +7,7 @@ const express = require('express');
 const https = require('https');
 const router = express.Router();
 
-module.exports = function({ platformPool, TenantDB, authenticateToken, generateQueryEmbedding, getGoogleToken }) {
+module.exports = function({ platformPool, TenantDB, authenticateToken, verifyHuddleMember, generateQueryEmbedding, getGoogleToken }) {
 
 router.post('/api/companies/:id/search-enrich', authenticateToken, async (req, res) => {
   try {
@@ -777,30 +777,58 @@ router.get('/api/companies/:id', authenticateToken, async (req, res) => {
       if (is && parseInt(is.total_interactions) > 0) interaction_summary = is;
     } catch (e) {}
 
-    // Proximity map — which team members have connections to people at this company (deduplicated)
+    // Proximity map — prefers composite (4-factor) edges when available, falls back to
+    // per-channel MAX for legacy. Huddle-aware: pools across member tenants if huddle_id set.
     let proximity_map = [];
+    let proximity_pooled = false;
     try {
-      const { rows } = await db.query(`
+      let huddleTenantIds = null;
+      const huddleId = req.query.huddle_id;
+      if (huddleId) {
+        const member = await verifyHuddleMember(huddleId, req.tenant_id);
+        if (member) {
+          const { rows: memberRows } = await platformPool.query(
+            `SELECT tenant_id FROM huddle_members WHERE huddle_id = $1 AND status = 'active'`,
+            [huddleId]
+          );
+          huddleTenantIds = memberRows.map(r => r.tenant_id);
+          proximity_pooled = true;
+        }
+      }
+      const poolClient = huddleTenantIds ? platformPool : db;
+      const tenantClause = huddleTenantIds ? 'tp.tenant_id = ANY($2::uuid[])' : 'tp.tenant_id = $2';
+      const tenantParam = huddleTenantIds || req.tenant_id;
+      const { rows } = await poolClient.query(`
+        WITH composite_edges AS (
+          SELECT tp.person_id, tp.team_member_id, tp.relationship_strength,
+                 tp.last_interaction_at, tp.last_interaction_channel, tp.score_factors,
+                 tp.tenant_id AS edge_tenant_id
+          FROM team_proximity tp
+          WHERE tp.relationship_type = 'composite'
+            AND tp.relationship_strength >= 0.2
+            AND ${tenantClause}
+        )
         SELECT u.name AS team_member, u.id AS team_member_id,
                p.full_name AS contact_name, p.id AS person_id,
                p.current_title,
-               MAX(tp.relationship_strength) AS relationship_strength,
-               string_agg(DISTINCT tp.relationship_type, ', ') AS proximity_type,
-               string_agg(DISTINCT tp.source, ', ') AS proximity_source,
-               MAX(i.interaction_at) AS last_contact,
-               COUNT(DISTINCT i.id) AS interaction_count
-        FROM team_proximity tp
-        JOIN users u ON u.id = tp.team_member_id
-        JOIN people p ON p.id = tp.person_id
-        LEFT JOIN interactions i ON i.person_id = p.id AND i.user_id = u.id
-        WHERE p.current_company_id = $1
-          AND tp.relationship_strength >= 0.15
-        GROUP BY u.name, u.id, p.full_name, p.id, p.current_title
-        ORDER BY MAX(tp.relationship_strength) DESC
+               ce.relationship_strength,
+               ce.last_interaction_channel AS proximity_type,
+               ce.last_interaction_at AS last_contact,
+               ce.score_factors,
+               ce.edge_tenant_id
+        FROM composite_edges ce
+        JOIN people p ON p.id = ce.person_id AND p.current_company_id = $1
+        JOIN users u ON u.id = ce.team_member_id
+        ORDER BY ce.relationship_strength DESC
         LIMIT 30
-      `, [companyId]);
-      proximity_map = rows;
-    } catch (e) {}
+      `, [companyId, tenantParam]);
+      const { band } = require('../lib/scoring/proximity');
+      proximity_map = rows.map(r => ({
+        ...r,
+        band: band(parseFloat(r.relationship_strength)),
+        pooled: proximity_pooled && r.edge_tenant_id !== req.tenant_id,
+      }));
+    } catch (e) { console.warn('companies proximity_map:', e.message); }
 
     // Work artifacts linked to this company
     let artifacts = [];
@@ -816,7 +844,7 @@ router.get('/api/companies/:id', authenticateToken, async (req, res) => {
       artifacts = rows;
     } catch (e) { /* table may not exist yet */ }
 
-    res.json({ ...company, signals, people, placements, documents, financials, opportunities, pipeline_total: pipelineTotal, case_studies, interaction_summary, proximity_map, artifacts });
+    res.json({ ...company, signals, people, placements, documents, financials, opportunities, pipeline_total: pipelineTotal, case_studies, interaction_summary, proximity_map, proximity_pooled, artifacts });
   } catch (err) {
     console.error('Company detail error:', err.message);
     res.status(500).json({ error: 'Failed to fetch company' });
