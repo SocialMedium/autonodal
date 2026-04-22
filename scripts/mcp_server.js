@@ -79,15 +79,79 @@ function formatScore(score) {
   return Math.round(score * 100) + '%';
 }
 
+// Bulk-fetch best path per person. Returns Map<person_id, ProximityHint>.
+async function attachProximityHints(personIds) {
+  const out = new Map();
+  if (!personIds || !personIds.length) return out;
+  const { rows } = await pool.query(`
+    WITH ranked AS (
+      SELECT tp.person_id, tp.team_member_id AS member_user_id, u.name AS member_name,
+             tp.relationship_strength AS score, tp.last_interaction_at,
+             tp.last_interaction_channel, tp.score_factors,
+             ROW_NUMBER() OVER (PARTITION BY tp.person_id ORDER BY tp.relationship_strength DESC) AS rn,
+             COUNT(*) OVER (PARTITION BY tp.person_id) AS total_paths
+      FROM team_proximity tp JOIN users u ON u.id = tp.team_member_id
+      WHERE tp.person_id = ANY($1::uuid[])
+        AND tp.tenant_id = $2
+        AND tp.relationship_type = 'composite'
+        AND tp.relationship_strength >= 0.2
+    )
+    SELECT person_id, member_user_id, member_name, score, last_interaction_at,
+           last_interaction_channel, GREATEST(total_paths - 1, 0) AS backup_count
+    FROM ranked WHERE rn = 1
+  `, [personIds, ML_TENANT_ID]);
+  for (const r of rows) {
+    const score = parseFloat(r.score);
+    const bandStr = score >= 0.7 ? 'strong' : score >= 0.4 ? 'warm' : score >= 0.2 ? 'cool' : 'cold';
+    out.set(r.person_id, {
+      best_path: {
+        member_user_id: r.member_user_id,
+        member_name: r.member_name,
+        score: Math.round(score * 10000) / 10000,
+        band: bandStr,
+        last_contact_at: r.last_interaction_at,
+        last_contact_channel: r.last_interaction_channel,
+      },
+      backup_paths_count: parseInt(r.backup_count) || 0,
+      pooled: false,
+    });
+  }
+  return out;
+}
+
+function formatProximityLine(prox) {
+  if (!prox || !prox.best_path) return null;
+  const bp = prox.best_path;
+  const bandLabel = bp.band ? bp.band[0].toUpperCase() + bp.band.slice(1) : '—';
+  const pct = Math.round((bp.score || 0) * 100);
+  const when = bp.last_contact_at ? relativeAge(bp.last_contact_at) : null;
+  const channel = (bp.last_contact_channel || 'contact').replace(/_/g, ' ');
+  const backups = prox.backup_paths_count > 0 ? `, +${prox.backup_paths_count} backup` : '';
+  const whenStr = when ? ` · ${when} since ${channel}` : '';
+  return `Best path: ${bp.member_name} · ${bandLabel} (${pct}%)${whenStr}${backups}`;
+}
+
+function relativeAge(iso) {
+  if (!iso) return null;
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (days < 1) return 'today';
+  if (days < 7) return days + 'd';
+  if (days < 30) return Math.floor(days / 7) + 'w';
+  if (days < 365) return Math.floor(days / 30) + 'mo';
+  return Math.floor(days / 365) + 'y';
+}
+
 function formatPerson(p, scores = null) {
   const title = p.current_title || '—';
   const company = p.current_company_name || '—';
+  const proxLine = formatProximityLine(p.proximity);
   const lines = [
     `**${p.full_name}** (ID: ${p.id})`,
     `${title} @ ${company}`,
     p.location ? `📍 ${p.location}` : null,
     p.email ? `✉️  ${p.email}` : null,
     p.linkedin_url ? `🔗 ${p.linkedin_url}` : null,
+    proxLine,
     scores ? `Scores — Engagement: ${formatScore(scores.engagement_score)} | Receptivity: ${formatScore(scores.receptivity_score)} | Timing: ${formatScore(scores.timing_score)} | Flight Risk: ${formatScore(scores.flight_risk_score)}` : null
   ];
   return lines.filter(Boolean).join('\n');
@@ -200,6 +264,13 @@ Examples:
 
       // Filter out junk records (Unknown, N/A, etc.)
       people = people.filter(p => !isJunkPerson(p));
+
+      // Attach ProximityHint to every result
+      if (people.length) {
+        await attachProximityHints(people.map(p => p.id)).then(hintMap => {
+          people.forEach(p => { p.proximity = hintMap.get(p.id) || { best_path: null, backup_paths_count: 0, pooled: false }; });
+        });
+      }
 
       if (people.length === 0) return okText(`No people found matching "${query}"`);
 
@@ -333,20 +404,34 @@ Args:
         }
       }
 
-      // Team proximity
+      // Team proximity — 4-factor breakdown from the composite row
       if (include_proximity) {
         const proxR = await dbQuery(`
-          SELECT tp.relationship_type, tp.relationship_strength, tp.connected_date, u.name as team_member
+          SELECT tp.relationship_strength AS score, tp.last_interaction_at, tp.last_interaction_channel,
+                 tp.score_factors, u.name AS team_member
           FROM team_proximity tp
           LEFT JOIN users u ON tp.team_member_id = u.id
           WHERE tp.person_id = $1 AND tp.tenant_id = $2
+            AND tp.relationship_type = 'composite'
+            AND tp.relationship_strength >= 0.2
           ORDER BY tp.relationship_strength DESC LIMIT 5
         `, [personRow.id, ML_TENANT_ID]);
         if (proxR.rows.length > 0) {
           sections.push(`\n## Team Proximity (Who Knows Them)`);
           for (const p of proxR.rows) {
-            const strength = formatScore(p.relationship_strength);
-            sections.push(`- **${p.team_member || '?'}** — ${p.relationship_type || 'connection'} (${strength})`);
+            const score = parseFloat(p.score);
+            const pct = Math.round(score * 100);
+            const bandStr = score >= 0.7 ? 'Strong' : score >= 0.4 ? 'Warm' : score >= 0.2 ? 'Cool' : 'Cold';
+            const age = p.last_interaction_at ? relativeAge(p.last_interaction_at) : null;
+            const ch = (p.last_interaction_channel || '').replace(/_/g, ' ') || 'contact';
+            const f = p.score_factors || {};
+            const factorBits = [];
+            if (f.currency)    factorBits.push(`currency ${Math.round(f.currency.score * 100)}%`);
+            if (f.history)     factorBits.push(`history ${Math.round(f.history.score * 100)}%` + (f.history.tenure_years ? ` (${f.history.tenure_years.toFixed(1)}y)` : ''));
+            if (f.weight)      factorBits.push(`weight ${Math.round(f.weight.score * 100)}%`);
+            if (f.reciprocity) factorBits.push(`reciprocity ${Math.round(f.reciprocity.score * 100)}%`);
+            sections.push(`- **${p.team_member || '?'}** — ${bandStr} ${pct}%${age ? ` · ${age} since ${ch}` : ''}`);
+            if (factorBits.length) sections.push(`  · ${factorBits.join(' · ')}`);
           }
         }
       }
