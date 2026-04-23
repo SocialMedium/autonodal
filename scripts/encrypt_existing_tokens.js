@@ -17,9 +17,9 @@ const pool = new Pool({
 });
 
 async function migrate() {
-  if (!process.env.ENCRYPTION_KEY || process.env.ENCRYPTION_KEY.length !== 64) {
-    console.error('ENCRYPTION_KEY not set or wrong length (need 64 hex chars).');
-    console.error('Generate one: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  if (!process.env.ENCRYPTION_KEY) {
+    console.error('ENCRYPTION_KEY not set — this script must run in an environment where the same key is configured as the app, or the encrypted tokens will be unreadable by the server.');
+    console.error('Run via: railway run node scripts/encrypt_existing_tokens.js');
     process.exit(1);
   }
 
