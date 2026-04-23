@@ -509,6 +509,37 @@ app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, 'public/priv
 app.get('/terms', (req, res) => res.sendFile(path.join(__dirname, 'public/terms.html')));
 app.get('/home', (req, res) => res.sendFile(path.join(__dirname, 'public/home.html')));
 app.get('/data-deletion', (req, res) => res.sendFile(path.join(__dirname, 'public/data-deletion.html')));
+app.get('/onboarding/linkedin-continue', (req, res) => res.sendFile(path.join(__dirname, 'public/onboarding-linkedin-continue.html')));
+
+// Telemetry event endpoint — captures onboarding funnel events
+app.post('/api/telemetry/event', require('express').json(), async (req, res) => {
+  try {
+    const { event, meta } = req.body || {};
+    if (!event || typeof event !== 'string') return res.status(400).json({ error: 'event required' });
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    let userId = null;
+    if (token) {
+      try {
+        const { rows } = await platformPool.query(
+          "SELECT user_id FROM sessions WHERE token = $1 AND expires_at > NOW()",
+          [token]
+        );
+        if (rows[0]) userId = rows[0].user_id;
+      } catch (e) {}
+    }
+    // Use audit_logs as the event sink — structured and already queryable
+    try {
+      await platformPool.query(
+        `INSERT INTO audit_logs (user_id, action, resource_type, metadata, created_at)
+         VALUES ($1, $2, 'telemetry', $3, NOW())`,
+        [userId, event, JSON.stringify(meta || {})]
+      );
+    } catch (e) { /* non-fatal */ }
+    res.json({ logged: true });
+  } catch (err) {
+    res.json({ logged: false });
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ERROR HANDLING MIDDLEWARE

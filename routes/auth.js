@@ -576,5 +576,161 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
     }
   });
 
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // LINKEDIN OIDC SIGN-IN — shared lib/auth-oidc module
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  const oidc = require('../lib/auth-oidc');
+
+  // Helper: provision a new user + tenant from an OIDC identity.
+  // Mirrors the tenant-assignment logic in the existing Google flow.
+  async function provisionUserFromIdentity({ email, name, picture, provider }) {
+    const displayName = name || email.split('@')[0];
+    const lowerEmail = email.toLowerCase();
+    const isMlDomain = lowerEmail.endsWith('@mitchellake.com');
+
+    // Check for pending tenant invite
+    let tenantInvite = null;
+    if (!isMlDomain) {
+      try {
+        const { rows: [inv] } = await platformPool.query(
+          "SELECT ti.*, t.name AS tenant_name FROM tenant_invites ti JOIN tenants t ON t.id = ti.tenant_id WHERE ti.email = $1 AND ti.status = 'pending' AND ti.expires_at > NOW() ORDER BY ti.created_at DESC LIMIT 1",
+          [lowerEmail]
+        );
+        if (inv) tenantInvite = inv;
+      } catch (e) { /* non-fatal */ }
+    }
+
+    let tenantId;
+    let role = 'admin';
+
+    if (isMlDomain) {
+      tenantId = process.env.ML_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+      role = 'consultant';
+    } else if (tenantInvite) {
+      tenantId = tenantInvite.tenant_id;
+      role = tenantInvite.role || 'viewer';
+    } else {
+      // Auto-provision new individual tenant
+      const slug = lowerEmail.split('@')[0]
+        .toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 30) + '-' + Date.now().toString(36);
+      const { rows: [newTenant] } = await platformPool.query(
+        `INSERT INTO tenants (id, name, slug, vertical, plan, tenant_type, onboarding_status, subscription_status, profile, created_at)
+         VALUES (gen_random_uuid(), $1, $2, 'revenue', 'free', 'individual', 'step_1', 'free', $3, NOW())
+         RETURNING id`,
+        [displayName, slug, JSON.stringify({ provisioned_from: 'oidc_' + provider, email: lowerEmail })]
+      );
+      tenantId = newTenant.id;
+    }
+
+    const passwordHashPlaceholder = 'oauth_' + provider;
+    const { rows: [newUser] } = await platformPool.query(
+      `INSERT INTO users (id, email, name, role, password_hash, tenant_id, email_verified, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, TRUE, NOW(), NOW())
+       RETURNING id, email, name, role, tenant_id`,
+      [lowerEmail, displayName, role, passwordHashPlaceholder, tenantId]
+    );
+
+    if (tenantInvite) {
+      await platformPool.query("UPDATE tenant_invites SET status = 'accepted', accepted_at = NOW() WHERE id = $1", [tenantInvite.id]);
+    }
+
+    auditLog(newUser.id, 'user_registered', 'user', newUser.id, {
+      name: newUser.name, email: newUser.email, provider,
+    });
+    console.log(`✅ New user provisioned via ${provider}: ${newUser.name} (${newUser.email}) → tenant ${tenantId}`);
+    return newUser;
+  }
+
+  // GET /api/auth/linkedin — initiate LinkedIn OIDC flow
+  router.get('/api/auth/linkedin', (req, res) => {
+    if (!process.env.LINKEDIN_CLIENT_ID) {
+      return res.status(500).json({ error: 'LinkedIn OAuth not configured' });
+    }
+    try {
+      const provider = oidc.getProvider('linkedin');
+      const redirectUri = process.env.LINKEDIN_REDIRECT_URI ||
+        `${req.protocol}://${req.get('host')}/api/auth/linkedin/callback`;
+      process.env.LINKEDIN_REDIRECT_URI = redirectUri;
+      const returnTo = req.query.return_to || '/index.html';
+      const { authorizeUrl } = oidc.startFlow(provider, { returnTo });
+      res.redirect(authorizeUrl);
+    } catch (err) {
+      console.error('LinkedIn start error:', err.message);
+      res.redirect('/index.html?auth_error=' + encodeURIComponent(err.code || 'linkedin_start_failed'));
+    }
+  });
+
+  // GET /api/auth/linkedin/callback — handle LinkedIn OIDC callback
+  router.get('/api/auth/linkedin/callback', async (req, res) => {
+    try {
+      if (req.query.error) {
+        const code = req.query.error === 'user_cancelled_login' ? 'user_cancelled' : 'linkedin_denied';
+        return res.redirect('/index.html?auth_error=' + code);
+      }
+      if (!req.query.code) return res.redirect('/index.html?auth_error=no_code');
+
+      // Validate state + retrieve PKCE verifier
+      const entry = oidc.validateCallback(req.query.state);
+      const provider = oidc.getProvider('linkedin');
+      const redirectUri = process.env.LINKEDIN_REDIRECT_URI ||
+        `${req.protocol}://${req.get('host')}/api/auth/linkedin/callback`;
+
+      // Exchange code for tokens
+      const tokens = await oidc.exchangeCode(provider, req.query.code, entry.codeVerifier, redirectUri);
+
+      // Fetch userinfo
+      const identity = await oidc.fetchUserinfo(provider, tokens.accessToken);
+
+      // Reconcile with local user DB
+      const { user, isNew } = await oidc.reconcileIdentity(platformPool, identity, {
+        createUser: provisionUserFromIdentity,
+      });
+
+      // Create session (same mechanism as existing Google flow)
+      const sessionToken = crypto.randomBytes(48).toString('hex');
+      await platformPool.query(
+        `INSERT INTO sessions (id, user_id, token, expires_at, created_at)
+         VALUES (gen_random_uuid(), $1, $2, NOW() + INTERVAL '30 days', NOW())`,
+        [user.id, sessionToken]
+      );
+      try { require('../lib/auditLogger').audit.loginSuccess(req, user.id, user.email); } catch(e) {}
+      await platformPool.query('DELETE FROM sessions WHERE expires_at < NOW()');
+
+      // Route: new LinkedIn sign-ups → continuity screen; returning users → return_to
+      const returnTo = entry.returnTo || '/index.html';
+      if (isNew) {
+        res.redirect(`/onboarding/linkedin-continue?token=${sessionToken}&return_to=${encodeURIComponent(returnTo)}`);
+      } else {
+        const sep = returnTo.includes('?') ? '&' : '?';
+        res.redirect(`${returnTo}${sep}token=${sessionToken}`);
+      }
+    } catch (err) {
+      console.error('LinkedIn callback error:', err.code || 'unknown', err.message);
+      const code = err.code || 'oauth_failed';
+      res.redirect('/index.html?auth_error=' + encodeURIComponent(code));
+    }
+  });
+
+  // GET /api/auth/providers — list linked identity providers for current user
+  router.get('/api/auth/providers', authenticateToken, async (req, res) => {
+    try {
+      const providers = await oidc.getLinkedProviders(platformPool, req.user.user_id);
+      res.json({ providers });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch providers' });
+    }
+  });
+
+  // POST /api/auth/:provider/unlink — remove a provider link (not the last)
+  router.post('/api/auth/:provider/unlink', authenticateToken, async (req, res) => {
+    try {
+      const result = await oidc.unlinkProvider(platformPool, req.user.user_id, req.params.provider);
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ error: err.message, code: err.code });
+    }
+  });
+
   return router;
 };

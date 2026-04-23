@@ -3,7 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Signals</title>
+<title>Autonodal — Market Signal Intelligence Platform</title>
+<meta name="description" content="Autonodal is a market signal intelligence platform that harvests 400+ data sources to surface funding rounds, leadership moves, M&A activity, and hiring signals, then maps them against your team's network to identify warm paths into market opportunities.">
+<meta name="application-name" content="Autonodal">
+<meta property="og:title" content="Autonodal — Market Signal Intelligence Platform">
+<meta property="og:description" content="Surface market signals and warm paths to opportunity through your team's network.">
+<meta property="og:site_name" content="Autonodal">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.autonodal.com">
+<link rel="canonical" href="https://www.autonodal.com/">
+<meta name="robots" content="index, follow">
+<meta name="author" content="Autonodal">
+<meta name="google-site-verification" content="k6-agQXlNUuXqkdmstcJX25IW4sTLI7YSM-98D2CZ5s">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -1313,13 +1324,14 @@ a.stats-card-row:hover { background: var(--surface-warm); }
 .login-overlay {
   display: none;
   position: fixed;
-  inset: 0;
+  top: 0; left: 0; right: 0; bottom: 28px; /* leave room for slim footer */
   background: rgba(26,26,26,0.4);
   z-index: 200;
   align-items: center;
   justify-content: center;
   backdrop-filter: blur(4px);
 }
+#siteFooter { z-index: 300 !important; } /* above login overlay */
 
 .login-overlay.active { display: flex; }
 
@@ -1516,15 +1528,58 @@ a.stats-card-row:hover { background: var(--surface-warm); }
 
 <!-- ═══ LOGIN ═══ -->
 <div class="login-overlay" id="loginOverlay">
-  <div class="login-panel">
-    <div class="login-logo" id="loginLogo">Signals</div>
-    <div class="login-sub">Intelligence platform — sign in with your team account</div>
+  <div class="login-panel" style="width:460px;max-width:92vw">
+    <div class="login-logo" id="loginLogo" style="font-size:28px;margin-bottom:6px">Autonodal</div>
+    <div class="login-sub" style="font-size:14px;line-height:1.55;color:#4a4a4a;margin-bottom:20px">
+      <strong style="color:#1a1a1a">Market signal intelligence platform.</strong>
+      Autonodal harvests 400+ news, data and research sources to surface funding rounds, leadership moves, M&amp;A, expansions and hiring signals, then maps them against your team's network to identify warm paths into market opportunities.
+    </div>
+
+    <div style="background:#F7F5F2;border-radius:6px;padding:12px 14px;font-size:12px;line-height:1.6;color:#4a4a4a;margin-bottom:20px">
+      <strong style="color:#1a1a1a">What Autonodal accesses with Google permission:</strong><br>
+      • <strong>Gmail (read-only)</strong> — detect interaction recency between team and contacts<br>
+      • <strong>Contacts</strong> — map your Google contacts to signal companies<br>
+      • <strong>Calendar</strong> — link meetings to companies and opportunities<br>
+      • <strong>Drive (optional)</strong> — surface intelligence from shared docs<br>
+      Data stays in your tenant sandbox. Never shared cross-tenant. Never used to train AI models.
+    </div>
+
     <div class="login-error" id="loginError"></div>
-    <a class="login-btn" href="/api/auth/google" style="display:flex;align-items:center;justify-content:center;gap:10px;text-decoration:none;color:white">
-      <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-      Sign in with Google
+
+    <!-- LinkedIn — primary action: identity that maps to professional network -->
+    <a class="login-btn" href="/api/auth/linkedin" style="display:flex;align-items:center;justify-content:center;gap:10px;text-decoration:none;color:white;background:#0A66C2;border-color:#0A66C2">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+      Continue with LinkedIn
     </a>
-    <div class="login-alt" style="margin-top:12px;font-size:11px;color:#999">Restricted to @mitchellake.com accounts</div>
+
+    <!-- Google — secondary action: data access for signal detection -->
+    <a class="login-btn" href="/api/auth/google" style="display:flex;align-items:center;justify-content:center;gap:10px;text-decoration:none;color:#1a1a1a;background:white;border:1px solid #E0DDD8;margin-top:10px">
+      <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+      Continue with Google
+    </a>
+
+    <!-- Microsoft — coming soon -->
+    <div class="login-btn" style="display:flex;align-items:center;justify-content:center;gap:10px;color:#999;background:#F7F5F2;border:1px solid #E0DDD8;margin-top:10px;cursor:not-allowed">
+      <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#bbb" d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zm12.6 0H12.6V0H24v11.4z"/></svg>
+      <span style="font-size:13px">Microsoft — coming soon</span>
+    </div>
+
+    <div class="login-alt" style="margin-top:14px;font-size:11px;color:#7a7a7a;text-align:center;line-height:1.6">
+      LinkedIn signs you in. Google adds Gmail, Drive and Calendar intelligence.<br>
+      By signing in you agree to our <a href="/terms.html" style="color:#2563eb;text-decoration:none">Terms</a> and <a href="/privacy.html" style="color:#2563eb;text-decoration:none">Privacy Policy</a>.
+    </div>
+
+    <!-- Legal footer — required for Google OAuth verification -->
+    <div style="margin-top:28px;padding-top:18px;border-top:1px solid #E0DDD8;display:flex;gap:18px;justify-content:center;font-size:11px;color:#7a7a7a;flex-wrap:wrap">
+      <a href="/home.html" style="color:#7a7a7a;text-decoration:none">About</a>
+      <a href="/privacy.html" style="color:#7a7a7a;text-decoration:none">Privacy Policy</a>
+      <a href="/terms.html" style="color:#7a7a7a;text-decoration:none">Terms of Service</a>
+      <a href="/data-deletion.html" style="color:#7a7a7a;text-decoration:none">Data Deletion</a>
+      <a href="/docs/mcp.html" style="color:#7a7a7a;text-decoration:none">Docs</a>
+    </div>
+    <div style="margin-top:12px;text-align:center;font-size:10px;color:#AAAAAA">
+      &copy; 2026 Autonodal. All rights reserved.
+    </div>
   </div>
 </div>
 
@@ -1768,7 +1823,7 @@ a.stats-card-row:hover { background: var(--surface-warm); }
           <button class="filter-btn active" onclick="filterRegion('all', this)">All</button>
           <button class="filter-btn" onclick="filterRegion('AMER', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#FEF7E8;color:#B45309">AMER</span></button>
           <button class="filter-btn" onclick="filterRegion('EUR', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#EBF1FE;color:#2563EB">EUR</span></button>
-          <button class="filter-btn" onclick="filterRegion('MENA', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#FDF0F2;color:#D4537E">MENA</span></button>
+          <button class="filter-btn" onclick="filterRegion('MENA', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#FDF0F2;color:#D4537E">ME&amp;A</span></button>
           <button class="filter-btn" onclick="filterRegion('ASIA', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#F3EEFE;color:#6D28D9">ASIA</span></button>
           <button class="filter-btn" onclick="filterRegion('OCE', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#E8F5EE;color:#0D7A50">OCE</span></button>
         </div>
@@ -2403,7 +2458,7 @@ async function loadMarketHealthCard(horizon) {
         { label: 'Oceania', key: 'oce', count: parseInt(rs.oce) || 0, color: '#0D7A50' },
         { label: 'Americas', key: 'amer', count: parseInt(rs.amer) || 0, color: '#B45309' },
         { label: 'Europe', key: 'eur', count: parseInt(rs.eur) || 0, color: '#2563EB' },
-        { label: 'MENA', key: 'mena', count: parseInt(rs.mena) || 0, color: '#D4537E' },
+        { label: 'ME&A', key: 'mena', count: parseInt(rs.mena) || 0, color: '#D4537E' },
         { label: 'Asia', key: 'asia', count: parseInt(rs.asia) || 0, color: '#6D28D9' },
       ];
       // Compare with prior period for delta arrows
@@ -4188,5 +4243,16 @@ if (AufonodaTour.shouldRun('autonodal_dash_tour')) {
 function restartTour() { localStorage.removeItem('autonodal_dash_tour'); location.reload(); }
 </script>
 <script src="/huddle-context.js"></script>
+
+<!-- Minimal fixed footer — legal links only, does not disrupt the app -->
+<footer id="siteFooter" style="position:fixed;bottom:0;left:0;right:0;z-index:300;background:rgba(247,245,242,0.96);border-top:1px solid #E0DDD8;padding:6px 16px;font-family:'DM Sans',system-ui,sans-serif;backdrop-filter:blur(6px);font-size:11px">
+  <nav style="max-width:1200px;margin:0 auto;display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:center;color:#7A7A7A">
+    <a href="/privacy.html" style="color:#7A7A7A;text-decoration:none">Privacy</a>
+    <a href="/terms.html" style="color:#7A7A7A;text-decoration:none">Terms</a>
+    <a href="/data-deletion.html" style="color:#7A7A7A;text-decoration:none">Data Deletion</a>
+    <span>&copy; 2026 Autonodal</span>
+  </nav>
+</footer>
+
 </body>
 </html>

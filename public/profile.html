@@ -116,7 +116,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 
 <div id="loginPrompt">
   <h2 style="font-family: var(--serif); margin-bottom: 12px">Sign in to continue</h2>
-  <a href="/api/auth/google" class="btn btn-primary">Sign in with Google</a>
+  <a href="/api/auth/linkedin" class="btn btn-primary" style="background:#0A66C2;color:white;display:inline-block;margin:4px">Continue with LinkedIn</a>
+  <a href="/api/auth/google" class="btn btn-primary" style="display:inline-block;margin:4px">Continue with Google</a>
 </div>
 
 <div id="appContent">
@@ -186,12 +187,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 
       <div class="card-label" style="margin-bottom:8px">I'm seeking signals for:</div>
       <div id="missionIntents" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
-        <label class="pill-choice" data-intent="sales"><input type="checkbox" value="sales" style="display:none"><span>💼 Sales &amp; BD</span><small>Expansion, buying signals, partnerships, product launches</small></label>
-        <label class="pill-choice" data-intent="talent"><input type="checkbox" value="talent" style="display:none"><span>🎯 Talent &amp; People</span><small>Leadership moves, team changes, capital raises</small></label>
-        <label class="pill-choice" data-intent="investment"><input type="checkbox" value="investment" style="display:none"><span>💰 Investment</span><small>Capital raises, M&amp;A, founder activity</small></label>
-        <label class="pill-choice" data-intent="advisory"><input type="checkbox" value="advisory" style="display:none"><span>🧭 Advisory &amp; Partnerships</span><small>Strategic moves, restructuring, transformations</small></label>
-        <label class="pill-choice" data-intent="portfolio"><input type="checkbox" value="portfolio" style="display:none"><span>📊 Portfolio Monitoring</span><small>Health signals across tracked companies</small></label>
-        <label class="pill-choice" data-intent="market_intel"><input type="checkbox" value="market_intel" style="display:none"><span>🌐 Market Intel</span><small>Sector patterns, competitor moves, trends</small></label>
+        <label class="pill-choice" data-intent="sales"><input type="checkbox" value="sales" style="display:none"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px"><path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect width="20" height="14" x="2" y="6" rx="2"/></svg>Sales &amp; BD</span><small>Expansion, buying signals, partnerships, product launches</small></label>
+        <label class="pill-choice" data-intent="talent"><input type="checkbox" value="talent" style="display:none"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>Talent &amp; People</span><small>Leadership moves, team changes, capital raises</small></label>
+        <label class="pill-choice" data-intent="investment"><input type="checkbox" value="investment" style="display:none"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Investment</span><small>Capital raises, M&amp;A, founder activity</small></label>
+        <label class="pill-choice" data-intent="advisory"><input type="checkbox" value="advisory" style="display:none"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></svg>Advisory &amp; Partnerships</span><small>Strategic moves, restructuring, transformations</small></label>
+        <label class="pill-choice" data-intent="portfolio"><input type="checkbox" value="portfolio" style="display:none"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>Portfolio Monitoring</span><small>Health signals across tracked companies</small></label>
+        <label class="pill-choice" data-intent="market_intel"><input type="checkbox" value="market_intel" style="display:none"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>Market Intel</span><small>Sector patterns, competitor moves, trends</small></label>
       </div>
 
       <div class="card-label" style="margin-bottom:6px">Mission statement <small style="color:var(--ink-3);font-weight:400">(optional — one line on what success looks like)</small></div>
@@ -211,6 +212,88 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
     .pill-choice span { font-size:13px;font-weight:600;color:var(--ink); }
     .pill-choice small { font-size:11px;color:var(--ink-3);font-weight:400; }
   </style>
+
+  <!-- AI Assistants (MCP) -->
+  <!-- Identity Providers -->
+  <div class="section">
+    <div class="section-title">Identity Providers</div>
+    <div style="font-size:12px;color:var(--ink-3);line-height:1.5;margin-bottom:14px">
+      Linked sign-in methods. Having multiple providers linked means you can sign in with any of them. You can't disconnect your last remaining provider — link another first.
+    </div>
+    <div id="identityProvidersList" style="display:flex;flex-direction:column;gap:8px">
+      <div style="color:var(--ink-4);font-size:13px;padding:8px 0">Loading...</div>
+    </div>
+  </div>
+  <script>
+  (function() {
+    function escHtml(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+    async function loadIdentityProviders() {
+      try {
+        var tk = localStorage.getItem('ml_token');
+        var res = await fetch('/api/auth/providers', { headers: { Authorization: 'Bearer ' + tk } });
+        if (!res.ok) return;
+        var data = await res.json();
+        var linked = data.providers || [];
+        var linkedMap = {};
+        linked.forEach(function(p) { linkedMap[p.provider] = p; });
+
+        var all = [
+          { id: 'linkedin', label: 'LinkedIn', colour: '#0A66C2' },
+          { id: 'google', label: 'Google', colour: '#EA4335' },
+          { id: 'microsoft', label: 'Microsoft', colour: '#bbb', disabled: true }
+        ];
+        var html = '';
+        all.forEach(function(p) {
+          var isLinked = !!linkedMap[p.id];
+          var linkedAt = isLinked && linkedMap[p.id].linked_at ? new Date(linkedMap[p.id].linked_at).toLocaleDateString() : null;
+          var emailAt = isLinked ? escHtml(linkedMap[p.id].email_at_link) : null;
+          html += '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--rule);border-radius:8px;background:white">';
+          html += '<div style="width:28px;height:28px;border-radius:6px;background:' + p.colour + '18;display:flex;align-items:center;justify-content:center;color:' + p.colour + ';font-size:10px;font-weight:700">' + p.label[0] + '</div>';
+          html += '<div style="flex:1;min-width:0">';
+          html += '<div style="font-size:13px;font-weight:600">' + p.label + (p.disabled ? ' <span style="font-size:10px;color:var(--ink-4);font-weight:400">Coming soon</span>' : '') + '</div>';
+          if (isLinked) {
+            html += '<div style="font-size:11px;color:var(--ink-3)">Connected as ' + emailAt + ' · linked ' + linkedAt + '</div>';
+          } else if (!p.disabled) {
+            html += '<div style="font-size:11px;color:var(--ink-4)">Not connected</div>';
+          }
+          html += '</div>';
+          if (isLinked && linked.length > 1) {
+            html += '<button onclick="unlinkProvider(\'' + p.id + '\')" style="font-size:11px;padding:5px 10px;border:1px solid var(--rule);border-radius:6px;background:white;color:var(--rose);cursor:pointer;font-family:inherit">Disconnect</button>';
+          } else if (!isLinked && !p.disabled) {
+            html += '<a href="/api/auth/' + p.id + '" style="font-size:11px;padding:6px 12px;border:1px solid ' + p.colour + ';color:' + p.colour + ';border-radius:6px;text-decoration:none;font-weight:600">Connect</a>';
+          }
+          html += '</div>';
+        });
+        document.getElementById('identityProvidersList').innerHTML = html;
+      } catch (e) {}
+    }
+    window.unlinkProvider = async function(providerId) {
+      if (!confirm('Disconnect ' + providerId + '? You can reconnect later.')) return;
+      var tk = localStorage.getItem('ml_token');
+      var res = await fetch('/api/auth/' + providerId + '/unlink', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + tk },
+      });
+      if (res.ok) loadIdentityProviders();
+      else {
+        var err = await res.json().catch(function() { return {}; });
+        alert(err.error || 'Failed to disconnect');
+      }
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', loadIdentityProviders);
+    } else {
+      loadIdentityProviders();
+    }
+  })();
+  </script>
+
+  <div class="section">
+    <div class="section-title">Connect AI Assistants <span class="badge" style="background:var(--emerald-soft);color:var(--emerald)">MCP</span></div>
+    <div style="font-size:13px;color:var(--ink-2);margin-bottom:14px;line-height:1.6">
+      Bring your Autonodal intelligence into Claude Desktop, ChatGPT, Cursor — anywhere that speaks MCP. Your data stays in your sandbox; the assistant queries it on your behalf.
+    </div>
+    <a href="/settings-mcp.html" class="btn btn-primary btn-sm" style="text-decoration:none;display:inline-block">Manage MCP connections →</a>
+  </div>
 
   <!-- Connections -->
   <div class="section">
@@ -938,7 +1021,7 @@ async function loadNetworkAnalysis() {
       '<div style="text-align:center"><div style="font-family:var(--mono);font-size:20px;font-weight:600">' + num(t.companies_reached) + '</div><div style="font-size:10px;color:var(--ink-4)">Companies</div></div>';
 
     // Geo bars
-    var regionNames = { AMER: 'Americas', EUR: 'Europe', MENA: 'MENA', ASIA: 'Asia', OCE: 'Oceania', OTHER: 'Other' };
+    var regionNames = { AMER: 'Americas', EUR: 'Europe', MENA: 'ME&A', ASIA: 'Asia', OCE: 'Oceania', OTHER: 'Other' };
     var regionColors = { AMER: '#B45309', EUR: '#2563EB', MENA: '#D4537E', ASIA: '#6D28D9', OCE: '#0D7A50', OTHER: '#AAAAAA' };
     document.getElementById('networkGeo').innerHTML = (data.geography || []).filter(function(g) { return g.contacts > 0; }).map(function(g) {
       var c = regionColors[g.region] || '#888';

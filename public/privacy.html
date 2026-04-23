@@ -234,7 +234,23 @@ code,.mono{font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--au-c
     <li>Does not allow humans to read Google user data except as required by law, with the user's affirmative agreement, for security purposes, or to perform aggregate, anonymised operations.</li>
   </ul>
 
-  <h2>10. Data Retention and Deletion</h2>
+  <h2 id="linkedin-oidc">10. LinkedIn Sign-In</h2>
+
+  <p>When you sign in to Autonodal with LinkedIn, we request the following OpenID Connect scopes from LinkedIn:</p>
+
+  <ul>
+    <li><code>openid</code> &mdash; to receive a stable LinkedIn identifier</li>
+    <li><code>profile</code> &mdash; to display your name, profile picture, and locale within Autonodal</li>
+    <li><code>email</code> &mdash; to link your LinkedIn identity to your Autonodal account via your email address</li>
+  </ul>
+
+  <p>LinkedIn sign-in provides identity only. The data accessed via these scopes is limited to your public profile and verified email. Autonodal does not access your LinkedIn connections, messages, activity, or content through this sign-in method.</p>
+
+  <p>To import your LinkedIn professional network into Autonodal, you can separately upload a LinkedIn data export. EU users may have access to continuous LinkedIn data sync via the Digital Markets Act portability API when authorised. Both paths require explicit additional consent and are documented separately.</p>
+
+  <p>LinkedIn sign-in data (your LinkedIn identifier and the email address linked to it) is retained only while you maintain an active Autonodal account. To revoke LinkedIn access, visit <a href="https://www.linkedin.com/psettings/permitted-services" rel="noopener">linkedin.com/psettings/permitted-services</a>.</p>
+
+  <h2>11. Data Retention and Deletion</h2>
   <p>You may delete your account at any time from your account settings. Upon deletion:</p>
   <ul>
     <li>All personal data is marked for deletion immediately</li>
@@ -243,11 +259,11 @@ code,.mono{font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--au-c
   </ul>
   <p>You can also request deletion by emailing <a href="mailto:privacy@autonodal.com">privacy@autonodal.com</a>.</p>
 
-  <h2>11. Contact</h2>
+  <h2>12. Contact</h2>
   <p>For any privacy-related questions or requests, including questions about this Google user data disclosure, contact:</p>
   <p><a href="mailto:privacy@autonodal.com">privacy@autonodal.com</a></p>
 
-  <h2>12. Last Updated</h2>
+  <h2>13. Last Updated</h2>
   <p>This policy was last updated on <strong>23 April 2026</strong>.</p>
 </main>
 
