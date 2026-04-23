@@ -34,6 +34,10 @@ Thank you for the feedback. We have updated our privacy policy to fully document
 
 Please note that Drive, Docs, Sheets, and Slides scopes (`drive.readonly`, `documents.readonly`, `spreadsheets.readonly`, `presentations.readonly`) have been removed from the consent screen and are not currently requested by the application. If we choose to re-introduce a Drive-backed feature in the future, we will submit a scope amendment through the standard verification process.
 
+**Demonstration video:** [PASTE UNLISTED YOUTUBE URL HERE]
+
+The video walks through the sign-in consent flow, the use of Gmail metadata / Contacts / Calendar scopes within the application, and the user-initiated disconnect flow that revokes Google access and schedules 30-day deletion of Google-derived data.
+
 Please let us know if any additional detail is required to complete verification.
 
 Best regards,
