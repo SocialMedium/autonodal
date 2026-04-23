@@ -404,6 +404,13 @@ async function main() {
 
     const { rows: accounts } = await pool.query(query, params);
 
+    // Decrypt tokens from at-rest AES-256-GCM storage
+    const { decryptToken } = require('../lib/crypto');
+    accounts.forEach(a => {
+      if (a.access_token) a.access_token = decryptToken(a.access_token);
+      if (a.refresh_token) a.refresh_token = decryptToken(a.refresh_token);
+    });
+
     if (accounts.length === 0) {
       console.log(c.yellow('  No connected Google accounts found'));
       return { records_in: 0, records_out: 0 };

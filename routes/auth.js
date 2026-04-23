@@ -6,6 +6,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const https = require('https');
+const { encryptToken } = require('../lib/crypto');
 const router = express.Router();
 
 module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog, generateQueryEmbedding }) {
@@ -14,8 +15,11 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
 
   const SIGNIN_SCOPES = 'openid email profile';
   const GMAIL_CONNECT_SCOPES = 'openid email profile https://www.googleapis.com/auth/gmail.readonly';
+  // Drive / Docs / Sheets / Slides scopes are intentionally NOT included in the default bundle.
+  // They will be re-added via a scope-amendment submission to Google OAuth verification once the
+  // Drive ingestion path ships with a per-file picker (`drive.file`) rather than broad readonly.
   const DRIVE_CONNECT_SCOPES = 'openid email profile https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents.readonly https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/presentations.readonly';
-  const GOOGLE_CONNECT_SCOPES = 'openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents.readonly https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/presentations.readonly';
+  const GOOGLE_CONNECT_SCOPES = 'openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/calendar.readonly';
 
   // ═══════════════════════════════════════════════════════════════════════════════
   // 1. GET /api/auth/google — initiate Google OAuth
@@ -25,11 +29,10 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
     if (!process.env.GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' });
     const redirectUri = process.env.GOOGLE_REDIRECT_URL || process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
     const returnTo = req.query.return_to || '/index.html';
-    // Allow scope override via ?scope=drive to request Drive in addition to default scopes
-    let scope = GOOGLE_CONNECT_SCOPES;
-    if (req.query.scope === 'drive' || req.query.include_drive === 'true') {
-      scope = GOOGLE_CONNECT_SCOPES + ' https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents.readonly https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/presentations.readonly';
-    }
+    // Drive scope override disabled pending re-verification. Previously allowed via ?scope=drive.
+    // To re-enable: amend OAuth consent screen with drive.file (preferred) or drive.readonly, then
+    // restore the conditional below after Google approves the scope amendment.
+    const scope = GOOGLE_CONNECT_SCOPES;
     const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
       client_id: process.env.GOOGLE_CLIENT_ID,
       redirect_uri: redirectUri,
@@ -207,8 +210,8 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
         `, [
           user.id,
           userInfo.email,
-          tokenData.access_token,
-          tokenData.refresh_token || null,
+          encryptToken(tokenData.access_token),
+          tokenData.refresh_token ? encryptToken(tokenData.refresh_token) : null,
           tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
           grantedScopes
         ]).catch((e) => console.error('Google account upsert:', e.message));
@@ -299,6 +302,51 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: 'Logout failed' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // 5b. POST /api/auth/google/disconnect — revoke Google, schedule data purge
+  // Required for Google Limited Use compliance — user-initiated disconnect triggers
+  // token revocation at Google + 30-day data deletion window.
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  router.post('/api/auth/google/disconnect', authenticateToken, async (req, res) => {
+    try {
+      const userId = req.user.user_id;
+      const { rows: accounts } = await platformPool.query(
+        'SELECT id, google_email, access_token, refresh_token FROM user_google_accounts WHERE user_id = $1',
+        [userId]
+      );
+
+      // Revoke each token at Google (best-effort — the revoke API is rate-limited but idempotent)
+      for (const acct of accounts) {
+        const tokenToRevoke = acct.refresh_token
+          ? require('../lib/crypto').decryptToken(acct.refresh_token)
+          : require('../lib/crypto').decryptToken(acct.access_token);
+        if (!tokenToRevoke) continue;
+        try {
+          await fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(tokenToRevoke), { method: 'POST' });
+        } catch (e) { /* non-fatal — we still delete locally */ }
+      }
+
+      // Enqueue for 30-day purge of all Google-derived data belonging to this user
+      for (const acct of accounts) {
+        await platformPool.query(
+          `INSERT INTO google_disconnect_queue (user_id, google_email, disconnected_at, purge_after)
+           VALUES ($1, $2, NOW(), NOW() + INTERVAL '30 days')`,
+          [userId, acct.google_email]
+        );
+      }
+
+      // Immediately delete the token row (access revoked — no further sync)
+      await platformPool.query('DELETE FROM user_google_accounts WHERE user_id = $1', [userId]);
+
+      auditLog(userId, 'google_disconnected', 'user', userId, { accounts: accounts.length });
+      res.json({ ok: true, disconnected: accounts.length, purge_in_days: 30 });
+    } catch (err) {
+      console.error('Google disconnect error:', err.message);
+      res.status(500).json({ error: 'Disconnect failed' });
     }
   });
 

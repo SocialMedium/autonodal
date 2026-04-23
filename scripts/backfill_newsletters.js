@@ -29,23 +29,28 @@ const NEWSLETTER_QUERIES = [
   'from:crunchbase',
 ];
 
+const { encryptToken, decryptToken } = require('../lib/crypto');
 async function getGoogleClient(account) {
   const oauth2 = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET
   );
 
+  // Decrypt at-rest tokens
+  const storedAccess = decryptToken(account.access_token);
+  const storedRefresh = account.refresh_token ? decryptToken(account.refresh_token) : null;
+
   // Refresh token if needed
-  let accessToken = account.access_token;
-  if (account.refresh_token) {
+  let accessToken = storedAccess;
+  if (storedRefresh) {
     oauth2.setCredentials({
-      access_token: account.access_token,
-      refresh_token: account.refresh_token
+      access_token: storedAccess,
+      refresh_token: storedRefresh
     });
     try {
       const { credentials } = await oauth2.refreshAccessToken();
       accessToken = credentials.access_token;
-      await pool.query('UPDATE user_google_accounts SET access_token = $1 WHERE id = $2', [accessToken, account.id]);
+      await pool.query('UPDATE user_google_accounts SET access_token = $1 WHERE id = $2', [encryptToken(accessToken), account.id]);
     } catch (e) {
       console.log('  Token refresh failed:', e.message);
     }

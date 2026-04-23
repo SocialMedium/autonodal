@@ -8,6 +8,7 @@ require('dotenv').config();
 
 const db = require('../lib/db');
 const googleLib = require('../lib/google');
+const { encryptToken, decryptToken } = require('../lib/crypto');
 
 async function main() {
   console.log('═══════════════════════════════════════════════════════════════');
@@ -28,18 +29,24 @@ async function main() {
     
     console.log(`Found ${accounts.length} Google account(s) to sync\n`);
     
+    // Decrypt tokens from at-rest storage
+    accounts.forEach(a => {
+      if (a.access_token) a.access_token = decryptToken(a.access_token);
+      if (a.refresh_token) a.refresh_token = decryptToken(a.refresh_token);
+    });
+
     let totalStats = { total: 0, created: 0, updated: 0, skipped: 0, errors: 0 };
-    
+
     for (const account of accounts) {
       console.log(`\nSyncing contacts for: ${account.google_email}`);
-      
+
       // Check if token needs refresh
       if (account.token_expires_at && new Date(account.token_expires_at) < new Date()) {
         console.log('  Refreshing access token...');
         const newTokens = await googleLib.refreshAccessToken(account.refresh_token);
         await db.queryAll(
           'UPDATE user_google_accounts SET access_token = $1, token_expires_at = $2 WHERE id = $3',
-          [newTokens.access_token, new Date(newTokens.expiry_date), account.id]
+          [encryptToken(newTokens.access_token), new Date(newTokens.expiry_date), account.id]
         );
         account.access_token = newTokens.access_token;
       }

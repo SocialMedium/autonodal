@@ -387,6 +387,19 @@ app.use(require('./routes/companies')({ platformPool, TenantDB, authenticateToke
 app.use(require('./routes/signals')({ platformPool, TenantDB, authenticateToken, cachedResponse, setCachedResponse, generateQueryEmbedding, qdrantSearch, REGION_MAP, REGION_CODES, verifyHuddleMember }));
 app.use(require('./routes/onboarding')({ platformPool, TenantDB, authenticateToken, generateQueryEmbedding }));
 app.use(require('./routes/artifacts')({ platformPool, TenantDB, authenticateToken, generateQueryEmbedding, auditLog }));
+
+// MCP — user-initiated activation (Claude Desktop, ChatGPT, Cursor)
+// Tenant MCP endpoint at /mcp/* (token-authenticated, tenant-scoped)
+// Token management API at /api/mcp/* (web session authenticated)
+try {
+  const mcpAppPool = require('./lib/db').pool;
+  app.use('/mcp', require('./routes/mcp')(platformPool, mcpAppPool));
+  app.use(require('./routes/mcp_admin')({ authenticateToken, platformPool, requireAdmin }));
+  console.log('  ✅ MCP endpoint mounted at /mcp (SSE + HTTP transports)');
+} catch (e) {
+  console.log('  ⚠️  MCP endpoint skipped:', e.message);
+}
+
 app.use(require('./routes/platform')({
   platformPool, TenantDB, authenticateToken, requireAdmin, optionalAuth,
   auditLog, generateQueryEmbedding, qdrantSearch,
@@ -408,7 +421,10 @@ app.use(require('./routes/platform')({
 /* REMOVED: app.get('/api/auth/google/callback') — moved to routes/auth.js */
 
 // ─── Tenant teammate invites ───
-// Helper: get a fresh Google access token for the current user
+// Helper: get a fresh Google access token for the current user.
+// Tokens are stored AES-256-GCM encrypted (lib/crypto.js); decryptToken is
+// a no-op for legacy plaintext rows, so this is safe during migration.
+const { encryptToken: _encryptToken, decryptToken: _decryptToken } = require('./lib/crypto');
 async function getGoogleToken(userId) {
   const { rows: [acct] } = await platformPool.query(
     'SELECT id, access_token, refresh_token, token_expires_at FROM user_google_accounts WHERE user_id = $1 AND sync_enabled = true LIMIT 1',
@@ -416,15 +432,18 @@ async function getGoogleToken(userId) {
   );
   if (!acct) return null;
 
+  const accessToken = _decryptToken(acct.access_token);
+  const refreshToken = acct.refresh_token ? _decryptToken(acct.refresh_token) : null;
+
   // Refresh if expired or expiring within 5 min
   if (acct.token_expires_at && new Date(acct.token_expires_at) <= new Date(Date.now() + 5 * 60 * 1000)) {
-    if (acct.refresh_token && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    if (refreshToken && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       try {
         const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: new URLSearchParams({
-            refresh_token: acct.refresh_token,
+            refresh_token: refreshToken,
             client_id: process.env.GOOGLE_CLIENT_ID,
             client_secret: process.env.GOOGLE_CLIENT_SECRET,
             grant_type: 'refresh_token'
@@ -434,14 +453,14 @@ async function getGoogleToken(userId) {
           const tokens = await refreshRes.json();
           await platformPool.query(
             'UPDATE user_google_accounts SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3',
-            [tokens.access_token, new Date(Date.now() + tokens.expires_in * 1000), acct.id]
+            [_encryptToken(tokens.access_token), new Date(Date.now() + tokens.expires_in * 1000), acct.id]
           );
           return tokens.access_token;
         }
       } catch (e) { /* fall through to existing token */ }
     }
   }
-  return acct.access_token;
+  return accessToken;
 }
 const resendEnabled = !!process.env.RESEND_API_KEY;
 const resend = resendEnabled ? new (require('resend').Resend)(process.env.RESEND_API_KEY) : null;
@@ -1030,6 +1049,7 @@ app.listen(PORT, async () => {
     'sql/migration_companies_relationship_state.sql',
     'sql/migration_lead_claims.sql',
     'sql/migration_proximity_score_factors.sql',
+    'sql/migration_google_privacy_hardening.sql',
   ];
   for (const migPath of leadEngineMigrations) {
     try {

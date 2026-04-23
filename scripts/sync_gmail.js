@@ -237,44 +237,12 @@ async function processThread(gmail, thread, userEmail, userId, tenantId, dryRun)
   // Gmail URL (define early so newsletter code can use it)
   const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${threadId}`;
 
-  // Check if this is a newsletter — ingest as document for signal detection
+  // Newsletter body ingestion from Gmail is DISABLED for Google Limited Use compliance.
+  // Newsletters are now harvested via dedicated RSS feeds (routes/platform.js feed harvester)
+  // or via user-configured forwarding-address consent, neither of which requires Gmail scope.
+  // Detected newsletters are simply skipped — still counted as "seen" for metadata proximity.
   const isNewsletter = !isOutbound && NEWSLETTER_PATTERNS.some(p => senderAddr.includes(p));
-  if (isNewsletter) {
-    // Extract email body text for signal processing
-    const bodyText = messages.map(m => {
-      const parts = m.payload?.parts || [m.payload];
-      for (const part of parts) {
-        if (part?.mimeType === 'text/plain' && part?.body?.data) {
-          return Buffer.from(part.body.data, 'base64').toString('utf8');
-        }
-      }
-      return '';
-    }).join('\n').slice(0, 30000);
-
-    const senderName = fromRaw.replace(/<.*>/, '').replace(/"/g, '').trim() || senderAddr.split('@')[0];
-
-    if (bodyText.length > 100 && !dryRun) {
-      const sourceHash = require('crypto').createHash('md5').update(threadId).digest('hex');
-      try {
-        await pool.query(`
-          INSERT INTO external_documents (title, content, source_name, source_type, source_url, source_url_hash,
-            tenant_id, uploaded_by_user_id, published_at, processing_status, created_at)
-          VALUES ($1, $2, $3, 'newsletter', $4, $5, $6, $7, $8, 'pending', NOW())
-          ON CONFLICT (source_url_hash, tenant_id) DO NOTHING
-        `, [
-          subject.slice(0, 255) || 'Newsletter',
-          bodyText.slice(0, 50000),
-          senderName,
-          gmailUrl,
-          sourceHash,
-          userId ? (await pool.query('SELECT tenant_id FROM users WHERE id = $1', [userId])).rows[0]?.tenant_id : null,
-          userId,
-          interactionAt.toISOString()
-        ]);
-      } catch (e) { /* duplicate or error — non-fatal */ }
-    }
-    return { skipped: true, newsletter_ingested: true };
-  }
+  if (isNewsletter) return { skipped: true, reason: 'newsletter_gmail_ingest_disabled' };
 
   if (!isOutbound && NOISE_PATTERNS.some(p => senderAddr.includes(p))) return { skipped: true };
 
@@ -713,6 +681,13 @@ async function main() {
     }
 
     const { rows: accounts } = await pool.query(query, params);
+
+    // Decrypt tokens from at-rest AES-256-GCM storage
+    const { decryptToken } = require('../lib/crypto');
+    accounts.forEach(a => {
+      if (a.access_token) a.access_token = decryptToken(a.access_token);
+      if (a.refresh_token) a.refresh_token = decryptToken(a.refresh_token);
+    });
 
     if (accounts.length === 0) {
       console.log(c.yellow('  No connected Google accounts found'));

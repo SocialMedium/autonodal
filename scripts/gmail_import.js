@@ -23,14 +23,17 @@ const pool = new Pool({
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ─── Get valid access token ───
+const { encryptToken, decryptToken } = require('../lib/crypto');
 async function getToken() {
   const account = await pool.query('SELECT * FROM user_google_accounts WHERE sync_enabled = true LIMIT 1');
   if (account.rows.length === 0) throw new Error('No Gmail account connected');
-  
+
   const acct = account.rows[0];
+  acct.access_token = decryptToken(acct.access_token);
+  acct.refresh_token = decryptToken(acct.refresh_token);
   const now = new Date();
   const expires = new Date(acct.token_expires_at);
-  
+
   if (expires <= new Date(now.getTime() + 5 * 60 * 1000)) {
     console.log('  🔄 Refreshing token...');
     const resp = await fetch('https://oauth2.googleapis.com/token', {
@@ -45,14 +48,14 @@ async function getToken() {
     });
     if (!resp.ok) throw new Error(`Token refresh failed: ${await resp.text()}`);
     const tokens = await resp.json();
-    
+
     await pool.query(
       'UPDATE user_google_accounts SET access_token=$1, token_expires_at=$2 WHERE id=$3',
-      [tokens.access_token, new Date(Date.now() + tokens.expires_in * 1000), acct.id]
+      [encryptToken(tokens.access_token), new Date(Date.now() + tokens.expires_in * 1000), acct.id]
     );
     return { token: tokens.access_token, userId: acct.user_id, email: acct.google_email };
   }
-  
+
   return { token: acct.access_token, userId: acct.user_id, email: acct.google_email };
 }
 
