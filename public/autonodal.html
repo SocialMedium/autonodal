@@ -4,11 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Autonodal — Act when it matters</title>
-<meta name="description" content="Stop chasing the market. See it move, and know when it matters. Actionable intelligence from networks in motion.">
+<meta name="description" content="Autonodal is a market signal intelligence platform. We harvest 400+ data sources to surface funding rounds, leadership moves, M&A, expansions, and hiring signals, then map them against your team's network to identify warm paths into market opportunities.">
 <link rel="canonical" href="https://www.autonodal.com">
-<meta property="og:title" content="Autonodal — Actionable intelligence from networks in motion">
-<meta property="og:description" content="Stop chasing the market. Act when it matters.">
+<meta name="google-site-verification" content="k6-agQXlNUuXqkdmstcJX25IW4sTLI7YSM-98D2CZ5s">
+<meta name="application-name" content="Autonodal">
+<meta name="author" content="Autonodal">
+<meta name="robots" content="index, follow">
+<meta property="og:title" content="Autonodal — Market Signal Intelligence Platform">
+<meta property="og:description" content="Surface market signals and warm paths to opportunity through your team's network.">
+<meta property="og:site_name" content="Autonodal">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://www.autonodal.com">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400;1,500&family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -281,7 +287,7 @@ footer{background:var(--void-surface);border-top:1px solid var(--void-border);pa
 <nav id="nav">
   <a href="#" class="nav-mark">Autonodal</a>
   <div class="nav-actions" id="navAuth">
-    <a href="/api/auth/google?return_to=/index.html" class="nav-entry nav-login-direct" id="navLogin">
+    <a href="/index.html" class="nav-entry nav-login-direct" id="navLogin">
       Login
       <svg class="icon" width="12" height="12" style="display:inline-block;vertical-align:middle;margin-left:6px"><use href="#ic-arrow-r"/></svg>
     </a>
@@ -307,7 +313,7 @@ footer{background:var(--void-surface);border-top:1px solid var(--void-border);pa
       Enter platform
       <svg width="14" height="14"><use href="#ic-arrow-r"/></svg>
     </a>
-    <a href="/api/auth/google?return_to=/index.html" class="btn-enter hero-auth-login">
+    <a href="/index.html" class="btn-enter hero-auth-login">
       Enter platform
       <svg width="14" height="14"><use href="#ic-arrow-r"/></svg>
     </a>
@@ -514,7 +520,7 @@ footer{background:var(--void-surface);border-top:1px solid var(--void-border);pa
         <div class="stat-block"><span class="stat-val" id="s-companies">--</span><span class="stat-lbl">Companies monitored</span></div>
         <div class="stat-block"><span class="stat-val" id="s-signals">--</span><span class="stat-lbl">Signals this week</span></div>
         <div class="stat-block"><span class="stat-val" id="s-searches">--</span><span class="stat-lbl">Active feeds</span></div>
-        <div class="stat-block"><span class="stat-val">AU · SG · UK · US</span><span class="stat-lbl">Four markets, continuously</span></div>
+        <div class="stat-block"><span class="stat-val">AMER · EUR · ME&amp;A · ASIA · OCE</span><span class="stat-lbl">Five global regions, continuously</span></div>
       </div>
     </div>
     <h2 class="close-h r">Stop chasing<br>the market.<br><em>Arrive when it matters.<br>Already connected.</em></h2>
@@ -524,11 +530,11 @@ footer{background:var(--void-surface);border-top:1px solid var(--void-border);pa
         Enter Autonodal
         <svg width="14" height="14"><use href="#ic-arrow-r"/></svg>
       </a>
-      <a href="/api/auth/google?return_to=/index.html" class="btn-enter hero-auth-login" style="font-size:14px;padding:16px 44px">
+      <a href="/index.html" class="btn-enter hero-auth-login" style="font-size:14px;padding:16px 44px">
         Enter Autonodal
         <svg width="14" height="14"><use href="#ic-arrow-r"/></svg>
       </a>
-      <div class="restricted">Restricted access · By invitation · Powered by LORAC AI</div>
+      <div class="restricted">Restricted access · By invitation · <a href="/privacy.html" style="color:inherit;text-decoration:underline">Privacy</a> · <a href="/terms.html" style="color:inherit;text-decoration:underline">Terms</a></div>
     </div>
   </div>
 </section>
@@ -562,41 +568,87 @@ footer{background:var(--void-surface);border-top:1px solid var(--void-border);pa
 
 <footer>
   <div class="footer-mark">Autonodal</div>
-  <div class="footer-note">Powered by LORAC AI · Multi-party intelligence</div>
+  <nav class="footer-note" style="display:flex;gap:18px;flex-wrap:wrap;justify-content:center">
+    <a href="/privacy.html" style="color:inherit;text-decoration:none">Privacy Policy</a>
+    <a href="/terms.html" style="color:inherit;text-decoration:none">Terms of Service</a>
+    <a href="/data-deletion.html" style="color:inherit;text-decoration:none">Data Deletion</a>
+    <a href="/home.html" style="color:inherit;text-decoration:none">About</a>
+    <a href="mailto:jon@mitchellake.com" style="color:inherit;text-decoration:none">Contact</a>
+  </nav>
 </footer>
 
 <script>
 var fmt = function(n) { return typeof n === 'number' ? n.toLocaleString() : n; };
 
-// Ticker
-function buildTicker(d) {
-  var items = [
-    { val: fmt(d.people || 0), lbl: 'people tracked' },
-    { val: fmt(d.companies || 0), lbl: 'companies monitored' },
-    { val: fmt(d.signals_7d || 0), lbl: 'signals this week' },
-    { val: fmt(d.sources || 0), lbl: 'active feeds' },
-    { val: 'AU \u00b7 SG \u00b7 UK \u00b7 US', lbl: 'four markets, continuously' },
-  ];
+// Ticker — Market Health Index (live calibrated scores from retrospective analysis)
+function mhiArrow(dir) { return dir === 'up' ? '▲' : dir === 'down' ? '▼' : '•'; }
+function mhiColor(dir) { return dir === 'up' ? '#5dcaa5' : dir === 'down' ? '#e89b3e' : '#f5c16c'; }
+
+function buildTicker(data) {
+  var items = [];
+  var horizons = (data.horizons || []).slice().sort(function(a, b) {
+    var order = { '7d': 0, '30d': 1, '90d': 2 };
+    return (order[a.horizon] || 99) - (order[b.horizon] || 99);
+  });
+  horizons.forEach(function(h) {
+    var deltaStr = ((h.delta || 0) > 0 ? '+' : '') + (h.delta || 0).toFixed(1);
+    items.push({
+      val: '<span style="color:' + mhiColor(h.direction) + '">' + mhiArrow(h.direction) + '</span> ' + (h.score || 0).toFixed(1),
+      lbl: 'MHI ' + h.horizon + ' \u00b7 \u0394 ' + deltaStr,
+    });
+  });
+  if (horizons.length > 0 && horizons[0].dominant_signal) {
+    var latest = horizons[0];
+    items.push({
+      val: String(latest.dominant_signal).replace(/_/g, ' '),
+      lbl: 'dominant signal \u00b7 ' + (latest.bullish_count || 0) + ' bullish / ' + (latest.bearish_count || 0) + ' bearish',
+    });
+  }
+  (data.top_signals || []).slice(0, 3).forEach(function(s) {
+    items.push({ val: fmt(s.cnt), lbl: String(s.signal_type).replace(/_/g, ' ') + ' signals (7d)' });
+  });
+  (data.top_sectors || []).slice(0, 2).forEach(function(s) {
+    items.push({ val: fmt(s.cnt), lbl: String(s.sector) + ' sector activity' });
+  });
+  items.push({ val: 'AMER \u00b7 EUR \u00b7 ME&A \u00b7 ASIA \u00b7 OCE', lbl: 'five global regions, continuously' });
+
+  if (items.length === 0) return;
   var html = items.concat(items).map(function(i) {
     return '<div class="t-item"><span class="t-val">' + i.val + '</span><span class="t-lbl">' + i.lbl + '</span></div>';
   }).join('');
   document.getElementById('ticker').innerHTML = html;
 }
-buildTicker({});
 
-// Live stats
+function setStat(id, val) {
+  var el = document.getElementById(id);
+  if (el && val != null) el.textContent = fmt(val);
+}
+
+// Load market health + platform stats in parallel
 (async function() {
   try {
-    var r = await fetch('/api/public/stats');
-    var s = await r.json();
-    buildTicker(s);
-    var el;
-    el = document.getElementById('s-people'); if (el) el.textContent = fmt(s.people);
-    el = document.getElementById('s-companies'); if (el) el.textContent = fmt(s.companies);
-    el = document.getElementById('s-signals'); if (el) el.textContent = fmt(s.signals_7d);
-    el = document.getElementById('s-searches'); if (el) el.textContent = fmt(s.sources);
-  } catch(e) {}
+    var [healthRes, statsRes] = await Promise.all([
+      fetch('/api/public/market-health').catch(function() { return null; }),
+      fetch('/api/public/stats').catch(function() { return null; }),
+    ]);
+    if (healthRes && healthRes.ok) buildTicker(await healthRes.json());
+    if (statsRes && statsRes.ok) {
+      var s = await statsRes.json();
+      setStat('s-people', s.people);
+      setStat('s-companies', s.companies);
+      setStat('s-signals', s.signals_7d);
+      setStat('s-searches', s.sources);
+    }
+  } catch(e) { console.warn('ticker/stats load failed', e); }
 })();
+
+// Refresh ticker every 5 minutes
+setInterval(async function() {
+  try {
+    var r = await fetch('/api/public/market-health');
+    if (r.ok) buildTicker(await r.json());
+  } catch(e) {}
+}, 300000);
 
 // Scroll reveal
 var io = new IntersectionObserver(function(entries) {
