@@ -554,6 +554,7 @@ router.get('/api/top-podcasts', authenticateToken, async (req, res) => {
 
     // ── LATEST: most recent podcast episodes (last 7 days), one per source ──
     // Use platformPool — podcasts are platform content (many have tenant_id NULL)
+    // Filter: must have either audio_url OR a valid http(s) source_url — no dead cards
     const { rows: latest } = await platformPool.query(`
       SELECT DISTINCT ON (source_name)
         id, title, source_name, source_url, published_at, image_url, audio_url
@@ -561,6 +562,10 @@ router.get('/api/top-podcasts', authenticateToken, async (req, res) => {
       WHERE source_type = 'podcast'
         AND published_at > NOW() - INTERVAL '7 days'
         AND title IS NOT NULL
+        AND (
+          audio_url IS NOT NULL
+          OR (source_url IS NOT NULL AND (source_url LIKE 'http://%' OR source_url LIKE 'https://%'))
+        )
       ORDER BY source_name, published_at DESC
     `);
     // Sort by recency after dedup
@@ -628,6 +633,7 @@ router.get('/api/top-podcasts', authenticateToken, async (req, res) => {
           id, title, source_name, source_url, published_at, image_url, source_type
         FROM external_documents
         WHERE source_type IN ('rss', 'vc_blog', 'newsletter', 'news_pr') AND title IS NOT NULL
+          AND source_url IS NOT NULL AND source_url LIKE 'http%'
           AND id != ALL($1::uuid[])
           AND published_at > NOW() - INTERVAL '14 days'
         ORDER BY source_name, published_at DESC

@@ -116,7 +116,7 @@ var SIG_COLORS={capital_raising:'#EF9F27',strategic_hiring:'#5DCAA5',geographic_
 var COLUMNS=[
   {key:'claimed',label:'Claimed',cls:'col-claimed'},
   {key:'actioned',label:'Actioned',cls:'col-actioned'},
-  {key:'converted',label:'Converted',cls:'col-converted'},
+  {key:'converted',label:'In Conversation',cls:'col-converted'},
   {key:'won',label:'Won',cls:'col-won'},
 ];
 
@@ -261,7 +261,7 @@ async function loadBoard(){
         html+='</div>';
         html+='<div class="card-value" onclick="event.stopPropagation()"><span style="font-size:10px;color:var(--ink-4)">Value:</span><input class="val-input" type="text" value="'+fmtCurrency(val)+'" onfocus="this.select()" onblur="updateValue(\''+d.id+'\',this)" onkeydown="if(event.key===\'Enter\'){this.blur()}"></div>';
         // Owner shown at top of card
-        var dateLabel=d.won_at?'Won '+ago(d.won_at):d.converted_at?'Converted '+ago(d.converted_at):d.actioned_at?'Actioned '+ago(d.actioned_at):d.claimed_at?'Claimed '+ago(d.claimed_at):'Created '+ago(d.created_at);
+        var dateLabel=d.won_at?'Won '+ago(d.won_at):d.converted_at?'In conversation '+ago(d.converted_at):d.actioned_at?'Actioned '+ago(d.actioned_at):d.claimed_at?'Claimed '+ago(d.claimed_at):'Created '+ago(d.created_at);
         html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px"><div class="card-date">'+dateLabel+'</div>';
         html+='<div style="display:flex;gap:4px" onclick="event.stopPropagation()">';
         html+='<button onclick="archiveCard(\''+d.id+'\')" title="Archive" style="font-size:9px;padding:2px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--surface-warm);color:var(--ink-4);cursor:pointer;font-family:var(--sans)">Archive</button>';
