@@ -68,56 +68,55 @@ code,.mono{font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--au-c
 
 <main class="content">
   <h1>Privacy Policy</h1>
-  <p class="subtitle">Last updated: April 2026</p>
+  <p class="subtitle">Last updated: 23 April 2026</p>
 
   <h2>1. Overview</h2>
   <p>Autonodal is a <code>signal intelligence</code> platform that builds <code>proximity graphs</code> from your professional network and surfaces <code>market feeds</code> so you can act on what matters. This policy explains how we collect, process, and protect your data.</p>
 
   <h2>2. Data We Collect</h2>
-  <p>When you use Autonodal, we may collect the following categories of information:</p>
+  <p>When you use Autonodal, we collect the following categories of information:</p>
   <ul>
     <li><strong>Account data</strong> &mdash; name, email address, authentication credentials</li>
     <li><strong>Profile data</strong> &mdash; job title, company, professional context you provide</li>
-    <li><strong>Connection metadata</strong> &mdash; who you communicate with and how frequently</li>
+    <li><strong>Connection metadata</strong> &mdash; who you communicate with and how frequently (derived from email metadata and calendar events, with full bodies never stored)</li>
     <li><strong>Interaction metadata</strong> &mdash; timestamps, frequency patterns, communication channels</li>
     <li><strong>Signals</strong> &mdash; RSS feeds, market data, and curated intelligence you subscribe to</li>
   </ul>
 
-  <h2>3. Gmail Data &mdash; Proximity Extraction Only</h2>
-  <p>When you connect your Gmail account, Autonodal extracts <code>proximity signals</code> only. This means we process:</p>
+  <h2>3. Gmail Data &mdash; Metadata Only</h2>
+  <p>When you connect your Gmail account, Autonodal extracts <code>proximity signals</code> from message metadata. Specifically, we read and store:</p>
   <ul>
-    <li><strong>WHO</strong> &mdash; sender and recipient email addresses</li>
-    <li><strong>WHEN</strong> &mdash; timestamps of messages</li>
-    <li><strong>HOW OFTEN</strong> &mdash; frequency and recency of communication</li>
+    <li><strong>WHO</strong> &mdash; sender and recipient email addresses (<code>From</code>, <code>To</code>, <code>Cc</code> headers)</li>
+    <li><strong>WHEN</strong> &mdash; message timestamps</li>
+    <li><strong>HOW OFTEN</strong> &mdash; frequency, recency, and reciprocity of communication</li>
+    <li><strong>SUBJECT LINE</strong> &mdash; stored for at-a-glance context on the interaction in your own sandbox</li>
+    <li><strong>GMAIL-PROVIDED SNIPPET</strong> &mdash; the short preview Gmail returns with each message (approximately 140 characters), used only to render a preview in your interaction log</li>
   </ul>
   <div class="never-box">
-    <p>We <strong>NEVER</strong> read, store, or process email subject lines, message bodies, or attachments. We extract mathematical proximity scores from metadata only.</p>
+    <p>We <strong>NEVER</strong> read, store, or process the body of any Gmail message. We <strong>NEVER</strong> download or store attachments. We extract only the metadata fields listed above, and those metadata fields are used only to compute your private proximity graph.</p>
   </div>
 
-  <h2>4. Google Drive Data</h2>
-  <p>When you connect Google Drive, Autonodal may access:</p>
-  <ul>
-    <li>File names and metadata for documents you explicitly select</li>
-    <li>Text content of documents you explicitly choose to index</li>
-  </ul>
-  <div class="never-box">
-    <p>We <strong>NEVER</strong> access files you have not explicitly selected. We do not scan, index, or read any document unless you grant specific permission for that file.</p>
-  </div>
-
-  <h2>5. Google Contacts Data</h2>
+  <h2>4. Google Contacts Data</h2>
   <p>When you connect Google Contacts, we access:</p>
   <ul>
-    <li>Contact names and email addresses</li>
+    <li>Contact names, email addresses, phone numbers where available</li>
     <li>Company and job title information</li>
   </ul>
-  <p>This data is used to enrich your <code>proximity graph</code> and help you understand the strength and nature of your professional relationships.</p>
+  <p>Contacts are stored only within your own private Autonodal sandbox and are never shared with other Autonodal users or tenants.</p>
+
+  <h2>5. Google Calendar Data</h2>
+  <p>When you connect Google Calendar, we access:</p>
+  <ul>
+    <li>Event titles (used as an interaction subject in your proximity graph)</li>
+    <li>Attendee email addresses</li>
+    <li>Start and end timestamps</li>
+  </ul>
+  <div class="never-box">
+    <p>We <strong>NEVER</strong> store event descriptions, attached documents, or meeting notes from Google Calendar. Only the metadata above is read.</p>
+  </div>
 
   <h2>6. The Proximity-Only Model</h2>
-  <p>Autonodal operates on a <code>proximity-only</code> extraction model. We perform local extraction of messaging metadata to build mathematical relationship scores. No content is ever read, stored, or transmitted.</p>
-  <p>The output is a set of <code>proximity_scores</code> that represent the strength and recency of your professional connections &mdash; not the substance of your communications.</p>
-  <div class="never-box">
-    <p>We <strong>NEVER</strong> use message content for any purpose. Our model is architecturally incapable of reading your emails, messages, or documents unless you explicitly select them.</p>
-  </div>
+  <p>Autonodal operates on a <code>proximity-only</code> extraction model for Gmail and Calendar. We read structured metadata to build mathematical relationship scores. The output is a set of <code>proximity_scores</code> that represent the strength and recency of your professional connections &mdash; not the substance of your communications.</p>
 
   <h2>7. Huddle Collaboration</h2>
   <p>When you join a <code>Huddle</code> (collaborative workspace), the following applies:</p>
@@ -127,20 +126,115 @@ code,.mono{font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--au-c
     <li>You can detach from any Huddle at any time, cleanly removing your contributed data</li>
   </ul>
 
-  <h2>8. Data Sharing</h2>
+  <h2>8. Data Sharing and Processors</h2>
   <p>We do not sell your data. We do not use your data for advertising. We do not share your data with third parties for their marketing purposes.</p>
   <div class="never-box">
     <p>We <strong>NEVER</strong> sell your data. We <strong>NEVER</strong> use it for advertising. Your data is yours.</p>
   </div>
-  <p>We use the following infrastructure providers to operate the platform:</p>
+  <p>We use the following infrastructure providers to operate the platform, each under a binding data processing agreement:</p>
   <ul>
-    <li><code>OpenAI</code> &mdash; text embeddings for semantic search</li>
-    <li><code>Qdrant</code> &mdash; vector database for proximity and signal storage</li>
-    <li><code>Railway</code> &mdash; application hosting infrastructure</li>
+    <li><code>Railway</code> (United States) &mdash; application hosting and primary database</li>
+    <li><code>Qdrant Cloud</code> (European Union, GCP Frankfurt) &mdash; vector database for semantic search</li>
+    <li><code>OpenAI</code> (United States) &mdash; text embeddings for semantic search, used only on non-Google data (public signals, platform-generated person profiles, RSS content). Google user data is never transmitted to OpenAI.</li>
+    <li><code>Resend</code> (United States) &mdash; transactional email delivery (platform notifications only; no Google user data)</li>
   </ul>
-  <p>All providers are bound by data processing agreements and do not retain your data beyond processing.</p>
 
-  <h2>9. Data Retention and Deletion</h2>
+  <h2 id="google-user-data">9. How Autonodal Accesses, Uses, Stores, and Shares Google User Data</h2>
+
+  <p>This section documents, in accordance with the <a href="https://developers.google.com/terms/api-services-user-data-policy" rel="noopener">Google API Services User Data Policy</a> and the Limited Use requirements for Workspace APIs, how Autonodal interacts with data obtained from Google services.</p>
+
+  <h3>Scopes Requested and Purpose of Access</h3>
+
+  <p>Autonodal requests the following Google OAuth scopes, and each is used only for the purpose described:</p>
+
+  <ul>
+    <li>
+      <strong><code>openid</code></strong>,
+      <strong><code>https://www.googleapis.com/auth/userinfo.email</code></strong>, and
+      <strong><code>https://www.googleapis.com/auth/userinfo.profile</code></strong>
+      &mdash; Used solely to authenticate the user and associate the correct Autonodal account with their Google sign-in. The user's email address, name, and profile picture are stored to display their identity within the Autonodal interface.
+    </li>
+    <li>
+      <strong><code>https://www.googleapis.com/auth/gmail.readonly</code></strong>
+      &mdash; Used to read metadata from the user's sent and received email (<code>From</code>, <code>To</code>, <code>Cc</code>, timestamp, subject line, and the Gmail API's own short snippet) in order to compute the user's professional network proximity graph within their own private Autonodal sandbox. The body content of messages is never stored, never transmitted to any third party, and never retained by Autonodal. Email metadata is processed to derive aggregate relationship metrics (frequency, recency, reciprocity) used exclusively for the user's own proximity scoring.
+    </li>
+    <li>
+      <strong><code>https://www.googleapis.com/auth/contacts.readonly</code></strong>
+      &mdash; Used to import the user's Google Contacts into their private Autonodal sandbox to seed their professional network graph. Contact data is stored only within the user's own tenant and is never shared across tenants or with other Autonodal users.
+    </li>
+    <li>
+      <strong><code>https://www.googleapis.com/auth/calendar.readonly</code></strong>
+      &mdash; Used to read the user's calendar event titles, attendee email addresses, and start/end timestamps in order to include meetings as interactions in the user's proximity graph. Event descriptions, locations, attached documents, and meeting notes are never read, stored, or transmitted.
+    </li>
+  </ul>
+
+  <p>Autonodal requests the minimum scope necessary for each described purpose and does not use any scope for a purpose other than the one stated above.</p>
+
+  <h3>How Google User Data Is Used</h3>
+
+  <p>Google user data is used exclusively to provide the user-facing features of the Autonodal platform that the user has explicitly enabled. Specifically:</p>
+
+  <ul>
+    <li>Email metadata is used to compute relationship proximity scores within the user's own private sandbox.</li>
+    <li>Calendar event metadata is used to register meetings as interactions in the user's proximity graph.</li>
+    <li>Contact data is used to populate the user's own professional network graph within their sandbox.</li>
+    <li>Profile and email address data is used to authenticate the user to the Autonodal platform.</li>
+  </ul>
+
+  <p>Google user data is <strong>not</strong> used for:</p>
+
+  <ul>
+    <li>Advertising, remarketing, or ad targeting of any kind.</li>
+    <li>Determining creditworthiness or for lending purposes.</li>
+    <li>Any purpose unrelated to the explicit user-facing features of Autonodal.</li>
+    <li>Cross-tenant data aggregation, analysis, or correlation.</li>
+  </ul>
+
+  <h3>How Google User Data Is Stored</h3>
+
+  <p>Google user data is stored in Autonodal's infrastructure on <code>Railway</code> (United States, primary application database) and, for derived proximity scores only, on <code>Qdrant Cloud</code> (European Union, GCP Frankfurt). OAuth access and refresh tokens are additionally encrypted at the application layer using AES-256-GCM before being written to the database. Access to each user's Google-derived data is scoped to that user's tenant sandbox and enforced by PostgreSQL row-level security policies; no other Autonodal user can access another user's Google-derived data.</p>
+
+  <p>Raw email message bodies are <strong>never</strong> stored, processed, or transmitted. Only the metadata and proximity metrics described above are retained.</p>
+
+  <h3>How Google User Data Is Shared</h3>
+
+  <p>Autonodal does <strong>not</strong> sell, transfer, or share Google user data with third parties except as strictly necessary to provide the Autonodal service to the user, and only with the following processors under binding data processing agreements:</p>
+
+  <ul>
+    <li><strong>Railway</strong> (United States) &mdash; application and database hosting</li>
+    <li><strong>Qdrant Cloud</strong> (European Union, GCP Frankfurt) &mdash; vector storage for derived proximity scores only</li>
+  </ul>
+
+  <p>Google user data is never shared with, or sold to, advertisers, data brokers, AI model providers, or any party other than the processors listed above. Specifically, Google user data is never transmitted to OpenAI, Anthropic, Google's own generative AI products, or any other third-party AI or machine-learning service.</p>
+
+  <h3>AI/ML Model Training Disclosure</h3>
+
+  <p>Autonodal does <strong>not</strong> use Google user data to develop, improve, or train generalised AI or machine-learning models. Google user data is not transmitted to any third-party AI model provider (including OpenAI, Anthropic, Google, or any other model provider). No Google user data is used to train any model, internal or external, under any circumstances.</p>
+
+  <p>When Autonodal uses large language models for in-product features, those features operate only on non-Google data (such as public market signals and platform-generated content), and any such use is confined to serving the individual user's in-product requests within their own sandbox.</p>
+
+  <h3>Data Retention and Deletion</h3>
+
+  <p>Google user data is retained only for as long as the user maintains an active Autonodal account and has not disconnected the relevant Google integration. Users may:</p>
+
+  <ul>
+    <li>Disconnect the Google integration at any time from the Autonodal settings page. Disconnection immediately revokes Autonodal's access at Google, deletes the stored OAuth tokens, and schedules deletion of all previously-retrieved Google user data within thirty (30) days.</li>
+    <li>Revoke access directly via their Google Account at <a href="https://myaccount.google.com/permissions" rel="noopener">myaccount.google.com/permissions</a>.</li>
+    <li>Request full account deletion by emailing <a href="mailto:privacy@autonodal.com">privacy@autonodal.com</a>, which results in deletion of all user data, including all Google-derived data, within thirty (30) days.</li>
+  </ul>
+
+  <h3>Limited Use Compliance</h3>
+
+  <p>Autonodal's use of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy#additional_requirements_for_specific_api_scopes" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements. Specifically, Autonodal:</p>
+
+  <ul>
+    <li>Uses access to, and use of, Google user data only to provide or improve user-facing features that are prominent in Autonodal's application interface.</li>
+    <li>Does not transfer Google user data except as necessary to provide or improve user-facing features, and only to the service providers listed above under binding confidentiality and data processing terms.</li>
+    <li>Does not use Google user data for serving advertisements.</li>
+    <li>Does not allow humans to read Google user data except as required by law, with the user's affirmative agreement, for security purposes, or to perform aggregate, anonymised operations.</li>
+  </ul>
+
+  <h2>10. Data Retention and Deletion</h2>
   <p>You may delete your account at any time from your account settings. Upon deletion:</p>
   <ul>
     <li>All personal data is marked for deletion immediately</li>
@@ -149,12 +243,12 @@ code,.mono{font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--au-c
   </ul>
   <p>You can also request deletion by emailing <a href="mailto:privacy@autonodal.com">privacy@autonodal.com</a>.</p>
 
-  <h2>10. Contact</h2>
-  <p>For any privacy-related questions or requests, contact us at:</p>
+  <h2>11. Contact</h2>
+  <p>For any privacy-related questions or requests, including questions about this Google user data disclosure, contact:</p>
   <p><a href="mailto:privacy@autonodal.com">privacy@autonodal.com</a></p>
 
-  <h2>11. Last Updated</h2>
-  <p>This policy was last updated in <strong>April 2026</strong>.</p>
+  <h2>12. Last Updated</h2>
+  <p>This policy was last updated on <strong>23 April 2026</strong>.</p>
 </main>
 
 <footer class="footer">
