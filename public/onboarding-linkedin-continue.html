@@ -110,12 +110,14 @@
   </div>
 
   <script>
-    // Extract token from URL and store (redirect from OIDC callback)
+    // Extract token + user from URL and store (redirect from OIDC callback)
     var params = new URLSearchParams(window.location.search);
     var token = params.get('token');
+    var userStr = params.get('user');
     var returnTo = params.get('return_to') || '/index.html';
     if (token) {
       localStorage.setItem('ml_token', token);
+      if (userStr) localStorage.setItem('ml_user', userStr);
       // Clean URL
       history.replaceState({}, '', '/onboarding/linkedin-continue');
     }

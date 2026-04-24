@@ -698,12 +698,16 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
       await platformPool.query('DELETE FROM sessions WHERE expires_at < NOW()');
 
       // Route: new LinkedIn sign-ups → continuity screen; returning users → return_to
+      // Include both token AND user — /index.html requires both to store the session.
       const returnTo = entry.returnTo || '/index.html';
+      const userJson = encodeURIComponent(JSON.stringify({
+        id: user.id, email: user.email, name: user.name, role: user.role
+      }));
       if (isNew) {
-        res.redirect(`/onboarding/linkedin-continue?token=${sessionToken}&return_to=${encodeURIComponent(returnTo)}`);
+        res.redirect(`/onboarding/linkedin-continue?token=${sessionToken}&user=${userJson}&return_to=${encodeURIComponent(returnTo)}`);
       } else {
         const sep = returnTo.includes('?') ? '&' : '?';
-        res.redirect(`${returnTo}${sep}token=${sessionToken}`);
+        res.redirect(`${returnTo}${sep}token=${sessionToken}&user=${userJson}`);
       }
     } catch (err) {
       // Dump full structured error so operators can see LinkedIn's actual response.
