@@ -1939,13 +1939,22 @@ function hideLogin() { document.getElementById('loginOverlay').classList.remove(
     const errEl = document.getElementById('loginError');
     const messages = {
       domain_restricted: 'Access restricted to @mitchellake.com accounts',
-      token_exchange_failed: 'Google authentication failed — please try again',
+      token_exchange_failed: 'Sign-in failed during token exchange — please try again',
       server_error: 'Server error during sign-in — please try again',
-      no_code: 'Authentication was cancelled'
+      no_code: 'Authentication was cancelled',
+      no_email: 'Sign-in did not return an email address — please try again',
+      user_cancelled: 'Sign-in cancelled',
+      linkedin_denied: 'LinkedIn access denied',
+      linkedin_start_failed: 'Could not start LinkedIn sign-in — please try again',
+      oauth_failed: 'Sign-in failed — please try again',
+      oauth_state_mismatch: 'Sign-in expired (state mismatch) — please try again',
+      oauth_invalid_userinfo: 'Sign-in returned invalid profile data — please try again',
+      no_provider_email: 'Your provider did not share an email address',
     };
-    errEl.textContent = messages[authError] || 'Authentication failed';
+    errEl.textContent = (messages[authError] || ('Authentication failed — code: ' + authError));
     errEl.classList.add('active');
-    window.history.replaceState({}, '', '/index.html');
+    // Keep the code in the URL briefly so diagnostics can see it; clean only after 5s.
+    setTimeout(function() { window.history.replaceState({}, '', '/index.html'); }, 5000);
   }
 })();
 
