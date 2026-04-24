@@ -1537,10 +1537,9 @@ a.stats-card-row:hover { background: var(--surface-warm); }
 
     <div style="background:#F7F5F2;border-radius:6px;padding:12px 14px;font-size:12px;line-height:1.6;color:#4a4a4a;margin-bottom:20px">
       <strong style="color:#1a1a1a">What Autonodal accesses with Google permission:</strong><br>
-      • <strong>Gmail (read-only)</strong> — detect interaction recency between team and contacts<br>
-      • <strong>Contacts</strong> — map your Google contacts to signal companies<br>
-      • <strong>Calendar</strong> — link meetings to companies and opportunities<br>
-      • <strong>Drive (optional)</strong> — surface intelligence from shared docs<br>
+      • <strong>Gmail (read-only, metadata only)</strong> — detect interaction recency between your team and contacts. Message bodies are never read or stored.<br>
+      • <strong>Contacts (read-only)</strong> — map your Google contacts to signal companies<br>
+      • <strong>Calendar (read-only, metadata only)</strong> — link meetings to companies and opportunities<br>
       Data stays in your tenant sandbox. Never shared cross-tenant. Never used to train AI models.
     </div>
 
@@ -1565,7 +1564,7 @@ a.stats-card-row:hover { background: var(--surface-warm); }
     </div>
 
     <div class="login-alt" style="margin-top:14px;font-size:11px;color:#7a7a7a;text-align:center;line-height:1.6">
-      LinkedIn signs you in. Google adds Gmail, Drive and Calendar intelligence.<br>
+      LinkedIn signs you in. Google adds Gmail, Contacts and Calendar intelligence.<br>
       By signing in you agree to our <a href="/terms.html" style="color:#2563eb;text-decoration:none">Terms</a> and <a href="/privacy.html" style="color:#2563eb;text-decoration:none">Privacy Policy</a>.
     </div>
 
@@ -3628,16 +3627,11 @@ async function checkGoogleConnection() {
   if (!row) return;
   try {
     const data = await api('/api/auth/gmail/status');
-    const hasScopes = data.connected && data.accounts.some(function(a) {
-      return a.scopes && (Array.isArray(a.scopes) ? a.scopes.join(' ') : String(a.scopes)).includes('drive');
-    });
-
+    // Drive/Docs/Sheets/Slides scopes are currently not requested by the app.
+    // Consent-screen parity: display only the scopes actually in the OAuth bundle.
     if (!data.connected) {
       row.innerHTML = '<div class="action-row" style="background:var(--amber-soft);border-radius:6px;margin-top:4px" onclick="window.location=\'/api/auth/gmail/connect?token=\' + encodeURIComponent(localStorage.getItem(\'ml_token\')) + \'&return_to=\' + encodeURIComponent(location.pathname)">' +
-        '<span class="action-icon">' + icon('link') + '</span> <span style="color:var(--amber);font-weight:600">Connect Google</span> <span style="font-size:11px;color:var(--ink-3);margin-left:4px">Gmail + Drive + Docs</span></div>';
-    } else if (!hasScopes) {
-      row.innerHTML = '<div class="action-row" style="background:var(--blue-soft);border-radius:6px;margin-top:4px" onclick="window.location=\'/api/auth/gmail/connect?token=\' + encodeURIComponent(localStorage.getItem(\'ml_token\')) + \'&return_to=\' + encodeURIComponent(location.pathname)">' +
-        '<span class="action-icon">' + icon('briefcase') + '</span> <span style="color:var(--blue);font-weight:600">Connect Google Drive</span> <span style="font-size:11px;color:var(--ink-3);margin-left:4px">Docs, Sheets, Slides</span></div>';
+        '<span class="action-icon">' + icon('link') + '</span> <span style="color:var(--amber);font-weight:600">Connect Google</span> <span style="font-size:11px;color:var(--ink-3);margin-left:4px">Gmail + Contacts + Calendar</span></div>';
     } else {
       row.innerHTML = '<div class="action-row" style="opacity:0.6;cursor:default">' +
         '<span class="action-icon">' + icon('check') + '</span> Google connected <span style="font-size:11px;color:var(--ink-4);margin-left:4px">' + data.accounts[0].google_email + '</span></div>';
@@ -4231,15 +4225,18 @@ setInterval(() => { if (getToken()) loadStats(); }, 5 * 60 * 1000);
 <script src="/js/hints.js"></script>
 <script src="/js/empty-states.js"></script>
 <script>
-// Guided tour — first visit only
-if (AufonodaTour.shouldRun('autonodal_dash_tour')) {
-  setTimeout(function() {
-    var tour = new AufonodaTour(DASHBOARD_TOUR_STEPS, {
-      storageKey: 'autonodal_dash_tour',
-    });
-    tour.start();
-  }, 800);
+// Guided tour — signed-in users on first visit only.
+// Must NOT fire on the public landing page before signup/signin — it shows behind the
+// login overlay and is user-hostile for first-time visitors.
+function maybeStartTour() {
+  if (!window._currentUser) return;                                 // not authed
+  if (document.getElementById('loginOverlay')?.classList.contains('active')) return;
+  if (!AufonodaTour.shouldRun('autonodal_dash_tour')) return;       // already dismissed
+  var tour = new AufonodaTour(DASHBOARD_TOUR_STEPS, { storageKey: 'autonodal_dash_tour' });
+  tour.start();
 }
+// Run after auth check completes. api('/api/auth/me') sets window._currentUser on success.
+setTimeout(maybeStartTour, 1500);
 function restartTour() { localStorage.removeItem('autonodal_dash_tour'); location.reload(); }
 </script>
 <script src="/huddle-context.js"></script>

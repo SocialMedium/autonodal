@@ -585,7 +585,6 @@ async function loadProfile() {
         var scopeList = ['Gmail'];
         if (scopes.includes('contacts')) scopeList.push('Contacts');
         if (scopes.includes('calendar')) scopeList.push('Calendar');
-        if (scopes.includes('drive')) scopeList.push('Drive');
         var missingScopes = !scopes.includes('contacts') || !scopes.includes('calendar');
         return '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0' + (google.accounts.length > 1 ? ';border-bottom:1px solid var(--rule)' : '') + '">' +
           '<div>' +
@@ -600,7 +599,8 @@ async function loadProfile() {
       document.getElementById('googleDetail').textContent = google.accounts.length + ' account(s) connected';
       document.getElementById('googleAction').innerHTML =
         '<button class="btn btn-sm" onclick="triggerSync()">Sync Now</button>' +
-        '<a href="/api/auth/gmail/connect?token=' + encodeURIComponent(TOKEN) + '&return_to=/profile.html&prompt=select_account" class="btn btn-sm" style="color:var(--blue);border-color:var(--blue)">+ Add Account</a>';
+        '<a href="/api/auth/gmail/connect?token=' + encodeURIComponent(TOKEN) + '&return_to=/profile.html&prompt=select_account" class="btn btn-sm" style="color:var(--blue);border-color:var(--blue)">+ Add Account</a>' +
+        '<button class="btn btn-sm" onclick="disconnectGoogle()" style="color:#C41D3E;border-color:#C41D3E">Disconnect Google</button>';
     } else {
       document.getElementById('googleStatus').innerHTML = '<span class="dot dot-grey"></span>Not connected';
       document.getElementById('googleAction').innerHTML = '<a href="/api/auth/gmail/connect?token=' + encodeURIComponent(TOKEN) + '&return_to=/profile.html" class="btn btn-primary btn-sm">Connect Google</a>';
@@ -876,6 +876,17 @@ async function triggerSync() {
     toast(data.message || 'Sync triggered');
     if (btn) { btn.disabled = false; btn.innerHTML = 'Sync Now'; }
   } catch(e) { toast('Sync failed'); if (btn) { btn.disabled = false; btn.innerHTML = 'Sync Now'; } }
+}
+
+// Google disconnect — revokes OAuth at Google, deletes tokens, schedules 30-day data purge.
+// Required for Google Limited Use compliance (privacy.html §9).
+async function disconnectGoogle() {
+  if (!confirm('Disconnect Google?\n\nThis will immediately revoke Autonodal\'s access to Gmail, Contacts, and Calendar. All Google-derived data will be deleted within 30 days.')) return;
+  try {
+    var data = await api('/api/auth/google/disconnect', { method: 'POST' });
+    toast('Google disconnected. Data purge scheduled for ' + (data.purge_in_days || 30) + ' days.');
+    setTimeout(function() { location.reload(); }, 1500);
+  } catch(e) { toast('Disconnect failed — please contact privacy@autonodal.com'); }
 }
 
 // ── Telegram Connect (MTProto — full history sync) ──

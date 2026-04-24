@@ -375,15 +375,7 @@
       }
       html += '</div>';
 
-      // Google Drive (company only)
-      if (isCompany) {
-        html += '<div class="connect-card">';
-        html += '<div class="connect-icon" style="background:#ecfdf5">&#128193;</div>';
-        html += '<div class="connect-info"><div class="connect-name">Google Drive</div>';
-        html += '<div class="connect-desc">Case studies, pitch decks, and documents for intelligence extraction</div></div>';
-        html += '<button class="connect-btn" onclick="window.location=\'/api/auth/google/connect\'">Connect</button>';
-        html += '</div>';
-      }
+      // Google Drive integration removed pending re-verification with drive.file (per-file picker).
 
       // Continue button
       var canContinue = gmailConnected || hasContacts;
