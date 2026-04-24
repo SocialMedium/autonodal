@@ -706,14 +706,15 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
         res.redirect(`${returnTo}${sep}token=${sessionToken}`);
       }
     } catch (err) {
-      // Dump full structured error so operators can see LinkedIn's actual response
-      // (error_description usually pinpoints the mismatch — redirect_uri, scope, etc.)
+      // Dump full structured error so operators can see LinkedIn's actual response.
+      // OidcError stores the upstream response under `.cause` (see lib/auth-oidc/errors.js).
+      const cause = err.cause || err.details || null;
       const debug = {
         code: err.code || 'unknown',
         message: err.message,
-        details: err.details || null,
-        providerError: err.details?.error || null,
-        providerErrorDescription: err.details?.error_description || null,
+        providerError: cause?.error || null,
+        providerErrorDescription: cause?.error_description || null,
+        rawCause: cause,
       };
       console.error('LinkedIn callback error:', JSON.stringify(debug));
       const code = err.code || 'oauth_failed';
