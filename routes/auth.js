@@ -706,7 +706,16 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
         res.redirect(`${returnTo}${sep}token=${sessionToken}`);
       }
     } catch (err) {
-      console.error('LinkedIn callback error:', err.code || 'unknown', err.message);
+      // Dump full structured error so operators can see LinkedIn's actual response
+      // (error_description usually pinpoints the mismatch — redirect_uri, scope, etc.)
+      const debug = {
+        code: err.code || 'unknown',
+        message: err.message,
+        details: err.details || null,
+        providerError: err.details?.error || null,
+        providerErrorDescription: err.details?.error_description || null,
+      };
+      console.error('LinkedIn callback error:', JSON.stringify(debug));
       const code = err.code || 'oauth_failed';
       res.redirect('/index.html?auth_error=' + encodeURIComponent(code));
     }
