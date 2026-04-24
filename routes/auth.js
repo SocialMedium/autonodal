@@ -649,7 +649,7 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
     }
     try {
       const provider = oidc.getProvider('linkedin');
-      const redirectUri = process.env.LINKEDIN_REDIRECT_URI ||
+      const redirectUri = process.env.LINKEDIN_REDIRECT_URL || process.env.LINKEDIN_REDIRECT_URI ||
         `${req.protocol}://${req.get('host')}/api/auth/linkedin/callback`;
       process.env.LINKEDIN_REDIRECT_URI = redirectUri;
       const returnTo = req.query.return_to || '/index.html';
@@ -673,7 +673,7 @@ module.exports = function({ platformPool, TenantDB, authenticateToken, auditLog,
       // Validate state + retrieve PKCE verifier
       const entry = oidc.validateCallback(req.query.state);
       const provider = oidc.getProvider('linkedin');
-      const redirectUri = process.env.LINKEDIN_REDIRECT_URI ||
+      const redirectUri = process.env.LINKEDIN_REDIRECT_URL || process.env.LINKEDIN_REDIRECT_URI ||
         `${req.protocol}://${req.get('host')}/api/auth/linkedin/callback`;
 
       // Exchange code for tokens
