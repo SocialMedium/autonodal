@@ -717,6 +717,8 @@ router.get('/api/signals/brief', authenticateToken, async (req, res) => {
     const region = req.query.region; // AU, SG, UK, US, APAC, EMEA, AMER, or 'all'
     const minConf = parseFloat(req.query.min_confidence) || 0;
     const networkOnly = req.query.network === 'true'; // only signals where we have contacts
+    const phaseFilter = req.query.phase; // comma-separated lifecycle phases: critical,closing — used by Priority Follow-Up
+    const isClientFilter = req.query.client_filter; // 'clients' | 'new' | undefined
     const huddleId = req.query.huddle_id || null; // optional huddle context for cross-tenant ranking
 
     // If huddle context, get all member tenant IDs
@@ -885,6 +887,27 @@ router.get('/api/signals/brief', authenticateToken, async (req, res) => {
       }
     }
 
+    // Lifecycle phase filter — used by the Priority Follow-Up section
+    if (phaseFilter) {
+      const phases = phaseFilter.split(',').map(p => p.trim()).filter(Boolean);
+      if (phases.length > 0) {
+        paramIdx++;
+        where += ` AND se.phase = ANY($${paramIdx})`;
+        params.push(phases);
+      }
+    }
+
+    // Client / Net-new filter — driven by the existing-client toggle on the All Signals feed
+    if (isClientFilter === 'clients') {
+      where += ` AND (
+        c.is_client = true
+        OR EXISTS (SELECT 1 FROM companies c_cl2 WHERE c_cl2.is_client = true AND LOWER(c_cl2.name) = LOWER(c.name) AND c_cl2.tenant_id = $1)
+      )`;
+    } else if (isClientFilter === 'new') {
+      where += ` AND COALESCE(c.is_client, false) = false
+        AND NOT EXISTS (SELECT 1 FROM companies c_cl3 WHERE c_cl3.is_client = true AND LOWER(c_cl3.name) = LOWER(c.name) AND c_cl3.tenant_id = $1)`;
+    }
+
     // User's geographic focus — for relevance boosting in ORDER BY
     const userRegion = req.user.region || '';
     const userRegionCodes = [];
@@ -935,6 +958,8 @@ router.get('/api/signals/brief', authenticateToken, async (req, res) => {
                se.detected_at, se.signal_date, se.source_url, se.signal_category,
                se.hiring_implications, se.is_megacap, se.image_url,
                se.signals_in_cluster,
+               se.polarity, se.phase, se.first_detected_at,
+               se.critical_at, se.closing_at, se.closed_at,
                c.sector, c.geography,
                COALESCE(c.is_client, false) AS is_client,
                c.country_code, c.company_tier,
@@ -978,6 +1003,7 @@ router.get('/api/signals/brief', authenticateToken, async (req, res) => {
           SELECT COUNT(*) AS cnt FROM conversions pl
           JOIN accounts cl ON cl.id = pl.client_id
           WHERE pl.tenant_id = $1 AND cl.company_id = se.company_id
+            AND (pl.fee_category IS NULL OR pl.fee_category != 'tax_payment')
         ) plc ON true
         LEFT JOIN LATERAL (
           SELECT COUNT(*) AS cnt FROM people p

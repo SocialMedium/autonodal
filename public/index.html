@@ -1793,6 +1793,20 @@ a.stats-card-row:hover { background: var(--surface-warm); }
         </div>
       </div>
 
+      <!-- Priority Follow-Up — signals in critical or closing phase with proximity -->
+      <div class="signal-stream" id="priorityStream" style="margin-bottom:28px;display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="sub-section-title" style="border-top:none;padding-top:0;color:#991B1B">Priority Follow-Up
+              <span class="hint-icon" data-hint="Signals in their critical or closing window — these convert fastest if actioned now. The countdown is calibrated from prior outcomes." data-hint-title="Critical-window leads" data-hint-id="priority-followup">ⓘ</span>
+            </div>
+            <span style="font-size:11px;color:#991B1B;font-family:var(--mono);font-weight:600" id="priorityCount"></span>
+          </div>
+          <span style="font-size:10px;color:var(--ink-4);text-transform:uppercase;letter-spacing:0.05em">Calibrated lifecycle window</span>
+        </div>
+        <div id="priorityFeed" style="display:flex;flex-direction:column;gap:10px"></div>
+      </div>
+
       <!-- Network Signals Stream -->
       <div class="signal-stream" id="networkStream" style="margin-bottom:28px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
@@ -1816,15 +1830,22 @@ a.stats-card-row:hover { background: var(--surface-warm); }
       </div>
 
       <!-- Full feed (below network) -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;margin-top:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;margin-top:8px;flex-wrap:wrap;gap:8px">
         <span style="font-family:var(--serif);font-size:18px;font-weight:600">All Signals</span>
-        <div class="zone-filters" id="regionFilterBtns" style="margin:0">
-          <button class="filter-btn active" onclick="filterRegion('all', this)">All</button>
-          <button class="filter-btn" onclick="filterRegion('AMER', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#FEF7E8;color:#B45309">AMER</span></button>
-          <button class="filter-btn" onclick="filterRegion('EUR', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#EBF1FE;color:#2563EB">EUR</span></button>
-          <button class="filter-btn" onclick="filterRegion('MENA', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#FDF0F2;color:#D4537E">ME&amp;A</span></button>
-          <button class="filter-btn" onclick="filterRegion('ASIA', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#F3EEFE;color:#6D28D9">ASIA</span></button>
-          <button class="filter-btn" onclick="filterRegion('OCE', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#E8F5EE;color:#0D7A50">OCE</span></button>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <div class="zone-filters" id="clientFilterBtns" style="margin:0">
+            <button class="filter-btn active" onclick="filterClientType('all', this)">All</button>
+            <button class="filter-btn" onclick="filterClientType('clients', this)" id="clientFilterClients">Clients</button>
+            <button class="filter-btn" onclick="filterClientType('new', this)" id="clientFilterNew">Net-new</button>
+          </div>
+          <div class="zone-filters" id="regionFilterBtns" style="margin:0">
+            <button class="filter-btn active" onclick="filterRegion('all', this)">All</button>
+            <button class="filter-btn" onclick="filterRegion('AMER', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#FEF7E8;color:#B45309">AMER</span></button>
+            <button class="filter-btn" onclick="filterRegion('EUR', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#EBF1FE;color:#2563EB">EUR</span></button>
+            <button class="filter-btn" onclick="filterRegion('MENA', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#FDF0F2;color:#D4537E">ME&amp;A</span></button>
+            <button class="filter-btn" onclick="filterRegion('ASIA', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#F3EEFE;color:#6D28D9">ASIA</span></button>
+            <button class="filter-btn" onclick="filterRegion('OCE', this)"><span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;background:#E8F5EE;color:#0D7A50">OCE</span></button>
+          </div>
         </div>
       </div>
 
@@ -1890,6 +1911,7 @@ a.stats-card-row:hover { background: var(--surface-warm); }
      JAVASCRIPT — Wire to live API
      ═══════════════════════════════════════════════════════════════════ -->
 <script src="/icons.js"></script>
+<script src="/js/signal-lifecycle-chip.js"></script>
 <script>
 // ── API Helper ──
 function getToken() { return localStorage.getItem('ml_token'); }
@@ -2888,11 +2910,42 @@ async function loadSignalGrabs() {
   }
 }
 
+// Client/Net-new filter for the All Signals feed (server-side)
+var currentClientFilter = 'all';
+function filterClientType(filter, btn) {
+  currentClientFilter = filter;
+  document.querySelectorAll('#clientFilterBtns .filter-btn').forEach(function(b) { b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  signalOffset = 0;
+  loadSignals();
+}
+
+// Priority Follow-Up — signals in critical or closing phase. Calibrated lifecycle window.
+async function loadPrioritySignals() {
+  try {
+    const params = new URLSearchParams({ limit: 8, phase: 'critical,closing', network: 'true' });
+    const data = await api('/api/signals/brief?' + params + huddleParam());
+    const stream = document.getElementById('priorityStream');
+    const feed = document.getElementById('priorityFeed');
+    const count = document.getElementById('priorityCount');
+    if (!data.signals || data.signals.length === 0) {
+      stream.style.display = 'none';
+      return;
+    }
+    stream.style.display = '';
+    count.textContent = data.signals.length + (data.signals.length === 1 ? ' lead' : ' leads');
+    feed.innerHTML = data.signals.map(function(s) { return renderDealCard(s); }).join('');
+  } catch (e) {
+    console.error('Priority signals error:', e);
+  }
+}
+
 async function loadSignals() {
   try {
     const params = new URLSearchParams({ limit: 6, offset: signalOffset });
     if (currentFilter !== 'all') params.set('type', currentFilter);
     if (currentRegion !== 'all') params.set('region', currentRegion);
+    if (currentClientFilter !== 'all') params.set('client_filter', currentClientFilter);
     // SCIENCE: Peak-end rule — first dashboard view should be personalised to signal_dial
     // Use user's preferred signal types from onboarding profile for boost ordering
     var dial = window._signalDial;
@@ -2994,6 +3047,7 @@ function renderDealCard(s) {
       </div>
       <div class="deal-badges">
         <span class="badge ${badgeClass}">${label.toUpperCase()}</span>
+        ${typeof signalLifecycleChip === 'function' ? signalLifecycleChip(s) : ''}
         ${s.is_megacap ? '<span class="badge" style="background:#f0f0f0;color:#888;font-style:italic">MARKET WEATHER</span>' : ''}
         ${s.is_client ? '<span class="badge client">CLIENT</span>' : (s.huddle_client && s.client_via ? '<span class="badge" style="background:#fef3c7;color:#92400e;font-weight:600">CLIENT via ' + esc(s.client_via) + '</span>' : '')}
         ${parseInt(s.prox_connection_count) > 0 ? `<button class="badge prox-trigger" data-signal-id="${s.id}" style="background:var(--blue-soft);color:var(--blue);border:1px solid var(--blue);cursor:pointer;font-family:var(--sans);font-size:10px;font-weight:600;padding:2px 8px;border-radius:3px" onmouseenter="this.style.background='var(--blue)';this.style.color='#fff';clearTimeout(this._ht);this._st=setTimeout(()=>ProximityPopup.show(this,'${s.id}'),120)" onmouseleave="this.style.background='var(--blue-soft)';this.style.color='var(--blue)';clearTimeout(this._st);ProximityPopup.scheduleHide()">${icon('link')} ${s.prox_connection_count} proximity${s.best_connector_name ? ' · via ' + esc(s.best_connector_name.split(' ')[0]) : ''}</button>` : ''}
@@ -4057,6 +4111,7 @@ async function init() {
   loadDashboardEvents();
   loadTodayInsight();
   loadMarketHealthCard();
+  loadPrioritySignals();
   loadSignals();
   loadTopPodcasts();
   loadTalentInMotion();
@@ -4070,6 +4125,7 @@ function refreshPageData() {
   activeHuddleId = sessionStorage.getItem('activeHuddleId') || '';
   signalOffset = 0;
   loadHeroSignals();
+  loadPrioritySignals();
   loadSignals();
   loadNetworkSignals();
   loadTopPodcasts();
